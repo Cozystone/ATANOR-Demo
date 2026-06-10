@@ -1,0 +1,9 @@
+.venv/
+node_modules/
+.next/
+apps/web/.next/
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*

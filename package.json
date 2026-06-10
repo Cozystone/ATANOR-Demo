@@ -1,0 +1,17 @@
+{
+  "name": "homage1.0",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Homage1.0 monorepo skeleton for the BakeBoard AI factory dashboard.",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "api:dev": "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --app-dir apps/api",
+    "web:dev": "npm --workspace apps/web run dev",
+    "dev": "concurrently \"npm run api:dev\" \"npm run web:dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
