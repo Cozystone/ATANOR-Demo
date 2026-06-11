@@ -572,6 +572,7 @@ export default function BakeBoardPage() {
   const [oven, setOven] = useState<AnyRecord | null>(null);
   const [neuro, setNeuro] = useState<AnyRecord | null>(null);
   const [stability, setStability] = useState<AnyRecord | null>(null);
+  const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
   const [learningVolume, setLearningVolume] = useState<LearningVolume>("standard");
   const [selectedMemory, setSelectedMemory] = useState<AnyRecord | null>(null);
   const [activeSignalEdgeKeys, setActiveSignalEdgeKeys] = useState<string[]>([]);
@@ -587,6 +588,7 @@ export default function BakeBoardPage() {
   const graphRef = useRef<SVGSVGElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const signalTimerRef = useRef<number | null>(null);
+  const benchmarkAppliedRef = useRef(false);
   const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [memoryQuery, setMemoryQuery] = useState("");
@@ -649,6 +651,12 @@ export default function BakeBoardPage() {
     }, 10000);
     return () => window.clearInterval(timer);
   }, [learningVolume]);
+
+  useEffect(() => {
+    runHardwareBenchmark({ applyRecommendation: true }).catch((caught) => {
+      setError(caught instanceof Error ? caught.message : "시스템 벤치마크에 실패했습니다.");
+    });
+  }, []);
 
   useEffect(() => {
     if (!autoChatOpened && oven?.state === "completed") {
@@ -838,12 +846,36 @@ export default function BakeBoardPage() {
     }
   }
 
+  async function runHardwareBenchmark(options: { applyRecommendation?: boolean } = {}) {
+    setError(null);
+    const result = await fetchJson<AnyRecord>("/api/neuro/benchmark", {
+      method: "POST",
+      body: JSON.stringify({ run_probes: true }),
+    });
+    setBenchmark(result);
+    const recommended = result?.recommended_learning_volume as LearningVolume | undefined;
+    if (
+      options.applyRecommendation &&
+      result?.can_read_local_hardware &&
+      recommended &&
+      learningVolumePresets[recommended] &&
+      !benchmarkAppliedRef.current
+    ) {
+      benchmarkAppliedRef.current = true;
+      setLearningVolume(recommended);
+    }
+    return result;
+  }
+
   async function refreshStabilityPlan() {
     setError(null);
     try {
+      const payload = benchmark?.recommended_learning_volume === learningVolume && benchmark?.recommended_stability_payload
+        ? benchmark.recommended_stability_payload
+        : stabilityPayloadForVolume(learningVolume);
       const plan = await fetchJson<AnyRecord>("/api/neuro/stability", {
         method: "POST",
-        body: JSON.stringify(stabilityPayloadForVolume(learningVolume)),
+        body: JSON.stringify(payload),
       });
       setStability(plan);
     } catch (caught) {
@@ -900,6 +932,13 @@ export default function BakeBoardPage() {
   }
 
   const currentLearningPreset = learningVolumePresets[learningVolume];
+  const benchmarkVolume = benchmark?.recommended_learning_volume as LearningVolume | undefined;
+  const benchmarkVolumeLabel = benchmarkVolume && learningVolumePresets[benchmarkVolume] ? learningVolumePresets[benchmarkVolume].label : "대기";
+  const benchmarkSourceLabel = benchmark?.can_read_local_hardware ? "로컬 측정" : benchmark ? "fallback" : "대기";
+  const benchmarkCpuThreads = benchmark?.hardware_profile?.cpu_logical ?? system?.cpu_count ?? "n/a";
+  const benchmarkRamGb = benchmark?.hardware_profile?.ram_gb ?? "n/a";
+  const benchmarkDiskScore = benchmark?.probes?.disk_write_mb_s ?? null;
+  const benchmarkCpuScore = benchmark?.probes?.cpu_loop_score ?? null;
   const graphResult = graphrag?.result ?? null;
   const losses = oven?.losses ?? oven?.result?.losses ?? [];
   const memoryNodes = useMemo(() => makeMemoryNodes(graph), [graph]);
@@ -997,6 +1036,22 @@ export default function BakeBoardPage() {
 
   const processSteps = [
     {
+      number: "HW",
+      title: "시스템 벤치마크",
+      api: "POST /api/neuro/benchmark",
+      state: activeAction === "HW" ? "running" : benchmark ? "completed" : "idle",
+      description: "시작 시 PC의 CPU, RAM, GPU, 디스크를 짧게 측정해 온톨로지 배치와 학습량을 자동으로 조절합니다.",
+      metrics: [
+        benchmark?.profile_name ?? "측정 대기",
+        `추천 ${benchmarkVolumeLabel}`,
+        `CPU ${benchmarkCpuThreads}`,
+        `RAM ${benchmarkRamGb}GB`,
+        benchmarkSourceLabel,
+      ],
+      action: () => runProcessAction("HW", () => runHardwareBenchmark({ applyRecommendation: true })),
+      actionLabel: activeAction === "HW" ? "측정 중" : "벤치마크 재측정",
+    },
+    {
       number: "00",
       title: "빌드 시작",
       api: "POST /api/factory/build/start",
@@ -1089,6 +1144,7 @@ export default function BakeBoardPage() {
 
   const logs = [
     ...(buildRun ? [{ time: fmtClock(), message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}` }] : []),
+    { time: fmtClock(), message: `벤치마크: ${benchmark?.profile_name ?? "대기"} / 추천 ${benchmarkVolumeLabel} / ${benchmarkSourceLabel}` },
     { time: fmtClock(), message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
     { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
     { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / 마지막 손실 ${oven?.last_loss ?? "없음"}` },
@@ -1240,7 +1296,7 @@ export default function BakeBoardPage() {
           <button className="build-button" onClick={startFactoryBuild} disabled={isBuilding || Boolean(activeAction)}>
             {isBuilding ? "빌드 중" : "빌드 시작"}
           </button>
-          <span>단계 5/6</span>
+          <span>단계 {processSteps.length}</span>
           <strong>{rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
           <StatusDot state={pipeline?.system_state === "mock" ? "running" : "completed"} />
         </div>
@@ -1441,6 +1497,21 @@ export default function BakeBoardPage() {
                               <small>{sourceTypeText(doc.source_type)} / {sourceStatusText(doc.status)} / {licenseStatusText(doc.license_status)}</small>
                             </a>
                           ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {step.number === "HW" && benchmark ? (
+                      <div className="build-run-detail">
+                        <div className="build-trace">
+                          <span data-state={benchmark.can_read_local_hardware ? "complete" : "running"}>{benchmarkSourceLabel}</span>
+                          <span data-state="complete">CPU {benchmarkCpuThreads} threads</span>
+                          <span data-state="complete">Disk {benchmarkDiskScore ?? "n/a"} MB/s</span>
+                        </div>
+                        <div className="learning-budget-summary">
+                          <span>{benchmark.profile_name ?? "Hardware Benchmark"}</span>
+                          <strong>추천 {benchmarkVolumeLabel}</strong>
+                          <strong>{benchmark.training_tuning?.microbatch_tokens ?? 0} tokens</strong>
+                          <small>CPU score {benchmarkCpuScore ?? "n/a"} / 실제 PC 측정은 로컬 FastAPI 연결 시 자동 적용</small>
                         </div>
                       </div>
                     ) : null}

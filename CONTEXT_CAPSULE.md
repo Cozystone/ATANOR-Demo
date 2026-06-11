@@ -4,7 +4,7 @@
 
 Homage1.0 Alpha end-to-end MVP is implemented, verified, and deployed with a
 research-backed Neuro-Efficiency Layer and a sustained-learning stability
-profile.
+profile with startup hardware benchmark adaptation.
 
 ## Current Branch
 
@@ -12,7 +12,7 @@ profile.
 
 ## Last Commit
 
-Latest local commit before this update: Add native Homage utterance engine
+Latest local commit before this update: Add sustained learning stability profile
 
 ## Deployment
 
@@ -27,9 +27,11 @@ Latest local commit before this update: Add native Homage utterance engine
 - `apps/api/app/routers/neuro.py`
 - `apps/web/app/api/neuro/plan/route.ts`
 - `apps/web/app/api/neuro/stability/route.ts`
+- `apps/web/app/api/neuro/benchmark/route.ts`
 - `packages/neuro_efficiency`
 - `docs/RESEARCH_NEURO_EFFICIENCY.md`
 - `docs/LONG_RUN_STABILITY_PLAN.md`
+- `docs/HARDWARE_BENCHMARK_ADAPTATION.md`
 - `packages/ontology_forge`
 - `packages/rag_engine`
 - `packages/guard`
@@ -52,6 +54,11 @@ Latest local commit before this update: Add native Homage utterance engine
   fallback route.
 - Added the BakeBoard `지속 운전 안전장치` process card and learning-volume
   targets for lite/standard/deep/max long-run profiles.
+- Added `GET/POST /api/neuro/benchmark` to measure local CPU/RAM/GPU/disk at
+  startup and recommend `lite` / `standard` / `deep` / `max`.
+- Added the BakeBoard `시스템 벤치마크` card and `벤치마크 재측정` action.
+- The actual local machine measured as `Performance desktop` and recommended
+  `max`; BakeBoard auto-selected `최대` when connected to local FastAPI.
 - Added research note with SNN, neuromorphic, EWC, prototype, MAE, compression,
   and Loihi references.
 - Added long-run stability note.
@@ -64,6 +71,8 @@ Latest local commit before this update: Add native Homage utterance engine
 - `python -m compileall ...`
 - `npm --workspace apps/web run build`
 - `npx vercel deploy --prod --yes --cwd apps/web`
+- Local hardware verification used FastAPI on `127.0.0.1:8002` and Next
+  production server on `127.0.0.1:3025`.
 
 ## Test Results
 
@@ -73,6 +82,9 @@ Latest local commit before this update: Add native Homage utterance engine
 - Local browser verification passed, including Neuro-Efficiency Rebalance and
   the sustained stability card with `최대` learning volume persisting after
   auto-refresh.
+- Local browser verification passed for startup hardware benchmark adaptation:
+  `Performance desktop`, `추천 최대`, `로컬 측정`, and Build Start at
+  768 chunks / 420k chars.
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -91,12 +103,14 @@ Latest local commit before this update: Add native Homage utterance engine
 - Sustained stability is currently a planning/API/UI layer. The live ontology
   store still needs append-only graph events plus a SQLite WAL hot index before
   unattended multi-day runs.
+- Hardware benchmark auto-apply requires local FastAPI. Deployed fallback cannot
+  measure the viewer PC and returns `can_read_local_hardware: false`.
 
 ## Next 3 Actions
 
-1. Commit sustained-learning stability changes.
+1. Commit hardware benchmark adaptation changes.
 2. Implement the ontology event log and SQLite WAL hot graph index.
-3. Log real event density from DataGate/GraphRAG traces.
+3. Persist benchmark results by machine/run id and feed them into the writer.
 
 ## What I Need From You
 

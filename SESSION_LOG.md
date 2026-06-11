@@ -274,3 +274,42 @@
   - `docs/screenshots/91-sustained-stability-production.png`
   - `docs/screenshots/92-sustained-stability-production-card.png`
   - `docs/screenshots/93-sustained-stability-production-card-visible.png`
+
+## 2026-06-11 - Hardware benchmark adaptation
+
+- Added `build_hardware_benchmark` to `packages/neuro_efficiency`.
+- Added `GET/POST /api/neuro/benchmark` to FastAPI.
+- Added a deployable Next.js fallback route at `/api/neuro/benchmark`.
+- The local benchmark reads CPU thread count, RAM, GPU/VRAM through
+  `nvidia-smi`, workspace disk capacity/free space, a short CPU loop probe, and
+  a short disk write probe.
+- Added tolerance so OS-reported 31GB RAM / 15.9GB VRAM is treated as the
+  intended 32GB / 16GB hardware class.
+- Added the BakeBoard `시스템 벤치마크` process card, startup benchmark run, and
+  `벤치마크 재측정` button.
+- Auto-apply now changes learning volume only when
+  `can_read_local_hardware: true`, so Vercel fallback does not pretend to
+  measure the user's actual PC.
+- Verified the actual local machine:
+  - profile: `Performance desktop`
+  - recommendation: `max`
+  - CPU threads: 32
+  - RAM: about 31.1GB
+  - GPU: NVIDIA GeForce RTX 5080
+  - VRAM: about 15.9GB
+  - disk write probe: about 900MB/s to 1GB/s in verification runs
+- Verified locally with FastAPI on `127.0.0.1:8002` and Next production server
+  on `127.0.0.1:3025`.
+- Browser verification confirmed `최대` was automatically selected and Build
+  Start prepared 768 chunks / 420k chars.
+- Deployed production:
+  https://web-ovsyv6i2f-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified production `GET /api/neuro/benchmark` returns `source:
+  server-fallback` and `can_read_local_hardware: false`.
+- Verified production browser UI shows fallback benchmark labeling instead of
+  pretending to measure the viewer PC.
+- Captured screenshot:
+  - `docs/screenshots/94-hardware-benchmark-local.png`
+  - `docs/screenshots/95-hardware-benchmark-production.png`

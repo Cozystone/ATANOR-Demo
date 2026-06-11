@@ -31,6 +31,13 @@ Deployment:
   - RAM/VRAM/storage watermarks, queue caps, graph hot-window policy,
     checkpoint cadence, and backpressure rules
   - BakeBoard `지속 운전 안전장치` stage with selectable learning-volume targets
+- Hardware Benchmark Adaptation:
+  - `GET/POST /api/neuro/benchmark`
+  - startup CPU/RAM/GPU/disk probing when local FastAPI is connected
+  - automatic `lite` / `standard` / `deep` / `max` learning-volume recommendation
+  - ontology batch, graph hot-window, UI render, precision, microbatch, and
+    checkpoint tuning payloads
+  - BakeBoard `시스템 벤치마크` stage and `벤치마크 재측정` button
 - MiroFish-inspired BakeBoard console:
   - top graph/split/workbench layout switcher
   - left ontology-memory graph visualization
@@ -51,6 +58,7 @@ Deployment:
   - continuous live-synapse growth pulses after Build Start
 - Build flow note: `docs/BUILD_FLOW_3D_RAG.md`.
 - Long-run stability note: `docs/LONG_RUN_STABILITY_PLAN.md`.
+- Hardware benchmark note: `docs/HARDWARE_BENCHMARK_ADAPTATION.md`.
 
 ## Verification
 
@@ -132,6 +140,21 @@ Deployment:
     - `docs/screenshots/91-sustained-stability-production.png`
     - `docs/screenshots/92-sustained-stability-production-card.png`
     - `docs/screenshots/93-sustained-stability-production-card-visible.png`
+- Hardware Benchmark Adaptation verification passed:
+  - actual local benchmark read this machine as `Performance desktop`
+  - measured local API recommended `max`
+  - local API returned RTX 5080, about 15.9GB VRAM, about 31.1GB RAM, 32 CPU threads
+  - local browser verification passed with FastAPI on `127.0.0.1:8002` and
+    Next production server on `127.0.0.1:3025`
+  - BakeBoard automatically selected `최대` and showed 768 chunks / 420k chars
+    for Build Start
+  - `벤치마크 재측정` completed from the UI
+  - production API verification passed for `GET /api/neuro/benchmark` with
+    `source: server-fallback` and `can_read_local_hardware: false`
+  - production browser verification passed for fallback benchmark labeling
+  - screenshot:
+    - `docs/screenshots/94-hardware-benchmark-local.png`
+    - `docs/screenshots/95-hardware-benchmark-production.png`
 
 ## Known Limitations
 
@@ -164,6 +187,9 @@ Deployment:
 - Sustained stability is currently an enforceable planning/API/UI layer. The
   live ontology store still needs to move from JSON snapshots to append-only
   graph events plus a SQLite WAL hot index before very long unattended runs.
+- Hardware benchmark auto-apply requires the local FastAPI backend. The Vercel
+  fallback route cannot read the viewer's actual PC and marks itself as
+  `can_read_local_hardware: false`.
 - npm audit still reports dependency advisories; no force fix applied.
 
 ## Next Recommended Milestone
