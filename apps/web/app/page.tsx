@@ -74,6 +74,7 @@ type BuildRun = {
   training_gate: AnyRecord;
   training_units?: AnyRecord[];
   learning_trace: AnyRecord[];
+  web_search?: AnyRecord;
   notes: string[];
 };
 
@@ -430,6 +431,15 @@ function memoryTypeDescription(type?: string) {
   return memoryTypeDescriptions[type ?? ""] ?? "현재 그래프에서 관찰된 사용자 정의 기억 노드입니다.";
 }
 
+function evidenceSignalText(doc: AnyRecord) {
+  const signals = doc.retrieval_signals;
+  if (!signals) return "";
+  if (signals.web_search) return ` / 웹 ${signals.provider ?? "search"}`;
+  const lexical = signals.lexical ?? "-";
+  const graphBoost = signals.graph_boost ?? "-";
+  return ` / 어휘 ${lexical} / 그래프 ${graphBoost}`;
+}
+
 function isNodeInventoryQuestion(query: string) {
   const normalized = query.trim().toLowerCase();
   return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
@@ -724,6 +734,7 @@ export default function BakeBoardPage() {
   const [oven, setOven] = useState<AnyRecord | null>(null);
   const [neuro, setNeuro] = useState<AnyRecord | null>(null);
   const [stability, setStability] = useState<AnyRecord | null>(null);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
   const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8000");
   const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
@@ -1049,7 +1060,7 @@ export default function BakeBoardPage() {
     try {
       const result = await apiJson<AnyRecord>("/api/graphrag/query", {
         method: "POST",
-        body: JSON.stringify({ query: question }),
+        body: JSON.stringify({ query: question, web_search: webSearchEnabled }),
       });
       setGraphRag(result);
       activateSignal(signalTraceForQuery(question, displayGraph3D, result?.result), 15000);
@@ -1193,8 +1204,8 @@ export default function BakeBoardPage() {
         method: "POST",
         body: JSON.stringify(
           learningVolume === "infinite"
-            ? { learning_volume: learningVolume }
-            : { learning_volume: learningVolume, target_nodes: targetNodeCount },
+            ? { learning_volume: learningVolume, web_search: webSearchEnabled }
+            : { learning_volume: learningVolume, target_nodes: targetNodeCount, web_search: webSearchEnabled },
         ),
       });
       const isInfiniteRun = run.learning_profile?.id === "infinite";
@@ -1839,6 +1850,14 @@ export default function BakeBoardPage() {
                     />
                   )}
                 </label>
+                <label className="web-search-toggle">
+                  <input
+                    checked={webSearchEnabled}
+                    type="checkbox"
+                    onChange={(event) => setWebSearchEnabled(event.currentTarget.checked)}
+                  />
+                  <span>웹 검색</span>
+                </label>
               </div>
               <div className="local-backend-control" data-state={localBackendStatus}>
                 <span>로컬 FastAPI</span>
@@ -1921,8 +1940,12 @@ export default function BakeBoardPage() {
                         </div>
                         <div className="learning-budget-summary">
                           <span>{buildRun.learning_profile?.label ?? currentLearningPreset.label}</span>
+                          <strong>웹 검색 {buildRun.web_search?.provider ?? (webSearchEnabled ? "static" : "off")}</strong>
                           <strong>{buildRun.training_gate.chunk_count ?? buildRun.training_units?.length ?? currentLearningPreset.chunkBudget} 청크</strong>
                           <strong>{buildRun.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}</strong>
+                          {buildRun.web_search?.bing_query_url ? (
+                            <small>검색 query: {buildRun.web_search.query} / Bing 표시 URL: {buildRun.web_search.bing_query_url}</small>
+                          ) : null}
                           <small>
                             대표 노드 최대 {buildRun.training_gate.visual_node_budget ?? buildRun.graph_3d.nodes.length}개
                             {buildIsInfinite ? ` / 누적 후보 ${accumulatedLearningNodes.toLocaleString()}개 / 비표시 이력 ${hiddenLiveNodeCount.toLocaleString()}개` : ""}
@@ -1997,9 +2020,10 @@ export default function BakeBoardPage() {
             ) : (
               <div className="chat-view">
                 <div className="chat-status-row">
-                  <div><span>RAG 신뢰도</span><strong>{Math.round((graphrag?.confidence ?? 0) * 100)}%</strong></div>
+                  <div><span>RAG 신뢰도</span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
                   <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
                   <div><span>발화 엔진</span><strong>{graphResult?.answer_engine?.external_llm === false ? "네이티브" : "준비"}</strong></div>
+                  <div><span>웹 검색</span><strong>{webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}</strong></div>
                 </div>
                 <div className="chat-scroll" ref={chatScrollRef}>
                   {chatMessages.map((message, index) => (
@@ -2013,7 +2037,7 @@ export default function BakeBoardPage() {
                               <strong>{doc.chunk_id ?? doc.doc_id}</strong>
                               <em>
                                 점수 {doc.score ?? "-"}
-                                {doc.retrieval_signals ? ` / 어휘 ${doc.retrieval_signals.lexical} / 그래프 ${doc.retrieval_signals.graph_boost}` : ""}
+                                {evidenceSignalText(doc)}
                               </em>
                               <small>{doc.snippet}</small>
                             </div>

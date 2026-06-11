@@ -81,10 +81,55 @@ block `https://homage-alpha.vercel.app` from calling an `http://localhost` API.
 Use the local frontend for real hardware measurement unless you have an HTTPS
 local companion configured.
 
+## Optional Web Search / Grounding
+
+Homage can attach web search as a Harvest evidence source without using an
+external LLM for native answer generation.
+
+Default behavior:
+
+- `WEB_SEARCH_PROVIDER` defaults to `static`.
+- `POST /api/harvest/web-search` returns deterministic reference results and
+  provider status when no paid/search API key is configured.
+- Build Start sends `web_search: true` by default and records provider metadata
+  on `harvest_docs`.
+- RAG chat can send `web_search: true`; when local graph evidence is weak,
+  Homage reads raw search-result snippets as evidence and still reports
+  `external_llm: false`.
+- Fresh/current/news queries auto-enable web search. If no provider key is
+  configured, Homage first tries a public news RSS fallback (`news-rss`) and
+  only then falls back to deterministic static references.
+
+Optional raw-result providers:
+
+```bash
+set WEB_SEARCH_PROVIDER=brave
+set BRAVE_SEARCH_API_KEY=...
+
+set WEB_SEARCH_PROVIDER=serper
+set SERPER_API_KEY=...
+
+set WEB_SEARCH_PROVIDER=tavily
+set TAVILY_API_KEY=...
+```
+
+Microsoft Grounding with Bing:
+
+- Microsoft now recommends Grounding with Bing Search through Azure AI Foundry
+  Agents because Bing Search APIs retired on August 11, 2025.
+- Grounding with Bing is exposed as a Foundry Agent tool and returns model
+  responses with citations, not raw chunks for Homage native synthesis.
+- Homage exposes the configuration/status contract but does not use it as the
+  default native RAG path because this project is still avoiding external LLM
+  answer generation.
+- Expected env for a future Foundry-agent mode:
+  `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_MODEL_DEPLOYMENT_NAME`,
+  `BING_PROJECT_CONNECTION_ID`, and `AGENT_TOKEN` or Azure credentials.
+
 ## Alpha Flow
 
 1. Click `Build 시작` in BakeBoard to start the Alpha factory flow.
-2. Harvest reference web sources into evidence snippets.
+2. Harvest reference web/search sources into evidence snippets.
 3. Grow a typed ontology/RAG memory graph with deduped concepts and relations.
 4. Watch the 3D GraphRAG traversal view expand, zoom, pan, and rotate.
 5. When the graph passes the Alpha gate, prepare the Homage Oven dry-run.
@@ -117,6 +162,8 @@ to matched nodes and evidence documents.
 - `POST /api/factory/build/start`
 - `POST /api/datagate/run`
 - `GET /api/datagate/status`
+- `GET /api/harvest/web-search`
+- `POST /api/harvest/web-search`
 - `POST /api/ontology/run`
 - `GET /api/ontology/status`
 - `GET /api/ontology/graph`
@@ -141,10 +188,10 @@ npm --workspace apps/web run build
 
 ## Notes
 
-- No external paid APIs.
-- No web crawling.
-- `Build 시작` fetches a small allowlisted reference set and stores source
-  signals for visualization; it is not an open-ended crawler.
+- External search APIs are optional and disabled unless provider environment
+  variables are configured. The static fallback is deterministic.
+- `Build 시작` fetches a small reference/search set and stores source signals
+  for visualization; it is not an unrestricted crawler.
 - `target_nodes` is a long-run storage/training budget. `graph_3d` is a bounded
   representative browser sample. Standard runs now use a 480-node render window,
   and max/infinite runs can target 500,000 nodes while rendering a 2,000-node

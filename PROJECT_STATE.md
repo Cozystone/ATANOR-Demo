@@ -77,6 +77,19 @@ Deployment:
   - if matched node ids roll out of the 3D render window during sustained
     growth, the signal retargets visible live frontier / summary / traversal
     nodes so orange activation remains visible.
+- Web Search / Grounding connector layer:
+  - `GET/POST /api/harvest/web-search` added for provider status and search
+    result ingestion.
+  - Build Start accepts `web_search`, `search_query`, and
+    `web_search_provider`, then folds web result URLs into Harvest docs.
+  - RAG query accepts `web_search`; when local graph evidence is weak, Homage
+    reads raw search snippets as evidence and still reports `external_llm:
+    false`.
+  - Raw-result provider hooks: `static`, `brave`, `serper`, and `tavily`.
+  - Microsoft Grounding with Bing is exposed as a metadata/status connector for
+    future Foundry-agent mode because it returns agent/model responses rather
+    than raw evidence chunks for the native Homage path.
+  - Web search connector note: `docs/WEB_SEARCH_CONNECTORS.md`.
 - Native RAG open-structure generation:
   - structure/self-description questions such as `네 구조 설명해봐` generate a
     native answer even when no direct document evidence is retrieved
@@ -124,6 +137,27 @@ Deployment:
     visible orange active-node signal over rolling 3D graph growth.
   - screenshot:
     - `docs/screenshots/122-infinite-no-node-signal-local.png`
+- Web Search / Grounding connector verification:
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 64 tests.
+  - `npm --workspace apps/web run build` passed with `/api/harvest/web-search`
+    included in the Next route manifest.
+  - `POST /api/harvest/web-search` returned static provider results, provider
+    status, and Bing display query URL.
+  - `POST /api/graphrag/query` with `web_search: true` returned
+    `homage-native-web-search-rag-v1`, search evidence docs, citations,
+    `web_search` metadata, and `external_llm: false`.
+  - Fresh/current/news queries now auto-enable web search. Local smoke for a
+    Korean "today news" query returned `homage-native-web-search-rag-v1`,
+    provider `news-rss`, 5 evidence docs, `external_llm: false`, and no
+    `raw_no_node::` marker.
+  - Production smoke on `https://homage-alpha.vercel.app/api/graphrag/query`
+    for the same fresh-news query returned status 200, provider `news-rss`, 5
+    evidence docs, `external_llm: false`, and no `raw_no_node::` marker.
+  - `POST /api/factory/build/start` with `web_search: true` folded search
+    results into `harvest_docs` with `search_provider`, `search_query`, and
+    `bing_query_url` metadata.
+  - local browser verification confirmed the BakeBoard web-search toggle is
+    visible and enabled by default.
 - MiroFish repo and live demo were inspected; code was not copied because the
   source license is AGPL-3.0.
 - Local API smoke passed:

@@ -24,6 +24,8 @@ def test_factory_build_start_marks_target_as_long_run_budget() -> None:
     assert gate["representative_node_count"] < gate["target_nodes"]
     assert gate["target_realized"] is False
     assert "representative sample" in gate["sampling_explanation"]
+    assert body["web_search"]["provider"] == "static"
+    assert body["harvest_docs"][0]["search_provider"]
 
 
 def test_factory_standard_uses_representative_render_budget() -> None:
@@ -59,3 +61,23 @@ def test_factory_max_accepts_500k_long_run_budget() -> None:
     assert gate["representative_node_count"] == 1_720
     assert gate["target_realized"] is False
     assert gate["chunk_count"] == 4_096
+
+
+def test_harvest_web_search_static_contract() -> None:
+    client = TestClient(app)
+
+    status = client.get("/api/harvest/web-search/status")
+    assert status.status_code == 200
+    assert status.json()["raw_result_providers"]["static"] is True
+    assert status.json()["microsoft_grounding_with_bing"]["native_homage_default"] is False
+
+    response = client.post(
+        "/api/harvest/web-search",
+        json={"query": "Grounding with Bing Search", "count": 3},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "static"
+    assert body["results"]
+    assert body["bing_query_url"].startswith("https://www.bing.com/search")

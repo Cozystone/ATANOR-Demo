@@ -14,6 +14,8 @@ from ontology_forge import run_ontology
 from rag_engine import query_graphrag
 from trainer import run_dry_run
 
+from app.services.web_search import is_fresh_search_query, search_web, web_results_to_evidence
+
 
 AlphaState = Literal["idle", "running", "completed", "failed"]
 
@@ -72,11 +74,15 @@ class AlphaService:
         edges = json.loads((root / "edges.json").read_text(encoding="utf-8")) if (root / "edges.json").exists() else []
         return {"nodes": nodes, "edges": edges, "status": self.ontology_status()}
 
-    def query_graphrag(self, query: str) -> dict[str, Any]:
+    async def query_graphrag(self, query: str, web_search: bool = False, web_search_provider: str | None = None) -> dict[str, Any]:
         with self._lock:
             self.graphrag = self.graphrag | {"state": "running", "started_at": utc_now_iso(), "finished_at": None, "error": None, "last_query": query}
         try:
             result = query_graphrag(query)
+            should_search = web_search or is_fresh_search_query(query)
+            if should_search and (_should_web_search(result) or is_fresh_search_query(query)):
+                search_payload = await search_web(query, 5, web_search_provider)
+                result = _merge_web_search_result(query, result, search_payload)
             status = {
                 "state": "completed",
                 "started_at": self.graphrag["started_at"],
@@ -231,3 +237,62 @@ def telemetry_system() -> dict[str, Any]:
 
 
 alpha_service = AlphaService()
+
+
+def _should_web_search(result: dict[str, Any]) -> bool:
+    return (
+        result.get("method") == "homage-native-no-node-utterance-v1"
+        or not result.get("evidence_docs")
+        or float(result.get("confidence") or 0) < 0.42
+    )
+
+
+def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: dict[str, Any]) -> dict[str, Any]:
+    evidence_docs = web_results_to_evidence(search_payload.get("results", []))
+    if not evidence_docs:
+        return {
+            **base,
+            "web_search": search_payload,
+            "retrieval_trace": {
+                **base.get("retrieval_trace", {}),
+                "web_search_provider": search_payload.get("provider"),
+                "web_search_status": search_payload.get("status"),
+            },
+        }
+    top_titles = ", ".join(doc.get("title", doc["doc_id"]) for doc in evidence_docs[:3])
+    snippets = " ".join(doc.get("snippet", "") for doc in evidence_docs[:2]).strip()
+    answer = (
+        f"웹 검색 근거를 함께 읽었습니다. 현재 질문 '{query}'에 대해 {search_payload.get('provider', 'web')} provider가 "
+        f"{len(evidence_docs)}개 후보를 반환했고, 우선 확인한 출처는 {top_titles}입니다. {snippets}"
+    ).strip()
+    return {
+        **base,
+        "method": "homage-native-web-search-rag-v1",
+        "answer": answer,
+        "evidence_docs": evidence_docs,
+        "citations": [
+            {
+                "doc_id": doc["chunk_id"],
+                "source_doc_id": doc["doc_id"],
+                "path": doc.get("url") or doc.get("path"),
+                "url": doc.get("url"),
+                "score": doc.get("score"),
+            }
+            for doc in evidence_docs
+        ],
+        "web_search": search_payload,
+        "answer_engine": {
+            **base.get("answer_engine", {}),
+            "name": "Homage Utterance Engine",
+            "mode": "native-web-search-grounded-alpha",
+            "external_llm": False,
+        },
+        "retrieval_trace": {
+            **base.get("retrieval_trace", {}),
+            "strategy": "local GraphRAG fallback + raw web search harvest + native Homage synthesis",
+            "web_search_provider": search_payload.get("provider"),
+            "web_search_status": search_payload.get("status"),
+            "web_result_urls": [doc.get("url") for doc in evidence_docs],
+        },
+        "confidence": max(float(base.get("confidence") or 0), 0.52),
+    }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { defaultWebSearchQuery, searchWeb } from "../../../_webSearch";
 
 type HarvestDoc = {
   id: string;
@@ -8,6 +9,9 @@ type HarvestDoc = {
   snippet: string;
   source_type: string;
   license_status: string;
+  search_provider?: string;
+  search_query?: string;
+  bing_query_url?: string;
 };
 
 type LearningVolume = "lite" | "standard" | "deep" | "max" | "infinite";
@@ -130,7 +134,8 @@ function learningPresetFor(value: unknown, targetNodesInput?: unknown): Learning
   return { id, ...base, chunkBudget, targetNodes, textBudgetChars, textBudgetLabel, visualNodeBudget };
 }
 
-async function harvestUrl(url: string, index: number): Promise<HarvestDoc> {
+async function harvestUrl(url: string, index: number, searchPayload?: any): Promise<HarvestDoc> {
+  const searchResult = (searchPayload?.results ?? []).find((result: any) => result.url === url);
   try {
     const response = await fetch(url, {
       cache: "no-store",
@@ -141,21 +146,27 @@ async function harvestUrl(url: string, index: number): Promise<HarvestDoc> {
     return {
       id: `web-${String(index + 1).padStart(3, "0")}`,
       url,
-      title: titleFrom(html, url),
+      title: searchResult?.title ?? titleFrom(html, url),
       status: response.ok ? "fetched" : "fallback",
-      snippet: fallbackFor(url).slice(0, 420),
-      source_type: url.includes("reddit") ? "discussion" : "repository_or_docs",
-      license_status: "reference_only",
+      snippet: (searchResult?.snippet ?? fallbackFor(url)).slice(0, 420),
+      source_type: searchResult?.source_type ?? (url.includes("reddit") ? "discussion" : "repository_or_docs"),
+      license_status: searchResult?.license_status ?? "reference_only",
+      search_provider: searchResult?.provider ?? searchPayload?.provider ?? "seed",
+      search_query: searchPayload?.query,
+      bing_query_url: searchPayload?.bing_query_url,
     };
   } catch {
     return {
       id: `web-${String(index + 1).padStart(3, "0")}`,
       url,
-      title: new URL(url).hostname,
+      title: searchResult?.title ?? new URL(url).hostname,
       status: "fallback",
-      snippet: fallbackFor(url),
-      source_type: url.includes("reddit") ? "discussion" : "repository_or_docs",
-      license_status: "reference_only",
+      snippet: searchResult?.snippet ?? fallbackFor(url),
+      source_type: searchResult?.source_type ?? (url.includes("reddit") ? "discussion" : "repository_or_docs"),
+      license_status: searchResult?.license_status ?? "reference_only",
+      search_provider: searchResult?.provider ?? searchPayload?.provider ?? "seed",
+      search_query: searchPayload?.query,
+      bing_query_url: searchPayload?.bing_query_url,
     };
   }
 }
@@ -236,10 +247,16 @@ export async function POST(request: Request) {
   let urls = seedUrls;
   let learningVolume: unknown = "standard";
   let targetNodes: unknown = undefined;
+  let searchQuery: unknown = defaultWebSearchQuery;
+  let webSearch = true;
+  let webSearchProvider: unknown = undefined;
   try {
     const body = await request.json();
     learningVolume = body?.learning_volume ?? learningVolume;
     targetNodes = body?.target_nodes;
+    searchQuery = body?.search_query ?? searchQuery;
+    webSearch = body?.web_search ?? webSearch;
+    webSearchProvider = body?.web_search_provider;
     if (Array.isArray(body?.seed_urls) && body.seed_urls.length) {
       urls = body.seed_urls.slice(0, 6);
     }
@@ -247,7 +264,12 @@ export async function POST(request: Request) {
     // Use default seeds.
   }
 
-  const docs = await Promise.all(urls.map((url, index) => harvestUrl(url, index)));
+  const webSearchPayload = webSearch
+    ? await searchWeb(typeof searchQuery === "string" ? searchQuery : defaultWebSearchQuery, 6, typeof webSearchProvider === "string" ? webSearchProvider : null)
+    : { provider: "disabled", query: searchQuery, results: [], status: "disabled" };
+  const searchUrls = (webSearchPayload.results ?? []).map((result: any) => result.url).filter(Boolean);
+  urls = Array.from(new Set([...urls, ...searchUrls, ...seedUrls])).slice(0, 8);
+  const docs = await Promise.all(urls.map((url, index) => harvestUrl(url, index, webSearchPayload)));
   const learningPreset = learningPresetFor(learningVolume, targetNodes);
   const trainingUnits = makeTrainingUnits(docs, learningPreset);
   const generatedAt = new Date().toISOString();
@@ -297,6 +319,7 @@ export async function POST(request: Request) {
     generated_at: generatedAt,
     mode: learningPreset.id === "infinite" ? "alpha-continuous-harvest" : "alpha-live-harvest",
     harvest_docs: docs,
+    web_search: webSearchPayload,
     learning_profile: {
       id: learningPreset.id,
       label: learningPreset.label,
@@ -311,7 +334,7 @@ export async function POST(request: Request) {
     graph_frames: graphFrames,
     training_gate: trainingGate,
     learning_trace: [
-      { step: "Harvest", state: learningPreset.id === "infinite" ? "running" : "complete", detail: `${docs.length} reference sources captured / ${trainingUnits.length} text chunks scheduled` },
+      { step: "Harvest", state: learningPreset.id === "infinite" ? "running" : "complete", detail: `${docs.length} reference sources captured via ${webSearchPayload.provider} / ${trainingUnits.length} text chunks scheduled` },
       { step: "DataGate", state: "complete", detail: `${learningPreset.textBudgetLabel} text budget passed through compressed chunk routing` },
       { step: "Ontology Forge", state: learningPreset.id === "infinite" ? "running" : "complete", detail: `${nodes.length} representative nodes and ${edges.length} typed relations created` },
       { step: "GraphRAG", state: "complete", detail: "Anchor traversal path and evidence bundle generated" },

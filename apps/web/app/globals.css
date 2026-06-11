@@ -639,6 +639,28 @@ p {
   font-weight: 900;
 }
 
+.web-search-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-left: 1px solid var(--line);
+  padding-left: 7px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.web-search-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--orange);
+}
+
+.web-search-toggle span {
+  padding: 0;
+}
+
 .local-backend-control {
   display: grid;
   grid-template-columns: auto minmax(120px, 1fr) auto auto;

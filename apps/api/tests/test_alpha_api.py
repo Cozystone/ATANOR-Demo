@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.web_search import is_fresh_search_query
 
 
 def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
@@ -32,6 +33,24 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert rag.json()["result"]["citations"]
     assert rag.json()["result"]["method"] == "homage-native-graphrag-utterance-v1"
     assert rag.json()["result"]["answer_engine"]["external_llm"] is False
+
+    web_rag = client.post("/api/graphrag/query", json={"query": "Grounding with Bing architecture", "web_search": True})
+    assert web_rag.status_code == 200
+    web_result = web_rag.json()["result"]
+    assert web_result["method"] == "homage-native-web-search-rag-v1"
+    assert web_result["web_search"]["provider"] == "static"
+    assert web_result["evidence_docs"]
+    assert web_result["answer_engine"]["external_llm"] is False
+
+    fresh_query = "\uC624\uB298 \uB274\uC2A4 \uC54C\uB824\uC918"
+    assert is_fresh_search_query(fresh_query)
+    fresh_rag = client.post("/api/graphrag/query", json={"query": fresh_query})
+    assert fresh_rag.status_code == 200
+    fresh_result = fresh_rag.json()["result"]
+    assert fresh_result["method"] == "homage-native-web-search-rag-v1"
+    assert "raw_no_node::" not in fresh_result["answer"]
+    assert fresh_result["web_search"]["provider"] in {"news-rss", "static"}
+    assert fresh_result["answer_engine"]["external_llm"] is False
 
     greeting = client.post("/api/graphrag/query", json={"query": "안녕"})
     assert greeting.status_code == 200

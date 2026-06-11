@@ -531,14 +531,51 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
   };
 }
 
-export function makeEvidence(query: string) {
+function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPayload: any) {
+  const base = makeNoEvidenceResult(query);
+  if (!webEvidenceDocs.length) {
+    return {
+      ...base,
+      web_search: webSearchPayload,
+      retrieval_trace: {
+        ...base.retrieval_trace,
+        web_search_provider: webSearchPayload?.provider,
+        web_search_status: webSearchPayload?.status,
+      },
+    };
+  }
+  const titles = webEvidenceDocs.slice(0, 3).map((doc) => doc.title ?? doc.doc_id).join(", ");
+  const snippets = webEvidenceDocs.slice(0, 2).map((doc) => doc.snippet).join(" ");
+  return {
+    ...base,
+    method: "homage-native-web-search-rag-v1",
+    answer: `웹 검색 근거를 함께 읽었습니다. 현재 질문 '${query}'에 대해 ${webSearchPayload?.provider ?? "web"} provider가 ${webEvidenceDocs.length}개 후보를 반환했고, 우선 확인한 출처는 ${titles}입니다. ${snippets}`,
+    evidence_docs: webEvidenceDocs,
+    citations: webEvidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.url ?? doc.path, url: doc.url, score: doc.score })),
+    web_search: webSearchPayload,
+    answer_engine: nativeAnswerEngine("native-web-search-grounded-alpha"),
+    retrieval_trace: {
+      ...base.retrieval_trace,
+      strategy: "local demo fallback + raw web search harvest + native Homage synthesis",
+      web_search_provider: webSearchPayload?.provider,
+      web_search_status: webSearchPayload?.status,
+      web_result_urls: webEvidenceDocs.map((doc) => doc.url ?? doc.path),
+    },
+    confidence: Math.max(base.confidence, 0.52),
+  };
+}
+
+export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSearchPayload: any = null) {
   if (isGreetingQuery(query)) return makeConversationalResult(query, "greeting");
   if (isThanksQuery(query)) return makeConversationalResult(query, "thanks");
   if (isLegendQuery(query)) return makeLegendResult(query);
   if (isNodeInventoryQuery(query)) return makeNodeInventoryResult(query);
 
   const matchedNodes = demoNodes.filter((node) => nodeMatchesQuery(node.id, query));
-  if (!matchedNodes.length) return isInternalStructureQuery(query) ? makeOpenGenerationResult(query) : makeNoEvidenceResult(query);
+  if (!matchedNodes.length) {
+    if (webEvidenceDocs.length || webSearchPayload) return makeWebSearchResult(query, webEvidenceDocs, webSearchPayload);
+    return isInternalStructureQuery(query) ? makeOpenGenerationResult(query) : makeNoEvidenceResult(query);
+  }
 
   const matchedNodeIds = new Set(matchedNodes.map((node) => node.id));
   const evidenceDocs = [
@@ -613,8 +650,8 @@ export function demoOntologyRun() {
   return demoState.ontology;
 }
 
-export function demoGraphRAGQuery(query: string) {
-  const result = makeEvidence(query || "GraphRAG evidence");
+export function demoGraphRAGQuery(query: string, webEvidenceDocs: any[] = [], webSearchPayload: any = null) {
+  const result = makeEvidence(query || "GraphRAG evidence", webEvidenceDocs, webSearchPayload);
   demoState.graphrag = { ...demoState.graphrag, state: "completed", started_at: now(), finished_at: now(), last_query: result.query, confidence: result.confidence, result };
   return demoState.graphrag;
 }

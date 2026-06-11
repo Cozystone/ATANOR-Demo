@@ -7,6 +7,8 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from app.services.web_search import DEFAULT_QUERY, search_web
+
 router = APIRouter(prefix="/api/factory", tags=["factory"])
 
 LearningVolume = Literal["lite", "standard", "deep", "max", "infinite"]
@@ -16,6 +18,9 @@ class BuildStartRequest(BaseModel):
     learning_volume: LearningVolume = "standard"
     target_nodes: int | None = Field(default=None, ge=100, le=500_000)
     seed_urls: list[str] | None = None
+    search_query: str | None = None
+    web_search: bool = True
+    web_search_provider: str | None = None
 
 
 MAX_TARGET_NODES = 500_000
@@ -71,9 +76,17 @@ MEMORY_TOPICS = [
 
 
 @router.post("/build/start")
-def build_start(payload: BuildStartRequest) -> dict[str, Any]:
+async def build_start(payload: BuildStartRequest) -> dict[str, Any]:
     preset = _learning_preset(payload.learning_volume, payload.target_nodes)
-    docs = [_harvest_doc(url, index) for index, url in enumerate((payload.seed_urls or SEED_URLS)[:6])]
+    search_payload = (
+        await search_web(payload.search_query or DEFAULT_QUERY, 6, payload.web_search_provider)
+        if payload.web_search
+        else {"provider": "disabled", "query": payload.search_query or DEFAULT_QUERY, "results": [], "status": "disabled"}
+    )
+    search_urls = [result["url"] for result in search_payload.get("results", []) if result.get("url")]
+    merged_urls = [*(payload.seed_urls or []), *search_urls, *SEED_URLS]
+    deduped_urls = list(dict.fromkeys(merged_urls))[:8]
+    docs = [_harvest_doc(url, index, search_payload) for index, url in enumerate(deduped_urls)]
     units = _training_units(docs, preset)
     graph = _graph_for_preset(preset)
     nodes = graph["nodes"]
@@ -117,6 +130,7 @@ def build_start(payload: BuildStartRequest) -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "alpha-continuous-harvest" if continuous else "alpha-live-harvest",
         "harvest_docs": docs,
+        "web_search": search_payload,
         "learning_profile": {
             "id": preset["id"],
             "label": preset["label"],
@@ -131,7 +145,7 @@ def build_start(payload: BuildStartRequest) -> dict[str, Any]:
         "graph_frames": frames,
         "training_gate": training_gate,
         "learning_trace": [
-            {"step": "Harvest", "state": "running" if continuous else "complete", "detail": f"{len(docs)} reference sources captured / {len(units)} text chunks scheduled"},
+            {"step": "Harvest", "state": "running" if continuous else "complete", "detail": f"{len(docs)} reference sources captured via {search_payload.get('provider', 'static')} / {len(units)} text chunks scheduled"},
             {"step": "DataGate", "state": "complete", "detail": f"{preset['textBudgetLabel']} text budget passed through compressed chunk routing"},
             {"step": "Ontology Forge", "state": "running" if continuous else "complete", "detail": f"{len(nodes)} representative nodes and {len(edges)} typed relations created"},
             {"step": "GraphRAG", "state": "complete", "detail": "Anchor traversal path and evidence bundle generated"},
@@ -173,15 +187,20 @@ def _learning_preset(volume: str, target_nodes_input: int | None) -> dict[str, A
     }
 
 
-def _harvest_doc(url: str, index: int) -> dict[str, Any]:
+def _harvest_doc(url: str, index: int, search_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    search_results = {result.get("url"): result for result in (search_payload or {}).get("results", [])}
+    result = search_results.get(url, {})
     return {
         "id": f"web-{index + 1:03d}",
         "url": url,
-        "title": url.split("//", 1)[-1].split("/", 1)[0],
+        "title": result.get("title") or url.split("//", 1)[-1].split("/", 1)[0],
         "status": "fallback",
-        "snippet": "Reference signal queued for local Homage Factory Build.",
-        "source_type": "discussion" if "reddit" in url else "repository_or_docs",
-        "license_status": "reference_only",
+        "snippet": result.get("snippet") or "Reference signal queued for local Homage Factory Build.",
+        "source_type": result.get("source_type") or ("discussion" if "reddit" in url else "repository_or_docs"),
+        "license_status": result.get("license_status") or "reference_only",
+        "search_provider": result.get("provider") or (search_payload or {}).get("provider", "seed"),
+        "search_query": (search_payload or {}).get("query"),
+        "bing_query_url": (search_payload or {}).get("bing_query_url"),
     }
 
 
