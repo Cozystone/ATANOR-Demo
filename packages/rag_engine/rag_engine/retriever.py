@@ -7,6 +7,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from .utterance_engine import build_native_utterance
+
 
 def _tokens(text: str) -> list[str]:
     tokens: list[str] = []
@@ -47,6 +49,14 @@ def _is_node_inventory_query(query: str) -> bool:
     return asks_for_nodes and asks_for_inventory
 
 
+def _is_legend_query(query: str) -> bool:
+    normalized = _normalized_query(query)
+    asks_color = bool(re.search(r"(색|색깔|색상|컬러|범례|legend|color)", normalized, re.IGNORECASE))
+    asks_meaning = bool(re.search(r"(의미|뜻|뭐|설명|구분|차이|meaning|mean|label)", normalized, re.IGNORECASE))
+    graph_context = bool(re.search(r"(노드|그래프|rag|온톨로지|메모리|신호|뉴런|node|graph)", normalized, re.IGNORECASE))
+    return asks_color and (asks_meaning or graph_context)
+
+
 def _conversational_result(query: str, kind: str) -> dict[str, Any]:
     answers = {
         "greeting": (
@@ -80,6 +90,11 @@ def _conversational_result(query: str, kind: str) -> dict[str, Any]:
             "matched_node_ids": [],
         },
         "confidence": 0.96,
+        "answer_engine": {
+            "name": "Homage Utterance Engine",
+            "mode": "native-conversation-router-alpha",
+            "external_llm": False,
+        },
     }
 
 
@@ -101,6 +116,48 @@ def _node_type_text(node_type: str | None) -> str:
         "critique": "비평",
     }
     return labels.get(node_type or "", node_type or "기억")
+
+
+def _node_type_color(node_type: str | None) -> str:
+    colors = {
+        "source": "#ff6b35",
+        "critique": "#c5283d",
+        "ontology": "#1a936f",
+        "retrieval": "#006a9f",
+        "visualization": "#8c3fa7",
+        "guardrail": "#e89d2a",
+        "training": "#111715",
+        "concept": "#22936f",
+        "keyword": "#4a8fdb",
+        "heading": "#7b8794",
+        "quality": "#3f6f5f",
+        "memory": "#1a936f",
+        "verification": "#e89d2a",
+        "learning": "#111715",
+        "efficiency": "#006a9f",
+    }
+    return colors.get(node_type or "", "#68736d")
+
+
+def _node_type_description(node_type: str | None) -> str:
+    descriptions = {
+        "source": "외부에서 수집된 원문 자료와 근거 청크",
+        "critique": "품질 문제, 반례, 경계 조건을 표시하는 비평 신호",
+        "ontology": "개념 사이의 관계를 묶는 온톨로지 메모리",
+        "retrieval": "질문을 근거 문서와 그래프 경로로 연결하는 검색 노드",
+        "visualization": "학습 상태를 화면에 투사하는 시각화 노드",
+        "guardrail": "과장, 환각, 근거 부족을 검증하는 안전 노드",
+        "training": "Homage Oven으로 넘어가는 학습/압축 신호",
+        "concept": "문서에서 추출된 핵심 개념",
+        "keyword": "검색과 관계 확장에 쓰이는 키워드 기억",
+        "heading": "문서 구조나 섹션 제목에서 온 문맥 앵커",
+        "quality": "DataGate 품질 게이트 신호",
+        "memory": "장기 온톨로지 메모리 저장 영역",
+        "verification": "근거 확인과 검증에 쓰이는 노드",
+        "learning": "실시간 학습 과정과 연결되는 노드",
+        "efficiency": "저전력/저사양 실행을 위한 효율화 노드",
+    }
+    return descriptions.get(node_type or "", "현재 그래프에서 관찰된 사용자 정의 기억 노드")
 
 
 def _node_inventory_result(query: str, ontology_dir: Path) -> dict[str, Any]:
@@ -139,6 +196,72 @@ def _node_inventory_result(query: str, ontology_dir: Path) -> dict[str, Any]:
             "matched_node_ids": [str(node.get("id", "")) for node in nodes],
         },
         "confidence": 0.99 if nodes else 0.2,
+        "answer_engine": {
+            "name": "Homage Utterance Engine",
+            "mode": "native-graph-inspection-alpha",
+            "external_llm": False,
+        },
+    }
+
+
+def _graph_legend_result(query: str, ontology_dir: Path) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = _load_json(ontology_dir / "nodes.json", [])
+    edges: list[dict[str, Any]] = _load_json(ontology_dir / "edges.json", [])
+    type_order: list[str] = []
+    type_counts: Counter[str] = Counter()
+    representatives: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for node in nodes:
+        node_type = str(node.get("type") or node.get("labels", ["concept"])[0] or "concept")
+        type_counts[node_type] += 1
+        if node_type not in type_order:
+            type_order.append(node_type)
+        if node_type not in seen:
+            representatives.append(node)
+            seen.add(node_type)
+
+    lines = [
+        f"- {_node_type_color(node_type)} {_node_type_text(node_type)}: {_node_type_description(node_type)}. 현재 {type_counts[node_type]}개"
+        for node_type in type_order[:10]
+    ]
+    answer = (
+        "색깔은 노드의 역할을 뜻합니다. 기본 색은 기억 타입이고, 답변 생성 중 주황색 발광은 지금 읽히는 활성 신호입니다.\n"
+        + "\n".join(lines)
+        if lines
+        else "아직 온톨로지 노드가 없어 색상 범례를 만들 수 없습니다. DataGate와 Ontology Forge를 먼저 실행해 주세요."
+    )
+    representative_ids = {str(node.get("id", "")) for node in representatives}
+    matched_edges = [
+        edge
+        for edge in edges
+        if str(edge.get("source", "")) in representative_ids or str(edge.get("target", "")) in representative_ids
+    ][:12]
+    return {
+        "query": query,
+        "method": "homage-graph-legend-v1",
+        "answer": answer,
+        "matched_nodes": representatives,
+        "matched_edges": matched_edges,
+        "evidence_docs": [],
+        "citations": [],
+        "graph_paths": [
+            [str(edge.get("source", "")), str(edge.get("relation", "relates")), str(edge.get("target", ""))]
+            for edge in matched_edges
+        ],
+        "follow_up_questions": ["주황색 신호가 어떤 노드를 읽는지 보여줄까요?", "현재 노드 목록도 같이 펼쳐볼까요?"],
+        "retrieval_trace": {
+            "strategy": "graph legend intent; retrieval skipped",
+            "query_terms": _tokens(query),
+            "expanded_terms": type_order,
+            "ranked_chunk_ids": [],
+            "matched_node_ids": [str(node.get("id", "")) for node in representatives],
+        },
+        "confidence": 0.98 if nodes else 0.25,
+        "answer_engine": {
+            "name": "Homage Utterance Engine",
+            "mode": "native-graph-legend-alpha",
+            "external_llm": False,
+        },
     }
 
 
@@ -327,7 +450,7 @@ def _synthesize_answer(
     evidence_docs: list[dict[str, Any]],
     matched_nodes: list[dict[str, Any]],
     graph_paths: list[list[str]],
-) -> tuple[str, list[dict[str, Any]], list[str]]:
+) -> tuple[str, list[dict[str, Any]], list[str], dict[str, Any]]:
     citations = [
         {
             "doc_id": doc["chunk_id"],
@@ -338,27 +461,14 @@ def _synthesize_answer(
         for doc in evidence_docs[:4]
     ]
 
-    if not evidence_docs:
-        return (
-            f"'{query}'에 대한 충분한 근거 문서를 찾지 못했습니다. DataGate에 문서를 추가한 뒤 Ontology Forge와 GraphRAG를 다시 실행하세요.",
-            citations,
-            ["어떤 문서를 DataGate에 넣어야 하나요?", "온톨로지 노드를 먼저 확장할까요?"],
-        )
-
-    node_labels = [str(node.get("label", node.get("id", ""))) for node in matched_nodes[:4]]
-    node_text = ", ".join(label for label in node_labels if label) or "현재 온톨로지 노드"
-    evidence_text = " ".join(doc["snippet"] for doc in evidence_docs[:2])
-    path_text = "; ".join(" -> ".join(path) for path in graph_paths[:2]) or "문서 근거 중심"
-    answer = (
-        f"질문 '{query}'는 {node_text} 기억과 연결됩니다. "
-        f"상위 근거는 다음 흐름을 지지합니다: {path_text}. "
-        f"요약하면 {evidence_text}"
-    )
+    utterance = build_native_utterance(query, evidence_docs, matched_nodes, graph_paths)
     follow_up = [
         "이 답변을 Guardrail로 검증할까요?",
         "관련 온톨로지 경로를 더 넓게 확장할까요?",
     ]
-    return answer[:900], citations, follow_up
+    if not evidence_docs:
+        follow_up = ["어떤 문서를 DataGate에 넣어야 하나요?", "온톨로지 노드를 먼저 확장할까요?"]
+    return utterance["answer"], citations, follow_up, utterance
 
 
 def query_graphrag(
@@ -370,6 +480,8 @@ def query_graphrag(
         return _conversational_result(query, "greeting")
     if _is_thanks_query(query):
         return _conversational_result(query, "thanks")
+    if _is_legend_query(query):
+        return _graph_legend_result(query, Path(ontology_dir))
     if _is_node_inventory_query(query):
         return _node_inventory_result(query, Path(ontology_dir))
 
@@ -381,7 +493,7 @@ def query_graphrag(
     chunks = _load_doc_chunks(Path(cleaned_dir))
     ranked_docs = _rank_chunks(query, query_counts, expanded_terms, chunks)
     evidence_docs = ranked_docs[:5]
-    answer, citations, follow_up_questions = _synthesize_answer(query, evidence_docs, matched_nodes, graph_paths)
+    answer, citations, follow_up_questions, utterance = _synthesize_answer(query, evidence_docs, matched_nodes, graph_paths)
     confidence = round(
         min(
             0.98,
@@ -396,16 +508,20 @@ def query_graphrag(
 
     return {
         "query": query,
-        "method": "homage-hybrid-graphrag-v1",
+        "method": "homage-native-graphrag-utterance-v1",
         "answer": answer,
         "matched_nodes": matched_nodes,
         "matched_edges": matched_edges,
         "evidence_docs": evidence_docs,
         "citations": citations,
         "graph_paths": graph_paths,
+        "pmv": utterance["pmv"],
+        "claim_plan": utterance["claim_plan"],
+        "active_concepts": utterance["active_concepts"],
+        "answer_engine": utterance["answer_engine"],
         "follow_up_questions": follow_up_questions,
         "retrieval_trace": {
-            "strategy": "hybrid lexical BM25-style ranking + ontology 1-hop expansion + deterministic synthesis",
+            "strategy": "hybrid lexical BM25-style ranking + ontology 1-hop expansion + Homage Utterance Engine native synthesis",
             "query_terms": sorted(query_terms),
             "expanded_terms": sorted(expanded_terms)[:30],
             "ranked_chunk_ids": [doc["chunk_id"] for doc in ranked_docs[:8]],

@@ -18,6 +18,10 @@ Deployment:
 - Guardrail deterministic claim support and overclaim detection.
 - GPU/system telemetry with graceful fallback.
 - Homage-Core-30M model scaffold and safe training dry-run trace.
+- Homage Utterance Engine Alpha:
+  - PRD-style `intent -> concepts -> ontology path -> claim plan -> evidence -> surface text` answer flow
+  - native GraphRAG answer generation metadata: PMV, claim plan, active concepts, answer engine stages
+  - no external or pretrained LLM calls
 - Neuro-Efficiency Layer for event sparsity, modular routing, continual
   learning policy, few-shot prototypes, self-supervised masking, compression,
   and estimated compute reduction.
@@ -93,10 +97,22 @@ Deployment:
   - Learning Process buttons show running state, update their cards directly,
     and were verified locally and on the deployed alias
   - Latest production deploy is aliased to `https://homage-alpha.vercel.app`
+- Native Homage Utterance Engine verification passed:
+  - local API and browser answered GraphRAG questions with
+    `homage-native-graphrag-utterance-v1`
+  - color legend questions route to `homage-graph-legend-v1` with no evidence
+    card fallback
+  - answer metadata includes PMV, claim plan, active concepts, native engine
+    stages, and `external_llm: false`
+  - production API at `https://homage-alpha.vercel.app` returned the same
+    native engine metadata after redeploy
 
 ## Known Limitations
 
-- Alpha uses deterministic rules; no LLM or pretrained model is used.
+- Alpha does not use external or pretrained LLMs. The new Homage Utterance
+  Engine is a native Alpha generator around GraphRAG context bundles, while
+  Homage-Core remains a shape/training scaffold rather than a trained decoder
+  that can freely sample language.
 - Build Start is an Alpha orchestrator. It fetches a small allowlisted reference
   set and uses curated reference snippets for the UI/training-gate trace; it is
   not broad autonomous crawling or real model training yet.

@@ -154,7 +154,7 @@ const stateLabels: Record<string, string> = {
   waiting: "대기",
 };
 
-const memoryColors = ["#ff6b35", "#006a9f", "#8c3fa7", "#22936f", "#c5283d", "#e89d2a", "#4a8fdb"];
+const fallbackMemoryColors = ["#ff6b35", "#006a9f", "#8c3fa7", "#22936f", "#c5283d", "#e89d2a", "#4a8fdb"];
 
 const traceStepLabels: Record<string, string> = {
   Harvest: "자료 수집",
@@ -194,6 +194,42 @@ const memoryTypeLabels: Record<string, string> = {
   efficiency: "효율",
   keyword: "키워드",
   heading: "제목",
+};
+
+const memoryTypeColors: Record<string, string> = {
+  source: "#ff6b35",
+  critique: "#c5283d",
+  ontology: "#1a936f",
+  retrieval: "#006a9f",
+  visualization: "#8c3fa7",
+  guardrail: "#e89d2a",
+  training: "#111715",
+  concept: "#22936f",
+  keyword: "#4a8fdb",
+  heading: "#7b8794",
+  quality: "#3f6f5f",
+  memory: "#1a936f",
+  verification: "#e89d2a",
+  learning: "#111715",
+  efficiency: "#006a9f",
+};
+
+const memoryTypeDescriptions: Record<string, string> = {
+  source: "외부에서 수집된 원문 자료와 근거 청크입니다.",
+  critique: "품질 문제, 반례, 경계 조건처럼 학습을 조심시키는 신호입니다.",
+  ontology: "개념 사이의 관계를 묶는 온톨로지 메모리입니다.",
+  retrieval: "질문을 근거 문서와 그래프 경로로 연결하는 검색 노드입니다.",
+  visualization: "현재 학습 상태를 화면에 투사하는 시각화 노드입니다.",
+  guardrail: "답변의 과장, 환각, 근거 부족을 검증하는 안전 노드입니다.",
+  training: "Homage Oven으로 넘어가는 학습/압축 신호입니다.",
+  concept: "문서에서 추출된 핵심 개념 노드입니다.",
+  keyword: "검색과 관계 확장에 쓰이는 키워드 기억입니다.",
+  heading: "문서 구조나 섹션 제목에서 온 문맥 앵커입니다.",
+  quality: "DataGate가 판단한 품질 게이트 신호입니다.",
+  memory: "장기 온톨로지 메모리의 저장 영역입니다.",
+  verification: "근거 확인과 검증에 쓰이는 노드입니다.",
+  learning: "실시간 학습 과정과 연결되는 노드입니다.",
+  efficiency: "저전력/저사양 실행을 위한 효율화 노드입니다.",
 };
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -248,9 +284,25 @@ function memoryTypeText(type?: string) {
   return memoryTypeLabels[type ?? ""] ?? type ?? "기억";
 }
 
+function memoryTypeColor(type?: string, fallbackIndex = 0) {
+  return memoryTypeColors[type ?? ""] ?? fallbackMemoryColors[fallbackIndex % fallbackMemoryColors.length];
+}
+
+function memoryTypeDescription(type?: string) {
+  return memoryTypeDescriptions[type ?? ""] ?? "현재 그래프에서 관찰된 사용자 정의 기억 노드입니다.";
+}
+
 function isNodeInventoryQuestion(query: string) {
   const normalized = query.trim().toLowerCase();
   return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
+}
+
+function isLegendQuestion(query: string) {
+  const normalized = query.trim().toLowerCase();
+  const asksColor = /(색|색깔|색상|컬러|범례|legend|color)/i.test(normalized);
+  const asksMeaning = /(의미|뜻|뭐|설명|구분|차이|meaning|mean|label)/i.test(normalized);
+  const graphContext = /(노드|그래프|rag|온톨로지|메모리|신호|뉴런|node|graph)/i.test(normalized);
+  return asksColor && (asksMeaning || graphContext);
 }
 
 function graphInventoryStatus(query: string, graph: Rag3DGraph) {
@@ -288,7 +340,74 @@ function graphInventoryStatus(query: string, graph: Rag3DGraph) {
         ranked_chunk_ids: [],
         matched_node_ids: nodes.map((node) => node.id),
       },
+      answer_engine: {
+        name: "Homage Utterance Engine",
+        mode: "native-graph-inspection-alpha",
+        external_llm: false,
+      },
       confidence: nodes.length ? 0.99 : 0.2,
+    },
+  };
+}
+
+function graphLegendStatus(query: string, graph: Rag3DGraph) {
+  const nodes = graph.nodes ?? [];
+  const edges = graph.edges ?? [];
+  const typeOrder: string[] = [];
+  const typeCounts = new Map<string, number>();
+  const representativeNodes: Rag3DNode[] = [];
+  const seenRepresentatives = new Set<string>();
+
+  nodes.forEach((node) => {
+    const type = node.type || "concept";
+    typeCounts.set(type, (typeCounts.get(type) ?? 0) + 1);
+    if (!typeOrder.includes(type)) typeOrder.push(type);
+    if (!seenRepresentatives.has(type)) {
+      representativeNodes.push(node);
+      seenRepresentatives.add(type);
+    }
+  });
+
+  const lines = typeOrder.slice(0, 10).map((type) => {
+    const count = typeCounts.get(type) ?? 0;
+    return `- ${memoryTypeColor(type)} ${memoryTypeText(type)}: ${memoryTypeDescription(type)} 현재 ${count}개`;
+  });
+  const answer = lines.length
+    ? `색깔은 노드의 역할을 뜻합니다. 현재 3D RAG 그래프에서는 이렇게 읽으면 됩니다.\n${lines.join("\n")}\n\n답변 생성 중 주황색으로 빛나는 노드와 선은 “지금 질문을 처리하면서 읽힌 활성 신호”입니다. 기본 색은 역할, 발광은 실시간 추론 경로라고 보면 됩니다.`
+    : "아직 표시된 노드가 없어 색상 범례를 만들 수 없습니다. 빌드 시작을 누르면 수집 자료가 온톨로지 노드로 바뀌고, 노드 타입별 색상이 나타납니다.";
+  const representativeIds = new Set(representativeNodes.map((node) => node.id));
+  const matchedEdges = edges.filter((edge) => representativeIds.has(edge.source) || representativeIds.has(edge.target)).slice(0, 12);
+
+  return {
+    state: "completed",
+    started_at: new Date().toISOString(),
+    finished_at: new Date().toISOString(),
+    error: null,
+    last_query: query,
+    confidence: nodes.length ? 0.98 : 0.25,
+    result: {
+      query,
+      method: "homage-graph-legend-v1",
+      answer,
+      matched_nodes: representativeNodes,
+      matched_edges: matchedEdges,
+      evidence_docs: [],
+      citations: [],
+      graph_paths: matchedEdges.map((edge) => [edge.source, edge.relation, edge.target]),
+      follow_up_questions: ["주황색 신호가 어떤 노드를 읽는지 보여줄까요?", "현재 노드 목록도 같이 펼쳐볼까요?"],
+      retrieval_trace: {
+        strategy: "graph legend intent; retrieval skipped",
+        query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
+        expanded_terms: typeOrder,
+        ranked_chunk_ids: [],
+        matched_node_ids: representativeNodes.map((node) => node.id),
+      },
+      answer_engine: {
+        name: "Homage Utterance Engine",
+        mode: "native-graph-legend-alpha",
+        external_llm: false,
+      },
+      confidence: nodes.length ? 0.98 : 0.25,
     },
   };
 }
@@ -400,7 +519,7 @@ function makeMemoryNodes(graph: AnyRecord | null): MemoryNode[] {
     confidence: node.confidence ?? 0.72,
     x: positions[index % positions.length][0],
     y: positions[index % positions.length][1],
-    color: memoryColors[index % memoryColors.length],
+    color: memoryTypeColor(node.type ?? node.labels?.[0], index),
   }));
 }
 
@@ -623,20 +742,22 @@ export default function BakeBoardPage() {
 
   async function sendChat() {
     const question = chatInput.trim();
-    if (!question) return;
+    if (!question || isGeneratingAnswer) return;
     setError(null);
     setIsGeneratingAnswer(true);
     activateSignal(signalTraceForQuery(question, displayGraph3D), 7200);
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
-    if (isNodeInventoryQuestion(question)) {
-      const inventory = graphInventoryStatus(question, displayGraph3D);
-      setGraphRag(inventory);
-      activateSignal(signalTraceForQuery(question, displayGraph3D, inventory.result), 7200);
+    if (isNodeInventoryQuestion(question) || isLegendQuestion(question)) {
+      const localResult = isLegendQuestion(question)
+        ? graphLegendStatus(question, displayGraph3D)
+        : graphInventoryStatus(question, displayGraph3D);
+      setGraphRag(localResult);
+      activateSignal(signalTraceForQuery(question, displayGraph3D, localResult.result), 7200);
       setChatMessages((messages) => [
         ...messages,
         {
           role: "assistant",
-          text: inventory.result.answer,
+          text: localResult.result.answer,
           evidence: [],
         },
       ]);
@@ -1287,7 +1408,7 @@ export default function BakeBoardPage() {
                 <div className="chat-status-row">
                   <div><span>RAG 신뢰도</span><strong>{Math.round((graphrag?.confidence ?? 0) * 100)}%</strong></div>
                   <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
-                  <div><span>검증 점수</span><strong>{guard?.overall_guard_score ?? 0}</strong></div>
+                  <div><span>발화 엔진</span><strong>{graphResult?.answer_engine?.external_llm === false ? "네이티브" : "준비"}</strong></div>
                 </div>
                 <div className="chat-scroll" ref={chatScrollRef}>
                   {chatMessages.map((message, index) => (
@@ -1317,7 +1438,7 @@ export default function BakeBoardPage() {
                 </div>
                 <div className="chat-composer">
                   <textarea value={chatInput} onChange={(event) => setChatInput(event.target.value)} aria-label="RAG 질문 입력" />
-                  <button onClick={sendChat}>질문 보내기</button>
+                  <button disabled={isGeneratingAnswer} onClick={sendChat}>{isGeneratingAnswer ? "생성 중" : "질문 보내기"}</button>
                 </div>
               </div>
             )}

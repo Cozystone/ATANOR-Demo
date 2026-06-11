@@ -214,6 +214,14 @@ export function isNodeInventoryQuery(query: string) {
   return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
 }
 
+export function isLegendQuery(query: string) {
+  const normalized = normalizedQuery(query);
+  const asksColor = /(색|색깔|색상|컬러|범례|legend|color)/i.test(normalized);
+  const asksMeaning = /(의미|뜻|뭐|설명|구분|차이|meaning|mean|label)/i.test(normalized);
+  const graphContext = /(노드|그래프|rag|온톨로지|메모리|신호|뉴런|node|graph)/i.test(normalized);
+  return asksColor && (asksMeaning || graphContext);
+}
+
 function nodeTypeText(type?: string) {
   const labels: Record<string, string> = {
     concept: "개념",
@@ -227,6 +235,52 @@ function nodeTypeText(type?: string) {
     critique: "비평",
   };
   return labels[type ?? ""] ?? type ?? "기억";
+}
+
+function nodeTypeColor(type?: string) {
+  const colors: Record<string, string> = {
+    source: "#ff6b35",
+    critique: "#c5283d",
+    ontology: "#1a936f",
+    retrieval: "#006a9f",
+    visualization: "#8c3fa7",
+    guardrail: "#e89d2a",
+    training: "#111715",
+    concept: "#22936f",
+    keyword: "#4a8fdb",
+    heading: "#7b8794",
+    quality: "#3f6f5f",
+    memory: "#1a936f",
+    verification: "#e89d2a",
+    learning: "#111715",
+    efficiency: "#006a9f",
+  };
+  return colors[type ?? ""] ?? "#68736d";
+}
+
+function nodeTypeDescription(type?: string) {
+  const descriptions: Record<string, string> = {
+    source: "외부에서 수집된 원문 자료와 근거 청크",
+    critique: "품질 문제와 반례를 표시하는 비평 신호",
+    ontology: "개념 사이의 관계를 묶는 온톨로지 메모리",
+    retrieval: "질문을 근거 문서와 그래프 경로로 연결하는 검색 노드",
+    visualization: "학습 상태를 화면에 투사하는 시각화 노드",
+    guardrail: "과장, 환각, 근거 부족을 검증하는 안전 노드",
+    training: "Homage Oven으로 넘어가는 학습/압축 신호",
+    concept: "문서에서 추출된 핵심 개념",
+    keyword: "검색과 관계 확장에 쓰이는 키워드 기억",
+  };
+  return descriptions[type ?? ""] ?? "현재 그래프에서 관찰된 사용자 정의 기억 노드";
+}
+
+function nativeAnswerEngine(mode = "native-next-thought-alpha") {
+  return {
+    name: "Homage Utterance Engine",
+    mode,
+    external_llm: false,
+    homage_core: "homage-core-30m-scaffold",
+    stages: ["intent", "concepts", "ontology_path", "claim_plan", "evidence", "surface_text", "reference_tail", "guard_ready"],
+  };
 }
 
 function makeNodeInventoryResult(query: string) {
@@ -248,7 +302,42 @@ function makeNodeInventoryResult(query: string) {
       ranked_chunk_ids: [],
       matched_node_ids: demoNodes.map((node) => node.id),
     },
+    answer_engine: nativeAnswerEngine("native-graph-inspection-alpha"),
     confidence: 0.99,
+  };
+}
+
+function makeLegendResult(query: string) {
+  const typeOrder: string[] = [];
+  const typeCounts = new Map<string, number>();
+  const representatives: typeof demoNodes = [];
+  demoNodes.forEach((node) => {
+    typeCounts.set(node.type, (typeCounts.get(node.type) ?? 0) + 1);
+    if (!typeOrder.includes(node.type)) {
+      typeOrder.push(node.type);
+      representatives.push(node);
+    }
+  });
+  const lines = typeOrder.map((type) => `- ${nodeTypeColor(type)} ${nodeTypeText(type)}: ${nodeTypeDescription(type)}. 현재 ${typeCounts.get(type) ?? 0}개`);
+  return {
+    query,
+    method: "homage-graph-legend-v1",
+    answer: `색깔은 노드의 역할을 뜻합니다. 기본 색은 기억 타입이고, 답변 생성 중 주황색 발광은 지금 읽히는 활성 신호입니다.\n${lines.join("\n")}`,
+    matched_nodes: representatives,
+    matched_edges: demoEdges,
+    evidence_docs: [],
+    citations: [],
+    graph_paths: demoEdges.map((edge) => [edge.source, edge.relation, edge.target]),
+    follow_up_questions: ["주황색 신호가 어떤 노드를 읽는지 보여줄까요?", "현재 노드 목록도 같이 펼쳐볼까요?"],
+    retrieval_trace: {
+      strategy: "graph legend intent; retrieval skipped",
+      query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
+      expanded_terms: typeOrder,
+      ranked_chunk_ids: [],
+      matched_node_ids: representatives.map((node) => node.id),
+    },
+    answer_engine: nativeAnswerEngine("native-graph-legend-alpha"),
+    confidence: 0.98,
   };
 }
 
@@ -289,13 +378,54 @@ function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "
       ranked_chunk_ids: [],
       matched_node_ids: [],
     },
+    answer_engine: nativeAnswerEngine(kind === "no_match" ? "native-no-evidence-alpha" : "native-conversation-router-alpha"),
     confidence: kind === "no_match" ? 0.35 : 0.96,
+  };
+}
+
+function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, graphPaths: string[][], evidenceDocs: any[]) {
+  const activeConcepts = matchedNodes.map((node) => node.label).slice(0, 6);
+  const pathText = graphPaths.slice(0, 2).map((path) => path.join(" -- ")).join("; ");
+  const evidenceText = evidenceDocs.slice(0, 2).map((doc) => doc.snippet).join(" ");
+  const intent = /(왜|이유|why|줄이는)/i.test(query)
+    ? "explain_cause"
+    : /(어떻게|방법|과정|how)/i.test(query)
+      ? "explain_process"
+      : /(뭐|무엇|정의|의미|what)/i.test(query)
+        ? "define"
+        : "answer_grounded";
+  const lead = intent === "explain_cause"
+    ? "핵심 이유는 지식을 모델 파라미터에만 맡기지 않고, 그래프 경로와 근거 청크로 분리해 확인하기 때문입니다."
+    : intent === "explain_process"
+    ? "흐름은 질문 의도, 활성 개념, 그래프 경로, 근거 청크, 표면 발화 순서로 좁혀집니다."
+    : intent === "define"
+      ? "의미를 먼저 말하면, 이 항목은 Homage 메모리 안에서 특정 역할을 맡은 활성 개념입니다."
+      : "현재 답변은 Homage Utterance Engine이 GraphRAG context bundle을 읽고 만든 네이티브 발화입니다.";
+  return {
+    answer: [lead, activeConcepts.length ? `활성 개념은 ${activeConcepts.join(", ")}입니다.` : "", pathText ? `읽힌 경로는 ${pathText}입니다.` : "", evidenceText].filter(Boolean).join(" "),
+    pmv: {
+      intent,
+      topic: activeConcepts[0] ?? query,
+      stance: "grounded and cautious",
+      audience_level: "technical but intuitive",
+      answer_goal: "answer with graph-grounded context",
+      required_evidence: true,
+      style: "clear Korean technical explanation",
+    },
+    claim_plan: [
+      ...(activeConcepts[0] ? [{ claim: `${activeConcepts[0]}는 현재 질문의 중심 개념이다.`, support: "graph" }] : []),
+      ...(pathText ? [{ claim: "답변은 온톨로지 경로를 따라 좁혀진다.", support: "graph_path" }] : []),
+      ...evidenceDocs.slice(0, 2).map((doc) => ({ claim: doc.snippet, support: doc.chunk_id })),
+    ],
+    active_concepts: activeConcepts,
+    answer_engine: nativeAnswerEngine(),
   };
 }
 
 export function makeEvidence(query: string) {
   if (isGreetingQuery(query)) return makeConversationalResult(query, "greeting");
   if (isThanksQuery(query)) return makeConversationalResult(query, "thanks");
+  if (isLegendQuery(query)) return makeLegendResult(query);
   if (isNodeInventoryQuery(query)) return makeNodeInventoryResult(query);
 
   const matchedNodes = demoNodes.filter((node) => nodeMatchesQuery(node.id, query));
@@ -322,18 +452,23 @@ export function makeEvidence(query: string) {
   ].filter((doc) => matchedNodes.some((node) => node.evidence_doc_ids.includes(doc.doc_id)));
   const matchedEdges = demoEdges.filter((edge) => matchedNodeIds.has(edge.source) || matchedNodeIds.has(edge.target));
   const graphPaths = matchedEdges.map((edge) => [edge.source, edge.relation, edge.target]);
+  const utterance = makeNativeDemoUtterance(query, matchedNodes, graphPaths, evidenceDocs);
   return {
     query,
-    method: "homage-hybrid-graphrag-v1",
-    answer: `질문 '${query}'는 ${matchedNodes.map((node) => node.label).join(", ")} 노드와 연결됩니다. GraphRAG는 관련 지식 그래프 경로를 확장한 뒤, 연결된 문서 근거만 사용해 답변을 합성합니다.`,
+    method: "homage-native-graphrag-utterance-v1",
+    answer: utterance.answer,
     matched_nodes: matchedNodes,
     matched_edges: matchedEdges,
     evidence_docs: evidenceDocs,
     citations: evidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.path, score: doc.score })),
     graph_paths: graphPaths,
+    pmv: utterance.pmv,
+    claim_plan: utterance.claim_plan,
+    active_concepts: utterance.active_concepts,
+    answer_engine: utterance.answer_engine,
     follow_up_questions: ["이 답변을 Guardrail로 검증할까요?", "관련 온톨로지 경로를 더 넓게 확장할까요?"],
     retrieval_trace: {
-      strategy: "hybrid lexical BM25-style ranking + ontology 1-hop expansion + deterministic synthesis",
+      strategy: "hybrid lexical BM25-style ranking + ontology 1-hop expansion + Homage Utterance Engine native synthesis",
       query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
       expanded_terms: matchedNodes.map((node) => node.id),
       ranked_chunk_ids: evidenceDocs.map((doc) => doc.chunk_id),

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { demoGraphRAGQuery, isConversationalQuery, isNodeInventoryQuery } from "../../_alphaDemo";
+import { demoGraphRAGQuery, isConversationalQuery, isLegendQuery, isNodeInventoryQuery } from "../../_alphaDemo";
 import { proxyJson } from "../../_backend";
 
 export async function POST(request: Request) {
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     // Fall through to deterministic demo with the default query.
   }
 
-  if (isConversationalQuery(query) || isNodeInventoryQuery(query)) {
+  if (isConversationalQuery(query) || isLegendQuery(query) || isNodeInventoryQuery(query)) {
     return NextResponse.json(demoGraphRAGQuery(query));
   }
 

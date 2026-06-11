@@ -211,3 +211,27 @@
   https://homage-alpha.vercel.app
 - Verified the deployed alias in-browser with compact 70/30 layout, live growth,
   DataGate process-button execution, and no application errors.
+
+## 2026-06-11 - Native Homage Utterance Engine correction
+
+- Re-read the PRD sections on role separation, Next Thought generation,
+  Homage-Core, GraphRAG context bundles, and Homage Utterance Engine.
+- Corrected the implementation direction away from external LLM adapters.
+- Added a native Alpha utterance stage around GraphRAG:
+  `intent -> concepts -> ontology path -> claim plan -> evidence -> surface text`.
+- GraphRAG responses now return PMV, claim plan, active concepts, answer engine
+  stages, and `external_llm: false`.
+- Added graph color-legend intent handling so "색깔별 노드 의미" answers from
+  the current ontology/RAG graph instead of falling through to generic evidence
+  search.
+- Verified locally with browser screenshots:
+  - `docs/screenshots/84-native-cause-answer-local.png`
+  - `docs/screenshots/85-native-legend-answer-local.png`
+- Added chat send locking while an answer is generating to prevent slower
+  GraphRAG responses from overwriting later local graph-inspection status.
+- Redeployed production:
+  https://web-bpxui7tde-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified production API responses for native GraphRAG and color legend
+  answers with `external_llm: false`.

@@ -58,6 +58,14 @@ const palette: Record<string, number> = {
   visualization: 0x8c3fa7,
   guardrail: 0xe89d2a,
   training: 0x111715,
+  concept: 0x22936f,
+  keyword: 0x4a8fdb,
+  heading: 0x7b8794,
+  quality: 0x3f6f5f,
+  memory: 0x1a936f,
+  verification: 0xe89d2a,
+  learning: 0x111715,
+  efficiency: 0x006a9f,
 };
 
 function labelSprite(text: string, scale = 1) {

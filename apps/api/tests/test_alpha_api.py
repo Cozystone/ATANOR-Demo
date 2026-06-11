@@ -30,6 +30,8 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert rag.json()["result"]["evidence_docs"]
     assert rag.json()["result"]["answer"]
     assert rag.json()["result"]["citations"]
+    assert rag.json()["result"]["method"] == "homage-native-graphrag-utterance-v1"
+    assert rag.json()["result"]["answer_engine"]["external_llm"] is False
 
     greeting = client.post("/api/graphrag/query", json={"query": "안녕"})
     assert greeting.status_code == 200
@@ -44,6 +46,15 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert inventory_result["method"] == "homage-graph-inspection-v1"
     assert inventory_result["evidence_docs"] == []
     assert inventory_result["matched_nodes"]
+    assert inventory_result["answer_engine"]["external_llm"] is False
+
+    legend = client.post("/api/graphrag/query", json={"query": "색깔별 노드 의미가 뭐지"})
+    assert legend.status_code == 200
+    legend_result = legend.json()["result"]
+    assert legend_result["method"] == "homage-graph-legend-v1"
+    assert legend_result["evidence_docs"] == []
+    assert legend_result["answer_engine"]["external_llm"] is False
+    assert "색깔은 노드의 역할" in legend_result["answer"]
 
     guard = client.post("/api/guard/check", json={"draft_answer": "GraphRAG always guarantees perfect answers."})
     assert guard.status_code == 200
