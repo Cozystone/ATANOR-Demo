@@ -187,15 +187,80 @@ export function demoNeuroPlan(input?: { text?: string; task_type?: string; targe
   };
 }
 
+function normalizedQuery(query: string) {
+  return query.trim().toLowerCase();
+}
+
+function includesAny(query: string, terms: string[]) {
+  return terms.some((term) => query.includes(term));
+}
+
+function isGreetingQuery(query: string) {
+  const normalized = normalizedQuery(query);
+  return /^(안녕|안녕하세요|하이|헬로|반가워|hi|hello|hey|yo)[\s!.?。！？]*$/i.test(normalized);
+}
+
+function isThanksQuery(query: string) {
+  const normalized = normalizedQuery(query);
+  return /^(고마워|감사|감사합니다|땡큐|thanks|thank you)[\s!.?。！？]*$/i.test(normalized);
+}
+
+function nodeMatchesQuery(nodeId: string, query: string) {
+  const normalized = normalizedQuery(query);
+  const termMap: Record<string, string[]> = {
+    graphrag: ["graphrag", "graph rag", "그래프rag", "그래프 rag", "rag", "검색", "질문", "답변", "retrieval"],
+    knowledgegraph: ["knowledgegraph", "knowledge graph", "지식그래프", "지식 그래프", "온톨로지", "그래프", "노드", "관계"],
+    evidence: ["evidence", "근거", "문서", "출처", "citation", "인용", "검증"],
+    guardrail: ["guardrail", "guard rail", "가드레일", "검증", "환각", "과장", "hallucination"],
+  };
+  return includesAny(normalized, termMap[nodeId] ?? []);
+}
+
+function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "no_match") {
+  const answerByKind = {
+    greeting:
+      "안녕하세요. 저는 Homage RAG 콘솔입니다. 빌드로 만들어진 온톨로지 메모리와 근거 문서를 바탕으로 답할 수 있어요. 예를 들어 GraphRAG, Guardrail, 온톨로지 관계, 학습 과정에 대해 물어보면 근거 경로를 함께 보여드릴게요.",
+    thanks:
+      "천만에요. 이어서 GraphRAG 검색, Guardrail 검증, 온톨로지 메모리 구조 중 궁금한 부분을 물어보면 바로 이어서 확인해드릴게요.",
+    no_match:
+      "지금 질문은 현재 데모 온톨로지의 근거 문서와 직접 연결되지 않았습니다. GraphRAG, 지식 그래프, 근거 문서, Guardrail 검증처럼 학습된 메모리의 개념으로 질문하면 관련 노드와 문서 근거를 함께 찾아드릴게요.",
+  };
+  return {
+    query,
+    method: "homage-conversation-router-v1",
+    answer: answerByKind[kind],
+    matched_nodes: [],
+    matched_edges: [],
+    evidence_docs: [],
+    citations: [],
+    graph_paths: [],
+    follow_up_questions: ["GraphRAG가 근거를 어떻게 쓰는지 볼까요?", "Guardrail 검증 흐름을 확인할까요?"],
+    retrieval_trace: {
+      strategy: kind === "no_match" ? "no evidence match; retrieval skipped" : "conversational intent; retrieval skipped",
+      query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
+      expanded_terms: [],
+      ranked_chunk_ids: [],
+      matched_node_ids: [],
+    },
+    confidence: kind === "no_match" ? 0.35 : 0.96,
+  };
+}
+
 export function makeEvidence(query: string) {
-  const matchedNodes = demoNodes.filter((node) => query.toLowerCase().includes(node.label.toLowerCase()) || node.id === "evidence");
+  if (isGreetingQuery(query)) return makeConversationalResult(query, "greeting");
+  if (isThanksQuery(query)) return makeConversationalResult(query, "thanks");
+
+  const matchedNodes = demoNodes.filter((node) => nodeMatchesQuery(node.id, query));
+  if (!matchedNodes.length) return makeConversationalResult(query, "no_match");
+
+  const matchedNodeIds = new Set(matchedNodes.map((node) => node.id));
   const evidenceDocs = [
     {
       doc_id: "demo-001",
       chunk_id: "demo-001#1",
       path: "data/cleaned/demo-001.txt",
       score: 1.42,
-      snippet: "GraphRAG uses KnowledgeGraph structure to retrieve Evidence for grounded answers.",
+      snippet: "GraphRAG는 KnowledgeGraph 구조를 사용해 답변 근거가 되는 Evidence를 검색합니다.",
       retrieval_signals: { lexical: 1.04, coverage: 0.75, graph_boost: 0.31, phrase_bonus: 0.2 },
     },
     {
@@ -203,17 +268,18 @@ export function makeEvidence(query: string) {
       chunk_id: "demo-002#1",
       path: "data/cleaned/demo-002.txt",
       score: 0.96,
-      snippet: "Guardrail checks claims against Evidence and flags overconfident answer text.",
+      snippet: "Guardrail은 답변의 주장을 Evidence와 대조하고 과신 표현을 표시합니다.",
       retrieval_signals: { lexical: 0.62, coverage: 0.5, graph_boost: 0.2, phrase_bonus: 0 },
     },
-  ];
-  const graphPaths = demoEdges.map((edge) => [edge.source, edge.relation, edge.target]);
+  ].filter((doc) => matchedNodes.some((node) => node.evidence_doc_ids.includes(doc.doc_id)));
+  const matchedEdges = demoEdges.filter((edge) => matchedNodeIds.has(edge.source) || matchedNodeIds.has(edge.target));
+  const graphPaths = matchedEdges.map((edge) => [edge.source, edge.relation, edge.target]);
   return {
     query,
     method: "homage-hybrid-graphrag-v1",
-    answer: `질문 '${query}'는 ${matchedNodes.map((node) => node.label).join(", ") || "Ontology Memory"}와 연결됩니다. GraphRAG는 지식 그래프 경로를 먼저 확장한 뒤 상위 문서 chunk를 근거로 답변을 합성합니다.`,
+    answer: `질문 '${query}'는 ${matchedNodes.map((node) => node.label).join(", ")} 노드와 연결됩니다. GraphRAG는 관련 지식 그래프 경로를 확장한 뒤, 연결된 문서 근거만 사용해 답변을 합성합니다.`,
     matched_nodes: matchedNodes,
-    matched_edges: demoEdges,
+    matched_edges: matchedEdges,
     evidence_docs: evidenceDocs,
     citations: evidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.path, score: doc.score })),
     graph_paths: graphPaths,
@@ -221,7 +287,7 @@ export function makeEvidence(query: string) {
     retrieval_trace: {
       strategy: "hybrid lexical BM25-style ranking + ontology 1-hop expansion + deterministic synthesis",
       query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
-      expanded_terms: ["graphrag", "knowledgegraph", "evidence", "guardrail"],
+      expanded_terms: matchedNodes.map((node) => node.id),
       ranked_chunk_ids: evidenceDocs.map((doc) => doc.chunk_id),
       matched_node_ids: matchedNodes.map((node) => node.id),
     },
@@ -263,7 +329,7 @@ export function demoGraphRAGQuery(query: string) {
 
 export function demoGuardCheck(draft: string) {
   const hasOverclaim = /always|never|guarantees|completely eliminates|항상|절대|보장/i.test(draft);
-  const hasEvidence = /GraphRAG|Evidence|Guardrail|KnowledgeGraph/i.test(draft);
+  const hasEvidence = /GraphRAG|Evidence|Guardrail|KnowledgeGraph|근거|문서|가드레일|지식\s*그래프|검증/i.test(draft);
   const support = hasEvidence ? "weak_support" : "unsupported";
   const score = Math.max(0, 100 - (support === "unsupported" ? 35 : 15) - (hasOverclaim ? 10 : 0));
   const result = {

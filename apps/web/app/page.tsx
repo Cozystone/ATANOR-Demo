@@ -300,8 +300,8 @@ export default function BakeBoardPage() {
   const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [memoryQuery, setMemoryQuery] = useState("");
-  const [chatInput, setChatInput] = useState("GraphRAG가 Evidence를 어떻게 사용해서 답변을 검증하나요?");
-  const [draft, setDraft] = useState("GraphRAG는 Evidence를 사용해 답변 근거를 확인하고 Guardrail은 과장 표현을 점검합니다.");
+  const [chatInput, setChatInput] = useState("GraphRAG가 근거 문서를 어떻게 사용해서 답변을 검증하나요?");
+  const [draft, setDraft] = useState("GraphRAG는 근거 문서를 사용해 답변 근거를 확인하고 Guardrail은 과장 표현을 점검합니다.");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -1049,12 +1049,12 @@ export default function BakeBoardPage() {
                 <div className="chat-status-row">
                   <div><span>RAG 신뢰도</span><strong>{Math.round((graphrag?.confidence ?? 0) * 100)}%</strong></div>
                   <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
-                  <div><span>Guard score</span><strong>{guard?.overall_guard_score ?? 0}</strong></div>
+                  <div><span>검증 점수</span><strong>{guard?.overall_guard_score ?? 0}</strong></div>
                 </div>
                 <div className="chat-scroll" ref={chatScrollRef}>
                   {chatMessages.map((message, index) => (
                     <article className="message" data-role={message.role} key={`${message.role}-${index}`}>
-                      <span>{message.role === "user" ? "User" : "Homage RAG"}</span>
+                      <span>{message.role === "user" ? "사용자" : "Homage RAG"}</span>
                       <p>{message.text}</p>
                       {message.evidence?.length ? (
                         <div className="message-evidence">
@@ -1062,8 +1062,8 @@ export default function BakeBoardPage() {
                             <div key={doc.chunk_id ?? doc.doc_id}>
                               <strong>{doc.chunk_id ?? doc.doc_id}</strong>
                               <em>
-                                score {doc.score ?? "-"}
-                                {doc.retrieval_signals ? ` / lexical ${doc.retrieval_signals.lexical} / graph ${doc.retrieval_signals.graph_boost}` : ""}
+                                점수 {doc.score ?? "-"}
+                                {doc.retrieval_signals ? ` / 어휘 ${doc.retrieval_signals.lexical} / 그래프 ${doc.retrieval_signals.graph_boost}` : ""}
                               </em>
                               <small>{doc.snippet}</small>
                             </div>
