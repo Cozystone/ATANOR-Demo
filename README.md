@@ -62,15 +62,19 @@ deterministic Alpha demo fallback so the deployed app is directly testable.
 
 ## Alpha Flow
 
-1. Put `.txt` or `.md` files in `data/raw`.
-2. Run DataGate from BakeBoard.
-3. Run Ontology Forge.
-4. Query GraphRAG from the RAG chat workbench.
-5. Check a draft in Guardrail.
-6. Inspect GPU telemetry or fallback.
-7. Run the Homage Oven dry-run scaffold.
-8. Inspect the Neuro-Efficiency Layer for event sparsity, active specialists,
+1. Click `Build 시작` in BakeBoard to start the Alpha factory flow.
+2. Harvest reference web sources into evidence snippets.
+3. Grow a typed ontology/RAG memory graph with deduped concepts and relations.
+4. Watch the 3D GraphRAG traversal view expand, zoom, pan, and rotate.
+5. When the graph passes the Alpha gate, prepare the Homage Oven dry-run.
+6. Query GraphRAG from the RAG chat workbench.
+7. Check a draft in Guardrail.
+8. Inspect GPU telemetry or fallback.
+9. Inspect the Neuro-Efficiency Layer for event sparsity, active specialists,
    continual/few-shot/self-supervised settings, and compression levers.
+
+For local file ingestion, put `.txt` or `.md` files in `data/raw`, then run
+DataGate and Ontology Forge from BakeBoard.
 
 Outputs:
 
@@ -89,6 +93,7 @@ to matched nodes and evidence documents.
 ## Main APIs
 
 - `GET /api/pipeline/status`
+- `POST /api/factory/build/start`
 - `POST /api/datagate/run`
 - `GET /api/datagate/status`
 - `POST /api/ontology/run`
@@ -117,6 +122,8 @@ npm --workspace apps/web run build
 
 - No external paid APIs.
 - No web crawling.
+- `Build 시작` fetches a small allowlisted reference set and stores source
+  signals for visualization; it is not an open-ended crawler.
 - No LLM judging.
 - No pretrained model weights.
 - Homage Oven is a safe dry-run scaffold, not real long training.
@@ -124,5 +131,13 @@ npm --workspace apps/web run build
   hardware profiles are added.
 - `docs/RAG_REFERENCE.md` records the Microsoft GraphRAG, Haystack, and
   MiroFish references used for the Alpha RAG/UI structure.
+- `docs/BUILD_FLOW_3D_RAG.md` records the Build Start, live harvest, typed
+  ontology growth, 3D GraphRAG traversal, and training-gate design.
+- `docs/PRD_ENGINE_AUDIT.md` records what is implemented versus still missing
+  against the original PRD.
 - The BakeBoard UI now follows a MiroFish-inspired console structure: left
   ontology memory graph, right learning/RAG workbench, and bottom system log.
+- The ontology memory graph supports node search, zoom, pan, drag, reset, and
+  graph/split/workbench layout modes.
+- The 3D GraphRAG view uses Three.js and supports drag rotation, wheel zoom,
+  node selection, traversal highlighting, and staged graph growth.

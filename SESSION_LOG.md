@@ -131,3 +131,56 @@
   https://homage-alpha.vercel.app
 - Verified the alias in-browser, including RAG chat answer rendering and
   retrieval-signal evidence cards.
+
+## 2026-06-11 - RAG graph interaction and PRD audit
+
+- Audited the current implementation against `docs/Homage1.0_PRD.md` and added
+  `docs/PRD_ENGINE_AUDIT.md`.
+- Confirmed Alpha covers DataGate, Ontology Forge, hybrid GraphRAG, Guardrail,
+  telemetry, dry-run Oven, Neuro-Efficiency, and BakeBoard, while Harvest,
+  Knowledge Bakery vector DB, full Homage-Core-30M training, and a separate
+  Utterance Engine remain future work.
+- Fixed RAG chat layout pressure by widening the workbench side in split mode,
+  giving chat messages their own scroll region, widening action buttons, and
+  auto-scrolling to the newest answer.
+- Added interactive graph controls inspired by MiroFish-style operation:
+  graph/split/workbench modes, refresh, full graph mode, node search/focus,
+  zoom in/out, directional pan, pointer-drag pan, reset, and node/edge detail.
+- Verified all visible buttons in the local browser: layout modes, Refresh,
+  graph expand/reset/search/zoom/pan, RAG send, Guardrail check, DataGate,
+  Ontology, GraphRAG open, Oven dry-run, Neuro replan, and header reset.
+- Captured browser screenshots in `docs/screenshots/`.
+- Verified `npm --workspace apps/web run build` and the 49-test Python suite.
+- Deployed the updated UI to Vercel and re-aliased
+  `https://homage-alpha.vercel.app` to the new production deployment.
+- Verified the deployed alias in-browser with graph search/zoom and RAG answer
+  evidence rendering.
+
+## 2026-06-11 - Build Start and 3D GraphRAG flow
+
+- Reviewed the Reddit discussion on LLM graph traversal for RAG and the linked
+  `similarity-graph-traversal-semantic-rag-research` repository.
+- Captured the design correction from the thread: semantic-similarity graphs
+  are not full knowledge graphs unless Homage preserves typed entities,
+  relation semantics, deduplication, and graph mutation/update history.
+- Added `POST /api/factory/build/start`, an Alpha factory orchestrator that
+  fetches a small allowlisted reference set, reports harvest status, emits
+  typed ontology/RAG graph frames, and opens a training gate for the Homage Oven
+  dry-run once enough typed nodes, edges, and evidence are visible.
+- Added a Three.js `Rag3DScene` with drag rotation, wheel zoom, node selection,
+  traversal highlighting, labels, and staged graph growth.
+- Wired the Korean BakeBoard `Build 시작` button to switch into the 3D RAG
+  memory view, show live process metrics, list harvested sources, and carry
+  evidence into the RAG chat workbench.
+- Added `docs/BUILD_FLOW_3D_RAG.md`.
+- Verified `pytest` for all Python packages and API: 49 passed.
+- Verified `npm --workspace apps/web run build`.
+- Verified locally in the in-app browser with screenshots for Build Start,
+  3D graph growth, drag/zoom interaction, and RAG evidence rendering.
+- Deployed production:
+  https://web-r27gc51la-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified the deployed alias in-browser with screenshots for Build Start, 3D
+  GraphRAG growth, drag/zoom interaction, training-gate display, and RAG
+  evidence rendering.

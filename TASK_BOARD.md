@@ -21,14 +21,25 @@
 - [x] Research-backed Neuro-Efficiency Layer package/API/UI.
 - [x] Neuro-efficiency research note with academic/professional sources.
 - [x] MiroFish-inspired console UI with ontology memory graph and RAG chat.
+- [x] Interactive RAG graph controls: search, zoom, pan, drag, reset, detail.
+- [x] PRD engine audit against current Alpha implementation.
+- [x] Build Start Alpha orchestrator with reference harvest and training gate.
+- [x] Three.js 3D GraphRAG traversal view with staged graph growth, zoom,
+      rotation, and node selection.
+- [x] Browser screenshots for Build Start, 3D graph growth, graph controls, and
+      RAG evidence rendering.
 
 ## Next
 
 - [ ] Persist run history.
+- [ ] Persist Build Start graph frames and source provenance.
+- [ ] Replace allowlisted reference fetch with governed Harvest connectors.
 - [ ] Add document-level metadata browsing.
-- [ ] Add richer graph visualization.
+- [ ] Add graph mutation timeline and replay.
 - [ ] Add tokenizer trainer MVP.
 - [ ] Persist and evaluate real DataGate/GraphRAG traces.
+- [ ] Implement Knowledge Bakery vector index and evidence store.
+- [ ] Split deterministic answer synthesis into Homage Utterance Engine.
 - [ ] Run a small SpikingJelly SNN experiment against Homage event traces.
 - [ ] Calibrate 8-bit quantization for Guardrail and GraphRAG outputs.
 - [ ] Replace deterministic SVG memory layout with interactive force graph.

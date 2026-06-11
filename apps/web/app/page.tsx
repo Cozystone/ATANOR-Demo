@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import Rag3DScene, { type Rag3DGraph, type Rag3DNode } from "./Rag3DScene";
 
 type StageState = "idle" | "running" | "warning" | "complete";
 type LayoutMode = "graph" | "split" | "workbench";
@@ -47,6 +49,31 @@ type MemoryEdge = {
   confidence: number;
 };
 
+type GraphView = {
+  scale: number;
+  x: number;
+  y: number;
+};
+
+type DragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  view: GraphView;
+};
+
+type BuildRun = {
+  run_id: string;
+  generated_at: string;
+  mode: string;
+  harvest_docs: AnyRecord[];
+  graph_3d: Rag3DGraph;
+  graph_frames: AnyRecord[];
+  training_gate: AnyRecord;
+  learning_trace: AnyRecord[];
+  notes: string[];
+};
+
 const stateLabels: Record<string, string> = {
   idle: "대기",
   running: "진행 중",
@@ -76,6 +103,10 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function percent(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function asPercent(value?: number | null) {
@@ -198,6 +229,15 @@ export default function BakeBoardPage() {
   const [oven, setOven] = useState<AnyRecord | null>(null);
   const [neuro, setNeuro] = useState<AnyRecord | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<AnyRecord | null>(null);
+  const [buildRun, setBuildRun] = useState<BuildRun | null>(null);
+  const [buildTick, setBuildTick] = useState(0);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [graphMode, setGraphMode] = useState<"2d" | "3d">("2d");
+  const graphRef = useRef<SVGSVGElement | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [memoryQuery, setMemoryQuery] = useState("");
   const [chatInput, setChatInput] = useState("GraphRAG가 Evidence를 어떻게 사용해서 답변을 검증하나요?");
   const [draft, setDraft] = useState("GraphRAG는 Evidence를 사용해 답변 근거를 확인하고 Guardrail은 과장 표현을 점검합니다.");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -258,6 +298,22 @@ export default function BakeBoardPage() {
       setAutoChatOpened(true);
     }
   }, [autoChatOpened, oven?.state]);
+
+  useEffect(() => {
+    if (rightMode !== "chat") return;
+    window.requestAnimationFrame(() => {
+      const chat = chatScrollRef.current;
+      if (chat) chat.scrollTop = chat.scrollHeight;
+    });
+  }, [chatMessages, rightMode]);
+
+  useEffect(() => {
+    if (!buildRun) return;
+    const timer = window.setInterval(() => {
+      setBuildTick((tick) => Math.min(tick + 1, buildRun.graph_frames.length - 1));
+    }, 900);
+    return () => window.clearInterval(timer);
+  }, [buildRun]);
 
   async function runAction(action: () => Promise<unknown>) {
     setError(null);
@@ -341,11 +397,67 @@ export default function BakeBoardPage() {
     }
   }
 
+  async function startFactoryBuild() {
+    setError(null);
+    setIsBuilding(true);
+    setBuildTick(0);
+    setGraphMode("3d");
+    setLayoutMode("split");
+    setRightMode("process");
+    try {
+      const run = await fetchJson<BuildRun>("/api/factory/build/start", { method: "POST", body: JSON.stringify({}) });
+      setBuildRun(run);
+      setGraph({
+        nodes: run.graph_3d.nodes.map((node) => ({
+          id: node.id,
+          label: node.label,
+          type: node.type,
+          confidence: node.confidence ?? 0.75,
+        })),
+        edges: run.graph_3d.edges.map((edge) => ({
+          source: edge.source,
+          target: edge.target,
+          relation: edge.relation,
+          confidence: edge.weight ?? 0.72,
+        })),
+      });
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          role: "assistant",
+          text: `Build ${run.run_id}가 시작됐습니다. 인터넷 참조 ${run.harvest_docs.length}개를 수집하고, ${run.graph_3d.nodes.length}개 3D RAG 노드와 ${run.graph_3d.edges.length}개 관계를 만들었습니다. 학습 gate는 ${run.training_gate.ready ? "준비 완료" : "대기"} 상태입니다.`,
+          evidence: run.harvest_docs.map((doc) => ({
+            chunk_id: doc.id,
+            doc_id: doc.id,
+            score: doc.status === "fetched" ? 1 : 0.72,
+            snippet: `${doc.title}: ${doc.snippet}`,
+            retrieval_signals: { lexical: 0.7, graph_boost: 0.8 },
+          })),
+        },
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Build 시작에 실패했습니다.");
+    } finally {
+      setIsBuilding(false);
+    }
+  }
+
   const graphResult = graphrag?.result ?? null;
   const losses = oven?.losses ?? oven?.result?.losses ?? [];
   const memoryNodes = useMemo(() => makeMemoryNodes(graph), [graph]);
   const memoryEdges = useMemo(() => makeMemoryEdges(graph, memoryNodes), [graph, memoryNodes]);
   const memoryMap = useMemo(() => new Map(memoryNodes.map((node) => [node.id, node])), [memoryNodes]);
+  const activeBuildFrame = buildRun?.graph_frames?.[buildTick] ?? null;
+  const activeGraph3D = useMemo<Rag3DGraph | null>(() => {
+    if (!buildRun?.graph_3d) return null;
+    const visibleNodeCount = activeBuildFrame?.node_count ?? buildRun.graph_3d.nodes.length;
+    const nodeIds = new Set(buildRun.graph_3d.nodes.slice(0, visibleNodeCount).map((node) => node.id));
+    return {
+      nodes: buildRun.graph_3d.nodes.filter((node) => nodeIds.has(node.id)),
+      edges: buildRun.graph_3d.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
+      traversal_path: buildRun.graph_3d.traversal_path?.filter((id) => nodeIds.has(id)),
+    };
+  }, [activeBuildFrame?.node_count, buildRun]);
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const flowHealth = useMemo(() => {
@@ -354,6 +466,20 @@ export default function BakeBoardPage() {
   }, [pipeline]);
 
   const processSteps = [
+    {
+      number: "00",
+      title: "Build 시작",
+      api: "POST /api/factory/build/start",
+      state: isBuilding ? "running" : buildRun ? "completed" : "idle",
+      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG traversal, Homage Oven gate까지 한 번에 흐르게 합니다.",
+      metrics: [
+        `${buildRun?.harvest_docs?.length ?? 0} web refs`,
+        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun?.graph_3d?.nodes?.length ?? 0} 3D nodes`,
+        buildRun?.training_gate?.ready ? "training gate ready" : "gate waiting",
+      ],
+      action: startFactoryBuild,
+      actionLabel: isBuilding ? "Build 진행 중" : "Build 시작",
+    },
     {
       number: "01",
       title: "DataGate 정제",
@@ -420,30 +546,118 @@ export default function BakeBoardPage() {
   ];
 
   const logs = [
+    ...(buildRun ? [{ time: fmtClock(), message: `Build ${buildRun.run_id}: ${activeBuildFrame?.message ?? "factory build ready"} / gate ${buildRun.training_gate.ready ? "ready" : "waiting"}` }] : []),
     { time: fmtClock(), message: `메모리 그래프 로드: ${memoryNodes.length} nodes / ${memoryEdges.length} edges` },
     { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / confidence ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
     { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / last loss ${oven?.last_loss ?? "none"}` },
     { time: fmtClock(), message: `효율 계획: estimated compute reduction ${energyReduction}%` },
   ];
 
+  function resetConsole() {
+    setLayoutMode("split");
+    setRightMode("chat");
+    setSelectedMemory(null);
+    setGraphView({ scale: 1, x: 0, y: 0 });
+  }
+
+  function resetGraph() {
+    setGraphView({ scale: 1, x: 0, y: 0 });
+  }
+
+  function zoomGraph(delta: number, anchor = { x: 50, y: 50 }) {
+    setGraphView((view) => {
+      const scale = clamp(view.scale + delta, 0.65, 3.25);
+      const ratio = scale / view.scale;
+      return {
+        scale,
+        x: clamp(anchor.x - (anchor.x - view.x) * ratio, -140, 140),
+        y: clamp(anchor.y - (anchor.y - view.y) * ratio, -140, 140),
+      };
+    });
+  }
+
+  function panGraph(dx: number, dy: number) {
+    setGraphView((view) => ({
+      ...view,
+      x: clamp(view.x + dx, -140, 140),
+      y: clamp(view.y + dy, -140, 140),
+    }));
+  }
+
+  function focusMemory(node: MemoryNode) {
+    const scale = Math.max(graphView.scale, 1.45);
+    setSelectedMemory(node);
+    setGraphView({
+      scale,
+      x: clamp(50 - node.x * scale, -140, 140),
+      y: clamp(50 - node.y * scale, -140, 140),
+    });
+  }
+
+  function focusSearchResult() {
+    const query = memoryQuery.trim().toLowerCase();
+    if (!query) return;
+    const node = memoryNodes.find((item) => `${item.label} ${item.type} ${item.id}`.toLowerCase().includes(query));
+    if (node) focusMemory(node);
+  }
+
+  function handleGraphWheel(event: ReactWheelEvent<SVGSVGElement>) {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    zoomGraph(event.deltaY > 0 ? -0.13 : 0.13, {
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
+    });
+  }
+
+  function handleGraphPointerDown(event: ReactPointerEvent<SVGSVGElement>) {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragState({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      view: graphView,
+    });
+  }
+
+  function handleGraphPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const dx = ((event.clientX - dragState.startX) / rect.width) * 100;
+    const dy = ((event.clientY - dragState.startY) / rect.height) * 100;
+    setGraphView({
+      scale: dragState.view.scale,
+      x: clamp(dragState.view.x + dx, -140, 140),
+      y: clamp(dragState.view.y + dy, -140, 140),
+    });
+  }
+
+  function handleGraphPointerUp(event: ReactPointerEvent<SVGSVGElement>) {
+    if (dragState?.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      setDragState(null);
+    }
+  }
+
   const leftStyle =
     layoutMode === "graph"
       ? { width: "100%", opacity: 1, transform: "translateX(0)" }
       : layoutMode === "workbench"
         ? { width: "0%", opacity: 0, transform: "translateX(-18px)" }
-        : { width: "52%", opacity: 1, transform: "translateX(0)" };
+        : { width: "46%", opacity: 1, transform: "translateX(0)" };
   const rightStyle =
     layoutMode === "workbench"
       ? { width: "100%", opacity: 1, transform: "translateX(0)" }
       : layoutMode === "graph"
         ? { width: "0%", opacity: 0, transform: "translateX(18px)" }
-        : { width: "48%", opacity: 1, transform: "translateX(0)" };
+        : { width: "54%", opacity: 1, transform: "translateX(0)" };
 
   return (
     <main className="console-shell">
       <header className="console-header">
         <div className="brand-block">
-          <span className="back-button">←</span>
+          <button className="back-button" onClick={resetConsole} title="기본 화면으로 돌아가기" aria-label="기본 화면으로 돌아가기">←</button>
           <strong>Homage</strong>
         </div>
         <div className="layout-switcher" aria-label="레이아웃 전환">
@@ -458,6 +672,9 @@ export default function BakeBoardPage() {
           ))}
         </div>
         <div className="header-status">
+          <button className="build-button" onClick={startFactoryBuild} disabled={isBuilding}>
+            {isBuilding ? "Build 중" : "Build 시작"}
+          </button>
           <span>Step 5/6</span>
           <strong>{rightMode === "chat" ? "RAG Chat" : "Learning Process"}</strong>
           <StatusDot state={pipeline?.system_state === "mock" ? "running" : "completed"} />
@@ -479,36 +696,85 @@ export default function BakeBoardPage() {
                 <span>{memoryEdges.length} edges</span>
                 <button onClick={() => runAction(refreshAll)}>Refresh</button>
                 <button onClick={() => setLayoutMode(layoutMode === "graph" ? "split" : "graph")}>확대</button>
+                <button data-active={graphMode === "3d"} onClick={() => setGraphMode(graphMode === "3d" ? "2d" : "3d")}>3D RAG</button>
               </div>
             </div>
-            <div className="memory-canvas">
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="온톨로지 메모리 그래프">
+            <div className="graph-control-strip">
+              <div className="graph-search">
+                <input
+                  value={memoryQuery}
+                  onChange={(event) => setMemoryQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") focusSearchResult();
+                  }}
+                  placeholder="노드 검색"
+                  aria-label="온톨로지 노드 검색"
+                />
+                <button onClick={focusSearchResult}>찾기</button>
+              </div>
+              <div className="graph-nav" aria-label="그래프 이동 및 확대">
+                <button onClick={() => zoomGraph(-0.18)} title="축소">−</button>
+                <button onClick={() => zoomGraph(0.18)} title="확대">＋</button>
+                <button onClick={() => panGraph(0, -8)} title="위로 이동">↑</button>
+                <button onClick={() => panGraph(-8, 0)} title="왼쪽 이동">←</button>
+                <button onClick={() => panGraph(8, 0)} title="오른쪽 이동">→</button>
+                <button onClick={() => panGraph(0, 8)} title="아래로 이동">↓</button>
+                <button onClick={resetGraph} title="그래프 초기화">Reset</button>
+              </div>
+              <span className="zoom-readout">{Math.round(graphView.scale * 100)}%</span>
+            </div>
+            <div className="memory-canvas" data-dragging={dragState ? "true" : "false"}>
+              {graphMode === "3d" && activeGraph3D ? (
+                <>
+                  <Rag3DScene graph={activeGraph3D} onSelect={(node: Rag3DNode) => setSelectedMemory(node)} />
+                  <div className="rag3d-overlay">
+                    <strong>3D GraphRAG Traversal</strong>
+                    <span>{activeGraph3D.nodes.length} nodes / {activeGraph3D.edges.length} edges</span>
+                    <span>{activeBuildFrame?.message ?? "Build 시작을 누르면 노드가 파생됩니다."}</span>
+                  </div>
+                </>
+              ) : (
+              <svg
+                ref={graphRef}
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-label="온톨로지 메모리 그래프"
+                onWheel={handleGraphWheel}
+                onPointerDown={handleGraphPointerDown}
+                onPointerMove={handleGraphPointerMove}
+                onPointerUp={handleGraphPointerUp}
+                onPointerCancel={handleGraphPointerUp}
+                onPointerLeave={handleGraphPointerUp}
+              >
                 <defs>
                   <pattern id="memory-grid" width="6" height="6" patternUnits="userSpaceOnUse">
                     <path d="M 6 0 L 0 0 0 6" fill="none" stroke="rgba(150,160,155,0.16)" strokeWidth="0.25" />
                   </pattern>
                 </defs>
                 <rect width="100" height="100" fill="url(#memory-grid)" />
-                {memoryEdges.map((edge) => {
-                  const source = memoryMap.get(edge.source);
-                  const target = memoryMap.get(edge.target);
-                  if (!source || !target) return null;
-                  return (
-                    <g key={edge.id} onClick={() => setSelectedMemory(edge)}>
-                      <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="memory-edge" />
-                      <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2} className="memory-edge-label">
-                        {edge.relation}
-                      </text>
+                <g transform={`translate(${graphView.x} ${graphView.y}) scale(${graphView.scale})`}>
+                  {memoryEdges.map((edge) => {
+                    const source = memoryMap.get(edge.source);
+                    const target = memoryMap.get(edge.target);
+                    if (!source || !target) return null;
+                    return (
+                      <g key={edge.id} onClick={() => setSelectedMemory(edge)}>
+                        <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="memory-edge" />
+                        <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2} className="memory-edge-label">
+                          {edge.relation}
+                        </text>
+                      </g>
+                    );
+                  })}
+                  {memoryNodes.map((node) => (
+                    <g key={node.id} className="memory-node" onClick={() => focusMemory(node)}>
+                      <circle cx={node.x} cy={node.y} r="2.3" fill={node.color} />
+                      <text x={node.x + 2.8} y={node.y + 1.1}>{node.label.slice(0, 14)}</text>
                     </g>
-                  );
-                })}
-                {memoryNodes.map((node) => (
-                  <g key={node.id} className="memory-node" onClick={() => setSelectedMemory(node)}>
-                    <circle cx={node.x} cy={node.y} r="2.3" fill={node.color} />
-                    <text x={node.x + 2.8} y={node.y + 1.1}>{node.label.slice(0, 14)}</text>
-                  </g>
-                ))}
+                  ))}
+                </g>
               </svg>
+              )}
               <div className="memory-legend">
                 {memoryNodes.slice(0, 8).map((node) => (
                   <span key={node.id}><i style={{ background: node.color }} />{node.type}</span>
@@ -557,6 +823,23 @@ export default function BakeBoardPage() {
                       {step.metrics.map((metric) => <span key={metric}>{metric}</span>)}
                     </div>
                     <button className="inline-action" onClick={step.action}>{step.actionLabel}</button>
+                    {step.number === "00" && buildRun ? (
+                      <div className="build-run-detail">
+                        <div className="build-trace">
+                          {buildRun.learning_trace.map((trace) => (
+                            <span key={trace.step} data-state={trace.state}>{trace.step}: {trace.state}</span>
+                          ))}
+                        </div>
+                        <div className="build-sources">
+                          {buildRun.harvest_docs.map((doc) => (
+                            <a key={doc.id} href={doc.url} target="_blank" rel="noreferrer">
+                              <strong>{doc.title}</strong>
+                              <small>{doc.source_type} / {doc.status} / {doc.license_status}</small>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     {step.title.includes("학습") ? <LossChart losses={losses} /> : null}
                   </article>
                 ))}
@@ -568,7 +851,7 @@ export default function BakeBoardPage() {
                   <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
                   <div><span>Guard score</span><strong>{guard?.overall_guard_score ?? 0}</strong></div>
                 </div>
-                <div className="chat-scroll">
+                <div className="chat-scroll" ref={chatScrollRef}>
                   {chatMessages.map((message, index) => (
                     <article className="message" data-role={message.role} key={`${message.role}-${index}`}>
                       <span>{message.role === "user" ? "User" : "Homage RAG"}</span>

@@ -30,6 +30,15 @@ Deployment:
 - Research note: `docs/RESEARCH_NEURO_EFFICIENCY.md`.
 - UI reference note: `docs/UI_REFERENCE_MIROFISH.md`.
 - RAG reference note: `docs/RAG_REFERENCE.md`.
+- PRD engine audit: `docs/PRD_ENGINE_AUDIT.md`.
+- Build Start Alpha flow:
+  - `POST /api/factory/build/start`
+  - allowlisted web reference harvest
+  - typed ontology/RAG graph frames
+  - Three.js 3D GraphRAG traversal visualization
+  - Alpha training gate before Homage Oven dry-run handoff
+  - evidence snippets carried into the RAG chat workbench
+- Build flow note: `docs/BUILD_FLOW_3D_RAG.md`.
 
 ## Verification
 
@@ -53,16 +62,34 @@ Deployment:
 - Local browser verification passed for the split console UI, ontology memory
   graph, layout switcher, RAG chat, synthesized answer, and retrieval-signal
   evidence cards.
+- Local browser verification also passed for graph search, zoom in/out,
+  directional pan, pointer drag pan, graph reset, graph/split/workbench layout
+  modes, process action buttons, RAG send, Guardrail check, Refresh, and header
+  reset.
 - Vercel production deploy succeeded.
 - `homage.vercel.app` was already in use; production is aliased to
   `https://homage-alpha.vercel.app`.
 - Deployed browser verification passed for the split console UI, ontology
   memory graph, layout switcher, RAG chat, evidence-backed response, and
   `/api/neuro/plan`.
+- Latest deployed alias verification passed for graph search/zoom and
+  auto-scrolled RAG answer evidence rendering.
+- Local browser verification passed for `Build 시작`, reference harvest
+  reporting, staged 3D GraphRAG growth, drag rotation, wheel zoom, nonblank
+  canvas screenshot inspection, training-gate display, and RAG evidence cards.
+- `POST /api/factory/build/start` is included in the Next.js production build.
+- Latest Vercel production deploy succeeded and `https://homage-alpha.vercel.app`
+  now points to the Build Start / 3D GraphRAG version.
+- Deployed browser verification passed for `Build 시작`, 3D GraphRAG canvas
+  rendering, drag/zoom interaction, training-gate display, and RAG evidence
+  cards.
 
 ## Known Limitations
 
 - Alpha uses deterministic rules; no LLM or pretrained model is used.
+- Build Start is an Alpha orchestrator. It fetches a small allowlisted reference
+  set and uses curated reference snippets for the UI/training-gate trace; it is
+  not broad autonomous crawling or real model training yet.
 - Deployed Vercel app uses deterministic demo fallback API routes.
 - Local FastAPI run state is in-memory and single-process.
 - DataGate is full-batch overwrite only.
@@ -71,13 +98,21 @@ Deployment:
 - Neuro-Efficiency values are deterministic estimates until real event traces,
   model update logs, and hardware profiles are persisted.
 - The ontology-memory graph is a deterministic UI visualization, not a full
-  force-directed runtime graph engine yet.
+  force-directed runtime graph engine yet, but it now supports zoom, pan,
+  drag, search focus, node detail, reset, and full-screen graph mode.
+- PRD audit confirms Alpha is not yet the full final engine: Harvest crawling,
+  Knowledge Bakery vector DB/summary tree, real Homage-Core-30M training, and
+  a separate Utterance Engine remain future work.
+- The 3D GraphRAG visual is a live client-side visualization of the Alpha
+  graph/traversal contract; persistent vector storage, graph mutation history,
+  and real continual-training events remain future work.
 - npm audit still reports dependency advisories; no force fix applied.
 
 ## Next Recommended Milestone
 
-1. Persist Alpha run history with SQLite.
-2. Log real event density from DataGate and GraphRAG traces.
-3. Run a small SpikingJelly SNN experiment against Homage event traces.
-4. Calibrate 8-bit quantization for Guardrail and GraphRAG outputs.
-5. Add document-level metadata browsing.
+1. Persist Alpha run history and Build Start graph frames with SQLite.
+2. Add a real Harvest connector with source allowlists, robots policy, and
+   deduped document provenance.
+3. Persist Knowledge Bakery vector/graph memory and graph mutation history.
+4. Log real event density from DataGate and GraphRAG traces.
+5. Run a small SpikingJelly SNN experiment against Homage event traces.
