@@ -17,6 +17,8 @@
 - [x] Vercel deployable Next API fallback.
 - [x] Local tests/build/browser verification.
 - [x] Deployed browser verification.
+- [x] Research-backed Neuro-Efficiency Layer package/API/UI.
+- [x] Neuro-efficiency research note with academic/professional sources.
 
 ## Next
 
@@ -24,4 +26,7 @@
 - [ ] Add document-level metadata browsing.
 - [ ] Add richer graph visualization.
 - [ ] Add tokenizer trainer MVP.
+- [ ] Log real event density from DataGate/GraphRAG traces.
+- [ ] Run a small SpikingJelly SNN experiment against Homage event traces.
+- [ ] Calibrate 8-bit quantization for Guardrail and GraphRAG outputs.
 - [ ] Revisit npm audit advisories.

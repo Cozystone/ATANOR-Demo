@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.routers.datagate import router as datagate_router
 from app.routers.graphrag import router as graphrag_router
 from app.routers.guard import router as guard_router
+from app.routers.neuro import router as neuro_router
 from app.routers.ontology import router as ontology_router
 from app.routers.oven import router as oven_router
 from app.routers.telemetry import router as telemetry_router
@@ -54,6 +55,7 @@ app.include_router(datagate_router)
 app.include_router(ontology_router)
 app.include_router(graphrag_router)
 app.include_router(guard_router)
+app.include_router(neuro_router)
 app.include_router(telemetry_router)
 app.include_router(oven_router)
 

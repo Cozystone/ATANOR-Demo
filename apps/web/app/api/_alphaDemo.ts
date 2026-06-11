@@ -15,6 +15,36 @@ const demoEdges = [
   { source: "guardrail", relation: "requires", target: "evidence", confidence: 0.7, evidence_doc_ids: ["demo-002"], status: "candidate" },
 ];
 
+const defaultNeuroText =
+  "SNN event neuromorphic modular continual few-shot self-supervised masking pruning quantization distillation GraphRAG guardrail";
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function tokensFor(text: string) {
+  return text.toLowerCase().match(/[a-z0-9][a-z0-9_-]*/g) ?? defaultNeuroText.toLowerCase().split(/\s+/);
+}
+
+function scoreNeuroModules(tokens: string[], moduleBudget: number) {
+  const tokenSet = new Set(tokens);
+  const modules = [
+    { id: "event_gate", name: "SNN Event Gate", role: "Route only salient state changes into downstream modules.", keywords: ["snn", "spiking", "event", "neuromorphic", "low-power"] },
+    { id: "modular_router", name: "Modular Specialist Router", role: "Activate a small expert set instead of the whole model.", keywords: ["modular", "module", "specialist", "router", "distributed"] },
+    { id: "memory_consolidator", name: "Continual Memory", role: "Protect important memories with EWC-style consolidation and replay.", keywords: ["continual", "ewc", "forgetting", "plasticity", "memory"] },
+    { id: "prototype_memory", name: "Few-Shot Prototype Memory", role: "Store compact class/task prototypes for one-shot adaptation.", keywords: ["few-shot", "one-shot", "prototype", "small", "data"] },
+    { id: "masking_teacher", name: "Self-Supervised Masking", role: "Pretrain from local unlabeled data with masked reconstruction tasks.", keywords: ["self-supervised", "mask", "masked", "contrastive", "mae"] },
+    { id: "compression_distiller", name: "Compression Distiller", role: "Schedule pruning, quantization, and distillation for low-resource runs.", keywords: ["pruning", "quantization", "distillation", "efficient", "energy"] },
+    { id: "graph_guard", name: "GraphRAG Guard Verifier", role: "Ground responses against ontology evidence and guardrail checks.", keywords: ["graphrag", "ontology", "evidence", "guard", "guardrail"] },
+  ].map((module) => {
+    const matches = module.keywords.filter((keyword) => tokenSet.has(keyword)).length;
+    const score = clamp(0.22 + matches * 0.16, 0.05, 0.98);
+    return { id: module.id, name: module.name, role: module.role, score: Number(score.toFixed(3)), state: score >= 0.38 ? "active" : "standby" };
+  }).sort((left, right) => right.score - left.score);
+  const active = modules.filter((module) => module.state === "active").slice(0, moduleBudget);
+  return { modules, activeModules: (active.length >= 3 ? active : modules.slice(0, Math.min(moduleBudget, 3))).map((module) => module.id) };
+}
+
 export const demoState = {
   datagate: {
     state: "completed" as State,
@@ -71,6 +101,91 @@ export const demoState = {
     ],
   },
 };
+
+export function demoNeuroPlan(input?: { text?: string; task_type?: string; target_device?: string; token_budget?: number; module_budget?: number }) {
+  const text = input?.text || defaultNeuroText;
+  const tokens = tokensFor(text);
+  const tokenCount = Math.max(1, tokens.length);
+  const uniqueRatio = new Set(tokens).size / tokenCount;
+  const transitions = tokens.reduce((count, token, index) => count + (index > 0 && token !== tokens[index - 1] ? 1 : 0), 0);
+  const transitionRatio = transitions / Math.max(1, tokenCount - 1);
+  const salient = new Set(["snn", "spiking", "event", "neuromorphic", "continual", "few-shot", "self-supervised", "pruning", "quantization", "distillation", "graphrag", "guardrail"]);
+  const salienceRatio = tokens.filter((token) => salient.has(token)).length / tokenCount;
+  const eventDensity = clamp(0.16 + uniqueRatio * 0.26 + transitionRatio * 0.18 + salienceRatio * 0.26, 0.2, 0.72);
+  const sparsity = Number((1 - eventDensity).toFixed(3));
+  const moduleBudget = clamp(input?.module_budget ?? 4, 2, 7);
+  const { modules, activeModules } = scoreNeuroModules(tokens, moduleBudget);
+  const pruningTarget = Number((sparsity > 0.55 ? 0.45 : 0.38).toFixed(3));
+  const quantizationBits = 8;
+  const denseCost = tokenCount * modules.length * 32;
+  const efficientCost = denseCost * eventDensity * (quantizationBits / 32) * (1 - pruningTarget) * (activeModules.length / modules.length);
+  const reductionRatio = Number(clamp(1 - efficientCost / denseCost, 0, 0.98).toFixed(3));
+  const prototypeSlots = Math.max(8, Math.min(64, Math.floor(new Set(tokens).size / 2) + activeModules.length * 2));
+
+  return {
+    generated_at: now(),
+    architecture: "Homage Neuro-Efficiency Layer",
+    objective: "Run adaptive AI workloads with sparse events, modular routing, compact memory, and explicit compression controls.",
+    workload: {
+      task_type: input?.task_type ?? "alpha-dashboard",
+      target_device: input?.target_device ?? "low-spec-cpu-gpu",
+      token_count: tokenCount,
+      token_budget: input?.token_budget ?? 512,
+    },
+    event_gate: {
+      event_density: Number(eventDensity.toFixed(3)),
+      sparsity,
+      active_events: Math.max(1, Math.round(tokenCount * eventDensity)),
+      suppressed_events: Math.max(0, tokenCount - Math.max(1, Math.round(tokenCount * eventDensity))),
+      latency_mode: tokenCount < 230 ? "burst" : "adaptive",
+      trigger: "token novelty + neuromorphic salience",
+    },
+    module_routing: { budget: moduleBudget, active_modules: activeModules, modules },
+    learning_plan: {
+      continual: {
+        strategy: "EWC-style consolidation + tiny replay buffer",
+        ewc_lambda: 0.42,
+        replay_budget: prototypeSlots,
+        protected_modules: activeModules.filter((id) => ["memory_consolidator", "prototype_memory", "graph_guard", "modular_router"].includes(id)).slice(0, 3),
+      },
+      few_shot: {
+        strategy: "cosine prototype memory",
+        prototype_slots: prototypeSlots,
+        update_rule: "merge low-distance examples; fork high-novelty examples",
+      },
+      self_supervised: {
+        strategy: "masked span reconstruction + graph edge prediction",
+        mask_ratio: 0.42,
+        local_signal: "use accepted DataGate documents and Ontology Forge edges",
+      },
+    },
+    compression: {
+      pruning_target: pruningTarget,
+      quantization_bits: quantizationBits,
+      distillation: "self-distill active specialists into a compact student checkpoint",
+      activation_checkpointing: true,
+      deployment_note: "Prefer event-sparse batches before hardware-specific SNN or FPGA kernels.",
+    },
+    energy_estimate: {
+      dense_cost_units: Number(denseCost.toFixed(2)),
+      efficient_cost_units: Number(efficientCost.toFixed(2)),
+      reduction_ratio: reductionRatio,
+      summary: `${Math.round(reductionRatio * 100)}% fewer scheduled compute units estimated`,
+    },
+    recommendations: [
+      "Keep the transformer/GraphRAG path as the reference brain while testing event-gated specialists.",
+      "Log active event density per run so pruning and quantization decisions use measured workload sparsity.",
+      "Protect ontology and guard memories during continual updates before allowing broad model plasticity.",
+      "Validate 8-bit quantization on guard and retrieval outputs before enabling for all modules.",
+    ],
+    research_basis: [
+      { topic: "Surrogate-gradient SNN training", source: "Neftci, Mostafa, Zenke, 2019", url: "https://arxiv.org/abs/1901.09948" },
+      { topic: "Elastic Weight Consolidation", source: "Kirkpatrick et al., 2017", url: "https://arxiv.org/abs/1612.00796" },
+      { topic: "Prototypical Networks", source: "Snell, Swersky, Zemel, 2017", url: "https://arxiv.org/abs/1703.05175" },
+      { topic: "Masked Autoencoders", source: "He et al., 2021", url: "https://arxiv.org/abs/2111.06377" },
+    ],
+  };
+}
 
 export function makeEvidence(query: string) {
   return {

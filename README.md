@@ -6,7 +6,7 @@ packages, and a deployed interactive BakeBoard demo.
 
 Production demo:
 
-- https://web-2sdqapqzo-anthony-kims-projects-bc874109.vercel.app
+- https://web-2ro6t5sdi-anthony-kims-projects-bc874109.vercel.app
 
 ## Repository Layout
 
@@ -21,6 +21,7 @@ packages/
   guard/
   model/
   trainer/
+  neuro_efficiency/
 data/
   raw/             local input documents
   train_sample/    safe dry-run training sample
@@ -39,6 +40,7 @@ pip install -e "packages/rag_engine[dev]"
 pip install -e "packages/guard[dev]"
 pip install -e "packages/model[dev]"
 pip install -e "packages/trainer[dev]"
+pip install -e "packages/neuro_efficiency[dev]"
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --app-dir apps/api
 ```
 
@@ -67,6 +69,8 @@ deterministic Alpha demo fallback so the deployed app is directly testable.
 5. Check a draft in Guardrail.
 6. Inspect GPU telemetry or fallback.
 7. Run the Homage Oven dry-run scaffold.
+8. Inspect the Neuro-Efficiency Layer for event sparsity, active specialists,
+   continual/few-shot/self-supervised settings, and compression levers.
 
 Outputs:
 
@@ -94,12 +98,14 @@ Outputs:
 - `GET /api/telemetry/system`
 - `POST /api/oven/dry-run`
 - `GET /api/oven/status`
+- `GET /api/neuro/plan`
+- `POST /api/neuro/plan`
 
 ## Verify
 
 ```bash
-.venv\Scripts\python.exe -m pytest packages\datagate packages\ontology_forge packages\rag_engine packages\guard packages\model packages\trainer apps\api -q
-.venv\Scripts\python.exe -m compileall apps\api packages\datagate\datagate packages\ontology_forge\ontology_forge packages\rag_engine\rag_engine packages\guard\guard packages\model\model packages\trainer\trainer
+.venv\Scripts\python.exe -m pytest packages\datagate packages\ontology_forge packages\rag_engine packages\guard packages\model packages\trainer packages\neuro_efficiency apps\api -q
+.venv\Scripts\python.exe -m compileall apps\api packages\datagate\datagate packages\ontology_forge\ontology_forge packages\rag_engine\rag_engine packages\guard\guard packages\model\model packages\trainer\trainer packages\neuro_efficiency\neuro_efficiency
 npm --workspace apps/web run build
 ```
 
@@ -110,3 +116,5 @@ npm --workspace apps/web run build
 - No LLM judging.
 - No pretrained model weights.
 - Homage Oven is a safe dry-run scaffold, not real long training.
+- Neuro-Efficiency uses deterministic estimates until real event traces and
+  hardware profiles are added.

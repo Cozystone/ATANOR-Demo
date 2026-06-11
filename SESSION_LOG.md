@@ -70,3 +70,23 @@
 - Ran local end-to-end smoke through DataGate, Ontology, GraphRAG, Guardrail,
   telemetry, Oven dry-run, pipeline status, and browser UI.
 - Deployed to Vercel and verified the deployment in-browser.
+
+## 2026-06-11 - Neuro-Efficiency research and architecture update
+
+- Reviewed academic/professional sources for SNNs, neuromorphic software,
+  continual learning, few-shot prototypes, self-supervised masking, model
+  compression, and Loihi-style event hardware constraints.
+- Added `docs/RESEARCH_NEURO_EFFICIENCY.md` with source links and structural
+  decisions.
+- Implemented `packages/neuro_efficiency`, a deterministic planning layer for
+  event sparsity, modular routing, continual/few-shot/self-supervised learning
+  policies, compression levers, and estimated compute reduction.
+- Added FastAPI `GET/POST /api/neuro/plan`.
+- Added Next.js deployed fallback route for `/api/neuro/plan`.
+- Added a BakeBoard Neuro-Efficiency Layer panel and Rebalance action.
+- Verified Python tests: 49 passed; compileall passed; Next production build
+  passed.
+- Verified local browser UI and deployed Vercel UI, including the Rebalance
+  button.
+- Deployed production:
+  https://web-2ro6t5sdi-anthony-kims-projects-bc874109.vercel.app

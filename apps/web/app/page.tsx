@@ -52,6 +52,10 @@ function fmtDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : "waiting";
 }
 
+function asPercent(value?: number | null) {
+  return Math.round((value ?? 0) * 100);
+}
+
 function LossChart({ losses }: { losses: Array<{ step: number; loss: number }> }) {
   if (!losses?.length) {
     return <div className="chart-empty">No dry-run trace</div>;
@@ -95,6 +99,7 @@ export default function BakeBoardPage() {
   const [gpu, setGpu] = useState<AnyRecord | null>(null);
   const [system, setSystem] = useState<AnyRecord | null>(null);
   const [oven, setOven] = useState<AnyRecord | null>(null);
+  const [neuro, setNeuro] = useState<AnyRecord | null>(null);
   const [query, setQuery] = useState("GraphRAG evidence guardrail");
   const [draft, setDraft] = useState("GraphRAG always guarantees perfect answers with Evidence.");
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +115,7 @@ export default function BakeBoardPage() {
       gpuStatus,
       systemStatus,
       ovenStatus,
+      neuroStatus,
     ] = await Promise.all([
       fetchJson<PipelineStatus>("/api/pipeline/status"),
       fetchJson<AnyRecord>("/api/datagate/status"),
@@ -120,6 +126,7 @@ export default function BakeBoardPage() {
       fetchJson<AnyRecord>("/api/telemetry/gpu"),
       fetchJson<AnyRecord>("/api/telemetry/system"),
       fetchJson<AnyRecord>("/api/oven/status"),
+      fetchJson<AnyRecord>("/api/neuro/plan"),
     ]);
     setPipeline(pipelineStatus);
     setDatagate(datagateStatus);
@@ -130,6 +137,7 @@ export default function BakeBoardPage() {
     setGpu(gpuStatus);
     setSystem(systemStatus);
     setOven(ovenStatus);
+    setNeuro(neuroStatus);
   }
 
   useEffect(() => {
@@ -150,11 +158,36 @@ export default function BakeBoardPage() {
     }
   }
 
+  async function rebalanceNeuro() {
+    setError(null);
+    try {
+      const plan = await fetchJson<AnyRecord>("/api/neuro/plan", {
+        method: "POST",
+        body: JSON.stringify({
+          text: `${query}\n${draft}`,
+          task_type: "alpha-dashboard",
+          target_device: "low-spec-cpu-gpu",
+          module_budget: 4,
+        }),
+      });
+      setNeuro(plan);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Neuro planning failed");
+    }
+  }
+
   const runningCount = pipeline?.stages.filter((stage) => stage.state === "running").length ?? 0;
   const rejectedEntries = Object.entries(datagate?.rejection_breakdown ?? {});
   const graphResult = graphrag?.result ?? null;
   const guardResult = guard?.result ?? null;
   const losses = oven?.losses ?? oven?.result?.losses ?? [];
+  const neuroModules = neuro?.module_routing?.modules ?? [];
+  const activeModuleIds = new Set<string>(neuro?.module_routing?.active_modules ?? []);
+  const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
+  const eventDensity = asPercent(neuro?.event_gate?.event_density);
+  const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
+  const pruningTarget = asPercent(neuro?.compression?.pruning_target);
+  const maskRatio = asPercent(neuro?.learning_plan?.self_supervised?.mask_ratio);
 
   const flowHealth = useMemo(() => {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
@@ -266,6 +299,46 @@ export default function BakeBoardPage() {
           <div className="train-meta">
             <span>checkpoint</span>
             <strong>{oven?.checkpoint_path ?? "not written"}</strong>
+          </div>
+        </article>
+
+        <article className="alpha-panel alpha-panel--wide">
+          <div className="panel-header">
+            <div><p className="eyebrow">Neuro Lab</p><h2>Neuro-Efficiency Layer</h2></div>
+            <button onClick={rebalanceNeuro}>Rebalance</button>
+          </div>
+          <div className="efficiency-hero">
+            <div className="efficiency-score">
+              <strong>{energyReduction}%</strong>
+              <span>estimated compute reduction</span>
+            </div>
+            <div className="efficiency-stack">
+              <div className="row"><span>event sparsity</span><strong>{eventSparsity}%</strong></div>
+              <div className="row"><span>event density</span><strong>{eventDensity}%</strong></div>
+              <div className="row"><span>active modules</span><strong>{activeModuleIds.size || 0}/{neuroModules.length || 7}</strong></div>
+              <div className="row"><span>precision</span><strong>{neuro?.compression?.quantization_bits ?? 8}-bit</strong></div>
+            </div>
+          </div>
+          <div className="module-bars" aria-label="Neuro module activation">
+            {neuroModules.map((module: AnyRecord) => (
+              <div className="module-bar" data-active={activeModuleIds.has(module.id)} key={module.id}>
+                <div className="module-bar__label">
+                  <span>{module.name}</span>
+                  <strong>{Math.round((module.score ?? 0) * 100)}%</strong>
+                </div>
+                <div className="module-bar__track"><div style={{ width: `${Math.round((module.score ?? 0) * 100)}%` }} /></div>
+              </div>
+            ))}
+          </div>
+          <div className="learning-grid">
+            <div><span>Continual</span><strong>EWC {neuro?.learning_plan?.continual?.ewc_lambda ?? 0.42}</strong></div>
+            <div><span>Few-shot</span><strong>{neuro?.learning_plan?.few_shot?.prototype_slots ?? 0} prototypes</strong></div>
+            <div><span>Self-supervised</span><strong>{maskRatio}% mask</strong></div>
+            <div><span>Compression</span><strong>{pruningTarget}% prune</strong></div>
+          </div>
+          <div className="mini-list">
+            <h3>Research-backed Actions</h3>
+            {(neuro?.recommendations ?? []).slice(0, 4).map((item: string) => <div className="row" key={item}><span>{item}</span></div>)}
           </div>
         </article>
 
