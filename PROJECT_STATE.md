@@ -216,6 +216,32 @@ Deployment:
     - `docs/screenshots/104-large-graph-spacing-local.png`
     - `docs/screenshots/105-large-graph-final-local.png`
     - `docs/screenshots/108-production-node-target-visible.png`
+- Infinite learning mode verification passed:
+  - learning-volume controls now include an `∞` preset
+  - `∞` mode sets the target to 250,000 ontology nodes, 2,000 scheduled chunks,
+    continuous text budget, and a 600-node representative 3D render window
+  - `POST /api/factory/build/start` returns `alpha-continuous-harvest`,
+    `training_gate.continuous: true`, and keeps Harvest/Ontology Forge marked
+    as running for continuous builds
+  - local browser verification passed for selecting `∞`, starting continuous
+    learning, showing cumulative elapsed learning time, growing candidate nodes,
+    capping the visible 3D graph at `600/600` representative nodes, and stopping
+    the loop with the `학습 중지` button
+  - local DOM verification reached `942` accumulated candidate nodes while the
+    visible 3D graph stayed capped at 600 representative nodes
+  - production API verification passed at `https://homage-alpha.vercel.app`
+    with `alpha-continuous-harvest`, 2,000 chunks, and a 600-node visual budget
+  - production browser verification passed for `∞` selection, Build Start,
+    cumulative elapsed time, candidate-node growth, and stop control
+  - current Alpha learning is not random sentence learning: accepted/reference
+    text is chunked, concept candidates are extracted deterministically, typed
+    relations are generated, and the live-synapse UI simulates continual
+    ontology growth until persistent graph events are implemented
+  - screenshots:
+    - `docs/screenshots/109-infinite-learning-selected-local.png`
+    - `docs/screenshots/110-infinite-learning-running-local.png`
+    - `docs/screenshots/111-infinite-learning-stopped-local.png`
+    - `docs/screenshots/112-infinite-learning-production.png`
 
 ## Known Limitations
 
@@ -245,6 +271,9 @@ Deployment:
 - Live-synapse growth is currently a deterministic client-side Alpha simulation
   of continual learning. It visually proves the growth loop, but persistent
   graph mutation storage and real training updates are still next milestones.
+- `∞` learning mode runs continuously in the browser until stopped and keeps the
+  3D render bounded with a rolling representative window. It does not yet run a
+  durable background crawler or persist every graph mutation across refreshes.
 - Sustained stability is currently an enforceable planning/API/UI layer. The
   live ontology store still needs to move from JSON snapshots to append-only
   graph events plus a SQLite WAL hot index before very long unattended runs.

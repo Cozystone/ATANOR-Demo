@@ -8,7 +8,9 @@ profile with startup hardware benchmark adaptation.
 Latest work also changed RAG answer behavior so no-direct-evidence structure
 questions still generate a native architecture answer, external unknown facts
 return no-evidence memory coverage instead of architecture leakage, and GraphRAG
-signals now show active node pulses rather than path text.
+signals now show active node pulses rather than path text. The latest update
+adds `∞` continuous learning mode with cumulative elapsed time, a stop control,
+and a bounded rolling 3D graph render window.
 
 ## Current Branch
 
@@ -16,7 +18,7 @@ signals now show active node pulses rather than path text.
 
 ## Last Commit
 
-Latest local commit before this update: Add startup hardware benchmark tuning
+Latest local commit before this update: Improve no-evidence RAG and graph scaling controls
 
 ## Deployment
 
@@ -70,6 +72,20 @@ Latest local commit before this update: Add startup hardware benchmark tuning
   architecture answers.
 - Added direct target-node input for learning volume and wired it into
   stability planning plus Build Start.
+- Added `∞` learning-volume mode:
+  - target nodes: 250,000
+  - scheduled chunks: 2,000
+  - text budget: continuous
+  - representative 3D render window: 600 nodes
+  - cumulative learning timer and `학습 중지` stop control
+- Updated Build Start fallback to return `alpha-continuous-harvest` and
+  `training_gate.continuous: true` for infinite learning.
+- Live-synapse growth now supports a rolling window so candidate nodes can keep
+  accumulating while the browser renders a bounded representative graph.
+- Current Alpha learning is not random sentence learning: the system chunks
+  accepted/reference text, extracts concept candidates deterministically,
+  generates typed relations, and visualizes continual growth until durable graph
+  mutation persistence is implemented.
 - Improved dense 3D graph spacing with spread layout, collision relaxation,
   label thinning, and camera scaling.
 - Added research note with SNN, neuromorphic, EWC, prototype, MAE, compression,
@@ -83,6 +99,7 @@ Latest local commit before this update: Add startup hardware benchmark tuning
 - `PYTHONPATH=... python -m pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q`
 - `python -m compileall ...`
 - `npm --workspace apps/web run build`
+- `git diff --check`
 - `npx vercel --prod --yes`
 - `npx vercel alias set web-ffvjjolxy-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
 - `npx vercel alias set web-7784z7z4w-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
@@ -111,6 +128,20 @@ Latest local commit before this update: Add startup hardware benchmark tuning
 - Production API verification passed for no-evidence RAG and custom
   `target_nodes: 50000` Build Start scaling; production browser capture shows
   the new target-node input.
+- Local API verification passed for infinite Build Start:
+  `alpha-continuous-harvest`, 250,000 target nodes, 2,000 chunks, 600 visual
+  node budget, and continuous Harvest/Ontology Forge states.
+- Local browser verification passed for `∞` selection, continuous build start,
+  cumulative elapsed learning time, candidate-node growth, 600-node render cap,
+  and `학습 중지`.
+- At 42 seconds, the browser showed 702 accumulated candidates while the visible
+  graph stayed at `600/600`; after stopping, it preserved 1분 31초 elapsed time
+  and 942 accumulated candidates.
+- Production deploy succeeded and `https://homage-alpha.vercel.app` now points
+  to the infinite learning version.
+- Production API/browser verification passed for `∞` continuous learning:
+  `alpha-continuous-harvest`, 2,000 chunks, 600 visual nodes, cumulative elapsed
+  time, candidate-node growth, and stop control.
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -129,6 +160,9 @@ Latest local commit before this update: Add startup hardware benchmark tuning
 - Sustained stability is currently a planning/API/UI layer. The live ontology
   store still needs append-only graph events plus a SQLite WAL hot index before
   unattended multi-day runs.
+- Infinite learning mode is currently a local/deployed Alpha runtime loop in the
+  browser. It is not yet a durable background crawler and does not persist every
+  live graph mutation across refreshes.
 - Hardware benchmark auto-apply requires local FastAPI. Deployed fallback cannot
   measure the viewer PC and returns `can_read_local_hardware: false`.
 - No-direct-evidence architecture answers use internal Homage context for

@@ -402,3 +402,48 @@
   - `docs/screenshots/104-large-graph-spacing-local.png`
   - `docs/screenshots/105-large-graph-final-local.png`
   - `docs/screenshots/108-production-node-target-visible.png`
+
+## 2026-06-11 - Infinite learning mode
+
+- Added an `∞` learning-volume preset beside 가볍게/표준/깊게/최대.
+- `∞` mode maps to 250,000 target ontology nodes, 2,000 scheduled chunks,
+  continuous text budget, and a 600-node representative 3D graph window.
+- Updated `POST /api/factory/build/start` so `∞` returns
+  `alpha-continuous-harvest`, marks Harvest and Ontology Forge as running, and
+  exposes `training_gate.continuous: true`.
+- Added cumulative learning time in the UI and changed Build Start into a
+  `학습 중지` control while continuous learning is active.
+- Changed live-synapse growth to support a rolling visual window: candidate
+  nodes keep accumulating, while the rendered 3D graph stays capped so the
+  browser can handle long sessions.
+- Clarified the Alpha learning model: it does not learn from random sentences;
+  it chunks accepted/reference text, extracts concept candidates, generates
+  typed relations, and currently visualizes continual growth deterministically
+  until durable graph-event persistence is added.
+- Verified:
+  - `npm --workspace apps/web run build`
+  - full Alpha Python suite with explicit `PYTHONPATH`: 60 passed
+  - `git diff --check`
+  - local API `POST /api/factory/build/start` with `learning_volume: infinite`
+  - local browser at `http://127.0.0.1:3028`
+- Browser verification:
+  - `∞` selection changed the target-node input to `250000`
+  - continuous build showed `∞ 지속 학습`, elapsed time, collection rounds, and
+    candidate-node accumulation
+  - after 42 seconds, visible graph stayed at `600/600` representative nodes
+    while candidates reached `702`
+  - stopping changed the header back to `빌드 시작` and preserved the stopped
+    elapsed state
+- Deployed production:
+  https://web-96k7ncdo7-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified production API and browser UI:
+  - `learning_volume: infinite` returned `alpha-continuous-harvest`
+  - production browser showed `∞ 지속 학습 0분 19초`, 12 collection rounds,
+    588 accumulated candidate nodes, and the `학습 중지` stop control
+- Captured screenshots:
+  - `docs/screenshots/109-infinite-learning-selected-local.png`
+  - `docs/screenshots/110-infinite-learning-running-local.png`
+  - `docs/screenshots/111-infinite-learning-stopped-local.png`
+  - `docs/screenshots/112-infinite-learning-production.png`

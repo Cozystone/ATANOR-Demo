@@ -10,7 +10,7 @@ type HarvestDoc = {
   license_status: string;
 };
 
-type LearningVolume = "lite" | "standard" | "deep" | "max";
+type LearningVolume = "lite" | "standard" | "deep" | "max" | "infinite";
 
 type LearningPreset = {
   chunkBudget: number;
@@ -66,6 +66,7 @@ const learningPresets: Record<LearningVolume, LearningPreset> = {
   standard: { chunkBudget: 128, label: "표준", targetNodes: 10_000, textBudgetChars: 48_000, textBudgetLabel: "48k chars", visualNodeBudget: 24 },
   deep: { chunkBudget: 384, label: "깊게", targetNodes: 25_000, textBudgetChars: 160_000, textBudgetLabel: "160k chars", visualNodeBudget: 36 },
   max: { chunkBudget: 768, label: "최대", targetNodes: 50_000, textBudgetChars: 420_000, textBudgetLabel: "420k chars", visualNodeBudget: 48 },
+  infinite: { chunkBudget: 2000, label: "∞", targetNodes: 250_000, textBudgetChars: 2_400_000, textBudgetLabel: "continuous", visualNodeBudget: 600 },
 };
 
 const memoryTopics = [
@@ -105,13 +106,16 @@ function learningPresetFor(value: unknown, targetNodesInput?: unknown): Learning
   const id = typeof value === "string" && value in learningPresets ? value as LearningVolume : "standard";
   const base = learningPresets[id];
   const targetNodes = boundedNumber(targetNodesInput, base.targetNodes ?? 10_000, 100, 250_000);
+  const visualLimit = id === "infinite" ? 600 : 360;
   const visualNodeBudget = Math.max(
     base.visualNodeBudget,
-    Math.min(360, Math.round(Math.sqrt(targetNodes) * 2.1)),
+    Math.min(visualLimit, Math.round(Math.sqrt(targetNodes) * 2.1)),
   );
   const chunkBudget = Math.max(base.chunkBudget, Math.min(2_000, Math.round(targetNodes / 12)));
   const textBudgetChars = Math.max(base.textBudgetChars, Math.min(2_400_000, targetNodes * 9));
-  const textBudgetLabel = textBudgetChars >= 1_000_000
+  const textBudgetLabel = id === "infinite"
+    ? "continuous"
+    : textBudgetChars >= 1_000_000
     ? `${Number((textBudgetChars / 1_000_000).toFixed(1))}m chars`
     : `${Math.round(textBudgetChars / 1000)}k chars`;
   return { id, ...base, chunkBudget, targetNodes, textBudgetChars, textBudgetLabel, visualNodeBudget };
@@ -261,16 +265,21 @@ export async function POST(request: Request) {
     evidence_count: docs.length,
     text_budget_chars: learningPreset.textBudgetChars,
     ready: nodes.length >= 8 && edges.length >= 7,
-    render_strategy: "chunk budget grows independently; 3D graph renders sampled representative memory nodes.",
+    render_strategy: learningPreset.id === "infinite"
+      ? "continuous collection accumulates graph events; 3D renders a rolling frontier plus stable anchors."
+      : "chunk budget grows independently; 3D graph renders sampled representative memory nodes.",
     visual_node_budget: learningPreset.visualNodeBudget,
     target_nodes: learningPreset.targetNodes,
-    next_action: "Homage Oven dry-run starts after Guardrail approves evidence bundle.",
+    continuous: learningPreset.id === "infinite",
+    next_action: learningPreset.id === "infinite"
+      ? "Continue Harvest/DataGate/Ontology growth until the operator presses stop."
+      : "Homage Oven dry-run starts after Guardrail approves evidence bundle.",
   };
 
   return NextResponse.json({
     run_id: `build-${Date.now()}`,
     generated_at: generatedAt,
-    mode: "alpha-live-harvest",
+    mode: learningPreset.id === "infinite" ? "alpha-continuous-harvest" : "alpha-live-harvest",
     harvest_docs: docs,
     learning_profile: {
       id: learningPreset.id,
@@ -286,9 +295,9 @@ export async function POST(request: Request) {
     graph_frames: graphFrames,
     training_gate: trainingGate,
     learning_trace: [
-      { step: "Harvest", state: "complete", detail: `${docs.length} reference sources captured / ${trainingUnits.length} text chunks scheduled` },
+      { step: "Harvest", state: learningPreset.id === "infinite" ? "running" : "complete", detail: `${docs.length} reference sources captured / ${trainingUnits.length} text chunks scheduled` },
       { step: "DataGate", state: "complete", detail: `${learningPreset.textBudgetLabel} text budget passed through compressed chunk routing` },
-      { step: "Ontology Forge", state: "complete", detail: `${nodes.length} representative nodes and ${edges.length} typed relations created` },
+      { step: "Ontology Forge", state: learningPreset.id === "infinite" ? "running" : "complete", detail: `${nodes.length} representative nodes and ${edges.length} typed relations created` },
       { step: "GraphRAG", state: "complete", detail: "Anchor traversal path and evidence bundle generated" },
       { step: "Homage Oven", state: trainingGate.ready ? "ready" : "waiting", detail: trainingGate.next_action },
     ],

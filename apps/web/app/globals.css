@@ -601,6 +601,18 @@ p {
   color: var(--orange);
 }
 
+.learning-volume-switcher button[data-infinite="true"] {
+  min-width: 32px;
+  border-color: rgba(17, 23, 21, 0.18);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.learning-volume-switcher button[data-infinite="true"][data-active="true"] {
+  background: #111715;
+  color: #fff;
+}
+
 .node-target-input {
   display: flex;
   align-items: center;
