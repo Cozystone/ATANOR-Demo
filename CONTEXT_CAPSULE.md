@@ -2,67 +2,76 @@
 
 ## Current Objective
 
-Create the Homage1.0 repo skeleton with runnable FastAPI and Next.js apps.
+Homage1.0 Alpha end-to-end MVP is implemented, verified, and deployed.
 
 ## Current Branch
 
-No Git repository is initialized in this workspace.
+`feature/datagate-v0`
 
 ## Last Commit
 
-None.
+Latest local commit: Build Homage Alpha MVP
+
+## Deployment
+
+- https://web-2sdqapqzo-anthony-kims-projects-bc874109.vercel.app
 
 ## Relevant Files
 
-- `docs/Homage1.0_PRD.md`
 - `apps/api/app/main.py`
+- `apps/api/app/services/alpha_services.py`
 - `apps/web/app/page.tsx`
-- `PROJECT_STATE.md`
-- `TASK_BOARD.md`
-- `README.md`
+- `apps/web/app/api/_alphaDemo.ts`
+- `packages/ontology_forge`
+- `packages/rag_engine`
+- `packages/guard`
+- `packages/model`
+- `packages/trainer`
 
 ## What Changed
 
-- Added backend, frontend, docs, and handoff skeleton.
-- Implemented mock pipeline status endpoint and BakeBoard cards.
+- Added deterministic Alpha pipeline packages.
+- Added FastAPI endpoints for Ontology, GraphRAG, Guardrail, telemetry, and Oven dry-run.
+- Added unified BakeBoard Alpha UI with training loss visualization.
+- Added deployable Next.js fallback API routes.
+- Deployed and browser-tested the production app.
 
 ## Commands Run
 
-- Inspected workspace files.
-- Checked Node/npm and Python/pip versions.
-- Copied PRD into `docs/`.
-- Installed backend dependencies into `.venv`.
-- Installed frontend dependencies with `npm install`.
-- Ran `python -m compileall apps/api`.
-- Ran `npm --workspace apps/web run build`.
-- Started FastAPI on `127.0.0.1:8000`.
-- Started Next.js on `127.0.0.1:3000`.
-- Called `GET /api/pipeline/status` and fetched the dashboard root.
-- Opened the dashboard in the in-app browser and verified visible stage cards.
+- `pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer apps/api -q`
+- `python -m compileall ...`
+- `npm --workspace apps/web run build`
+- `npx vercel deploy --prod --yes --cwd apps/web`
 
 ## Test Results
 
-- Backend compile passed.
-- Next.js build passed.
-- API returned all seven mock pipeline stages.
-- Frontend returned HTTP 200.
-- Browser verification passed with no missing expected stage names.
+- 46 Python tests passed.
+- Python compile passed.
+- Frontend build passed.
+- Local browser verification passed.
+- Deployed browser verification passed.
 
 ## Current Blockers
 
-- None known. npm audit reports dependency findings that should be triaged separately.
+- None.
 
 ## Constraints / Non-goals
 
-- Keep this skeleton mock-only.
-- Do not implement DataGate, Ontology Forge, training, GraphRAG, or Guardrail internals yet.
+- No external paid APIs.
+- No web crawling.
+- No LLM judging.
+- No pretrained weights.
+- Homage Oven is a dry-run scaffold only.
 
 ## Next 3 Actions
 
-1. Install backend and frontend dependencies.
-2. Run both local apps.
-3. Smoke-test the API and dashboard.
+1. Commit Alpha changes.
+2. Consider persistent run history.
+3. Add document-level metadata browsing.
 
 ## What I Need From You
 
-No input needed for the skeleton. Future work needs DataGate MVP priorities.
+Review the deployed Alpha and choose the next milestone.
+
+
+

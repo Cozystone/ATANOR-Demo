@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type StageState = "idle" | "running" | "warning" | "complete";
+type AnyRecord = Record<string, any>;
 
 type PipelineStage = {
   id: string;
@@ -20,23 +21,6 @@ type PipelineStatus = {
   stages: PipelineStage[];
 };
 
-type DataGateState = "idle" | "running" | "completed" | "failed";
-
-type DataGateStatus = {
-  state: DataGateState;
-  run_id: string | null;
-  total: number;
-  accepted: number;
-  rejected: number;
-  rejection_breakdown: Record<string, number>;
-  started_at: string | null;
-  finished_at: string | null;
-  error: string | null;
-};
-
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
-
 const stateLabels: Record<StageState, string> = {
   idle: "Idle",
   running: "Running",
@@ -44,131 +28,164 @@ const stateLabels: Record<StageState, string> = {
   complete: "Complete",
 };
 
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.detail ?? body.error ?? `API returned ${response.status}`);
+  }
+  return body;
+}
+
+function percent(part: number, total: number) {
+  return total > 0 ? Math.round((part / total) * 100) : 0;
+}
+
+function fmtDate(value?: string | null) {
+  return value ? new Date(value).toLocaleString() : "waiting";
+}
+
+function LossChart({ losses }: { losses: Array<{ step: number; loss: number }> }) {
+  if (!losses?.length) {
+    return <div className="chart-empty">No dry-run trace</div>;
+  }
+  const maxLoss = Math.max(...losses.map((loss) => loss.loss));
+  const minLoss = Math.min(...losses.map((loss) => loss.loss));
+  const points = losses
+    .map((loss, index) => {
+      const x = losses.length === 1 ? 0 : (index / (losses.length - 1)) * 100;
+      const y = 92 - ((loss.loss - minLoss) / Math.max(0.001, maxLoss - minLoss)) * 76;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  return (
+    <svg className="loss-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Training loss trace">
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+      {losses.map((loss, index) => {
+        const x = losses.length === 1 ? 0 : (index / (losses.length - 1)) * 100;
+        const y = 92 - ((loss.loss - minLoss) / Math.max(0.001, maxLoss - minLoss)) * 76;
+        return <circle key={loss.step} cx={x} cy={y} r="2.4" />;
+      })}
+    </svg>
+  );
+}
+
+function StatusPill({ state }: { state?: string }) {
+  return (
+    <span className="state-badge" data-state={state ?? "idle"}>
+      {state ?? "idle"}
+    </span>
+  );
+}
+
 export default function BakeBoardPage() {
-  const [status, setStatus] = useState<PipelineStatus | null>(null);
-  const [datagateStatus, setDatagateStatus] = useState<DataGateStatus | null>(
-    null,
-  );
+  const [pipeline, setPipeline] = useState<PipelineStatus | null>(null);
+  const [datagate, setDatagate] = useState<AnyRecord | null>(null);
+  const [ontology, setOntology] = useState<AnyRecord | null>(null);
+  const [graph, setGraph] = useState<AnyRecord | null>(null);
+  const [graphrag, setGraphRag] = useState<AnyRecord | null>(null);
+  const [guard, setGuard] = useState<AnyRecord | null>(null);
+  const [gpu, setGpu] = useState<AnyRecord | null>(null);
+  const [system, setSystem] = useState<AnyRecord | null>(null);
+  const [oven, setOven] = useState<AnyRecord | null>(null);
+  const [query, setQuery] = useState("GraphRAG evidence guardrail");
+  const [draft, setDraft] = useState("GraphRAG always guarantees perfect answers with Evidence.");
   const [error, setError] = useState<string | null>(null);
-  const [datagateError, setDatagateError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadStatus() {
-      try {
-        const response = await fetch(`${apiBaseUrl}/api/pipeline/status`, {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error(`API returned ${response.status}`);
-        }
-
-        setStatus(await response.json());
-        setError(null);
-      } catch (caught) {
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Unable to load pipeline status",
-        );
-      }
-    }
-
-    loadStatus();
-    const timer = window.setInterval(loadStatus, 10000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  async function loadDataGateStatus() {
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/datagate/status`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
-      }
-
-      setDatagateStatus(await response.json());
-      setDatagateError(null);
-    } catch (caught) {
-      setDatagateError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to load DataGate status",
-      );
-    }
+  async function refreshAll() {
+    const [
+      pipelineStatus,
+      datagateStatus,
+      ontologyStatus,
+      ontologyGraph,
+      graphragStatus,
+      guardStatus,
+      gpuStatus,
+      systemStatus,
+      ovenStatus,
+    ] = await Promise.all([
+      fetchJson<PipelineStatus>("/api/pipeline/status"),
+      fetchJson<AnyRecord>("/api/datagate/status"),
+      fetchJson<AnyRecord>("/api/ontology/status"),
+      fetchJson<AnyRecord>("/api/ontology/graph"),
+      fetchJson<AnyRecord>("/api/graphrag/status"),
+      fetchJson<AnyRecord>("/api/guard/status"),
+      fetchJson<AnyRecord>("/api/telemetry/gpu"),
+      fetchJson<AnyRecord>("/api/telemetry/system"),
+      fetchJson<AnyRecord>("/api/oven/status"),
+    ]);
+    setPipeline(pipelineStatus);
+    setDatagate(datagateStatus);
+    setOntology(ontologyStatus);
+    setGraph(ontologyGraph);
+    setGraphRag(graphragStatus);
+    setGuard(guardStatus);
+    setGpu(gpuStatus);
+    setSystem(systemStatus);
+    setOven(ovenStatus);
   }
 
   useEffect(() => {
-    loadDataGateStatus();
+    refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load BakeBoard"));
+    const timer = window.setInterval(() => {
+      refreshAll().catch(() => undefined);
+    }, 10000);
+    return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (datagateStatus?.state !== "running") {
-      return;
-    }
-
-    const timer = window.setInterval(loadDataGateStatus, 2000);
-    return () => window.clearInterval(timer);
-  }, [datagateStatus?.state]);
-
-  async function runDataGate() {
-    setDatagateError(null);
+  async function runAction(action: () => Promise<unknown>) {
+    setError(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/api/datagate/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input_dir: "data/raw" }),
-      });
-
-      const body = await response.json();
-
-      if (!response.ok) {
-        throw new Error(body.detail ?? body.error ?? `API returned ${response.status}`);
-      }
-
-      await loadDataGateStatus();
+      await action();
+      await refreshAll();
     } catch (caught) {
-      setDatagateError(
-        caught instanceof Error ? caught.message : "Unable to start DataGate",
-      );
+      setError(caught instanceof Error ? caught.message : "Action failed");
     }
   }
 
-  const runningCount =
-    status?.stages.filter((stage) => stage.state === "running").length ?? 0;
-  const isDataGateRunning = datagateStatus?.state === "running";
-  const acceptRate =
-    datagateStatus && datagateStatus.total > 0
-      ? Math.round((datagateStatus.accepted / datagateStatus.total) * 100)
-      : 0;
-  const rejectionEntries = Object.entries(
-    datagateStatus?.rejection_breakdown ?? {},
-  );
+  const runningCount = pipeline?.stages.filter((stage) => stage.state === "running").length ?? 0;
+  const rejectedEntries = Object.entries(datagate?.rejection_breakdown ?? {});
+  const graphResult = graphrag?.result ?? null;
+  const guardResult = guard?.result ?? null;
+  const losses = oven?.losses ?? oven?.result?.losses ?? [];
+
+  const flowHealth = useMemo(() => {
+    const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
+    return Math.round((complete / 7) * 100);
+  }, [pipeline]);
 
   return (
     <main className="shell">
       <section className="masthead" aria-label="BakeBoard overview">
         <div>
-          <p className="eyebrow">Homage1.0</p>
+          <p className="eyebrow">Homage1.0 Alpha</p>
           <h1>BakeBoard</h1>
           <p className="lede">
-            A first-pass dashboard for watching the AI factory pipeline move
-            from raw ingredients to grounded answers.
+            Transparent AI factory controls for DataGate, Ontology Forge, GraphRAG,
+            Guardrail, GPU telemetry, and Homage-Core dry-run training.
           </p>
         </div>
         <div className="status-panel">
-          <span>System</span>
-          <strong>{status?.system_state ?? "connecting"}</strong>
+          <span>Factory</span>
+          <strong>{pipeline?.system_state ?? "connecting"}</strong>
           <small>{runningCount} stages running</small>
+          <div className="progress" aria-label={`${flowHealth}% alpha flow health`}>
+            <div style={{ width: `${flowHealth}%` }} />
+          </div>
         </div>
       </section>
 
-      {error ? <p className="error">API connection failed: {error}</p> : null}
+      {error ? <p className="error">Alpha action failed: {error}</p> : null}
 
       <section className="stage-grid" aria-label="Pipeline stages">
-        {status?.stages.map((stage) => (
+        {pipeline?.stages.map((stage) => (
           <article className="stage-card" data-state={stage.state} key={stage.id}>
             <div className="stage-card__topline">
               <h2>{stage.name}</h2>
@@ -193,79 +210,123 @@ export default function BakeBoardPage() {
           ))}
       </section>
 
-      <section className="datagate-panel" aria-label="DataGate controls">
-        <div className="datagate-panel__header">
-          <div>
-            <p className="eyebrow">Ingredient Room</p>
-            <h2>DataGate</h2>
+      <section className="control-grid" aria-label="Alpha controls">
+        <article className="alpha-panel alpha-panel--wide">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Ingredient Room</p>
+              <h2>DataGate</h2>
+            </div>
+            <button onClick={() => runAction(() => fetchJson("/api/datagate/run", { method: "POST", body: JSON.stringify({ input_dir: "data/raw" }) }))}>
+              Run
+            </button>
           </div>
-          <button
-            className="run-button"
-            disabled={isDataGateRunning}
-            onClick={runDataGate}
-            type="button"
-          >
-            {isDataGateRunning ? "Running..." : "Run"}
-          </button>
-        </div>
+          <div className="strip"><StatusPill state={datagate?.state} /><span>{datagate?.run_id ?? "No run"}</span><span>{fmtDate(datagate?.finished_at)}</span></div>
+          <div className="metric-grid">
+            <div className="metric-item"><span>Total docs</span><strong>{datagate?.total ?? 0}</strong></div>
+            <div className="metric-item"><span>Accepted</span><strong>{datagate?.accepted ?? 0}</strong></div>
+            <div className="metric-item"><span>Rejected</span><strong>{datagate?.rejected ?? 0}</strong></div>
+            <div className="metric-item"><span>Accept rate</span><strong>{percent(datagate?.accepted ?? 0, datagate?.total ?? 0)}%</strong></div>
+          </div>
+          <div className="mini-list">
+            <h3>Rejection Breakdown</h3>
+            {rejectedEntries.length ? rejectedEntries.map(([name, count]) => <div className="row" key={name}><span>{name}</span><strong>{String(count)}</strong></div>) : <p>No rejected documents.</p>}
+          </div>
+        </article>
 
-        <div className="datagate-status-strip">
-          <span className="state-badge" data-state={datagateStatus?.state ?? "idle"}>
-            {datagateStatus?.state ?? "idle"}
-          </span>
-          <span>{datagateStatus?.run_id ?? "No run yet"}</span>
-          <span>
-            Last run:{" "}
-            {datagateStatus?.finished_at
-              ? new Date(datagateStatus.finished_at).toLocaleString()
-              : "waiting"}
-          </span>
-        </div>
-
-        {datagateError ? (
-          <p className="error">DataGate failed: {datagateError}</p>
-        ) : null}
-        {datagateStatus?.error ? (
-          <p className="error">DataGate failed: {datagateStatus.error}</p>
-        ) : null}
-
-        <div className="metric-grid">
-          <div className="metric-item">
-            <span>Total docs</span>
-            <strong>{datagateStatus?.total ?? 0}</strong>
+        <article className="alpha-panel">
+          <div className="panel-header">
+            <div><p className="eyebrow">Ontology Lab</p><h2>Ontology Forge</h2></div>
+            <button onClick={() => runAction(() => fetchJson("/api/ontology/run", { method: "POST" }))}>Run</button>
           </div>
-          <div className="metric-item">
-            <span>Accepted</span>
-            <strong>{datagateStatus?.accepted ?? 0}</strong>
+          <div className="strip"><StatusPill state={ontology?.state} /><span>{ontology?.node_count ?? 0} nodes</span><span>{ontology?.edge_count ?? 0} edges</span></div>
+          <div className="graph-preview">
+            {(graph?.nodes ?? []).slice(0, 6).map((node: AnyRecord, index: number) => (
+              <span className="node-chip" key={`${node.id}-${index}`}>{node.label}</span>
+            ))}
           </div>
-          <div className="metric-item">
-            <span>Rejected</span>
-            <strong>{datagateStatus?.rejected ?? 0}</strong>
-          </div>
-          <div className="metric-item">
-            <span>Accept rate</span>
-            <strong>{acceptRate}%</strong>
-          </div>
-        </div>
-
-        <div className="breakdown">
-          <h3>Rejection Breakdown</h3>
-          {rejectionEntries.length > 0 ? (
-            rejectionEntries.map(([name, count]) => (
-              <div className="breakdown-row" key={name}>
-                <span>{name}</span>
-                <strong>{count}</strong>
+          <div className="mini-list">
+            <h3>Candidate Edges</h3>
+            {(graph?.edges ?? []).slice(0, 4).map((edge: AnyRecord, index: number) => (
+              <div className="row" key={`${edge.source}-${edge.target}-${index}`}>
+                <span>{edge.source} {edge.relation} {edge.target}</span>
+                <strong>{edge.confidence}</strong>
               </div>
-            ))
-          ) : (
-            <p>No rejected documents in the latest run.</p>
-          )}
-        </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="alpha-panel">
+          <div className="panel-header">
+            <div><p className="eyebrow">Oven Room</p><h2>Homage Oven</h2></div>
+            <button onClick={() => runAction(() => fetchJson("/api/oven/dry-run", { method: "POST" }))}>Dry Run</button>
+          </div>
+          <div className="strip"><StatusPill state={oven?.state} /><span>loss {oven?.last_loss ?? "none"}</span></div>
+          <LossChart losses={losses} />
+          <div className="train-meta">
+            <span>checkpoint</span>
+            <strong>{oven?.checkpoint_path ?? "not written"}</strong>
+          </div>
+        </article>
+
+        <article className="alpha-panel alpha-panel--wide">
+          <div className="panel-header">
+            <div><p className="eyebrow">Trace Room</p><h2>GraphRAG</h2></div>
+            <button onClick={() => runAction(() => fetchJson("/api/graphrag/query", { method: "POST", body: JSON.stringify({ query }) }))}>Query</button>
+          </div>
+          <input className="text-input" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <div className="strip"><StatusPill state={graphrag?.state} /><span>confidence {graphrag?.confidence ?? 0}</span><span>{graphrag?.last_query ?? "No query"}</span></div>
+          <div className="split-list">
+            <div className="mini-list">
+              <h3>Matched Nodes</h3>
+              {(graphResult?.matched_nodes ?? []).slice(0, 5).map((node: AnyRecord) => <div className="row" key={node.id}><span>{node.label}</span><strong>{node.confidence ?? ""}</strong></div>)}
+            </div>
+            <div className="mini-list">
+              <h3>Evidence Docs</h3>
+              {(graphResult?.evidence_docs ?? []).slice(0, 3).map((doc: AnyRecord) => <div className="evidence" key={doc.doc_id}><strong>{doc.doc_id}</strong><span>{doc.snippet}</span></div>)}
+            </div>
+          </div>
+        </article>
+
+        <article className="alpha-panel alpha-panel--wide">
+          <div className="panel-header">
+            <div><p className="eyebrow">Inspector</p><h2>Guardrail</h2></div>
+            <button onClick={() => runAction(() => fetchJson("/api/guard/check", { method: "POST", body: JSON.stringify({ draft_answer: draft, evidence_bundle: graphResult }) }))}>Check</button>
+          </div>
+          <textarea className="draft-input" value={draft} onChange={(event) => setDraft(event.target.value)} />
+          <div className="strip"><StatusPill state={guard?.state} /><span>guard score {guard?.overall_guard_score ?? 0}</span></div>
+          <div className="mini-list">
+            <h3>Claims</h3>
+            {(guardResult?.claims ?? []).map((claim: AnyRecord, index: number) => (
+              <div className="claim-row" data-support={claim.support} key={`${claim.claim}-${index}`}>
+                <span>{claim.claim}</span>
+                <strong>{claim.support}</strong>
+              </div>
+            ))}
+            {(guardResult?.warnings ?? []).map((warning: string) => <p className="warning-text" key={warning}>{warning}</p>)}
+          </div>
+        </article>
+
+        <article className="alpha-panel">
+          <div className="panel-header">
+            <div><p className="eyebrow">Monitor</p><h2>GPU Monitor</h2></div>
+            <button onClick={() => runAction(refreshAll)}>Refresh</button>
+          </div>
+          <div className="gpu-gauge">
+            <div style={{ width: `${Math.min(100, gpu?.utilization ?? 0)}%` }} />
+          </div>
+          <div className="metric-grid metric-grid--compact">
+            <div className="metric-item"><span>GPU</span><strong>{gpu?.gpu_name ?? "Unknown"}</strong></div>
+            <div className="metric-item"><span>Util</span><strong>{gpu?.utilization ?? 0}%</strong></div>
+            <div className="metric-item"><span>VRAM</span><strong>{gpu?.vram_total ? `${gpu.vram_used}/${gpu.vram_total}` : "fallback"}</strong></div>
+            <div className="metric-item"><span>CPU</span><strong>{system?.cpu_count ?? "n/a"}</strong></div>
+          </div>
+          <p className="muted-line">{gpu?.message ?? "Telemetry online"}</p>
+        </article>
       </section>
 
       <footer>
-        Last update:{" "}
-        {status ? new Date(status.generated_at).toLocaleString() : "waiting"}
+        Last update: {pipeline ? new Date(pipeline.generated_at).toLocaleString() : "waiting"}
       </footer>
     </main>
   );

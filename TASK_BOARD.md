@@ -2,30 +2,26 @@
 
 ## Done
 
-- [x] Create shared docs folder.
-- [x] Move/copy PRD to `docs/Homage1.0_PRD.md`.
-- [x] Create FastAPI backend skeleton.
-- [x] Implement `GET /api/pipeline/status`.
-- [x] Create Next.js frontend skeleton.
-- [x] Render BakeBoard pipeline stage cards.
-- [x] Add README startup instructions.
-- [x] Add handoff and session documents.
-- [x] Verify both local apps run.
-
-## In Progress
-
-- [ ] Add backend tests.
+- [x] Repo skeleton and shared docs.
+- [x] FastAPI backend and Next.js BakeBoard.
+- [x] Seven-stage pipeline status endpoint.
+- [x] DataGate core package and tests.
+- [x] DataGate API/UI wiring.
+- [x] Ontology Forge MVP.
+- [x] GraphRAG MVP.
+- [x] Guardrail MVP.
+- [x] Telemetry / GPU Monitor MVP.
+- [x] Homage-Core model scaffold.
+- [x] Homage Oven dry-run scaffold with loss trace.
+- [x] Unified BakeBoard Alpha UI.
+- [x] Vercel deployable Next API fallback.
+- [x] Local tests/build/browser verification.
+- [x] Deployed browser verification.
 
 ## Next
 
-- [ ] Add frontend smoke test or browser verification.
-- [ ] Add mock websocket event stream.
-- [ ] Draft DataGate MVP implementation brief.
-
-## Backlog
-
-- [ ] DataGate document quality scoring.
-- [ ] Ontology Forge graph prototype.
-- [ ] Homage Oven training loop skeleton.
-- [ ] GraphRAG trace panel.
-- [ ] Guardrail Inspector panel.
+- [ ] Persist run history.
+- [ ] Add document-level metadata browsing.
+- [ ] Add richer graph visualization.
+- [ ] Add tokenizer trainer MVP.
+- [ ] Revisit npm audit advisories.

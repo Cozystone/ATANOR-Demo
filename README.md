@@ -1,14 +1,30 @@
-# Homage1.0
+# Homage1.0 Alpha
 
-Homage1.0 is a transparent neuro-symbolic AI factory. This skeleton starts Phase 0 and Phase 1 from the PRD: a FastAPI backend, a Next.js BakeBoard frontend, shared repo documents, and a mock pipeline status API.
+Homage1.0 is a transparent neuro-symbolic AI factory MVP. Alpha includes a
+FastAPI backend, a Next.js BakeBoard dashboard, deterministic local pipeline
+packages, and a deployed interactive BakeBoard demo.
+
+Production demo:
+
+- https://web-2sdqapqzo-anthony-kims-projects-bc874109.vercel.app
 
 ## Repository Layout
 
 ```text
 apps/
-  api/    FastAPI backend
-  web/    Next.js BakeBoard dashboard
-docs/     PRD, architecture notes, ADRs, and shared docs
+  api/    FastAPI backend and Alpha routers
+  web/    Next.js BakeBoard dashboard and deployable API fallbacks
+packages/
+  datagate/
+  ontology_forge/
+  rag_engine/
+  guard/
+  model/
+  trainer/
+data/
+  raw/             local input documents
+  train_sample/    safe dry-run training sample
+docs/
 ```
 
 ## Start Backend
@@ -18,18 +34,17 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r apps/api/requirements.txt
 pip install -e "packages/datagate[dev]"
+pip install -e "packages/ontology_forge[dev]"
+pip install -e "packages/rag_engine[dev]"
+pip install -e "packages/guard[dev]"
+pip install -e "packages/model[dev]"
+pip install -e "packages/trainer[dev]"
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --app-dir apps/api
 ```
 
-Backend health:
-
-- http://127.0.0.1:8000/health
-- http://127.0.0.1:8000/api/pipeline/status
-- http://127.0.0.1:8000/api/datagate/status
-
 ## Start Frontend
 
-In a second terminal:
+In another terminal:
 
 ```bash
 cd apps/web
@@ -39,34 +54,59 @@ npm run dev
 
 Open http://localhost:3000.
 
-The frontend calls its own Next.js proxy route by default: `/api/pipeline/status`.
-That proxy forwards to the backend at `http://127.0.0.1:8000`.
+The frontend uses same-origin Next.js API routes. Locally those routes proxy to
+FastAPI at `API_BASE_URL` or `http://127.0.0.1:8000`; on Vercel they use a
+deterministic Alpha demo fallback so the deployed app is directly testable.
 
-Optional environment overrides:
+## Alpha Flow
 
-- `API_BASE_URL`: backend URL used by the Next.js proxy
-- `NEXT_PUBLIC_API_BASE_URL`: browser-visible API base URL, only needed if you want to bypass the proxy
+1. Put `.txt` or `.md` files in `data/raw`.
+2. Run DataGate from BakeBoard.
+3. Run Ontology Forge.
+4. Query GraphRAG.
+5. Check a draft in Guardrail.
+6. Inspect GPU telemetry or fallback.
+7. Run the Homage Oven dry-run scaffold.
 
-## Run DataGate
-
-1. Add local `.txt` or `.md` files under `data/raw`.
-2. Start the backend and frontend.
-3. Open BakeBoard and click **Run** in the DataGate panel.
-
-Outputs are rewritten on each run:
+Outputs:
 
 - `data/cleaned/{doc_id}.txt`
 - `data/rejected/{doc_id}.txt`
 - `data/metadata/documents.jsonl`
+- `data/ontology/nodes.json`
+- `data/ontology/edges.json`
+- `data/ontology/ontology_report.json`
+- `checkpoints/homage-core-30m-dev/manifest.json`
 
-DataGate is also available through:
+## Main APIs
 
-- `POST http://127.0.0.1:8000/api/datagate/run`
-- `GET http://127.0.0.1:8000/api/datagate/status`
+- `GET /api/pipeline/status`
+- `POST /api/datagate/run`
+- `GET /api/datagate/status`
+- `POST /api/ontology/run`
+- `GET /api/ontology/status`
+- `GET /api/ontology/graph`
+- `POST /api/graphrag/query`
+- `GET /api/graphrag/status`
+- `POST /api/guard/check`
+- `GET /api/guard/status`
+- `GET /api/telemetry/gpu`
+- `GET /api/telemetry/system`
+- `POST /api/oven/dry-run`
+- `GET /api/oven/status`
 
-## Development Notes
+## Verify
 
-- Source of truth PRD: `docs/Homage1.0_PRD.md`
-- Project state: `PROJECT_STATE.md`
-- Task tracking: `TASK_BOARD.md`
-- Cross-agent handoff: `HANDOFF_CODEX.md`, `HANDOFF_CLAUDE.md`, `CONTEXT_CAPSULE.md`
+```bash
+.venv\Scripts\python.exe -m pytest packages\datagate packages\ontology_forge packages\rag_engine packages\guard packages\model packages\trainer apps\api -q
+.venv\Scripts\python.exe -m compileall apps\api packages\datagate\datagate packages\ontology_forge\ontology_forge packages\rag_engine\rag_engine packages\guard\guard packages\model\model packages\trainer\trainer
+npm --workspace apps/web run build
+```
+
+## Notes
+
+- No external paid APIs.
+- No web crawling.
+- No LLM judging.
+- No pretrained model weights.
+- Homage Oven is a safe dry-run scaffold, not real long training.

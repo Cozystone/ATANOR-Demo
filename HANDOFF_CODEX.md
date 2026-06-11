@@ -2,66 +2,54 @@
 
 ## Change Report
 
-### Changed Files
+### Implemented
 
-- `README.md`
-- `PROJECT_STATE.md`
-- `HANDOFF_CODEX.md`
-- `SESSION_LOG.md`
-- `.gitignore`
-- `data/raw/.gitkeep`
-- `apps/api/app/main.py`
-- `apps/api/app/routers/__init__.py`
-- `apps/api/app/routers/datagate.py`
-- `apps/api/app/services/__init__.py`
-- `apps/api/app/services/datagate_service.py`
-- `apps/api/requirements.txt`
-- `apps/api/tests/conftest.py`
-- `apps/api/tests/test_datagate_api.py`
-- `apps/web/app/page.tsx`
-- `apps/web/app/globals.css`
-- `apps/web/app/api/datagate/run/route.ts`
-- `apps/web/app/api/datagate/status/route.ts`
+- Added Alpha packages:
+  - `packages/ontology_forge`
+  - `packages/rag_engine`
+  - `packages/guard`
+  - `packages/model`
+  - `packages/trainer`
+- Added FastAPI routers:
+  - `/api/ontology/*`
+  - `/api/graphrag/*`
+  - `/api/guard/*`
+  - `/api/telemetry/*`
+  - `/api/oven/*`
+- Updated `/api/pipeline/status` to reflect real Alpha stage states.
+- Rebuilt BakeBoard as a unified Alpha dashboard.
+- Added training loss visualization for Homage Oven dry-run.
+- Added Next.js API fallback routes so the Vercel deployment is interactive.
+- Added sample local raw docs and training sample text.
+- Added Vercel config for `apps/web`.
 
-### Implementation
+### Deployment
 
-- FastAPI now exposes DataGate endpoints under `/api/datagate`.
-- `datagate_service.py` wraps the standalone `packages/datagate` core without
-  adding FastAPI imports to the core package.
-- `POST /api/datagate/run` starts a background DataGate run and returns `202`.
-- `GET /api/datagate/status` returns idle/running/completed/failed status with
-  run id, totals, accepted/rejected counts, rejection breakdown, timestamps, and
-  error.
-- `GET /api/pipeline/status` still returns seven stages; DataGate now reflects
-  real run state while the other six stages remain mocked.
-- Next.js proxies `/api/datagate/run` and `/api/datagate/status` to FastAPI.
-- BakeBoard includes a DataGate panel with Run button, polling status, summary
-  metrics, accept rate, rejection breakdown, timestamp, and error display.
+- Production URL: https://web-2sdqapqzo-anthony-kims-projects-bc874109.vercel.app
+- Vercel deployment id: `dpl_EtPEikV8mzw1kyA55uhdj1R7YEUZ`
+- Target: production
+- Status: READY
 
 ### Commands Run
 
-- `.venv\Scripts\pip.exe install -r apps\api\requirements.txt -e "packages/datagate[dev]"`
-- `.venv\Scripts\python.exe -m compileall apps\api packages\datagate\datagate`
-- `.venv\Scripts\python.exe -m pytest packages\datagate apps\api -q`
+- `pip install -e "packages/datagate[dev]" -e "packages/ontology_forge[dev]" -e "packages/rag_engine[dev]" -e "packages/guard[dev]" -e "packages/model[dev]" -e "packages/trainer[dev]"`
+- `python -m pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer apps/api -q`
+- `python -m compileall apps/api packages/datagate/datagate packages/ontology_forge/ontology_forge packages/rag_engine/rag_engine packages/guard/guard packages/model/model packages/trainer/trainer`
 - `npm --workspace apps/web run build`
-- Local smoke with backend on `127.0.0.1:8001` and frontend on
-  `127.0.0.1:3001`
+- `npx vercel deploy --prod --yes --cwd apps/web`
 
 ### Test Results
 
-- Python compile passed.
-- DataGate core and API tests passed: 40 tests.
-- Frontend production build passed.
-- Runtime smoke passed: DataGate run/status worked, pipeline status returned
-  seven stages, Next proxy worked, and the BakeBoard DataGate panel could start
-  a run from the UI.
+- Python tests: 46 passed.
+- Python compile: passed.
+- Frontend build: passed.
+- Local runtime smoke: passed.
+- Local browser verification: passed.
+- Deployed browser verification: passed.
 
 ### Remaining Review Questions
 
-- The API service creates a running-state id immediately, then stores the core
-  `PipelineRunner` report id on completion. Decide later whether strict id
-  continuity should be added to DataGate core.
-- Run state is in-memory and single-process only.
-- No document-level browsing UI yet; output metadata remains inspectable on
-  disk.
-- npm audit still reports 2 moderate and 2 critical findings.
+- Whether to persist pipeline state with SQLite.
+- Whether Vercel demo fallback should remain separate from local FastAPI state.
+- How much document-level browsing belongs in Alpha versus Beta.
+- Whether to replace the dry-run scaffold with a real local tokenizer/training loop next.

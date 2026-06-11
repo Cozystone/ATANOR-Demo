@@ -9,6 +9,8 @@ __pycache__/
 data/cleaned/
 data/rejected/
 data/metadata/
+data/ontology/
+checkpoints/
 *.log
 .env
 .env.*

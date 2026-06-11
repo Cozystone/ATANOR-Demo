@@ -56,3 +56,17 @@
 - Ran local smoke on backend `8001` and frontend `3001`; verified DataGate
   run/status, seven-stage pipeline status, Next proxy status, and BakeBoard UI
   Run button.
+
+## 2026-06-11 - Homage1.0 Alpha end-to-end
+
+- Implemented Ontology Forge, GraphRAG, Guardrail, telemetry, model scaffold,
+  and trainer dry-run packages.
+- Added FastAPI routers and services for all Alpha panels.
+- Rebuilt BakeBoard into a unified single-page Alpha dashboard.
+- Added deployed Next.js API fallback routes so the Vercel app works without
+  local FastAPI.
+- Added sample raw documents and training sample data.
+- Verified 46 Python tests, Python compile, and frontend build.
+- Ran local end-to-end smoke through DataGate, Ontology, GraphRAG, Guardrail,
+  telemetry, Oven dry-run, pipeline status, and browser UI.
+- Deployed to Vercel and verified the deployment in-browser.

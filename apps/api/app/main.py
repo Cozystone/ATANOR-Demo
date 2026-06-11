@@ -6,6 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.routers.datagate import router as datagate_router
+from app.routers.graphrag import router as graphrag_router
+from app.routers.guard import router as guard_router
+from app.routers.ontology import router as ontology_router
+from app.routers.oven import router as oven_router
+from app.routers.telemetry import router as telemetry_router
+from app.services.alpha_services import alpha_service, telemetry_gpu
 from app.services.datagate_service import DataGateStatus, datagate_service
 
 StageState = Literal["idle", "running", "warning", "complete"]
@@ -45,6 +51,11 @@ app.add_middleware(
 )
 
 app.include_router(datagate_router)
+app.include_router(ontology_router)
+app.include_router(graphrag_router)
+app.include_router(guard_router)
+app.include_router(telemetry_router)
+app.include_router(oven_router)
 
 
 def datagate_stage(status: DataGateStatus) -> PipelineStage:
@@ -78,6 +89,30 @@ def datagate_stage(status: DataGateStatus) -> PipelineStage:
         progress=progress,
         summary=summary,
         metric_label="quality gate",
+        metric_value=metric_value,
+    )
+
+
+def alpha_stage(
+    stage_id: str,
+    name: str,
+    status: dict,
+    idle_summary: str,
+    done_summary: str,
+    metric_label: str,
+    metric_value: str,
+) -> PipelineStage:
+    state = status.get("state", "idle")
+    stage_state: StageState = (
+        "running" if state == "running" else "complete" if state == "completed" else "warning" if state == "failed" else "idle"
+    )
+    return PipelineStage(
+        id=stage_id,
+        name=name,
+        state=stage_state,
+        progress=100 if state == "completed" else 50 if state == "running" else 0 if state == "idle" else 100,
+        summary=done_summary if state == "completed" else status.get("error") or idle_summary,
+        metric_label=metric_label,
         metric_value=metric_value,
     )
 
@@ -148,10 +183,63 @@ def health() -> dict[str, str]:
 @app.get("/api/pipeline/status", response_model=PipelineStatus)
 def pipeline_status() -> PipelineStatus:
     datagate_status = datagate_service.status()
+    ontology_status = alpha_service.ontology_status()
+    graphrag_status = alpha_service.graphrag_status()
+    guard_status = alpha_service.guard_status()
+    oven_status = alpha_service.oven_status()
+    gpu_status = telemetry_gpu()
     stages = [
         MOCK_STAGES[0],
         datagate_stage(datagate_status),
-        *MOCK_STAGES[1:],
+        alpha_stage(
+            "ontology-forge",
+            "Ontology Forge",
+            ontology_status,
+            "Ready to extract concept nodes and relation edges from cleaned documents.",
+            "Ontology graph files are available for GraphRAG.",
+            "graph",
+            f"{ontology_status.get('node_count', 0)} nodes / {ontology_status.get('edge_count', 0)} edges",
+        ),
+        alpha_stage(
+            "homage-oven",
+            "Homage Oven",
+            oven_status,
+            "Training scaffold is ready for a safe dry-run.",
+            "Dry-run produced a loss trace and checkpoint manifest.",
+            "last loss",
+            str(oven_status.get("last_loss") or "not run"),
+        ),
+        alpha_stage(
+            "graphrag",
+            "GraphRAG",
+            graphrag_status,
+            "Ready to retrieve evidence from cleaned docs and ontology graph.",
+            "Latest query produced an inspectable evidence bundle.",
+            "confidence",
+            str(graphrag_status.get("confidence") or 0),
+        ),
+        alpha_stage(
+            "guardrail",
+            "Guardrail",
+            guard_status,
+            "Ready to check draft claims against evidence and ontology.",
+            "Latest guard report is available.",
+            "guard score",
+            str(guard_status.get("overall_guard_score") or 0),
+        ),
+        PipelineStage(
+            id="gpu-monitor",
+            name="GPU Monitor",
+            state="complete" if gpu_status.get("available") else "warning",
+            progress=100 if gpu_status.get("available") else 35,
+            summary=gpu_status.get("message") or "Local GPU telemetry is available.",
+            metric_label="vram",
+            metric_value=(
+                f"{gpu_status.get('vram_used', 0)} / {gpu_status.get('vram_total', 0)} MB"
+                if gpu_status.get("available")
+                else "fallback"
+            ),
+        ),
     ]
     return PipelineStatus(
         generated_at=datetime.now(timezone.utc),
