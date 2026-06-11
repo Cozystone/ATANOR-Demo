@@ -85,8 +85,11 @@ const liveGrowthTemplates = [
   { label: "수면 압축", type: "visualization", source: "3d", relation: "consolidates" },
 ];
 
+const maxLiveGrowthPulses = 24;
+const graphInspectionPulseCap = 12;
+
 function buildLiveGrowth(base: Rag3DGraph, pulseCount: number): Rag3DGraph {
-  const cappedPulseCount = clamp(pulseCount, 0, 144);
+  const cappedPulseCount = clamp(pulseCount, 0, maxLiveGrowthPulses);
   const liveNodes: Rag3DNode[] = [];
   const liveEdges = [];
   const baseIds = new Set(base.nodes.map((node) => node.id));
@@ -262,6 +265,7 @@ export default function BakeBoardPage() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("split");
   const [rightMode, setRightMode] = useState<RightMode>("process");
   const [autoChatOpened, setAutoChatOpened] = useState(false);
+  const [graphInspectionPulse, setGraphInspectionPulse] = useState<number | null>(null);
   const [pipeline, setPipeline] = useState<PipelineStatus | null>(null);
   const [datagate, setDatagate] = useState<AnyRecord | null>(null);
   const [ontology, setOntology] = useState<AnyRecord | null>(null);
@@ -356,10 +360,14 @@ export default function BakeBoardPage() {
   useEffect(() => {
     if (!buildRun) return;
     const timer = window.setInterval(() => {
-      setBuildTick((tick) => tick + 1);
+      setBuildTick((tick) => {
+        if (layoutMode === "graph") return tick;
+        const rawPulse = Math.max(0, tick - buildRun.graph_frames.length + 1);
+        return rawPulse >= maxLiveGrowthPulses ? tick : tick + 1;
+      });
     }, 1200);
     return () => window.clearInterval(timer);
-  }, [buildRun]);
+  }, [buildRun, layoutMode]);
 
   async function runAction(action: () => Promise<unknown>) {
     setError(null);
@@ -487,6 +495,7 @@ export default function BakeBoardPage() {
     setError(null);
     setIsBuilding(true);
     setBuildTick(0);
+    setGraphInspectionPulse(null);
     setGraphMode("3d");
     setLayoutMode("split");
     setRightMode("process");
@@ -533,14 +542,21 @@ export default function BakeBoardPage() {
   const memoryNodes = useMemo(() => makeMemoryNodes(graph), [graph]);
   const memoryEdges = useMemo(() => makeMemoryEdges(graph, memoryNodes), [graph, memoryNodes]);
   const memoryMap = useMemo(() => new Map(memoryNodes.map((node) => [node.id, node])), [memoryNodes]);
-  const growthPulseCount = buildRun ? Math.max(0, buildTick - buildRun.graph_frames.length + 1) : 0;
+  const rawGrowthPulseCount = buildRun ? Math.max(0, buildTick - buildRun.graph_frames.length + 1) : 0;
+  const growthPulseCount = Math.min(
+    layoutMode === "graph" && graphInspectionPulse !== null ? graphInspectionPulse : rawGrowthPulseCount,
+    layoutMode === "graph" ? graphInspectionPulseCap : maxLiveGrowthPulses,
+  );
   const activeBuildFrame = buildRun
     ? growthPulseCount > 0
       ? {
           tick: buildTick + 1,
           node_count: buildRun.graph_3d.nodes.length + growthPulseCount,
           edge_count: buildRun.graph_3d.edges.length + growthPulseCount,
-          message: `실시간 학습 pulse ${growthPulseCount}: 새 시냅스가 기억망에 연결되었습니다.`,
+          message:
+            rawGrowthPulseCount > growthPulseCount
+              ? `그래프 검사 모드: ${growthPulseCount}개 pulse에서 안정화했습니다.`
+              : `실시간 학습 pulse ${growthPulseCount}: 새 시냅스가 기억망에 연결되었습니다.`,
         }
       : buildRun.graph_frames?.[Math.min(buildTick, buildRun.graph_frames.length - 1)] ?? null
     : null;
@@ -672,8 +688,17 @@ export default function BakeBoardPage() {
     { time: fmtClock(), message: `효율 계획: estimated compute reduction ${energyReduction}%` },
   ];
 
+  function changeLayoutMode(mode: LayoutMode) {
+    if (mode === "graph" && buildRun) {
+      setGraphInspectionPulse(Math.min(rawGrowthPulseCount, graphInspectionPulseCap));
+    } else {
+      setGraphInspectionPulse(null);
+    }
+    setLayoutMode(mode);
+  }
+
   function resetConsole() {
-    setLayoutMode("split");
+    changeLayoutMode("split");
     setRightMode("chat");
     setSelectedMemory(null);
     setGraphView({ scale: 1, x: 0, y: 0 });
@@ -798,7 +823,7 @@ export default function BakeBoardPage() {
             ["split", "분할"],
             ["workbench", "워크벤치"],
           ].map(([mode, label]) => (
-            <button key={mode} data-active={layoutMode === mode} onClick={() => setLayoutMode(mode as LayoutMode)}>
+            <button key={mode} data-active={layoutMode === mode} onClick={() => changeLayoutMode(mode as LayoutMode)}>
               {label}
             </button>
           ))}
@@ -827,7 +852,7 @@ export default function BakeBoardPage() {
                 <span>{displayMemoryNodeCount} nodes</span>
                 <span>{displayMemoryEdgeCount} edges</span>
                 <button onClick={() => runAction(refreshAll)}>Refresh</button>
-                <button onClick={() => setLayoutMode(layoutMode === "graph" ? "split" : "graph")}>확대</button>
+                <button onClick={() => changeLayoutMode(layoutMode === "graph" ? "split" : "graph")}>확대</button>
                 <button data-active={graphMode === "3d"} onClick={() => setGraphMode(graphMode === "3d" ? "2d" : "3d")}>3D RAG</button>
               </div>
             </div>
@@ -892,16 +917,20 @@ export default function BakeBoardPage() {
                     return (
                       <g key={edge.id} onClick={() => setSelectedMemory(edge)}>
                         <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="memory-edge" />
-                        <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2} className="memory-edge-label">
-                          {edge.relation}
-                        </text>
+                        {memoryNodes.length <= 16 ? (
+                          <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2} className="memory-edge-label">
+                            {edge.relation}
+                          </text>
+                        ) : null}
                       </g>
                     );
                   })}
                   {memoryNodes.map((node) => (
                     <g key={node.id} className="memory-node" onClick={() => focusMemory(node)}>
                       <circle cx={node.x} cy={node.y} r="2.3" fill={node.color} />
-                      <text x={node.x + 2.8} y={node.y + 1.1}>{node.label.slice(0, 14)}</text>
+                      {!node.id.startsWith("live-synapse") || selectedMemory?.id === node.id ? (
+                        <text x={node.x + 2.8} y={node.y + 1.1}>{node.label.slice(0, memoryNodes.length > 16 ? 10 : 14)}</text>
+                      ) : null}
                     </g>
                   ))}
                 </g>

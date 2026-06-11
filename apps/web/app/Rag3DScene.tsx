@@ -47,7 +47,7 @@ const palette: Record<string, number> = {
   training: 0x111715,
 };
 
-function labelSprite(text: string) {
+function labelSprite(text: string, scale = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 128;
@@ -64,8 +64,12 @@ function labelSprite(text: string) {
   const texture = new THREE.CanvasTexture(canvas);
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(2.4, 0.6, 1);
+  sprite.scale.set(2.4 * scale, 0.6 * scale, 1);
   return sprite;
+}
+
+function shouldShowLabel(node: Rag3DNode) {
+  return !node.id.startsWith("live-synapse");
 }
 
 export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps) {
@@ -127,6 +131,7 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
 
     const nodeMap = new Map<string, THREE.Vector3>();
     const raycastMeshes: THREE.Mesh[] = [];
+    const labelScale = graph.nodes.length > 18 ? 0.72 : graph.nodes.length > 12 ? 0.84 : 1;
     for (const node of graph.nodes) {
       const position = new THREE.Vector3(node.x, node.y, node.z);
       nodeMap.set(node.id, position);
@@ -146,9 +151,11 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
       halo.position.copy(position);
       group.add(halo);
 
-      const sprite = labelSprite(node.label);
-      sprite.position.set(position.x + 0.32, position.y + 0.18, position.z);
-      group.add(sprite);
+      if (shouldShowLabel(node)) {
+        const sprite = labelSprite(node.label, labelScale);
+        sprite.position.set(position.x + 0.32, position.y + 0.18, position.z);
+        group.add(sprite);
+      }
     }
 
     const traversalPairs = new Set<string>();
