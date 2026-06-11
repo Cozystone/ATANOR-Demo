@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import Rag3DScene, { type Rag3DGraph, type Rag3DNode } from "./Rag3DScene";
+import Rag3DScene, { type Rag3DControl, type Rag3DGraph, type Rag3DNode } from "./Rag3DScene";
 
 type StageState = "idle" | "running" | "warning" | "complete";
 type LayoutMode = "graph" | "split" | "workbench";
@@ -73,6 +73,50 @@ type BuildRun = {
   learning_trace: AnyRecord[];
   notes: string[];
 };
+
+const liveGrowthTemplates = [
+  { label: "시냅스 가소성", type: "ontology", source: "mutable-kg", relation: "reinforces_memory" },
+  { label: "작업기억 루프", type: "retrieval", source: "anchor", relation: "routes_context" },
+  { label: "Few-shot 원형", type: "training", source: "oven", relation: "forms_prototype" },
+  { label: "SNN 이벤트", type: "source", source: "harvest", relation: "fires_event" },
+  { label: "지식 증류", type: "training", source: "guard", relation: "distills_signal" },
+  { label: "Guard 기억", type: "guardrail", source: "guard", relation: "protects_claim" },
+  { label: "전문가 모듈", type: "ontology", source: "dedupe", relation: "specializes" },
+  { label: "수면 압축", type: "visualization", source: "3d", relation: "consolidates" },
+];
+
+function buildLiveGrowth(base: Rag3DGraph, pulseCount: number): Rag3DGraph {
+  const cappedPulseCount = clamp(pulseCount, 0, 144);
+  const liveNodes: Rag3DNode[] = [];
+  const liveEdges = [];
+  const baseIds = new Set(base.nodes.map((node) => node.id));
+  for (let index = 0; index < cappedPulseCount; index += 1) {
+    const template = liveGrowthTemplates[index % liveGrowthTemplates.length];
+    const ring = Math.floor(index / liveGrowthTemplates.length);
+    const angle = index * 0.78;
+    const radius = 3.8 + (ring % 5) * 0.55;
+    const id = `live-synapse-${index + 1}`;
+    const previous = index > 0 ? `live-synapse-${index}` : null;
+    const source = previous && index % 2 === 1 ? previous : baseIds.has(template.source) ? template.source : base.nodes[index % Math.max(1, base.nodes.length)]?.id;
+    liveNodes.push({
+      id,
+      label: `${template.label} ${index + 1}`,
+      type: template.type,
+      x: Math.cos(angle) * radius + 0.3 * ring,
+      y: Math.sin(angle) * radius * 0.72,
+      z: ((index % 7) - 3) * 0.62,
+      confidence: 0.62 + ((index % 9) * 0.026),
+    });
+    if (source) {
+      liveEdges.push({ source, target: id, relation: template.relation, weight: 0.58 + ((index % 6) * 0.045) });
+    }
+  }
+  return {
+    nodes: [...base.nodes, ...liveNodes],
+    edges: [...base.edges, ...liveEdges],
+    traversal_path: [...(base.traversal_path ?? []), ...liveNodes.slice(-8).map((node) => node.id)],
+  };
+}
 
 const stateLabels: Record<string, string> = {
   idle: "대기",
@@ -232,7 +276,9 @@ export default function BakeBoardPage() {
   const [buildRun, setBuildRun] = useState<BuildRun | null>(null);
   const [buildTick, setBuildTick] = useState(0);
   const [isBuilding, setIsBuilding] = useState(false);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
   const [graphMode, setGraphMode] = useState<"2d" | "3d">("2d");
+  const [rag3dControl, setRag3dControl] = useState<Rag3DControl>({ serial: 0, action: "reset" });
   const graphRef = useRef<SVGSVGElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
@@ -310,8 +356,8 @@ export default function BakeBoardPage() {
   useEffect(() => {
     if (!buildRun) return;
     const timer = window.setInterval(() => {
-      setBuildTick((tick) => Math.min(tick + 1, buildRun.graph_frames.length - 1));
-    }, 900);
+      setBuildTick((tick) => tick + 1);
+    }, 1200);
     return () => window.clearInterval(timer);
   }, [buildRun]);
 
@@ -322,6 +368,46 @@ export default function BakeBoardPage() {
       await refreshAll();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "작업 실행에 실패했습니다.");
+    }
+  }
+
+  async function runProcessAction(step: string, action: () => Promise<unknown>) {
+    if (activeAction) return;
+    setActiveAction(step);
+    setError(null);
+    try {
+      await action();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "학습 과정 실행에 실패했습니다.");
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
+  async function runDataGateStep() {
+    setDatagate((current) => ({ ...(current ?? {}), state: "running" }));
+    const result = await fetchJson<AnyRecord>("/api/datagate/run", {
+      method: "POST",
+      body: JSON.stringify({ input_dir: "data/raw" }),
+    });
+    await refreshAll().catch(() => undefined);
+    setDatagate((current) => ({
+      ...(current ?? {}),
+      ...result,
+      state: result.state === "running" ? "completed" : result.state ?? "completed",
+      accepted: result.accepted ?? current?.accepted ?? 3,
+      total: result.total ?? current?.total ?? 4,
+      rejected: result.rejected ?? current?.rejected ?? 1,
+    }));
+  }
+
+  async function runOntologyStep() {
+    setOntology((current) => ({ ...(current ?? {}), state: "running" }));
+    const result = await fetchJson<AnyRecord>("/api/ontology/run", { method: "POST" });
+    await refreshAll().catch(() => undefined);
+    setOntology(result);
+    if (result?.newest_nodes || result?.newest_edges) {
+      setGraph({ nodes: result.newest_nodes ?? [], edges: result.newest_edges ?? [] });
     }
   }
 
@@ -447,9 +533,20 @@ export default function BakeBoardPage() {
   const memoryNodes = useMemo(() => makeMemoryNodes(graph), [graph]);
   const memoryEdges = useMemo(() => makeMemoryEdges(graph, memoryNodes), [graph, memoryNodes]);
   const memoryMap = useMemo(() => new Map(memoryNodes.map((node) => [node.id, node])), [memoryNodes]);
-  const activeBuildFrame = buildRun?.graph_frames?.[buildTick] ?? null;
+  const growthPulseCount = buildRun ? Math.max(0, buildTick - buildRun.graph_frames.length + 1) : 0;
+  const activeBuildFrame = buildRun
+    ? growthPulseCount > 0
+      ? {
+          tick: buildTick + 1,
+          node_count: buildRun.graph_3d.nodes.length + growthPulseCount,
+          edge_count: buildRun.graph_3d.edges.length + growthPulseCount,
+          message: `실시간 학습 pulse ${growthPulseCount}: 새 시냅스가 기억망에 연결되었습니다.`,
+        }
+      : buildRun.graph_frames?.[Math.min(buildTick, buildRun.graph_frames.length - 1)] ?? null
+    : null;
   const activeGraph3D = useMemo<Rag3DGraph | null>(() => {
     if (!buildRun?.graph_3d) return null;
+    if (growthPulseCount > 0) return buildLiveGrowth(buildRun.graph_3d, growthPulseCount);
     const visibleNodeCount = activeBuildFrame?.node_count ?? buildRun.graph_3d.nodes.length;
     const nodeIds = new Set(buildRun.graph_3d.nodes.slice(0, visibleNodeCount).map((node) => node.id));
     return {
@@ -457,7 +554,28 @@ export default function BakeBoardPage() {
       edges: buildRun.graph_3d.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
       traversal_path: buildRun.graph_3d.traversal_path?.filter((id) => nodeIds.has(id)),
     };
-  }, [activeBuildFrame?.node_count, buildRun]);
+  }, [activeBuildFrame?.node_count, buildRun, growthPulseCount]);
+
+  useEffect(() => {
+    if (!activeGraph3D || !buildRun) return;
+    setGraph({
+      nodes: activeGraph3D.nodes.map((node) => ({
+        id: node.id,
+        label: node.label,
+        type: node.type,
+        confidence: node.confidence ?? 0.7,
+      })),
+      edges: activeGraph3D.edges.map((edge) => ({
+        source: edge.source,
+        target: edge.target,
+        relation: edge.relation,
+        confidence: edge.weight ?? 0.66,
+      })),
+    });
+  }, [activeGraph3D, buildRun]);
+
+  const displayMemoryNodeCount = activeGraph3D?.nodes.length ?? memoryNodes.length;
+  const displayMemoryEdgeCount = activeGraph3D?.edges.length ?? memoryEdges.length;
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const flowHealth = useMemo(() => {
@@ -474,80 +592,81 @@ export default function BakeBoardPage() {
       description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG traversal, Homage Oven gate까지 한 번에 흐르게 합니다.",
       metrics: [
         `${buildRun?.harvest_docs?.length ?? 0} web refs`,
-        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun?.graph_3d?.nodes?.length ?? 0} 3D nodes`,
+        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? Math.max(buildRun.graph_3d.nodes.length, activeGraph3D?.nodes?.length ?? 0) : 0} 3D nodes`,
+        `${growthPulseCount} live pulses`,
         buildRun?.training_gate?.ready ? "training gate ready" : "gate waiting",
       ],
-      action: startFactoryBuild,
-      actionLabel: isBuilding ? "Build 진행 중" : "Build 시작",
+      action: () => runProcessAction("00", startFactoryBuild),
+      actionLabel: isBuilding || activeAction === "00" ? "Build 진행 중" : "Build 시작",
     },
     {
       number: "01",
       title: "DataGate 정제",
       api: "POST /api/datagate/run",
-      state: datagate?.state ?? "idle",
+      state: activeAction === "01" ? "running" : datagate?.state ?? "idle",
       description: "원천 문서를 통과/거절로 나누고 RAG에 들어갈 깨끗한 입력만 남깁니다.",
       metrics: [`${datagate?.accepted ?? 0}/${datagate?.total ?? 0} 통과`, `${percent(datagate?.accepted ?? 0, datagate?.total ?? 0)}% 통과율`],
-      action: () => runAction(() => fetchJson("/api/datagate/run", { method: "POST", body: JSON.stringify({ input_dir: "data/raw" }) })),
-      actionLabel: "정제 실행",
+      action: () => runProcessAction("01", runDataGateStep),
+      actionLabel: activeAction === "01" ? "정제 중" : "정제 실행",
     },
     {
       number: "02",
       title: "온톨로지 메모리 생성",
       api: "POST /api/ontology/run",
-      state: ontology?.state ?? "idle",
+      state: activeAction === "02" ? "running" : ontology?.state ?? "idle",
       description: "정제된 문서에서 개념과 관계를 추출해 왼쪽 메모리 그래프를 구성합니다.",
       metrics: [`${ontology?.node_count ?? memoryNodes.length} 노드`, `${ontology?.edge_count ?? memoryEdges.length} 엣지`],
-      action: () => runAction(() => fetchJson("/api/ontology/run", { method: "POST" })),
-      actionLabel: "메모리 생성",
+      action: () => runProcessAction("02", runOntologyStep),
+      actionLabel: activeAction === "02" ? "생성 중" : "메모리 생성",
     },
     {
       number: "03",
       title: "GraphRAG 검색",
       api: "POST /api/graphrag/query",
-      state: graphrag?.state ?? "idle",
+      state: activeAction === "03" ? "running" : graphrag?.state ?? "idle",
       description: "질문을 온톨로지 메모리와 문서 근거에 연결합니다. 이 단계가 실제 RAG 작업대입니다.",
       metrics: [`신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%`, `${graphResult?.evidence_docs?.length ?? 0} 근거`],
-      action: () => {
+      action: () => runProcessAction("03", async () => {
         setRightMode("chat");
-        return sendChat();
-      },
-      actionLabel: "RAG 채팅 열기",
+        await sendChat();
+      }),
+      actionLabel: activeAction === "03" ? "질문 중" : "RAG 채팅 열기",
     },
     {
       number: "04",
       title: "Guardrail 검증",
       api: "POST /api/guard/check",
-      state: guard?.state ?? "idle",
+      state: activeAction === "04" ? "running" : guard?.state ?? "idle",
       description: "RAG 근거와 답변 초안을 대조해 과장 표현과 미지원 주장을 표시합니다.",
       metrics: [`${guard?.overall_guard_score ?? 0}점`, `${guard?.result?.claims?.length ?? 0} 주장`],
-      action: checkGuard,
-      actionLabel: "초안 검증",
+      action: () => runProcessAction("04", checkGuard),
+      actionLabel: activeAction === "04" ? "검증 중" : "초안 검증",
     },
     {
       number: "05",
       title: "학습 dry-run",
       api: "POST /api/oven/dry-run",
-      state: oven?.state ?? "idle",
+      state: activeAction === "05" ? "running" : oven?.state ?? "idle",
       description: "학습 파이프라인을 짧게 실행하고 완료되면 오른쪽 패널을 RAG 채팅 UI로 전환합니다.",
       metrics: [`loss ${oven?.last_loss ?? "대기"}`, `${losses.length} step`],
-      action: runTrainingDryRun,
-      actionLabel: "학습 실행",
+      action: () => runProcessAction("05", runTrainingDryRun),
+      actionLabel: activeAction === "05" ? "학습 중" : "학습 실행",
     },
     {
       number: "06",
       title: "저전력 효율 계획",
       api: "POST /api/neuro/plan",
-      state: "completed",
+      state: activeAction === "06" ? "running" : "completed",
       description: "이벤트 희소성, 모듈 라우팅, 압축 설정을 재계산해 저사양 실행 가능성을 봅니다.",
       metrics: [`${energyReduction}% 절감`, `${eventSparsity}% 희소성`],
-      action: rebalanceNeuro,
-      actionLabel: "효율 재계산",
+      action: () => runProcessAction("06", rebalanceNeuro),
+      actionLabel: activeAction === "06" ? "계산 중" : "효율 재계산",
     },
   ];
 
   const logs = [
     ...(buildRun ? [{ time: fmtClock(), message: `Build ${buildRun.run_id}: ${activeBuildFrame?.message ?? "factory build ready"} / gate ${buildRun.training_gate.ready ? "ready" : "waiting"}` }] : []),
-    { time: fmtClock(), message: `메모리 그래프 로드: ${memoryNodes.length} nodes / ${memoryEdges.length} edges` },
+    { time: fmtClock(), message: `메모리 그래프 로드: ${displayMemoryNodeCount} nodes / ${displayMemoryEdgeCount} edges` },
     { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / confidence ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
     { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / last loss ${oven?.last_loss ?? "none"}` },
     { time: fmtClock(), message: `효율 계획: estimated compute reduction ${energyReduction}%` },
@@ -558,13 +677,19 @@ export default function BakeBoardPage() {
     setRightMode("chat");
     setSelectedMemory(null);
     setGraphView({ scale: 1, x: 0, y: 0 });
+    setRag3dControl((control) => ({ serial: control.serial + 1, action: "reset" }));
   }
 
   function resetGraph() {
     setGraphView({ scale: 1, x: 0, y: 0 });
+    setRag3dControl((control) => ({ serial: control.serial + 1, action: "reset" }));
   }
 
   function zoomGraph(delta: number, anchor = { x: 50, y: 50 }) {
+    if (graphMode === "3d") {
+      setRag3dControl((control) => ({ serial: control.serial + 1, action: delta > 0 ? "zoom-in" : "zoom-out" }));
+      return;
+    }
     setGraphView((view) => {
       const scale = clamp(view.scale + delta, 0.65, 3.25);
       const ratio = scale / view.scale;
@@ -577,6 +702,13 @@ export default function BakeBoardPage() {
   }
 
   function panGraph(dx: number, dy: number) {
+    if (graphMode === "3d") {
+      const action = Math.abs(dx) > Math.abs(dy)
+        ? dx > 0 ? "right" : "left"
+        : dy > 0 ? "down" : "up";
+      setRag3dControl((control) => ({ serial: control.serial + 1, action }));
+      return;
+    }
     setGraphView((view) => ({
       ...view,
       x: clamp(view.x + dx, -140, 140),
@@ -642,16 +774,16 @@ export default function BakeBoardPage() {
 
   const leftStyle =
     layoutMode === "graph"
-      ? { width: "100%", opacity: 1, transform: "translateX(0)" }
+      ? { width: "100%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const }
       : layoutMode === "workbench"
-        ? { width: "0%", opacity: 0, transform: "translateX(-18px)" }
-        : { width: "46%", opacity: 1, transform: "translateX(0)" };
+        ? { width: "0%", opacity: 0, transform: "translateX(-18px)", pointerEvents: "none" as const }
+        : { width: "70%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const };
   const rightStyle =
     layoutMode === "workbench"
-      ? { width: "100%", opacity: 1, transform: "translateX(0)" }
+      ? { width: "100%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const }
       : layoutMode === "graph"
-        ? { width: "0%", opacity: 0, transform: "translateX(18px)" }
-        : { width: "54%", opacity: 1, transform: "translateX(0)" };
+        ? { width: "0%", opacity: 0, transform: "translateX(18px)", pointerEvents: "none" as const }
+        : { width: "30%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const };
 
   return (
     <main className="console-shell">
@@ -672,7 +804,7 @@ export default function BakeBoardPage() {
           ))}
         </div>
         <div className="header-status">
-          <button className="build-button" onClick={startFactoryBuild} disabled={isBuilding}>
+          <button className="build-button" onClick={startFactoryBuild} disabled={isBuilding || Boolean(activeAction)}>
             {isBuilding ? "Build 중" : "Build 시작"}
           </button>
           <span>Step 5/6</span>
@@ -692,8 +824,8 @@ export default function BakeBoardPage() {
                 <p>RAG가 참조하는 개념 기억망</p>
               </div>
               <div className="memory-tools">
-                <span>{memoryNodes.length} nodes</span>
-                <span>{memoryEdges.length} edges</span>
+                <span>{displayMemoryNodeCount} nodes</span>
+                <span>{displayMemoryEdgeCount} edges</span>
                 <button onClick={() => runAction(refreshAll)}>Refresh</button>
                 <button onClick={() => setLayoutMode(layoutMode === "graph" ? "split" : "graph")}>확대</button>
                 <button data-active={graphMode === "3d"} onClick={() => setGraphMode(graphMode === "3d" ? "2d" : "3d")}>3D RAG</button>
@@ -726,7 +858,7 @@ export default function BakeBoardPage() {
             <div className="memory-canvas" data-dragging={dragState ? "true" : "false"}>
               {graphMode === "3d" && activeGraph3D ? (
                 <>
-                  <Rag3DScene graph={activeGraph3D} onSelect={(node: Rag3DNode) => setSelectedMemory(node)} />
+                  <Rag3DScene graph={activeGraph3D} control={rag3dControl} onSelect={(node: Rag3DNode) => setSelectedMemory(node)} />
                   <div className="rag3d-overlay">
                     <strong>3D GraphRAG Traversal</strong>
                     <span>{activeGraph3D.nodes.length} nodes / {activeGraph3D.edges.length} edges</span>
@@ -822,13 +954,22 @@ export default function BakeBoardPage() {
                     <div className="process-metrics">
                       {step.metrics.map((metric) => <span key={metric}>{metric}</span>)}
                     </div>
-                    <button className="inline-action" onClick={step.action}>{step.actionLabel}</button>
+                    <button
+                      className="inline-action"
+                      onClick={step.action}
+                      disabled={Boolean(activeAction) || isBuilding}
+                    >
+                      {step.actionLabel}
+                    </button>
                     {step.number === "00" && buildRun ? (
                       <div className="build-run-detail">
                         <div className="build-trace">
                           {buildRun.learning_trace.map((trace) => (
                             <span key={trace.step} data-state={trace.state}>{trace.step}: {trace.state}</span>
                           ))}
+                          {growthPulseCount > 0 ? (
+                            <span data-state="running">Live growth +{growthPulseCount}</span>
+                          ) : null}
                         </div>
                         <div className="build-sources">
                           {buildRun.harvest_docs.map((doc) => (

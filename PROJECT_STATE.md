@@ -38,6 +38,7 @@ Deployment:
   - Three.js 3D GraphRAG traversal visualization
   - Alpha training gate before Homage Oven dry-run handoff
   - evidence snippets carried into the RAG chat workbench
+  - continuous live-synapse growth pulses after Build Start
 - Build flow note: `docs/BUILD_FLOW_3D_RAG.md`.
 
 ## Verification
@@ -83,6 +84,15 @@ Deployment:
 - Deployed browser verification passed for `Build 시작`, 3D GraphRAG canvas
   rendering, drag/zoom interaction, training-gate display, and RAG evidence
   cards.
+- Compact console verification passed:
+  - split layout is now 70/30, measured as 1008px / 432px at 1440px width
+  - UI density was reduced across header, graph controls, process cards, chat,
+    and system log
+  - Build Start continues adding live-synapse nodes after the initial graph
+    frames
+  - Learning Process buttons show running state, update their cards directly,
+    and were verified locally and on the deployed alias
+  - Latest production deploy is aliased to `https://homage-alpha.vercel.app`
 
 ## Known Limitations
 
@@ -106,13 +116,17 @@ Deployment:
 - The 3D GraphRAG visual is a live client-side visualization of the Alpha
   graph/traversal contract; persistent vector storage, graph mutation history,
   and real continual-training events remain future work.
+- Live-synapse growth is currently a deterministic client-side Alpha simulation
+  of continual learning. It visually proves the growth loop, but persistent
+  graph mutation storage and real training updates are still next milestones.
 - npm audit still reports dependency advisories; no force fix applied.
 
 ## Next Recommended Milestone
 
 1. Persist Alpha run history and Build Start graph frames with SQLite.
-2. Add a real Harvest connector with source allowlists, robots policy, and
+2. Persist live-synapse graph mutations and replay them as a real learning
+   event stream.
+3. Add a real Harvest connector with source allowlists, robots policy, and
    deduped document provenance.
-3. Persist Knowledge Bakery vector/graph memory and graph mutation history.
-4. Log real event density from DataGate and GraphRAG traces.
-5. Run a small SpikingJelly SNN experiment against Homage event traces.
+4. Persist Knowledge Bakery vector/graph memory and graph mutation history.
+5. Log real event density from DataGate and GraphRAG traces.

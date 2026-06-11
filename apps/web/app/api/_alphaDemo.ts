@@ -247,7 +247,7 @@ export function demoPipelineStatus() {
 
 export function demoDataGateRun() {
   demoState.datagate = { ...demoState.datagate, state: "completed", run_id: `dg-demo-${Date.now()}`, started_at: now(), finished_at: now() };
-  return { run_id: demoState.datagate.run_id, state: "running" };
+  return demoState.datagate;
 }
 
 export function demoOntologyRun() {

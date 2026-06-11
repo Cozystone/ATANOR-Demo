@@ -184,3 +184,30 @@
 - Verified the deployed alias in-browser with screenshots for Build Start, 3D
   GraphRAG growth, drag/zoom interaction, training-gate display, and RAG
   evidence rendering.
+
+## 2026-06-11 - Compact console and continuous graph growth
+
+- Changed the default split console from an almost even split to a 70/30 layout
+  so the ontology/RAG memory graph dominates the screen while the process panel
+  stays compact.
+- Reduced UI density across the header, graph controls, process cards, chat
+  composer, evidence cards, and system log.
+- Added deterministic live-synapse growth pulses after Build Start so the 3D
+  RAG graph keeps adding nodes and edges instead of stopping at the initial
+  graph frames.
+- Wired Learning Process buttons through a common running-state wrapper and
+  direct result updates so DataGate, Ontology, GraphRAG, Guardrail, Oven, and
+  Neuro actions visibly respond in the deployed fallback UI.
+- Updated DataGate deployed fallback to return the completed run state instead
+  of a bare running marker.
+- Verified `npm --workspace apps/web run build`.
+- Verified locally in-browser:
+  - split ratio measured 1008px / 432px at 1440px width
+  - Build Start grew from the base graph into live pulses
+  - Learning Process buttons completed without errors
+- Deployed production:
+  https://web-2cq1iubf8-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified the deployed alias in-browser with compact 70/30 layout, live growth,
+  DataGate process-button execution, and no application errors.

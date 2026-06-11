@@ -28,11 +28,16 @@
       rotation, and node selection.
 - [x] Browser screenshots for Build Start, 3D graph growth, graph controls, and
       RAG evidence rendering.
+- [x] Compact 70/30 console layout with smaller controls and cards.
+- [x] Continuous live-synapse graph growth after Build Start.
+- [x] Learning Process buttons now show running state and update card results
+      immediately in deployed fallback mode.
 
 ## Next
 
 - [ ] Persist run history.
 - [ ] Persist Build Start graph frames and source provenance.
+- [ ] Persist live-synapse growth pulses as durable learning events.
 - [ ] Replace allowlisted reference fetch with governed Harvest connectors.
 - [ ] Add document-level metadata browsing.
 - [ ] Add graph mutation timeline and replay.

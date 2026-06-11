@@ -26,8 +26,14 @@ export type Rag3DGraph = {
   traversal_path?: string[];
 };
 
+export type Rag3DControl = {
+  serial: number;
+  action: "zoom-in" | "zoom-out" | "left" | "right" | "up" | "down" | "reset";
+};
+
 type Rag3DSceneProps = {
   graph: Rag3DGraph | null;
+  control?: Rag3DControl;
   onSelect?: (node: Rag3DNode) => void;
 };
 
@@ -62,13 +68,33 @@ function labelSprite(text: string) {
   return sprite;
 }
 
-export default function Rag3DScene({ graph, onSelect }: Rag3DSceneProps) {
+export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const groupRef = useRef<THREE.Group | null>(null);
 
   useEffect(() => {
     selectRef.current = onSelect;
   }, [onSelect]);
+
+  useEffect(() => {
+    if (!control) return;
+    const camera = cameraRef.current;
+    const group = groupRef.current;
+    if (!camera || !group) return;
+
+    if (control.action === "zoom-in") camera.position.z = Math.max(5.2, camera.position.z - 1.1);
+    if (control.action === "zoom-out") camera.position.z = Math.min(25, camera.position.z + 1.1);
+    if (control.action === "left") group.rotation.y -= 0.22;
+    if (control.action === "right") group.rotation.y += 0.22;
+    if (control.action === "up") group.rotation.x -= 0.18;
+    if (control.action === "down") group.rotation.x += 0.18;
+    if (control.action === "reset") {
+      camera.position.set(0, 0, 13);
+      group.rotation.set(0, 0, 0);
+    }
+  }, [control]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -79,6 +105,7 @@ export default function Rag3DScene({ graph, onSelect }: Rag3DSceneProps) {
     scene.background = new THREE.Color(0xf8faf8);
     const camera = new THREE.PerspectiveCamera(48, container.clientWidth / Math.max(1, container.clientHeight), 0.1, 1000);
     camera.position.set(0, 0, 13);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -86,6 +113,7 @@ export default function Rag3DScene({ graph, onSelect }: Rag3DSceneProps) {
     container.replaceChildren(renderer.domElement);
 
     const group = new THREE.Group();
+    groupRef.current = group;
     scene.add(group);
     scene.add(new THREE.AmbientLight(0xffffff, 1.6));
     const light = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -220,6 +248,8 @@ export default function Rag3DScene({ graph, onSelect }: Rag3DSceneProps) {
       renderer.domElement.removeEventListener("wheel", handleWheel);
       renderer.dispose();
       container.replaceChildren();
+      cameraRef.current = null;
+      groupRef.current = null;
       scene.traverse((object) => {
         const mesh = object as THREE.Mesh;
         mesh.geometry?.dispose?.();
