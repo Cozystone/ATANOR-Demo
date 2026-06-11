@@ -74,7 +74,9 @@ h1 {
 }
 
 .status-panel,
-.stage-card {
+.stage-card,
+.datagate-panel,
+.metric-item {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(27, 32, 32, 0.9);
@@ -188,6 +190,113 @@ h1 {
   text-align: right;
 }
 
+.datagate-panel {
+  margin-top: 20px;
+  padding: 18px;
+}
+
+.datagate-panel__header,
+.datagate-status-strip,
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.datagate-panel__header {
+  margin-bottom: 16px;
+}
+
+.datagate-panel__header h2 {
+  margin-bottom: 0;
+  font-size: 1.4rem;
+}
+
+.run-button {
+  min-width: 92px;
+  border: 1px solid rgba(85, 192, 122, 0.68);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: rgba(85, 192, 122, 0.16);
+  color: var(--text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.run-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.datagate-status-strip {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+  color: var(--muted);
+}
+
+.state-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.state-badge[data-state="running"] {
+  border-color: rgba(99, 164, 255, 0.65);
+  color: #bdd7ff;
+}
+
+.state-badge[data-state="completed"] {
+  border-color: rgba(85, 192, 122, 0.65);
+  color: #aff0c4;
+}
+
+.state-badge[data-state="failed"] {
+  border-color: rgba(244, 122, 101, 0.65);
+  color: #ffd3cc;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-item {
+  display: grid;
+  gap: 8px;
+  min-height: 92px;
+  padding: 14px;
+}
+
+.metric-item span,
+.breakdown p {
+  color: var(--muted);
+}
+
+.metric-item strong {
+  font-size: 1.5rem;
+}
+
+.breakdown {
+  margin-top: 18px;
+}
+
+.breakdown h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.breakdown-row {
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+
 .stage-card--loading div {
   height: 18px;
   margin-bottom: 18px;
@@ -203,7 +312,8 @@ footer {
 
 @media (max-width: 860px) {
   .masthead,
-  .stage-grid {
+  .stage-grid,
+  .metric-grid {
     grid-template-columns: 1fr;
   }
 }

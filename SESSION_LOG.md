@@ -39,3 +39,20 @@
 - Updated `PROJECT_STATE.md`; created `HANDOFF_CLAUDE_CODE.md`.
 - Deferred (out of scope this milestone): API router/service, pipeline-status
   stage-1 hookup, BakeBoard panel, Next.js proxy routes.
+
+## 2026-06-11 - DataGate API/UI wiring
+
+- Wired DataGate core into FastAPI with `/api/datagate/run` and
+  `/api/datagate/status`.
+- Updated `/api/pipeline/status` so DataGate reflects real run state while the
+  other six stages remain mocked.
+- Added Next.js DataGate proxy routes.
+- Added a BakeBoard DataGate panel with Run button, polling, status summary,
+  accept rate, rejection breakdown, timestamp, and error display.
+- Added API tests for idle status, run completion, 409 running guard, and the
+  seven-stage pipeline contract.
+- Verified Python compile, `pytest packages/datagate apps/api -q`, and the
+  frontend production build.
+- Ran local smoke on backend `8001` and frontend `3001`; verified DataGate
+  run/status, seven-stage pipeline status, Next proxy status, and BakeBoard UI
+  Run button.

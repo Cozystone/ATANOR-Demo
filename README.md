@@ -14,17 +14,18 @@ docs/     PRD, architecture notes, ADRs, and shared docs
 ## Start Backend
 
 ```bash
-cd apps/api
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+pip install -r apps/api/requirements.txt
+pip install -e "packages/datagate[dev]"
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --app-dir apps/api
 ```
 
 Backend health:
 
 - http://127.0.0.1:8000/health
 - http://127.0.0.1:8000/api/pipeline/status
+- http://127.0.0.1:8000/api/datagate/status
 
 ## Start Frontend
 
@@ -45,6 +46,23 @@ Optional environment overrides:
 
 - `API_BASE_URL`: backend URL used by the Next.js proxy
 - `NEXT_PUBLIC_API_BASE_URL`: browser-visible API base URL, only needed if you want to bypass the proxy
+
+## Run DataGate
+
+1. Add local `.txt` or `.md` files under `data/raw`.
+2. Start the backend and frontend.
+3. Open BakeBoard and click **Run** in the DataGate panel.
+
+Outputs are rewritten on each run:
+
+- `data/cleaned/{doc_id}.txt`
+- `data/rejected/{doc_id}.txt`
+- `data/metadata/documents.jsonl`
+
+DataGate is also available through:
+
+- `POST http://127.0.0.1:8000/api/datagate/run`
+- `GET http://127.0.0.1:8000/api/datagate/status`
 
 ## Development Notes
 

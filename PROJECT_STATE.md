@@ -2,45 +2,43 @@
 
 ## Current Status
 
-Homage1.0 Phase 0 repo skeleton and Phase 1 BakeBoard shell are initialized.
-Phase 2 (DataGate) is **in progress**: the `packages/datagate` core library is
-implemented and fully tested. API and frontend wiring for DataGate are **not**
-started yet (intentionally deferred).
+Homage1.0 Phase 0/1 skeleton is complete. Phase 2 DataGate is wired end-to-end
+for MVP local use: the standalone `packages/datagate` core is implemented and
+tested, FastAPI exposes run/status endpoints, and BakeBoard can start a run and
+display summary status.
 
-## Completed (DataGate core — Milestone 2, partial)
+## Completed: DataGate Core
 
-- Created `packages/datagate`, a standalone installable Python package
-  (`pyproject.toml`, name `datagate`, deps: `pydantic>=2` only, requires Python
-  >=3.11). No FastAPI / web imports — verified.
-- Pydantic v2 models (`Document`, `DocumentMetadata`, `FilterResult`,
-  `RunReport`) with enforced invariants: rejected ⇒ `rejection_reason` +
-  `rejected_by`; accepted ⇒ `quality_score`; failed `FilterResult` ⇒ `reason`.
-- Deterministic hashing: `normalize_text` (NFC → strip → collapse whitespace),
-  `content_hash` (sha256), `doc_id = hash[:16]`.
-- Ordered fail-fast filter chain: `min_length`, `duplicate_hash` (stateful,
-  reset per run), `special_char_ratio` (Unicode/Korean aware), `link_density`
-  (bare + markdown URLs, coverage-mask union).
-- `QualityScorer` — deterministic, documented, monotonic, clamped to [0, 100].
-- `PipelineRunner.run()` — sorted discovery, fail-fast filtering, scoring,
-  full-batch overwrite of `data/cleaned/`, `data/rejected/`,
-  `data/metadata/documents.jsonl`; unreadable files become `read_error`
-  rejections; returns a `RunReport`.
-- 36 pytest tests covering model validation, every filter, scoring, end-to-end
-  runner behavior, and repeated-run determinism. All passing.
+- Created `packages/datagate`, a standalone installable Python package.
+- Kept DataGate FastAPI-free and deterministic.
+- Implemented Pydantic models, hashing, IO, fail-fast filters, scoring, and
+  `PipelineRunner`.
+- Runner writes full-batch outputs:
+  - `data/cleaned/{doc_id}.txt`
+  - `data/rejected/{doc_id}.txt`
+  - `data/metadata/documents.jsonl`
+- Core suite covers model validation, filters, scoring, runner behavior, and
+  repeated-run determinism.
 
-## Completed
+## Completed: DataGate API/UI Wiring
 
-- Created monorepo layout with `apps/api`, `apps/web`, and `docs`.
-- Copied the PRD into `docs/Homage1.0_PRD.md` as the source-of-truth path requested for future work.
-- Added FastAPI backend with:
-  - `GET /health`
-  - `GET /api/pipeline/status`
-- Added mock pipeline statuses for Harvest, DataGate, Ontology Forge, Homage Oven, GraphRAG, Guardrail, and GPU Monitor.
-- Added Next.js BakeBoard dashboard that renders the pipeline stages as cards.
-- Added a Next.js proxy route so the dashboard can call `/api/pipeline/status` during local dev.
-- Added operating documents for task tracking, handoff, session logging, and context capsules.
-- Added README instructions for running backend and frontend locally.
-- Verified backend and frontend run locally.
+- Added `apps/api/app/services/datagate_service.py` with in-memory run state,
+  a thread-safe running guard, default `data/raw` creation, and thin
+  `PipelineRunner` execution.
+- Added `apps/api/app/routers/datagate.py`:
+  - `POST /api/datagate/run`
+  - `GET /api/datagate/status`
+- Updated `GET /api/pipeline/status` so DataGate reflects real run state while
+  Harvest, Ontology Forge, Homage Oven, GraphRAG, Guardrail, and GPU Monitor
+  remain mocked.
+- Added Next.js proxy routes:
+  - `apps/web/app/api/datagate/run/route.ts`
+  - `apps/web/app/api/datagate/status/route.ts`
+- Added a BakeBoard DataGate panel with Run button, 2s polling while running,
+  state badge, run id, totals, accept rate, rejection breakdown, timestamp, and
+  error display.
+- Added API tests for idle status, completed fixture run, 409 running guard, and
+  the seven-stage pipeline status contract.
 
 ## Current Apps
 
@@ -49,30 +47,35 @@ started yet (intentionally deferred).
 
 ## Verification
 
-- `python -m compileall apps/api` passed.
+- `.venv\Scripts\pip.exe install -r apps\api\requirements.txt -e "packages/datagate[dev]"` passed.
+- `.venv\Scripts\python.exe -m compileall apps\api packages\datagate\datagate` passed.
+- `.venv\Scripts\python.exe -m pytest packages\datagate apps\api -q` passed: 40 tests.
 - `npm --workspace apps/web run build` passed.
-- `GET http://127.0.0.1:8000/api/pipeline/status` returned all seven mock pipeline stages.
-- `GET http://127.0.0.1:3000` returned HTTP 200.
-- In-app browser verification passed: BakeBoard rendered all seven stage cards via the Next.js proxy route.
+- Local smoke on alternate ports passed:
+  - backend `http://127.0.0.1:8001`
+  - frontend `http://127.0.0.1:3001`
+  - `POST /api/datagate/run` returned `202`
+  - `GET /api/datagate/status` returned `completed`
+  - `GET /api/pipeline/status` returned 7 stages
+  - Next proxy `/api/datagate/status` returned `completed`
+  - BakeBoard browser verification found the DataGate panel and Run button
 
 ## Next Priorities
 
-1. Wire DataGate into `apps/api`: `datagate_service.py` (in-memory RunState +
-   thread-safe guard) and `routers/datagate.py` (`POST /run` with 409 guard,
-   `GET /status`); mount under `/api/datagate`. (Not started — deferred.)
-2. Make pipeline status stage 1 reflect real DataGate state.
-3. Add the BakeBoard DataGate panel + Next.js proxy routes with 2s polling.
-4. Add automated API tests for `GET /api/pipeline/status`.
+1. Review whether API-generated run ids and core-generated report run ids
+   should be unified in a future DataGate core extension.
+2. Add document-level metadata browsing after MVP, if desired.
+3. Add persistent run history or a SQLite/file run registry after single-process
+   local dev is no longer enough.
 
 ## Known Constraints
 
-- Pipeline data is mock-only outside DataGate; `apps/api` and BakeBoard do not
-  yet call DataGate (API/frontend wiring deferred per this milestone's scope).
+- Pipeline data is mock-only outside DataGate.
 - No database, queue, graph store, vector store, or training loop is wired yet.
-- DataGate is full-batch overwrite only — no incremental runs or run history.
-- DataGate input is local `.txt` / `.md` under `data/raw` only (no crawling,
-  no PDF/HTML, no LLM judging).
+- DataGate run state is in-memory and single-process only.
+- DataGate is full-batch overwrite only; no incremental runs or run history.
+- DataGate input is local `.txt` / `.md` under `data/raw` only.
+- No crawling, PDF/HTML parsing, LLM judging, or document-level browsing UI.
 - `npm install` reported dependency audit findings: 2 moderate and 2 critical.
   No automatic audit fix was applied because it may introduce breaking
-  dependency changes. **Tracked debt — revisit at the next Next.js minor bump.**
-  (Run `npm audit` in repo root to re-list the four advisory IDs.)
+  dependency changes. Tracked debt: revisit at the next Next.js minor bump.

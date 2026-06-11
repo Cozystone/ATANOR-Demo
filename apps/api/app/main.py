@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.routers.datagate import router as datagate_router
+from app.services.datagate_service import DataGateStatus, datagate_service
 
 StageState = Literal["idle", "running", "warning", "complete"]
 
@@ -42,6 +44,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(datagate_router)
+
+
+def datagate_stage(status: DataGateStatus) -> PipelineStage:
+    state_map: dict[str, StageState] = {
+        "idle": "idle",
+        "running": "running",
+        "completed": "complete",
+        "failed": "warning",
+    }
+    if status.state == "idle":
+        progress = 0
+        metric_value = "not run"
+        summary = "Ready to score source quality, deduplicate, and filter unsafe inputs."
+    elif status.state == "running":
+        progress = 50
+        metric_value = "running"
+        summary = "DataGate is processing local raw documents."
+    elif status.state == "completed":
+        progress = 100
+        metric_value = f"{status.accepted}/{status.total} accepted"
+        summary = "Latest DataGate run completed with deterministic document partitioning."
+    else:
+        progress = 100
+        metric_value = "failed"
+        summary = status.error or "Latest DataGate run failed."
+
+    return PipelineStage(
+        id="datagate",
+        name="DataGate",
+        state=state_map[status.state],
+        progress=progress,
+        summary=summary,
+        metric_label="quality gate",
+        metric_value=metric_value,
+    )
+
 
 MOCK_STAGES = [
     PipelineStage(
@@ -52,15 +91,6 @@ MOCK_STAGES = [
         summary="Collecting source documents and recording provenance.",
         metric_label="documents",
         metric_value="128 queued",
-    ),
-    PipelineStage(
-        id="datagate",
-        name="DataGate",
-        state="warning",
-        progress=58,
-        summary="Scoring source quality, deduplicating, and filtering unsafe inputs.",
-        metric_label="quality",
-        metric_value="0.74 avg",
     ),
     PipelineStage(
         id="ontology-forge",
@@ -117,8 +147,14 @@ def health() -> dict[str, str]:
 
 @app.get("/api/pipeline/status", response_model=PipelineStatus)
 def pipeline_status() -> PipelineStatus:
+    datagate_status = datagate_service.status()
+    stages = [
+        MOCK_STAGES[0],
+        datagate_stage(datagate_status),
+        *MOCK_STAGES[1:],
+    ]
     return PipelineStatus(
         generated_at=datetime.now(timezone.utc),
         system_state="mock",
-        stages=MOCK_STAGES,
+        stages=stages,
     )

@@ -12,3 +12,6 @@ data/metadata/
 *.log
 .env
 .env.*
+data/cleaned/
+data/rejected/
+data/metadata/
