@@ -140,9 +140,33 @@ const stateLabels: Record<string, string> = {
   complete: "완료",
   failed: "실패",
   warning: "점검",
+  ready: "준비",
+  waiting: "대기",
 };
 
 const memoryColors = ["#ff6b35", "#006a9f", "#8c3fa7", "#22936f", "#c5283d", "#e89d2a", "#4a8fdb"];
+
+const traceStepLabels: Record<string, string> = {
+  Harvest: "자료 수집",
+  DataGate: "DataGate 정제",
+  "Ontology Forge": "온톨로지 생성",
+  GraphRAG: "GraphRAG 경로",
+  "Homage Oven": "학습 게이트",
+};
+
+const sourceTypeLabels: Record<string, string> = {
+  discussion: "토론 자료",
+  repository_or_docs: "저장소/문서",
+};
+
+const sourceStatusLabels: Record<string, string> = {
+  fetched: "수집 완료",
+  fallback: "대체 요약",
+};
+
+const licenseStatusLabels: Record<string, string> = {
+  reference_only: "참조 전용",
+};
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -174,6 +198,22 @@ function asPercent(value?: number | null) {
 
 function statusText(state?: string) {
   return stateLabels[state ?? "idle"] ?? state ?? "대기";
+}
+
+function traceStepText(step?: string) {
+  return traceStepLabels[step ?? ""] ?? step ?? "단계";
+}
+
+function sourceTypeText(type?: string) {
+  return sourceTypeLabels[type ?? ""] ?? type ?? "출처";
+}
+
+function sourceStatusText(status?: string) {
+  return sourceStatusLabels[status ?? ""] ?? status ?? "상태 미확인";
+}
+
+function licenseStatusText(status?: string) {
+  return licenseStatusLabels[status ?? ""] ?? status ?? "라이선스 미확인";
 }
 
 function fmtClock(date = new Date()) {
@@ -531,7 +571,7 @@ export default function BakeBoardPage() {
         ...messages,
         {
           role: "assistant",
-          text: `빌드 ${run.run_id}가 시작됐습니다. 인터넷 참조 ${run.harvest_docs.length}개를 수집하고, ${run.graph_3d.nodes.length}개 3D RAG 노드와 ${run.graph_3d.edges.length}개 관계를 만들었습니다. 학습 gate는 ${run.training_gate.ready ? "준비 완료" : "대기"} 상태입니다.`,
+          text: `빌드 ${run.run_id}가 시작됐습니다. 인터넷 참조 ${run.harvest_docs.length}개를 수집하고, ${run.graph_3d.nodes.length}개 3D RAG 노드와 ${run.graph_3d.edges.length}개 관계를 만들었습니다. 학습 게이트는 ${run.training_gate.ready ? "준비 완료" : "대기"} 상태입니다.`,
           evidence: run.harvest_docs.map((doc) => ({
             chunk_id: doc.id,
             doc_id: doc.id,
@@ -584,8 +624,8 @@ export default function BakeBoardPage() {
           edge_count: buildRun.graph_3d.edges.length + growthPulseCount * liveGrowthBatchSize * 2,
           message:
             rawGrowthPulseCount > growthPulseCount
-              ? `그래프 검사 모드: ${growthPulseCount}개 pulse에서 안정화했습니다.`
-              : `실시간 학습 pulse ${growthPulseCount}: 새 시냅스가 기억망에 연결되었습니다.`,
+              ? `그래프 검사 모드: ${growthPulseCount}개 펄스에서 안정화했습니다.`
+              : `실시간 학습 펄스 ${growthPulseCount}: 새 시냅스가 기억망에 연결되었습니다.`,
         }
       : buildRun.graph_frames?.[Math.min(buildTick, buildRun.graph_frames.length - 1)] ?? null
     : null;
@@ -636,12 +676,12 @@ export default function BakeBoardPage() {
       title: "빌드 시작",
       api: "POST /api/factory/build/start",
       state: isBuilding ? "running" : buildRun ? "completed" : "idle",
-      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, Homage Oven gate까지 한 번에 흐르게 합니다.",
+      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, Homage Oven 학습 게이트까지 한 번에 흐르게 합니다.",
       metrics: [
         `${buildRun?.harvest_docs?.length ?? 0} 웹 참조`,
         `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? Math.max(buildRun.graph_3d.nodes.length, activeGraph3D?.nodes?.length ?? 0) : 0} 3D 노드`,
-        `${growthPulseCount} 실시간 pulse`,
-        buildRun?.training_gate?.ready ? "학습 gate 준비" : "gate 대기",
+        `${growthPulseCount} 실시간 펄스`,
+        buildRun?.training_gate?.ready ? "학습 게이트 준비" : "게이트 대기",
       ],
       action: () => runProcessAction("00", startFactoryBuild),
       actionLabel: isBuilding || activeAction === "00" ? "빌드 진행 중" : "빌드 시작",
@@ -695,7 +735,7 @@ export default function BakeBoardPage() {
       api: "POST /api/oven/dry-run",
       state: activeAction === "05" ? "running" : oven?.state ?? "idle",
       description: "학습 파이프라인을 짧게 실행하고 완료되면 오른쪽 패널을 RAG 채팅 UI로 전환합니다.",
-      metrics: [`loss ${oven?.last_loss ?? "대기"}`, `${losses.length} step`],
+      metrics: [`손실 ${oven?.last_loss ?? "대기"}`, `${losses.length} 단계`],
       action: () => runProcessAction("05", runTrainingDryRun),
       actionLabel: activeAction === "05" ? "학습 중" : "학습 실행",
     },
@@ -712,7 +752,7 @@ export default function BakeBoardPage() {
   ];
 
   const logs = [
-    ...(buildRun ? [{ time: fmtClock(), message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / gate ${buildRun.training_gate.ready ? "준비" : "대기"}` }] : []),
+    ...(buildRun ? [{ time: fmtClock(), message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}` }] : []),
     { time: fmtClock(), message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
     { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
     { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / 마지막 손실 ${oven?.last_loss ?? "없음"}` },
@@ -991,7 +1031,7 @@ export default function BakeBoardPage() {
                 <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 채팅</button>
               </div>
               <div className="mini-metrics">
-                <span>Flow {flowHealth}%</span>
+                <span>흐름 {flowHealth}%</span>
                 <span>GPU {gpu?.utilization ?? 0}%</span>
                 <span>CPU {system?.cpu_count ?? "n/a"}</span>
               </div>
@@ -1024,17 +1064,17 @@ export default function BakeBoardPage() {
                       <div className="build-run-detail">
                         <div className="build-trace">
                           {buildRun.learning_trace.map((trace) => (
-                            <span key={trace.step} data-state={trace.state}>{trace.step}: {trace.state}</span>
+                            <span key={trace.step} data-state={trace.state}>{traceStepText(trace.step)}: {statusText(trace.state)}</span>
                           ))}
                           {growthPulseCount > 0 ? (
-                            <span data-state="running">Live growth +{growthPulseCount}</span>
+                            <span data-state="running">실시간 성장 +{growthPulseCount}</span>
                           ) : null}
                         </div>
                         <div className="build-sources">
                           {buildRun.harvest_docs.map((doc) => (
                             <a key={doc.id} href={doc.url} target="_blank" rel="noreferrer">
                               <strong>{doc.title}</strong>
-                              <small>{doc.source_type} / {doc.status} / {doc.license_status}</small>
+                              <small>{sourceTypeText(doc.source_type)} / {sourceStatusText(doc.status)} / {licenseStatusText(doc.license_status)}</small>
                             </a>
                           ))}
                         </div>
