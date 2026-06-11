@@ -601,6 +601,32 @@ p {
   color: var(--orange);
 }
 
+.node-target-input {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 132px;
+  margin-left: auto;
+  border-left: 1px solid var(--line);
+  padding-left: 7px;
+}
+
+.node-target-input span {
+  padding: 0;
+}
+
+.node-target-input input {
+  width: 76px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 6px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .mini-metrics {
   justify-content: flex-end;
   gap: 8px;

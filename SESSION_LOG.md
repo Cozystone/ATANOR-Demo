@@ -350,3 +350,55 @@
   - `docs/screenshots/99-active-node-pulses-no-path-local.png`
   - `docs/screenshots/100-structure-answer-production.png`
   - `docs/screenshots/101-active-node-pulses-production.png`
+
+## 2026-06-11 - No-evidence RAG and custom node target
+
+- Split no-direct-evidence RAG behavior:
+  - Homage/self-structure questions still use internal architecture context.
+  - External unknown facts now return a no-evidence native answer instead of
+    leaking the Homage architecture explanation.
+- Removed `읽힌 경로` from generated GraphRAG answer text; the chat now says
+  active node signal instead.
+- Added regression coverage for unknown external entity questions.
+- Added a direct `목표 노드` number input beside the learning-volume presets.
+- Sent `target_nodes` to stability planning and Build Start.
+- Build Start now scales chunk budget, text budget, and representative node
+  budget from the custom target-node count.
+- Increased representative graph generation and made generated ids unique
+  across repeated topic waves.
+- Improved 3D RAG spacing with deterministic spread layout, collision
+  relaxation, label thinning for dense graphs, and graph-size camera scaling.
+- Verified locally:
+  - `python -m pytest packages\rag_engine -q`: 6 passed
+  - full Alpha Python suite with explicit `PYTHONPATH`: 60 passed
+  - `npm --workspace apps/web run build`
+  - local browser at `http://127.0.0.1:3027`
+- Browser verification:
+  - `GraphRAG가 뭐야` answered without `읽힌 경로`
+  - `유재석이 누구야` returned no-evidence memory coverage text with
+    `external LLM` disabled wording
+  - `1,200` target nodes produced a larger representative graph
+  - max target-node stress reached `358/360` representative nodes and
+    `358 nodes / 739 relations` by DOM verification
+  - WebGL full screenshot capture timed out at the 358-node state; saved
+    screenshots cover the visible 48, 73, 221, and 257 node states
+- Deployed production:
+  https://web-7784z7z4w-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified production API:
+  - `유재석이 누구야` returns `homage-native-no-evidence-v1`
+  - `external_llm` remains `false`
+  - no Homage architecture leak or `읽힌 경로` text appears
+  - `target_nodes: 50000` returns visual budget 360, 310 base nodes, 609 edges,
+    and 2000 chunks
+- Production browser verification confirmed the new `목표 노드` input is visible.
+  In-app browser text entry on production was blocked by the browser virtual
+  clipboard extension, so production interaction was verified through API plus
+  visible UI capture.
+- Captured screenshots:
+  - `docs/screenshots/102-custom-node-target-local.png`
+  - `docs/screenshots/103-rag-no-evidence-local.png`
+  - `docs/screenshots/104-large-graph-spacing-local.png`
+  - `docs/screenshots/105-large-graph-final-local.png`
+  - `docs/screenshots/108-production-node-target-visible.png`

@@ -92,11 +92,11 @@ const liveGrowthBatchSize = 6;
 const maxLiveGrowthPulses = 8;
 const graphInspectionPulseCap = 2;
 
-const learningVolumePresets: Record<LearningVolume, { label: string; textBudget: string; chunkBudget: number; visualNodes: number; detail: string }> = {
-  lite: { label: "가볍게", textBudget: "12k chars", chunkBudget: 32, visualNodes: 12, detail: "응답 확인용" },
-  standard: { label: "표준", textBudget: "48k chars", chunkBudget: 128, visualNodes: 24, detail: "기본 학습" },
-  deep: { label: "깊게", textBudget: "160k chars", chunkBudget: 384, visualNodes: 36, detail: "대량 텍스트" },
-  max: { label: "최대", textBudget: "420k chars", chunkBudget: 768, visualNodes: 48, detail: "압축 메모리" },
+const learningVolumePresets: Record<LearningVolume, { label: string; textBudget: string; chunkBudget: number; visualNodes: number; targetNodes: number; edgeRatio: number; durationHours: number; detail: string }> = {
+  lite: { label: "가볍게", textBudget: "12k chars", chunkBudget: 32, visualNodes: 12, targetNodes: 3_000, edgeRatio: 3, durationHours: 12, detail: "응답 확인용" },
+  standard: { label: "표준", textBudget: "48k chars", chunkBudget: 128, visualNodes: 24, targetNodes: 10_000, edgeRatio: 4, durationHours: 72, detail: "기본 학습" },
+  deep: { label: "깊게", textBudget: "160k chars", chunkBudget: 384, visualNodes: 36, targetNodes: 25_000, edgeRatio: 4, durationHours: 168, detail: "대량 텍스트" },
+  max: { label: "최대", textBudget: "420k chars", chunkBudget: 768, visualNodes: 48, targetNodes: 50_000, edgeRatio: 4.8, durationHours: 168, detail: "압축 메모리" },
 };
 
 function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = Number.POSITIVE_INFINITY): Rag3DGraph {
@@ -260,14 +260,14 @@ function asPercent(value?: number | null) {
   return Math.round((value ?? 0) * 100);
 }
 
-function stabilityPayloadForVolume(volume: LearningVolume) {
-  const profiles: Record<LearningVolume, { target_nodes: number; target_edges: number; duration_hours: number }> = {
-    lite: { target_nodes: 3_000, target_edges: 9_000, duration_hours: 12 },
-    standard: { target_nodes: 10_000, target_edges: 40_000, duration_hours: 72 },
-    deep: { target_nodes: 25_000, target_edges: 100_000, duration_hours: 168 },
-    max: { target_nodes: 50_000, target_edges: 240_000, duration_hours: 168 },
+function stabilityPayloadForVolume(volume: LearningVolume, targetNodeCount?: number) {
+  const preset = learningVolumePresets[volume];
+  const targetNodes = clamp(Math.round(targetNodeCount ?? preset.targetNodes), 100, 250_000);
+  return {
+    target_nodes: targetNodes,
+    target_edges: Math.max(targetNodes + 1, Math.round(targetNodes * preset.edgeRatio)),
+    duration_hours: preset.durationHours,
   };
-  return profiles[volume];
 }
 
 function statusText(state?: string) {
@@ -433,13 +433,11 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
       const haystack = `${node.id} ${node.label} ${node.type}`.toLowerCase();
       const termScore = terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
       const resultScore = resultNodeIds.has(node.id) ? 4 : 0;
-      const traversalScore = graph.traversal_path?.includes(node.id) ? 0.5 : 0;
-      return { node, score: termScore + resultScore + traversalScore };
+      return { node, score: termScore + resultScore };
     })
     .filter((item) => item.score > 0)
     .sort((left, right) => right.score - left.score);
-  const fallbackIds = graph.traversal_path?.slice(0, 5) ?? graph.nodes.slice(0, 5).map((node) => node.id);
-  const activeNodeIds = (scored.length ? scored.map((item) => item.node.id) : fallbackIds).slice(0, 8);
+  const activeNodeIds = scored.map((item) => item.node.id).slice(0, 8);
   const labels = activeNodeIds
     .map((id) => graph.nodes.find((node) => node.id === id)?.label ?? id)
     .slice(0, 5);
@@ -565,6 +563,7 @@ export default function BakeBoardPage() {
   const [stability, setStability] = useState<AnyRecord | null>(null);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
   const [learningVolume, setLearningVolume] = useState<LearningVolume>("standard");
+  const [targetNodeCount, setTargetNodeCount] = useState(learningVolumePresets.standard.targetNodes);
   const [selectedMemory, setSelectedMemory] = useState<AnyRecord | null>(null);
   const [activeSignalEdgeKeys, setActiveSignalEdgeKeys] = useState<string[]>([]);
   const [activeSignalNodeIds, setActiveSignalNodeIds] = useState<string[]>([]);
@@ -619,7 +618,7 @@ export default function BakeBoardPage() {
       fetchJson<AnyRecord>("/api/neuro/plan"),
       fetchJson<AnyRecord>("/api/neuro/stability", {
         method: "POST",
-        body: JSON.stringify(stabilityPayloadForVolume(learningVolume)),
+        body: JSON.stringify(stabilityPayloadForVolume(learningVolume, targetNodeCount)),
       }),
     ]);
     setPipeline(pipelineStatus);
@@ -641,7 +640,7 @@ export default function BakeBoardPage() {
       refreshAll().catch(() => undefined);
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [learningVolume]);
+  }, [learningVolume, targetNodeCount]);
 
   useEffect(() => {
     runHardwareBenchmark({ applyRecommendation: true }).catch((caught) => {
@@ -854,6 +853,7 @@ export default function BakeBoardPage() {
     ) {
       benchmarkAppliedRef.current = true;
       setLearningVolume(recommended);
+      setTargetNodeCount(learningVolumePresets[recommended].targetNodes);
     }
     return result;
   }
@@ -861,9 +861,7 @@ export default function BakeBoardPage() {
   async function refreshStabilityPlan() {
     setError(null);
     try {
-      const payload = benchmark?.recommended_learning_volume === learningVolume && benchmark?.recommended_stability_payload
-        ? benchmark.recommended_stability_payload
-        : stabilityPayloadForVolume(learningVolume);
+      const payload = stabilityPayloadForVolume(learningVolume, targetNodeCount);
       const plan = await fetchJson<AnyRecord>("/api/neuro/stability", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -884,7 +882,7 @@ export default function BakeBoardPage() {
     try {
       const run = await fetchJson<BuildRun>("/api/factory/build/start", {
         method: "POST",
-        body: JSON.stringify({ learning_volume: learningVolume }),
+        body: JSON.stringify({ learning_volume: learningVolume, target_nodes: targetNodeCount }),
       });
       setBuildRun(run);
       setGraph({
@@ -1049,6 +1047,7 @@ export default function BakeBoardPage() {
       state: isBuilding ? "running" : buildRun ? "completed" : "idle",
       description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, Homage Oven 학습 게이트까지 한 번에 흐르게 합니다.",
       metrics: [
+        `${targetNodeCount.toLocaleString()} 목표 노드`,
         `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 청크`,
         `${buildRun?.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}`,
         `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? visualNodeCap : currentLearningPreset.visualNodes} 대표 노드`,
@@ -1428,12 +1427,32 @@ export default function BakeBoardPage() {
                     data-active={learningVolume === volume}
                     disabled={isBuilding}
                     key={volume}
-                    onClick={() => setLearningVolume(volume)}
+                    onClick={() => {
+                      setLearningVolume(volume);
+                      setTargetNodeCount(learningVolumePresets[volume].targetNodes);
+                    }}
                     title={`${learningVolumePresets[volume].textBudget} / ${learningVolumePresets[volume].chunkBudget} 청크`}
                   >
                     {learningVolumePresets[volume].label}
                   </button>
                 ))}
+                <label className="node-target-input">
+                  <span>목표 노드</span>
+                  <input
+                    aria-label="목표 노드 수"
+                    disabled={isBuilding}
+                    inputMode="numeric"
+                    max={250000}
+                    min={100}
+                    step={100}
+                    type="number"
+                    value={targetNodeCount}
+                    onChange={(event) => {
+                      const nextValue = Number(event.currentTarget.value);
+                      setTargetNodeCount(Number.isFinite(nextValue) ? clamp(nextValue, 100, 250_000) : learningVolumePresets[learningVolume].targetNodes);
+                    }}
+                  />
+                </label>
               </div>
               <div className="mini-metrics">
                 <span>흐름 {flowHealth}%</span>

@@ -182,6 +182,40 @@ Deployment:
     - `docs/screenshots/99-active-node-pulses-no-path-local.png`
     - `docs/screenshots/100-structure-answer-production.png`
     - `docs/screenshots/101-active-node-pulses-production.png`
+- RAG no-evidence and custom learning target verification passed:
+  - `GraphRAG가 뭐야` no longer prints `읽힌 경로`; answer text uses active
+    node signal wording instead
+  - external unknown questions such as `유재석이 누구야` no longer leak the
+    Homage architecture explanation
+  - no-evidence answers state that the current memory has no verified document
+    evidence and that external LLM/general-knowledge guessing is disabled
+  - learning-volume controls now include a direct target-node input
+  - `target_nodes` flows into `/api/neuro/stability` and
+    `/api/factory/build/start`
+  - Build Start scales chunk budget, text budget, and representative 3D graph
+    budget from the selected target-node count
+  - 3D graph rendering now applies deterministic spread layout, short
+    collision relaxation, label thinning, and camera distance scaling
+  - local browser verification passed for `1,200` target nodes, no-evidence
+    RAG chat, and large graph rendering
+  - production deploy succeeded and `https://homage-alpha.vercel.app` now
+    points to the no-evidence/custom-target build
+  - production API verification passed for no-evidence RAG and
+    `target_nodes: 50000` Build Start scaling
+  - production browser verification confirmed the new `목표 노드` input is
+    visible; in-app browser text entry was blocked by its virtual clipboard
+    extension, so production interaction was verified through API plus visible
+    UI capture
+  - stress DOM verification reached `358/360` representative nodes and
+    `358 nodes / 739 relations`; WebGL full screenshot capture timed out at
+    that size, so saved screenshots cover the 48, 73, 221, and 257 node
+    visual states
+  - screenshots:
+    - `docs/screenshots/102-custom-node-target-local.png`
+    - `docs/screenshots/103-rag-no-evidence-local.png`
+    - `docs/screenshots/104-large-graph-spacing-local.png`
+    - `docs/screenshots/105-large-graph-final-local.png`
+    - `docs/screenshots/108-production-node-target-visible.png`
 
 ## Known Limitations
 
@@ -217,6 +251,9 @@ Deployment:
 - Hardware benchmark auto-apply requires the local FastAPI backend. The Vercel
   fallback route cannot read the viewer's actual PC and marks itself as
   `can_read_local_hardware: false`.
+- External facts that are not present in memory are not guessed. The Alpha
+  native engine returns a no-evidence answer and asks for Harvest/Build Start
+  input instead.
 - npm audit still reports dependency advisories; no force fix applied.
 
 ## Next Recommended Milestone

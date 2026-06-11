@@ -57,12 +57,31 @@ def _is_legend_query(query: str) -> bool:
     return asks_color and (asks_meaning or graph_context)
 
 
+def _is_internal_structure_query(query: str) -> bool:
+    normalized = _normalized_query(query)
+    self_or_system = bool(
+        re.search(
+            r"(너|네|니|너희|homage|bakeboard|rag|graphrag|온톨로지|메모리|파이프라인|엔진|시스템|아키텍처|구조|architecture|system|engine)",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+    asks_structure = bool(
+        re.search(
+            r"(구조|설명|작동|어떻게|뭐야|무엇|누구|흐름|과정|엔진|아키텍처|structure|explain|architecture|work|flow)",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+    return self_or_system and asks_structure
+
+
 def _conversational_result(query: str, kind: str) -> dict[str, Any]:
     answers = {
         "greeting": (
             "안녕하세요. 저는 Homage RAG 콘솔입니다. 인사에는 근거 문서를 억지로 붙이지 않고, "
             "빌드로 만들어진 온톨로지 메모리와 문서 근거가 필요한 질문일 때만 GraphRAG 검색을 실행합니다. "
-            "GraphRAG, Guardrail, 온톨로지 관계, 학습 과정 중 궁금한 것을 물어보면 근거 경로와 함께 답할게요."
+            "GraphRAG, Guardrail, 온톨로지 관계, 학습 과정 중 궁금한 것을 물어보면 활성 노드와 근거 문서를 함께 보여드릴게요."
         ),
         "thanks": (
             "천만에요. 이어서 GraphRAG 검색, Guardrail 검증, 온톨로지 메모리 구조 중 궁금한 부분을 물어보면 "
@@ -495,6 +514,7 @@ def _synthesize_answer(
     evidence_docs: list[dict[str, Any]],
     matched_nodes: list[dict[str, Any]],
     graph_paths: list[list[str]],
+    use_internal_context: bool = False,
 ) -> tuple[str, list[dict[str, Any]], list[str], dict[str, Any]]:
     citations = [
         {
@@ -506,7 +526,7 @@ def _synthesize_answer(
         for doc in evidence_docs[:4]
     ]
 
-    synthesis_docs = evidence_docs or _internal_context_docs(query)
+    synthesis_docs = evidence_docs or (_internal_context_docs(query) if use_internal_context else [])
     synthesis_paths = graph_paths if evidence_docs else []
     utterance = build_native_utterance(query, synthesis_docs, matched_nodes, synthesis_paths)
     follow_up = [
@@ -514,7 +534,11 @@ def _synthesize_answer(
         "관련 온톨로지 경로를 더 넓게 확장할까요?",
     ]
     if not evidence_docs:
-        follow_up = ["현재 활성 노드를 보여줄까요?", "이 구조를 Build Start 흐름과 연결해서 볼까요?"]
+        follow_up = (
+            ["현재 활성 노드를 보여줄까요?", "이 구조를 Build Start 흐름과 연결해서 볼까요?"]
+            if use_internal_context
+            else ["관련 자료를 Harvest 입력으로 넣어볼까요?", "Build Start로 새 온톨로지 노드를 만들까요?"]
+        )
     return utterance["answer"], citations, follow_up, utterance
 
 
@@ -540,7 +564,14 @@ def query_graphrag(
     chunks = _load_doc_chunks(Path(cleaned_dir))
     ranked_docs = _rank_chunks(query, query_counts, expanded_terms, chunks)
     evidence_docs = ranked_docs[:5]
-    answer, citations, follow_up_questions, utterance = _synthesize_answer(query, evidence_docs, matched_nodes, graph_paths)
+    use_internal_context = not evidence_docs and _is_internal_structure_query(query)
+    answer, citations, follow_up_questions, utterance = _synthesize_answer(
+        query,
+        evidence_docs,
+        matched_nodes,
+        graph_paths,
+        use_internal_context,
+    )
     confidence = round(
         min(
             0.98,

@@ -6,8 +6,9 @@ Homage1.0 Alpha end-to-end MVP is implemented, verified, and deployed with a
 research-backed Neuro-Efficiency Layer and a sustained-learning stability
 profile with startup hardware benchmark adaptation.
 Latest work also changed RAG answer behavior so no-direct-evidence structure
-questions still generate a native architecture answer, and GraphRAG signals now
-show active node pulses rather than path text.
+questions still generate a native architecture answer, external unknown facts
+return no-evidence memory coverage instead of architecture leakage, and GraphRAG
+signals now show active node pulses rather than path text.
 
 ## Current Branch
 
@@ -65,6 +66,12 @@ Latest local commit before this update: Add startup hardware benchmark tuning
 - Added open-structure RAG generation for questions like `네 구조 설명해봐`.
 - Changed signal UI from `신호 경로` to `활성 노드`; orange pulsing now marks
   currently active nodes, not a fixed route.
+- Added no-evidence routing so external unknown facts do not leak Homage
+  architecture answers.
+- Added direct target-node input for learning volume and wired it into
+  stability planning plus Build Start.
+- Improved dense 3D graph spacing with spread layout, collision relaxation,
+  label thinning, and camera scaling.
 - Added research note with SNN, neuromorphic, EWC, prototype, MAE, compression,
   and Loihi references.
 - Added long-run stability note.
@@ -78,12 +85,13 @@ Latest local commit before this update: Add startup hardware benchmark tuning
 - `npm --workspace apps/web run build`
 - `npx vercel --prod --yes`
 - `npx vercel alias set web-ffvjjolxy-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
+- `npx vercel alias set web-7784z7z4w-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
 - Local hardware verification used FastAPI on `127.0.0.1:8002` and Next
   production server on `127.0.0.1:3025`.
 
 ## Test Results
 
-- 59 Python tests passed with explicit package `PYTHONPATH`.
+- 60 Python tests passed with explicit package `PYTHONPATH`.
 - Python compile passed.
 - Frontend build passed.
 - Local browser verification passed, including Neuro-Efficiency Rebalance and
@@ -97,6 +105,12 @@ Latest local commit before this update: Add startup hardware benchmark tuning
 - Production API and browser verification passed for `네 구조 설명해봐`:
   native open-structure generation, no direct-evidence fallback copy,
   `external_llm: false`, and orange active-node pulses instead of path traces.
+- Local browser verification passed for no-evidence external questions,
+  `GraphRAG가 뭐야` without `읽힌 경로`, custom `1,200` target nodes, and dense
+  graph rendering up to `358/360` representative nodes by DOM verification.
+- Production API verification passed for no-evidence RAG and custom
+  `target_nodes: 50000` Build Start scaling; production browser capture shows
+  the new target-node input.
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -119,6 +133,8 @@ Latest local commit before this update: Add startup hardware benchmark tuning
   measure the viewer PC and returns `can_read_local_hardware: false`.
 - No-direct-evidence architecture answers use internal Homage context for
   synthesis, but do not return it as retrieved document evidence.
+- Unknown external facts are not guessed without memory evidence or Harvest
+  input.
 
 ## Next 3 Actions
 

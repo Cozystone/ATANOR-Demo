@@ -15,6 +15,7 @@ type LearningVolume = "lite" | "standard" | "deep" | "max";
 type LearningPreset = {
   chunkBudget: number;
   label: string;
+  targetNodes?: number;
   textBudgetChars: number;
   textBudgetLabel: string;
   visualNodeBudget: number;
@@ -61,10 +62,10 @@ function fallbackFor(url: string) {
 }
 
 const learningPresets: Record<LearningVolume, LearningPreset> = {
-  lite: { chunkBudget: 32, label: "가볍게", textBudgetChars: 12_000, textBudgetLabel: "12k chars", visualNodeBudget: 12 },
-  standard: { chunkBudget: 128, label: "표준", textBudgetChars: 48_000, textBudgetLabel: "48k chars", visualNodeBudget: 24 },
-  deep: { chunkBudget: 384, label: "깊게", textBudgetChars: 160_000, textBudgetLabel: "160k chars", visualNodeBudget: 36 },
-  max: { chunkBudget: 768, label: "최대", textBudgetChars: 420_000, textBudgetLabel: "420k chars", visualNodeBudget: 48 },
+  lite: { chunkBudget: 32, label: "가볍게", targetNodes: 3_000, textBudgetChars: 12_000, textBudgetLabel: "12k chars", visualNodeBudget: 12 },
+  standard: { chunkBudget: 128, label: "표준", targetNodes: 10_000, textBudgetChars: 48_000, textBudgetLabel: "48k chars", visualNodeBudget: 24 },
+  deep: { chunkBudget: 384, label: "깊게", targetNodes: 25_000, textBudgetChars: 160_000, textBudgetLabel: "160k chars", visualNodeBudget: 36 },
+  max: { chunkBudget: 768, label: "최대", targetNodes: 50_000, textBudgetChars: 420_000, textBudgetLabel: "420k chars", visualNodeBudget: 48 },
 };
 
 const memoryTopics = [
@@ -94,9 +95,26 @@ const memoryTopics = [
   ["adaptive-batch", "Adaptive Batch", "training"],
 ] as const;
 
-function learningPresetFor(value: unknown): LearningPreset & { id: LearningVolume } {
+function boundedNumber(value: unknown, fallback: number, min: number, max: number) {
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(numeric)));
+}
+
+function learningPresetFor(value: unknown, targetNodesInput?: unknown): LearningPreset & { id: LearningVolume; targetNodes: number } {
   const id = typeof value === "string" && value in learningPresets ? value as LearningVolume : "standard";
-  return { id, ...learningPresets[id] };
+  const base = learningPresets[id];
+  const targetNodes = boundedNumber(targetNodesInput, base.targetNodes ?? 10_000, 100, 250_000);
+  const visualNodeBudget = Math.max(
+    base.visualNodeBudget,
+    Math.min(360, Math.round(Math.sqrt(targetNodes) * 2.1)),
+  );
+  const chunkBudget = Math.max(base.chunkBudget, Math.min(2_000, Math.round(targetNodes / 12)));
+  const textBudgetChars = Math.max(base.textBudgetChars, Math.min(2_400_000, targetNodes * 9));
+  const textBudgetLabel = textBudgetChars >= 1_000_000
+    ? `${Number((textBudgetChars / 1_000_000).toFixed(1))}m chars`
+    : `${Math.round(textBudgetChars / 1000)}k chars`;
+  return { id, ...base, chunkBudget, targetNodes, textBudgetChars, textBudgetLabel, visualNodeBudget };
 }
 
 async function harvestUrl(url: string, index: number): Promise<HarvestDoc> {
@@ -159,16 +177,17 @@ function makeGraphForPreset(preset: LearningPreset) {
     { id: "guard", label: "Guarded Evidence", type: "guardrail", x: 2.6, y: -2.4, z: 1.7, confidence: 0.78 },
     { id: "oven", label: "Homage Oven Gate", type: "training", x: 5.4, y: 0.9, z: 0.5, confidence: 0.76 },
   ];
-  const seedNodeBudget = Math.min(preset.visualNodeBudget, Math.max(12, Math.round(preset.visualNodeBudget * 0.58)));
+  const seedNodeBudget = Math.min(preset.visualNodeBudget, Math.max(12, Math.round(preset.visualNodeBudget * 0.86)));
   const extraCount = Math.max(0, seedNodeBudget - baseNodes.length);
   const extraNodes = Array.from({ length: extraCount }, (_, index) => {
     const topic = memoryTopics[index % memoryTopics.length];
+    const wave = Math.floor(index / memoryTopics.length);
     const ring = Math.floor(index / 8);
     const angle = index * 0.82;
     const radius = 4.2 + ring * 0.55;
     return {
-      id: topic[0],
-      label: topic[1],
+      id: wave > 0 ? `${topic[0]}-${wave + 1}` : topic[0],
+      label: wave > 0 ? `${topic[1]} ${wave + 1}` : topic[1],
       type: topic[2],
       x: Math.cos(angle) * radius,
       y: Math.sin(angle) * radius * 0.72,
@@ -203,9 +222,11 @@ function makeGraphForPreset(preset: LearningPreset) {
 export async function POST(request: Request) {
   let urls = seedUrls;
   let learningVolume: unknown = "standard";
+  let targetNodes: unknown = undefined;
   try {
     const body = await request.json();
     learningVolume = body?.learning_volume ?? learningVolume;
+    targetNodes = body?.target_nodes;
     if (Array.isArray(body?.seed_urls) && body.seed_urls.length) {
       urls = body.seed_urls.slice(0, 6);
     }
@@ -214,7 +235,7 @@ export async function POST(request: Request) {
   }
 
   const docs = await Promise.all(urls.map((url, index) => harvestUrl(url, index)));
-  const learningPreset = learningPresetFor(learningVolume);
+  const learningPreset = learningPresetFor(learningVolume, targetNodes);
   const trainingUnits = makeTrainingUnits(docs, learningPreset);
   const generatedAt = new Date().toISOString();
   const { nodes, edges, traversal_path: traversalPath } = makeGraphForPreset(learningPreset);
@@ -242,6 +263,7 @@ export async function POST(request: Request) {
     ready: nodes.length >= 8 && edges.length >= 7,
     render_strategy: "chunk budget grows independently; 3D graph renders sampled representative memory nodes.",
     visual_node_budget: learningPreset.visualNodeBudget,
+    target_nodes: learningPreset.targetNodes,
     next_action: "Homage Oven dry-run starts after Guardrail approves evidence bundle.",
   };
 
@@ -256,6 +278,7 @@ export async function POST(request: Request) {
       text_budget_chars: learningPreset.textBudgetChars,
       text_budget_label: learningPreset.textBudgetLabel,
       chunk_budget: learningPreset.chunkBudget,
+      target_nodes: learningPreset.targetNodes,
       visual_node_budget: learningPreset.visualNodeBudget,
     },
     training_units: trainingUnits.slice(0, 24),

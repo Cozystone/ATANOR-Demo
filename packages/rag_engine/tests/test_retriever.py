@@ -24,6 +24,7 @@ def test_query_graphrag_matches_docs_and_graph(tmp_path):
     assert result["pmv"]["intent"]
     assert result["claim_plan"]
     assert not result["answer"].startswith("질문 '")
+    assert "읽힌 경로" not in result["answer"]
     assert result["confidence"] > 0
 
 
@@ -128,3 +129,25 @@ def test_query_graphrag_generates_structure_answer_without_direct_evidence(tmp_p
     assert "Homage" in result["answer"]
     assert "DataGate" in result["answer"] or "Ontology Forge" in result["answer"]
     assert result["follow_up_questions"]
+
+
+def test_query_graphrag_unknown_external_entity_does_not_use_structure_context(tmp_path):
+    cleaned = tmp_path / "cleaned"
+    ontology = tmp_path / "ontology"
+    cleaned.mkdir()
+    ontology.mkdir()
+    (cleaned / "doc.txt").write_text("GraphRAG uses KnowledgeGraph for Evidence.", encoding="utf-8")
+    (ontology / "nodes.json").write_text(
+        json.dumps([{"id": "graphrag", "label": "GraphRAG", "type": "retrieval", "confidence": 0.9}]),
+        encoding="utf-8",
+    )
+    (ontology / "edges.json").write_text(json.dumps([]), encoding="utf-8")
+
+    result = query_graphrag("유재석이 누구야", str(cleaned), str(ontology))
+
+    assert result["answer_engine"]["external_llm"] is False
+    assert result["evidence_docs"] == []
+    assert result["citations"] == []
+    assert "Homage1.0은 Harvest" not in result["answer"]
+    assert "검증된 문서 근거" in result["answer"]
+    assert "외부 LLM" in result["answer"]

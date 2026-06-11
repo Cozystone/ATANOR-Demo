@@ -145,10 +145,13 @@ def build_native_utterance(
         claim_plan.append({"claim": evidence["text"], "support": evidence["doc_id"]})
 
     if not evidence_docs:
+        topic = query.strip() or "현재 질문"
         answer = (
-            "지금 질문에 답할 근거 청크가 아직 충분하지 않습니다. "
-            "Homage 방식에서는 이 상태에서 그럴듯한 문장을 억지로 생성하지 않고, "
-            "DataGate 문서 추가와 Ontology Forge 재실행을 먼저 요구합니다. "
+            f"현재 Homage 메모리에는 '{topic}'에 대해 검증된 문서 근거가 아직 없습니다. "
+            "외부 LLM이나 일반 지식 데이터베이스를 쓰지 않는 Alpha 모드라서, "
+            "학습되지 않은 외부 사실은 단정하지 않습니다. "
+            "Build Start나 Harvest 입력으로 관련 자료를 넣으면 DataGate가 문서를 거르고, "
+            "Ontology Forge가 인물/개념 노드를 만든 뒤 GraphRAG가 그 근거로 답변할 수 있습니다. "
             f"현재 활성화된 후보 개념은 {', '.join(active_concepts) if active_concepts else '없음'}입니다."
         )
     else:
@@ -160,9 +163,9 @@ def build_native_utterance(
             "answer_grounded": "현재 답변은 Homage Utterance Engine이 GraphRAG context bundle을 읽고 만든 네이티브 발화입니다.",
         }
         concept_part = f"활성 개념은 {', '.join(active_concepts[:4])}입니다." if active_concepts else ""
-        path_part = f"읽힌 경로는 {'; '.join(path_lines)}입니다." if path_lines else ""
+        signal_part = f"활성 신호는 {', '.join(active_concepts[:4])} 노드에서 켜졌습니다." if active_concepts else ""
         evidence_part = " ".join(item["text"] for item in selected_evidence)
-        answer = _compact_join([lead_by_intent[intent], concept_part, path_part, evidence_part])
+        answer = _compact_join([lead_by_intent[intent], concept_part, signal_part, evidence_part])
 
     return {
         "answer": answer,

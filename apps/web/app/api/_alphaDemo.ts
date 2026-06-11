@@ -222,6 +222,13 @@ export function isLegendQuery(query: string) {
   return asksColor && (asksMeaning || graphContext);
 }
 
+function isInternalStructureQuery(query: string) {
+  const normalized = normalizedQuery(query);
+  const selfOrSystem = /(너|네|니|너희|homage|bakeboard|rag|graphrag|온톨로지|메모리|파이프라인|엔진|시스템|아키텍처|구조|architecture|system|engine)/i.test(normalized);
+  const asksStructure = /(구조|설명|작동|어떻게|뭐야|무엇|누구|흐름|과정|엔진|아키텍처|structure|explain|architecture|work|flow)/i.test(normalized);
+  return selfOrSystem && asksStructure;
+}
+
 function nodeTypeText(type?: string) {
   const labels: Record<string, string> = {
     concept: "개념",
@@ -431,9 +438,46 @@ function makeOpenGenerationResult(query: string) {
   };
 }
 
-function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, graphPaths: string[][], evidenceDocs: any[]) {
+function makeNoEvidenceResult(query: string) {
+  const queryTerms = normalizedQuery(query).split(/\s+/).filter(Boolean);
+  return {
+    query,
+    method: "homage-native-no-evidence-v1",
+    answer:
+      `현재 Homage 메모리에는 '${query}'에 대해 검증된 문서 근거가 아직 없습니다. ` +
+      "외부 LLM이나 일반 지식 데이터베이스를 쓰지 않는 Alpha 모드라서, 학습되지 않은 외부 사실은 단정하지 않습니다. " +
+      "Build Start나 Harvest 입력으로 관련 자료를 넣으면 DataGate가 문서를 거르고, Ontology Forge가 인물/개념 노드를 만든 뒤 GraphRAG가 그 근거로 답변할 수 있습니다.",
+    matched_nodes: [],
+    matched_edges: [],
+    evidence_docs: [],
+    citations: [],
+    graph_paths: [],
+    follow_up_questions: ["관련 자료를 Harvest 입력으로 넣어볼까요?", "Build Start로 새 온톨로지 노드를 만들까요?"],
+    retrieval_trace: {
+      strategy: "no direct document hit; external facts are not guessed in native alpha mode",
+      query_terms: queryTerms,
+      expanded_terms: [],
+      ranked_chunk_ids: [],
+      matched_node_ids: [],
+    },
+    pmv: {
+      intent: "answer_grounded",
+      topic: query,
+      stance: "grounded and cautious",
+      audience_level: "general technical",
+      answer_goal: "state memory coverage honestly",
+      required_evidence: true,
+      style: "clear Korean technical explanation",
+    },
+    claim_plan: [],
+    active_concepts: queryTerms.slice(0, 4),
+    answer_engine: nativeAnswerEngine("native-no-evidence-alpha"),
+    confidence: 0.28,
+  };
+}
+
+function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, _graphPaths: string[][], evidenceDocs: any[]) {
   const activeConcepts = matchedNodes.map((node) => node.label).slice(0, 6);
-  const pathText = graphPaths.slice(0, 2).map((path) => path.join(" -- ")).join("; ");
   const evidenceText = evidenceDocs.slice(0, 2).map((doc) => doc.snippet).join(" ");
   const intent = /(왜|이유|why|줄이는)/i.test(query)
     ? "explain_cause"
@@ -450,7 +494,12 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
       ? "의미를 먼저 말하면, 이 항목은 Homage 메모리 안에서 특정 역할을 맡은 활성 개념입니다."
       : "현재 답변은 Homage Utterance Engine이 GraphRAG context bundle을 읽고 만든 네이티브 발화입니다.";
   return {
-    answer: [lead, activeConcepts.length ? `활성 개념은 ${activeConcepts.join(", ")}입니다.` : "", pathText ? `읽힌 경로는 ${pathText}입니다.` : "", evidenceText].filter(Boolean).join(" "),
+    answer: [
+      lead,
+      activeConcepts.length ? `활성 개념은 ${activeConcepts.join(", ")}입니다.` : "",
+      activeConcepts.length ? `활성 신호는 ${activeConcepts.slice(0, 4).join(", ")} 노드에서 켜졌습니다.` : "",
+      evidenceText,
+    ].filter(Boolean).join(" "),
     pmv: {
       intent,
       topic: activeConcepts[0] ?? query,
@@ -462,7 +511,6 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
     },
     claim_plan: [
       ...(activeConcepts[0] ? [{ claim: `${activeConcepts[0]}는 현재 질문의 중심 개념이다.`, support: "graph" }] : []),
-      ...(pathText ? [{ claim: "답변은 온톨로지 경로를 따라 좁혀진다.", support: "graph_path" }] : []),
       ...evidenceDocs.slice(0, 2).map((doc) => ({ claim: doc.snippet, support: doc.chunk_id })),
     ],
     active_concepts: activeConcepts,
@@ -477,7 +525,7 @@ export function makeEvidence(query: string) {
   if (isNodeInventoryQuery(query)) return makeNodeInventoryResult(query);
 
   const matchedNodes = demoNodes.filter((node) => nodeMatchesQuery(node.id, query));
-  if (!matchedNodes.length) return makeOpenGenerationResult(query);
+  if (!matchedNodes.length) return isInternalStructureQuery(query) ? makeOpenGenerationResult(query) : makeNoEvidenceResult(query);
 
   const matchedNodeIds = new Set(matchedNodes.map((node) => node.id));
   const evidenceDocs = [

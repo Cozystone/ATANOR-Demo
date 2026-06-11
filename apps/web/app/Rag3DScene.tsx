@@ -89,8 +89,10 @@ function labelSprite(text: string, scale = 1) {
   return sprite;
 }
 
-function shouldShowLabel(node: Rag3DNode) {
-  return !node.id.startsWith("live-synapse");
+function shouldShowLabel(node: Rag3DNode, totalNodes: number, isActive: boolean) {
+  if (node.id.startsWith("live-synapse")) return false;
+  if (isActive) return true;
+  return totalNodes <= 40;
 }
 
 function disposeMaterial(material?: THREE.Material | THREE.Material[]) {
@@ -127,6 +129,57 @@ function edgeKey(source: string, target: string) {
   return `${source}:${target}`;
 }
 
+function cameraDistanceForNodeCount(total: number) {
+  return Math.min(31, 11 + Math.sqrt(Math.max(1, total)) * 0.68);
+}
+
+function initialSpreadPosition(node: Rag3DNode, index: number, total: number) {
+  const source = new THREE.Vector3(node.x, node.y, node.z);
+  if (total <= 14) return source;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const offset = index + 0.5;
+  const y = 1 - (offset / total) * 2;
+  const radial = Math.sqrt(Math.max(0, 1 - y * y));
+  const shell = 3.6 + Math.sqrt(total) * 0.54;
+  const angle = index * goldenAngle;
+  const target = new THREE.Vector3(
+    Math.cos(angle) * radial * shell,
+    y * shell * 0.82,
+    Math.sin(angle) * radial * shell,
+  );
+  const sourceWeight = total > 90 ? 0.18 : total > 40 ? 0.28 : 0.42;
+  return source.multiplyScalar(sourceWeight).add(target.multiplyScalar(1 - sourceWeight));
+}
+
+function spreadPositions(nodes: Rag3DNode[]) {
+  const positions = nodes.map((node, index) => initialSpreadPosition(node, index, nodes.length));
+  if (nodes.length <= 1) return positions;
+  const minDistance = nodes.length > 140 ? 0.38 : nodes.length > 80 ? 0.48 : nodes.length > 40 ? 0.58 : 0.74;
+  const iterations = nodes.length > 140 ? 4 : nodes.length > 80 ? 5 : 7;
+  for (let pass = 0; pass < iterations; pass += 1) {
+    for (let left = 0; left < positions.length; left += 1) {
+      for (let right = left + 1; right < positions.length; right += 1) {
+        const delta = positions[left].clone().sub(positions[right]);
+        let distance = delta.length();
+        if (distance >= minDistance) continue;
+        if (distance < 0.001) {
+          delta.set(
+            ((left % 3) - 1) * 0.015 + 0.01,
+            ((right % 5) - 2) * 0.015 + 0.01,
+            0.02,
+          );
+          distance = delta.length();
+        }
+        const push = (minDistance - distance) * 0.5;
+        delta.normalize().multiplyScalar(push);
+        positions[left].add(delta);
+        positions[right].sub(delta);
+      }
+    }
+  }
+  return positions;
+}
+
 function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: Set<string>, activeEdgeKeys: Set<string>) {
   clearDynamicObjects(state);
   if (!graph?.nodes?.length) return;
@@ -134,10 +187,12 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   const nodeMap = new Map<string, THREE.Vector3>();
   const labelScale = graph.nodes.length > 18 ? 0.72 : graph.nodes.length > 12 ? 0.84 : 1;
   const nextKnownNodeIds = new Set<string>();
+  const positions = spreadPositions(graph.nodes);
+  state.camera.position.z = Math.max(state.camera.position.z, cameraDistanceForNodeCount(graph.nodes.length));
 
-  for (const node of graph.nodes) {
+  for (const [index, node] of graph.nodes.entries()) {
     nextKnownNodeIds.add(node.id);
-    const position = new THREE.Vector3(node.x, node.y, node.z);
+    const position = positions[index];
     nodeMap.set(node.id, position);
     const isActive = activeNodeIds.has(node.id);
     const color = isActive ? 0xff6b35 : palette[node.type] ?? 0x68736d;
@@ -165,7 +220,7 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     halo.position.copy(position);
     addDynamicObject(state, halo);
 
-    if (shouldShowLabel(node)) {
+    if (shouldShowLabel(node, graph.nodes.length, isActive)) {
       const sprite = labelSprite(node.label, labelScale);
       sprite.position.set(position.x + 0.32, position.y + 0.18, position.z);
       addDynamicObject(state, sprite);
@@ -226,13 +281,13 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
     const { camera, group } = state;
 
     if (control.action === "zoom-in") camera.position.z = Math.max(5.2, camera.position.z - 1.1);
-    if (control.action === "zoom-out") camera.position.z = Math.min(25, camera.position.z + 1.1);
+    if (control.action === "zoom-out") camera.position.z = Math.min(34, camera.position.z + 1.1);
     if (control.action === "left") group.rotation.y -= 0.22;
     if (control.action === "right") group.rotation.y += 0.22;
     if (control.action === "up") group.rotation.x -= 0.18;
     if (control.action === "down") group.rotation.x += 0.18;
     if (control.action === "reset") {
-      camera.position.set(0, 0, 13);
+      camera.position.set(0, 0, cameraDistanceForNodeCount(graphRef.current?.nodes?.length ?? 0));
       group.rotation.set(0, 0, 0);
     }
   }, [control]);
@@ -318,7 +373,7 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
 
     function handleWheel(event: WheelEvent) {
       event.preventDefault();
-      camera.position.z = Math.max(6, Math.min(22, camera.position.z + event.deltaY * 0.01));
+      camera.position.z = Math.max(6, Math.min(34, camera.position.z + event.deltaY * 0.01));
     }
 
     function handleResize() {
