@@ -10,6 +10,16 @@ type HarvestDoc = {
   license_status: string;
 };
 
+type LearningVolume = "lite" | "standard" | "deep" | "max";
+
+type LearningPreset = {
+  chunkBudget: number;
+  label: string;
+  textBudgetChars: number;
+  textBudgetLabel: string;
+  visualNodeBudget: number;
+};
+
 const seedUrls = [
   "https://www.reddit.com/r/MachineLearning/comments/1ookxb0/r_knowledge_graph_traversal_with_llms_and/?tl=ko",
   "https://github.com/glacier-creative-git/similarity-graph-traversal-semantic-rag-research",
@@ -50,6 +60,45 @@ function fallbackFor(url: string) {
   return "Reference page queued for Homage Harvest.";
 }
 
+const learningPresets: Record<LearningVolume, LearningPreset> = {
+  lite: { chunkBudget: 32, label: "가볍게", textBudgetChars: 12_000, textBudgetLabel: "12k chars", visualNodeBudget: 12 },
+  standard: { chunkBudget: 128, label: "표준", textBudgetChars: 48_000, textBudgetLabel: "48k chars", visualNodeBudget: 24 },
+  deep: { chunkBudget: 384, label: "깊게", textBudgetChars: 160_000, textBudgetLabel: "160k chars", visualNodeBudget: 36 },
+  max: { chunkBudget: 768, label: "최대", textBudgetChars: 420_000, textBudgetLabel: "420k chars", visualNodeBudget: 48 },
+};
+
+const memoryTopics = [
+  ["entity-cache", "Entity Cache", "ontology"],
+  ["claim-store", "Claim Store", "guardrail"],
+  ["chunk-router", "Chunk Router", "retrieval"],
+  ["event-gate", "SNN Event Gate", "source"],
+  ["fewshot-proto", "Few-shot Prototype", "training"],
+  ["self-supervised", "Masked Signal", "training"],
+  ["quant-plan", "Quantization Plan", "training"],
+  ["replay-buffer", "Replay Buffer", "ontology"],
+  ["citation-map", "Citation Map", "retrieval"],
+  ["quality-band", "Quality Band", "guardrail"],
+  ["semantic-anchor", "Semantic Anchor", "retrieval"],
+  ["synapse-plastic", "Synapse Plasticity", "ontology"],
+  ["distill-student", "Distilled Student", "training"],
+  ["energy-route", "Energy Route", "visualization"],
+  ["memory-index", "Memory Index", "ontology"],
+  ["context-bridge", "Context Bridge", "retrieval"],
+  ["source-license", "Source License", "guardrail"],
+  ["edge-summary", "Edge Summary", "visualization"],
+  ["task-router", "Task Router", "training"],
+  ["novelty-score", "Novelty Score", "ontology"],
+  ["graph-window", "Graph Window", "visualization"],
+  ["guard-memory", "Guard Memory", "guardrail"],
+  ["token-pack", "Token Pack", "source"],
+  ["adaptive-batch", "Adaptive Batch", "training"],
+] as const;
+
+function learningPresetFor(value: unknown): LearningPreset & { id: LearningVolume } {
+  const id = typeof value === "string" && value in learningPresets ? value as LearningVolume : "standard";
+  return { id, ...learningPresets[id] };
+}
+
 async function harvestUrl(url: string, index: number): Promise<HarvestDoc> {
   try {
     const response = await fetch(url, {
@@ -80,20 +129,26 @@ async function harvestUrl(url: string, index: number): Promise<HarvestDoc> {
   }
 }
 
-export async function POST(request: Request) {
-  let urls = seedUrls;
-  try {
-    const body = await request.json();
-    if (Array.isArray(body?.seed_urls) && body.seed_urls.length) {
-      urls = body.seed_urls.slice(0, 6);
-    }
-  } catch {
-    // Use default seeds.
+function makeTrainingUnits(docs: HarvestDoc[], preset: LearningPreset) {
+  const units = [];
+  for (let index = 0; index < preset.chunkBudget; index += 1) {
+    const doc = docs[index % Math.max(1, docs.length)];
+    const topic = memoryTopics[index % memoryTopics.length];
+    const repeatedSignal = `${doc?.snippet ?? "Reference signal"} ${topic[1]} ${fallbackSnippets.graphrag}`;
+    units.push({
+      id: `chunk-${String(index + 1).padStart(4, "0")}`,
+      source_id: doc?.id ?? "fallback",
+      topic: topic[1],
+      char_budget: Math.max(180, Math.floor(preset.textBudgetChars / preset.chunkBudget)),
+      text_preview: repeatedSignal.slice(0, 240),
+      route: index % 3 === 0 ? "TRAINABLE" : index % 3 === 1 ? "RAG_ONLY" : "REVIEW",
+    });
   }
+  return units;
+}
 
-  const docs = await Promise.all(urls.map((url, index) => harvestUrl(url, index)));
-  const generatedAt = new Date().toISOString();
-  const nodes = [
+function makeGraphForPreset(preset: LearningPreset) {
+  const baseNodes = [
     { id: "harvest", label: "Web Harvest", type: "source", x: -5, y: 1.4, z: -1.2, confidence: 0.86 },
     { id: "reddit-kg", label: "KG vs SSG", type: "critique", x: -2.8, y: 2.3, z: 0.6, confidence: 0.9 },
     { id: "dedupe", label: "Entity Dedupe", type: "ontology", x: -1.1, y: 0.8, z: 1.8, confidence: 0.84 },
@@ -104,7 +159,25 @@ export async function POST(request: Request) {
     { id: "guard", label: "Guarded Evidence", type: "guardrail", x: 2.6, y: -2.4, z: 1.7, confidence: 0.78 },
     { id: "oven", label: "Homage Oven Gate", type: "training", x: 5.4, y: 0.9, z: 0.5, confidence: 0.76 },
   ];
-  const edges = [
+  const seedNodeBudget = Math.min(preset.visualNodeBudget, Math.max(12, Math.round(preset.visualNodeBudget * 0.58)));
+  const extraCount = Math.max(0, seedNodeBudget - baseNodes.length);
+  const extraNodes = Array.from({ length: extraCount }, (_, index) => {
+    const topic = memoryTopics[index % memoryTopics.length];
+    const ring = Math.floor(index / 8);
+    const angle = index * 0.82;
+    const radius = 4.2 + ring * 0.55;
+    return {
+      id: topic[0],
+      label: topic[1],
+      type: topic[2],
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius * 0.72,
+      z: ((index % 7) - 3) * 0.56,
+      confidence: 0.68 + (index % 8) * 0.025,
+    };
+  });
+  const nodes = [...baseNodes, ...extraNodes];
+  const baseEdges = [
     { source: "harvest", target: "reddit-kg", relation: "extracts_signal", weight: 0.82 },
     { source: "reddit-kg", target: "dedupe", relation: "requires", weight: 0.86 },
     { source: "dedupe", target: "mutable-kg", relation: "stabilizes", weight: 0.74 },
@@ -114,19 +187,61 @@ export async function POST(request: Request) {
     { source: "traversal", target: "guard", relation: "grounds", weight: 0.8 },
     { source: "guard", target: "oven", relation: "approves_training", weight: 0.71 },
   ];
-  const graphFrames = [2, 4, 6, 9].map((count, index) => ({
+  const extraEdges = extraNodes.flatMap((node, index) => {
+    const anchor = index % 4 === 0 ? "anchor" : index % 4 === 1 ? "mutable-kg" : index % 4 === 2 ? "guard" : "oven";
+    const edges = [{ source: anchor, target: node.id, relation: "compresses_chunk", weight: 0.62 + (index % 5) * 0.04 }];
+    if (index > 0) edges.push({ source: extraNodes[index - 1].id, target: node.id, relation: "associates", weight: 0.52 });
+    return edges;
+  });
+  return {
+    edges: [...baseEdges, ...extraEdges],
+    nodes,
+    traversal_path: ["harvest", "reddit-kg", "dedupe", "mutable-kg", "anchor", "traversal", "guard", "oven", ...extraNodes.slice(0, 8).map((node) => node.id)],
+  };
+}
+
+export async function POST(request: Request) {
+  let urls = seedUrls;
+  let learningVolume: unknown = "standard";
+  try {
+    const body = await request.json();
+    learningVolume = body?.learning_volume ?? learningVolume;
+    if (Array.isArray(body?.seed_urls) && body.seed_urls.length) {
+      urls = body.seed_urls.slice(0, 6);
+    }
+  } catch {
+    // Use default seeds.
+  }
+
+  const docs = await Promise.all(urls.map((url, index) => harvestUrl(url, index)));
+  const learningPreset = learningPresetFor(learningVolume);
+  const trainingUnits = makeTrainingUnits(docs, learningPreset);
+  const generatedAt = new Date().toISOString();
+  const { nodes, edges, traversal_path: traversalPath } = makeGraphForPreset(learningPreset);
+  const frameCounts = [2, 5, 9, Math.ceil(nodes.length * 0.72), nodes.length].filter((count, index, all) => index === 0 || count > all[index - 1]);
+  const graphFrames = frameCounts.map((count, index) => ({
     tick: index + 1,
     node_count: count,
     edge_count: Math.max(1, count - 1),
-    message: ["Harvest accepted web references", "Ontology dedupe merged concepts", "GraphRAG traversal found anchor path", "Training gate reached dry-run threshold"][index],
+    message: [
+      "Harvest accepted web references",
+      "Ontology dedupe merged concepts",
+      "GraphRAG traversal found anchor path",
+      "Compressed memory samples were projected",
+      "Training gate reached selected text budget",
+    ][index] ?? "Graph memory keeps expanding",
   }));
   const trainingGate = {
     threshold_nodes: 8,
     threshold_edges: 7,
+    chunk_count: trainingUnits.length,
     node_count: nodes.length,
     edge_count: edges.length,
     evidence_count: docs.length,
+    text_budget_chars: learningPreset.textBudgetChars,
     ready: nodes.length >= 8 && edges.length >= 7,
+    render_strategy: "chunk budget grows independently; 3D graph renders sampled representative memory nodes.",
+    visual_node_budget: learningPreset.visualNodeBudget,
     next_action: "Homage Oven dry-run starts after Guardrail approves evidence bundle.",
   };
 
@@ -135,13 +250,22 @@ export async function POST(request: Request) {
     generated_at: generatedAt,
     mode: "alpha-live-harvest",
     harvest_docs: docs,
-    graph_3d: { nodes, edges, traversal_path: ["harvest", "reddit-kg", "dedupe", "anchor", "traversal", "guard", "oven"] },
+    learning_profile: {
+      id: learningPreset.id,
+      label: learningPreset.label,
+      text_budget_chars: learningPreset.textBudgetChars,
+      text_budget_label: learningPreset.textBudgetLabel,
+      chunk_budget: learningPreset.chunkBudget,
+      visual_node_budget: learningPreset.visualNodeBudget,
+    },
+    training_units: trainingUnits.slice(0, 24),
+    graph_3d: { nodes, edges, traversal_path: traversalPath },
     graph_frames: graphFrames,
     training_gate: trainingGate,
     learning_trace: [
-      { step: "Harvest", state: "complete", detail: `${docs.length} reference sources captured` },
-      { step: "DataGate", state: "complete", detail: "Reference-only snippets passed Alpha quality gate" },
-      { step: "Ontology Forge", state: "complete", detail: `${nodes.length} typed nodes and ${edges.length} typed relations created` },
+      { step: "Harvest", state: "complete", detail: `${docs.length} reference sources captured / ${trainingUnits.length} text chunks scheduled` },
+      { step: "DataGate", state: "complete", detail: `${learningPreset.textBudgetLabel} text budget passed through compressed chunk routing` },
+      { step: "Ontology Forge", state: "complete", detail: `${nodes.length} representative nodes and ${edges.length} typed relations created` },
       { step: "GraphRAG", state: "complete", detail: "Anchor traversal path and evidence bundle generated" },
       { step: "Homage Oven", state: trainingGate.ready ? "ready" : "waiting", detail: trainingGate.next_action },
     ],

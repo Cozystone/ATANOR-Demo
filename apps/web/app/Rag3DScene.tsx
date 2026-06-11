@@ -33,6 +33,8 @@ export type Rag3DControl = {
 
 type Rag3DSceneProps = {
   graph: Rag3DGraph | null;
+  activeEdgeKeys?: string[];
+  activeNodeIds?: string[];
   control?: Rag3DControl;
   onSelect?: (node: Rag3DNode) => void;
 };
@@ -113,7 +115,11 @@ function addDynamicObject(state: SceneState, object: THREE.Object3D) {
   state.group.add(object);
 }
 
-function renderGraph(state: SceneState, graph: Rag3DGraph | null) {
+function edgeKey(source: string, target: string) {
+  return `${source}:${target}`;
+}
+
+function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: Set<string>, activeEdgeKeys: Set<string>) {
   clearDynamicObjects(state);
   if (!graph?.nodes?.length) return;
 
@@ -125,20 +131,28 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null) {
     nextKnownNodeIds.add(node.id);
     const position = new THREE.Vector3(node.x, node.y, node.z);
     nodeMap.set(node.id, position);
-    const color = palette[node.type] ?? 0x68736d;
+    const isActive = activeNodeIds.has(node.id);
+    const color = isActive ? 0xff6b35 : palette[node.type] ?? 0x68736d;
     const radius = 0.17 + (node.confidence ?? 0.7) * 0.12;
     const geometry = new THREE.SphereGeometry(radius, 24, 24);
-    const material = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.18 });
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      emissive: isActive ? 0xff6b35 : 0x000000,
+      emissiveIntensity: isActive ? 0.72 : 0,
+      roughness: 0.42,
+      metalness: 0.18,
+    });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(position);
     mesh.userData.node = node;
+    mesh.userData.active = isActive;
     mesh.userData.spawnFrame = state.knownNodeIds.has(node.id) ? state.frame - 100 : state.frame;
     state.raycastMeshes.push(mesh);
     addDynamicObject(state, mesh);
 
     const halo = new THREE.Mesh(
       new THREE.SphereGeometry(radius * 1.7, 24, 24),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.08 }),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: isActive ? 0.26 : 0.08 }),
     );
     halo.position.copy(position);
     addDynamicObject(state, halo);
@@ -160,21 +174,24 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null) {
     const target = nodeMap.get(edge.target);
     if (!source || !target) continue;
     const isTraversal = traversalPairs.has(`${edge.source}:${edge.target}`);
+    const isActive = activeEdgeKeys.has(edgeKey(edge.source, edge.target)) || activeEdgeKeys.has(edgeKey(edge.target, edge.source));
     const geometry = new THREE.BufferGeometry().setFromPoints([source, target]);
     const material = new THREE.LineBasicMaterial({
-      color: isTraversal ? 0xff6b35 : 0x73827a,
+      color: isActive || isTraversal ? 0xff6b35 : 0x73827a,
       transparent: true,
-      opacity: isTraversal ? 0.95 : 0.58,
+      opacity: isActive ? 1 : isTraversal ? 0.95 : 0.58,
     });
     addDynamicObject(state, new THREE.Line(geometry, material));
   }
   state.knownNodeIds = nextKnownNodeIds;
 }
 
-export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps) {
+export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds = [], control, onSelect }: Rag3DSceneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
   const sceneStateRef = useRef<SceneState | null>(null);
+  const activeEdgeRef = useRef(new Set(activeEdgeKeys));
+  const activeNodeRef = useRef(new Set(activeNodeIds));
   const graphRef = useRef<Rag3DGraph | null>(graph);
 
   useEffect(() => {
@@ -184,8 +201,15 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
   useEffect(() => {
     graphRef.current = graph;
     const state = sceneStateRef.current;
-    if (state) renderGraph(state, graph);
+    if (state) renderGraph(state, graph, activeNodeRef.current, activeEdgeRef.current);
   }, [graph]);
+
+  useEffect(() => {
+    activeNodeRef.current = new Set(activeNodeIds);
+    activeEdgeRef.current = new Set(activeEdgeKeys);
+    const state = sceneStateRef.current;
+    if (state) renderGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current);
+  }, [activeEdgeKeys, activeNodeIds]);
 
   useEffect(() => {
     if (!control) return;
@@ -243,7 +267,7 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
       scene,
     };
     sceneStateRef.current = state;
-    renderGraph(state, graphRef.current);
+    renderGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -308,7 +332,8 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
       if (!drag.active) group.rotation.y += 0.00125;
       for (const mesh of state.raycastMeshes) {
         const age = Math.min(1, (state.frame - (mesh.userData.spawnFrame ?? state.frame)) / 18);
-        mesh.scale.setScalar(age * (1 + Math.sin(state.frame * 0.02 + mesh.position.x) * 0.025));
+        const activePulse = mesh.userData.active ? 1 + Math.sin(state.frame * 0.14 + mesh.position.x) * 0.18 : 1;
+        mesh.scale.setScalar(age * activePulse * (1 + Math.sin(state.frame * 0.02 + mesh.position.x) * 0.025));
       }
       renderer.render(scene, camera);
     }
