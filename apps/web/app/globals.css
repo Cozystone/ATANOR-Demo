@@ -255,6 +255,10 @@ p {
   font-size: 0.76rem;
 }
 
+.memory-tools span {
+  white-space: nowrap;
+}
+
 .memory-tools button,
 .graph-search button,
 .graph-nav button,
@@ -953,5 +957,48 @@ p {
 
   .system-log {
     flex-basis: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .memory-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    min-height: auto;
+    padding: 10px 12px;
+  }
+
+  .memory-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .memory-tools button {
+    padding: 5px 8px;
+  }
+
+  .graph-control-strip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 6px;
+  }
+
+  .graph-search {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .graph-nav {
+    grid-column: 1;
+    justify-content: start;
+  }
+
+  .zoom-readout {
+    grid-column: 2;
+    justify-self: end;
   }
 }

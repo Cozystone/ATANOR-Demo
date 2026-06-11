@@ -712,11 +712,11 @@ export default function BakeBoardPage() {
   ];
 
   const logs = [
-    ...(buildRun ? [{ time: fmtClock(), message: `Build ${buildRun.run_id}: ${activeBuildFrame?.message ?? "factory build ready"} / gate ${buildRun.training_gate.ready ? "ready" : "waiting"}` }] : []),
+    ...(buildRun ? [{ time: fmtClock(), message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / gate ${buildRun.training_gate.ready ? "준비" : "대기"}` }] : []),
     { time: fmtClock(), message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
-    { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / confidence ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
-    { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / last loss ${oven?.last_loss ?? "none"}` },
-    { time: fmtClock(), message: `효율 계획: estimated compute reduction ${energyReduction}%` },
+    { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
+    { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / 마지막 손실 ${oven?.last_loss ?? "없음"}` },
+    { time: fmtClock(), message: `효율 계획: 추정 연산 절감 ${energyReduction}%` },
   ];
 
   function changeLayoutMode(mode: LayoutMode) {
