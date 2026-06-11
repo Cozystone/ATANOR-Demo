@@ -4,6 +4,11 @@ node_modules/
 apps/web/.next/
 __pycache__/
 *.py[cod]
+*.egg-info/
+.pytest_cache/
+data/cleaned/
+data/rejected/
+data/metadata/
 *.log
 .env
 .env.*
