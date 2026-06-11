@@ -242,6 +242,32 @@ Deployment:
     - `docs/screenshots/110-infinite-learning-running-local.png`
     - `docs/screenshots/111-infinite-learning-stopped-local.png`
     - `docs/screenshots/112-infinite-learning-production.png`
+- Reality boundary, adaptive zoom, and safety-stop verification passed:
+  - FastAPI system telemetry now returns `source: local-fastapi`, RAM total,
+    RAM used, disk free, and disk used values; Next fallback marks itself as
+    `deployment-sandbox` or `local-next`
+  - local API measured this machine as 32 CPU threads, about 31.1GB RAM,
+    RTX 5080 with about 15.9GB VRAM, about 165.5GB free disk, and recommended
+    `max`
+  - with the actual hardware profile applied to a 250,000-node workload,
+    storage reserve recalculated to about 186.1GB and UI render budget stayed
+    at 600 representative nodes
+  - local browser verification correctly blocked infinite learning preflight
+    because live RAM usage crossed the soft watermark; the UI showed the reason
+    instead of silently starting a risky run
+  - the 3D graph now reports preserved API anchor nodes, visible newly generated
+    `live-synapse-*` nodes, summarized history nodes, and the latest new node id
+  - responsive 3D zoom-out no longer has the old fixed `34` camera-distance
+    ceiling; local browser verification reached camera distance `187.4` with a
+    dynamic max of `198.9` for a 358-node graph
+  - production browser verification showed `deployment-sandbox` labeling,
+    preserved anchors, visible new live nodes, summarized history, and zoom-out
+    camera distance `134.7` on a 600-node render window
+  - screenshots:
+    - `docs/screenshots/113-local-safety-preflight-block.png`
+    - `docs/screenshots/114-local-anchor-new-node-trace.png`
+    - `docs/screenshots/115-responsive-zoom-out-local.png`
+    - `docs/screenshots/116-production-live-summary-zoom.png`
 
 ## Known Limitations
 
@@ -274,6 +300,11 @@ Deployment:
 - `∞` learning mode runs continuously in the browser until stopped and keeps the
   3D render bounded with a rolling representative window. It does not yet run a
   durable background crawler or persist every graph mutation across refreshes.
+- The UI now labels that boundary: harvested/API anchor graphs are real Alpha
+  API output, while `live-synapse-*` nodes are client-side growth events until
+  the append-only ontology event log exists.
+- When real local telemetry is available, infinite learning can be preflight
+  blocked or auto-stopped on RAM, VRAM, or disk reserve pressure.
 - Sustained stability is currently an enforceable planning/API/UI layer. The
   live ontology store still needs to move from JSON snapshots to append-only
   graph events plus a SQLite WAL hot index before very long unattended runs.

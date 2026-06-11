@@ -91,6 +91,7 @@ const liveGrowthTemplates = [
 const liveGrowthBatchSize = 6;
 const maxLiveGrowthPulses = 8;
 const graphInspectionPulseCap = 2;
+const liveSummaryBatchSize = 72;
 
 const learningVolumePresets: Record<LearningVolume, { label: string; textBudget: string; chunkBudget: number; visualNodes: number; targetNodes: number; edgeRatio: number; durationHours: number; detail: string }> = {
   lite: { label: "가볍게", textBudget: "12k chars", chunkBudget: 32, visualNodes: 12, targetNodes: 3_000, edgeRatio: 3, durationHours: 12, detail: "응답 확인용" },
@@ -103,11 +104,44 @@ const learningVolumePresets: Record<LearningVolume, { label: string; textBudget:
 function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = Number.POSITIVE_INFINITY, rollingWindow = false): Rag3DGraph {
   const liveNodes: Rag3DNode[] = [];
   const liveEdges: Rag3DEdge[] = [];
+  const summaryNodes: Rag3DNode[] = [];
+  const summaryEdges: Rag3DEdge[] = [];
   const baseIds = new Set(base.nodes.map((node) => node.id));
   const totalLiveNodeCount = Math.max(0, Math.floor(pulseCount)) * liveGrowthBatchSize;
-  const renderSlots = Math.max(0, Math.floor(maxTotalNodes - base.nodes.length));
+  const maxRenderedNodes = Number.isFinite(maxTotalNodes) ? Math.max(base.nodes.length, Math.floor(maxTotalNodes)) : Number.POSITIVE_INFINITY;
+  const preliminarySlots = Math.max(0, Math.floor(maxRenderedNodes - base.nodes.length));
+  const preliminaryHidden = rollingWindow ? Math.max(0, totalLiveNodeCount - preliminarySlots) : 0;
+  const summaryCount = rollingWindow && preliminaryHidden > 0
+    ? Math.min(12, Math.ceil(preliminaryHidden / liveSummaryBatchSize))
+    : 0;
+  const renderSlots = Math.max(0, Math.floor(maxRenderedNodes - base.nodes.length - summaryCount));
   const startIndex = rollingWindow ? Math.max(0, totalLiveNodeCount - renderSlots) : 0;
   const endIndex = Math.min(totalLiveNodeCount, startIndex + renderSlots);
+  if (summaryCount > 0) {
+    for (let summaryIndex = 0; summaryIndex < summaryCount; summaryIndex += 1) {
+      const rangeStart = summaryIndex * liveSummaryBatchSize + 1;
+      const rangeEnd = Math.min(startIndex, (summaryIndex + 1) * liveSummaryBatchSize);
+      if (rangeEnd < rangeStart) continue;
+      const angle = summaryIndex * 1.7;
+      const radius = 5.2 + (summaryIndex % 4) * 0.42;
+      const id = `live-summary-${summaryIndex + 1}-${rangeEnd}`;
+      const anchor = base.nodes[(summaryIndex * 17) % Math.max(1, base.nodes.length)]?.id;
+      summaryNodes.push({
+        id,
+        label: `요약 ${rangeStart}-${rangeEnd}`,
+        type: "summary",
+        x: Math.cos(angle) * radius,
+        y: Math.sin(angle) * radius * 0.72,
+        z: 2.6 + (summaryIndex % 3) * 0.5,
+        confidence: 0.58,
+      });
+      if (anchor) summaryEdges.push({ source: anchor, target: id, relation: "summarizes_hidden_events", weight: 0.5 });
+      if (summaryIndex > 0) {
+        const previousRangeEnd = Math.min(startIndex, summaryIndex * liveSummaryBatchSize);
+        summaryEdges.push({ source: `live-summary-${summaryIndex}-${previousRangeEnd}`, target: id, relation: "continues_history", weight: 0.42 });
+      }
+    }
+  }
   for (let index = startIndex; index < endIndex; index += 1) {
     const template = liveGrowthTemplates[index % liveGrowthTemplates.length];
     const ring = Math.floor(index / liveGrowthTemplates.length);
@@ -139,10 +173,15 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
       liveEdges.push({ source: `live-synapse-${index + 1 - liveGrowthBatchSize}`, target: id, relation: "consolidates_with", weight: 0.55 });
     }
   }
+  const firstVisible = liveNodes[0]?.id;
+  const lastSummary = summaryNodes.at(-1)?.id;
+  if (firstVisible && lastSummary) {
+    summaryEdges.push({ source: lastSummary, target: firstVisible, relation: "opens_live_frontier", weight: 0.5 });
+  }
   return {
-    nodes: [...base.nodes, ...liveNodes],
-    edges: [...base.edges, ...liveEdges],
-    traversal_path: [...(base.traversal_path ?? []), ...liveNodes.slice(-8).map((node) => node.id)],
+    nodes: [...base.nodes, ...summaryNodes, ...liveNodes],
+    edges: [...base.edges, ...summaryEdges, ...liveEdges],
+    traversal_path: [...(base.traversal_path ?? []), ...summaryNodes.slice(-2).map((node) => node.id), ...liveNodes.slice(-8).map((node) => node.id)],
   };
 }
 
@@ -263,14 +302,53 @@ function asPercent(value?: number | null) {
   return Math.round((value ?? 0) * 100);
 }
 
-function stabilityPayloadForVolume(volume: LearningVolume, targetNodeCount?: number) {
+function stabilityPayloadForVolume(volume: LearningVolume, targetNodeCount?: number, hardwareProfile?: AnyRecord | null) {
   const preset = learningVolumePresets[volume];
   const targetNodes = clamp(Math.round(targetNodeCount ?? preset.targetNodes), 100, 250_000);
   return {
+    ...(hardwareProfile ? { hardware_profile: hardwareProfile } : {}),
     target_nodes: targetNodes,
     target_edges: Math.max(targetNodes + 1, Math.round(targetNodes * preset.edgeRatio)),
     duration_hours: preset.durationHours,
   };
+}
+
+function isRealTelemetrySource(system?: AnyRecord | null, benchmark?: AnyRecord | null) {
+  const source = String(system?.source ?? "");
+  return Boolean(benchmark?.can_read_local_hardware) || source === "local-fastapi" || source === "local-next";
+}
+
+function telemetrySourceText(system?: AnyRecord | null, benchmark?: AnyRecord | null) {
+  if (benchmark?.can_read_local_hardware || system?.source === "local-fastapi") return "실제 PC 측정";
+  if (system?.source === "local-next") return "로컬 Next 측정";
+  if (system?.source === "deployment-sandbox") return "배포 샌드박스";
+  return "측정 대기";
+}
+
+function numeric(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resourcePressureReason(system?: AnyRecord | null, gpu?: AnyRecord | null, stability?: AnyRecord | null, benchmark?: AnyRecord | null) {
+  if (!isRealTelemetrySource(system, benchmark)) return null;
+  const ramSoft = numeric(stability?.runtime_envelope?.ram_soft_gb);
+  const ramUsed = numeric(system?.ram_used_gb);
+  if (ramSoft !== null && ramUsed !== null && ramUsed >= ramSoft) {
+    return `RAM ${ramUsed.toFixed(1)}GB가 soft watermark ${ramSoft.toFixed(1)}GB를 넘었습니다`;
+  }
+  const vramSoft = numeric(stability?.runtime_envelope?.vram_soft_gb);
+  const vramUsedMb = numeric(gpu?.vram_used);
+  const vramUsed = vramUsedMb === null ? null : vramUsedMb / 1024;
+  if (gpu?.available && vramSoft !== null && vramUsed !== null && vramUsed >= vramSoft) {
+    return `VRAM ${vramUsed.toFixed(1)}GB가 soft watermark ${vramSoft.toFixed(1)}GB를 넘었습니다`;
+  }
+  const diskFree = numeric(system?.disk_free_gb);
+  const storageReserve = numeric(stability?.runtime_envelope?.storage_reserve_gb);
+  if (diskFree !== null && storageReserve !== null && diskFree <= storageReserve) {
+    return `디스크 여유 ${diskFree.toFixed(1)}GB가 reserve ${storageReserve.toFixed(1)}GB 이하입니다`;
+  }
+  return null;
 }
 
 function statusText(state?: string) {
@@ -633,7 +711,11 @@ export default function BakeBoardPage() {
       fetchJson<AnyRecord>("/api/neuro/plan"),
       fetchJson<AnyRecord>("/api/neuro/stability", {
         method: "POST",
-        body: JSON.stringify(stabilityPayloadForVolume(learningVolume, targetNodeCount)),
+        body: JSON.stringify(stabilityPayloadForVolume(
+          learningVolume,
+          targetNodeCount,
+          benchmark?.can_read_local_hardware ? benchmark.hardware_profile : null,
+        )),
       }),
     ]);
     setPipeline(pipelineStatus);
@@ -655,7 +737,7 @@ export default function BakeBoardPage() {
       refreshAll().catch(() => undefined);
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [learningVolume, targetNodeCount]);
+  }, [learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at]);
 
   useEffect(() => {
     runHardwareBenchmark({ applyRecommendation: true }).catch((caught) => {
@@ -871,6 +953,8 @@ export default function BakeBoardPage() {
     });
     setBenchmark(result);
     const recommended = result?.recommended_learning_volume as LearningVolume | undefined;
+    let nextVolume = learningVolume;
+    let nextTargetNodeCount = targetNodeCount;
     if (
       options.applyRecommendation &&
       result?.can_read_local_hardware &&
@@ -879,16 +963,31 @@ export default function BakeBoardPage() {
       !benchmarkAppliedRef.current
     ) {
       benchmarkAppliedRef.current = true;
+      nextVolume = recommended;
+      nextTargetNodeCount = learningVolumePresets[recommended].targetNodes;
       setLearningVolume(recommended);
-      setTargetNodeCount(learningVolumePresets[recommended].targetNodes);
+      setTargetNodeCount(nextTargetNodeCount);
     }
+    const stabilityPlan = await fetchJson<AnyRecord>("/api/neuro/stability", {
+      method: "POST",
+      body: JSON.stringify(stabilityPayloadForVolume(
+        nextVolume,
+        nextTargetNodeCount,
+        result?.can_read_local_hardware ? result.hardware_profile : null,
+      )),
+    });
+    setStability(stabilityPlan);
     return result;
   }
 
   async function refreshStabilityPlan() {
     setError(null);
     try {
-      const payload = stabilityPayloadForVolume(learningVolume, targetNodeCount);
+      const payload = stabilityPayloadForVolume(
+        learningVolume,
+        targetNodeCount,
+        benchmark?.can_read_local_hardware ? benchmark.hardware_profile : null,
+      );
       const plan = await fetchJson<AnyRecord>("/api/neuro/stability", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -899,21 +998,30 @@ export default function BakeBoardPage() {
     }
   }
 
-  function stopContinuousLearning() {
+  function stopContinuousLearning(reason?: string) {
     const elapsed = learningStartedAt ? Date.now() - learningStartedAt : learningElapsedMs;
     setContinuousLearningActive(false);
     setLearningElapsedMs(elapsed);
+    const reasonText = reason ? ` 안전 중지 사유: ${reason}.` : "";
     setChatMessages((messages) => [
       ...messages,
       {
         role: "assistant",
-        text: `∞ 지속 학습을 멈췄습니다. 누적 학습 시간은 ${formatDuration(elapsed)}이고, 현재 화면에는 대표 온톨로지 노드 ${displayGraph3D.nodes.length}개와 관계 ${displayGraph3D.edges.length}개가 남아 있습니다.`,
+        text: `∞ 지속 학습을 멈췄습니다.${reasonText} 누적 학습 시간은 ${formatDuration(elapsed)}이고, 현재 화면에는 대표 온톨로지 노드 ${displayGraph3D.nodes.length}개와 관계 ${displayGraph3D.edges.length}개가 남아 있습니다.`,
       },
     ]);
   }
 
   async function startFactoryBuild() {
     setError(null);
+    if (learningVolume === "infinite" && resourceStopReason) {
+      setError(`안전 조건 때문에 ∞ 학습을 시작하지 않았습니다: ${resourceStopReason}`);
+      setChatMessages((messages) => [
+        ...messages,
+        { role: "assistant", text: `∞ 지속 학습 시작 전 안전 점검에서 멈췄습니다. 사유: ${resourceStopReason}.` },
+      ]);
+      return;
+    }
     setIsBuilding(true);
     const startedAt = Date.now();
     setLearningStartedAt(startedAt);
@@ -1050,6 +1158,12 @@ export default function BakeBoardPage() {
   }, [activeBuildFrame?.node_count, buildIsInfinite, buildRun, growthPulseCount, visualNodeCap]);
 
   const displayGraph3D = activeGraph3D ?? memoryGraph3D;
+  const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
+  const visibleLiveNodeCount = displayGraph3D.nodes.filter((node) => node.id.startsWith("live-synapse")).length;
+  const summaryNodeCount = displayGraph3D.nodes.filter((node) => node.id.startsWith("live-summary")).length;
+  const preservedAnchorNodeCount = buildRun?.graph_3d?.nodes.length ?? displayGraph3D.nodes.length;
+  const hiddenLiveNodeCount = Math.max(0, totalLiveNodeCount - visibleLiveNodeCount);
+  const newestLiveNodeId = totalLiveNodeCount > 0 ? `live-synapse-${totalLiveNodeCount}` : null;
 
   useEffect(() => {
     if (!activeGraph3D || !buildRun) return;
@@ -1077,10 +1191,20 @@ export default function BakeBoardPage() {
   const vramSoftGb = stability?.runtime_envelope?.vram_soft_gb ?? 12;
   const hotWindowNodes = stability?.graph_policy?.hot_window_nodes ?? 1600;
   const uiRenderNodes = stability?.graph_policy?.ui_render_nodes ?? 200;
+  const telemetryLabel = telemetrySourceText(system, benchmark);
+  const resourceStopReason = resourcePressureReason(system, gpu, stability, benchmark);
+  const diskFreeGb = numeric(system?.disk_free_gb);
+  const ramUsedGb = numeric(system?.ram_used_gb);
+  const vramUsedGb = numeric(gpu?.vram_used) === null ? null : (numeric(gpu?.vram_used) ?? 0) / 1024;
   const flowHealth = useMemo(() => {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
     return Math.round((complete / 7) * 100);
   }, [pipeline]);
+
+  useEffect(() => {
+    if (!continuousLearningActive || !resourceStopReason) return;
+    stopContinuousLearning(resourceStopReason);
+  }, [continuousLearningActive, resourceStopReason]);
 
   const processSteps = [
     {
@@ -1094,7 +1218,8 @@ export default function BakeBoardPage() {
         `추천 ${benchmarkVolumeLabel}`,
         `CPU ${benchmarkCpuThreads}`,
         `RAM ${benchmarkRamGb}GB`,
-        benchmarkSourceLabel,
+        telemetryLabel,
+        resourceStopReason ? "안전중지 조건 감지" : "안전 조건 정상",
       ],
       action: () => runProcessAction("HW", () => runHardwareBenchmark({ applyRecommendation: true })),
       actionLabel: activeAction === "HW" ? "측정 중" : "벤치마크 재측정",
@@ -1344,7 +1469,7 @@ export default function BakeBoardPage() {
         <div className="header-status">
           <button
             className="build-button"
-            onClick={continuousLearningActive ? stopContinuousLearning : startFactoryBuild}
+            onClick={continuousLearningActive ? () => stopContinuousLearning() : startFactoryBuild}
             disabled={isBuilding || (Boolean(activeAction) && !continuousLearningActive)}
           >
             {continuousLearningActive ? "학습 중지" : isBuilding ? "빌드 중" : "빌드 시작"}
@@ -1410,6 +1535,12 @@ export default function BakeBoardPage() {
                     <strong>3D GraphRAG 탐색</strong>
                     <span>{displayGraph3D.nodes.length} 노드 / {displayGraph3D.edges.length} 관계</span>
                     <span>{activeBuildFrame?.message ?? "빌드 시작을 누르면 노드가 파생됩니다."}</span>
+                    {buildRun ? (
+                      <span>
+                        기존 앵커 {preservedAnchorNodeCount} 유지 / 새 노드 {visibleLiveNodeCount} 표시 / 요약 {summaryNodeCount} 묶음
+                      </span>
+                    ) : null}
+                    {newestLiveNodeId ? <span>최신 새 노드 {newestLiveNodeId} / 비표시 이력 {hiddenLiveNodeCount}</span> : null}
                     <span className="signal-trace" data-active={activeSignalNodeIds.length > 0 || isGeneratingAnswer}>{signalTraceText}</span>
                   </div>
                 </>
@@ -1522,6 +1653,7 @@ export default function BakeBoardPage() {
                 <span>흐름 {flowHealth}%</span>
                 <span>GPU {gpu?.utilization ?? 0}%</span>
                 <span>RAM soft {ramSoftGb}GB</span>
+                <span>{telemetryLabel}</span>
               </div>
             </div>
 
@@ -1560,6 +1692,15 @@ export default function BakeBoardPage() {
                           {buildIsInfinite ? (
                             <span data-state={continuousLearningActive ? "running" : "complete"}>∞ 누적 {learningElapsedText}</span>
                           ) : null}
+                          {buildRun ? (
+                            <span data-state="complete">기존 앵커 {preservedAnchorNodeCount} 유지</span>
+                          ) : null}
+                          {buildIsInfinite ? (
+                            <span data-state="running">새 노드 표시 {visibleLiveNodeCount} / 요약 {summaryNodeCount}</span>
+                          ) : null}
+                          {resourceStopReason ? (
+                            <span data-state="running">안전중지 대기: {resourceStopReason}</span>
+                          ) : null}
                         </div>
                         <div className="learning-budget-summary">
                           <span>{buildRun.learning_profile?.label ?? currentLearningPreset.label}</span>
@@ -1567,8 +1708,11 @@ export default function BakeBoardPage() {
                           <strong>{buildRun.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}</strong>
                           <small>
                             대표 노드 최대 {buildRun.training_gate.visual_node_budget ?? buildRun.graph_3d.nodes.length}개
-                            {buildIsInfinite ? ` / 누적 후보 ${accumulatedLearningNodes.toLocaleString()}개` : ""}
+                            {buildIsInfinite ? ` / 누적 후보 ${accumulatedLearningNodes.toLocaleString()}개 / 비표시 이력 ${hiddenLiveNodeCount.toLocaleString()}개` : ""}
                           </small>
+                          {buildIsInfinite ? (
+                            <small>Alpha 경계: 수집 문서와 앵커 그래프는 API 결과, live-synapse는 저장 전 지속 성장 이벤트입니다.</small>
+                          ) : null}
                         </div>
                         <div className="build-sources">
                           {buildRun.harvest_docs.map((doc) => (
@@ -1586,12 +1730,19 @@ export default function BakeBoardPage() {
                           <span data-state={benchmark.can_read_local_hardware ? "complete" : "running"}>{benchmarkSourceLabel}</span>
                           <span data-state="complete">CPU {benchmarkCpuThreads} threads</span>
                           <span data-state="complete">Disk {benchmarkDiskScore ?? "n/a"} MB/s</span>
+                          <span data-state={isRealTelemetrySource(system, benchmark) ? "complete" : "running"}>{telemetryLabel}</span>
+                          {ramUsedGb !== null ? <span data-state="complete">RAM used {ramUsedGb.toFixed(1)}GB</span> : null}
+                          {vramUsedGb !== null && gpu?.available ? <span data-state="complete">VRAM used {vramUsedGb.toFixed(1)}GB</span> : null}
+                          {diskFreeGb !== null ? <span data-state={resourceStopReason?.includes("디스크") ? "running" : "complete"}>Disk free {diskFreeGb.toFixed(1)}GB</span> : null}
                         </div>
                         <div className="learning-budget-summary">
                           <span>{benchmark.profile_name ?? "Hardware Benchmark"}</span>
                           <strong>추천 {benchmarkVolumeLabel}</strong>
                           <strong>{benchmark.training_tuning?.microbatch_tokens ?? 0} tokens</strong>
-                          <small>CPU score {benchmarkCpuScore ?? "n/a"} / 실제 PC 측정은 로컬 FastAPI 연결 시 자동 적용</small>
+                          <small>
+                            CPU score {benchmarkCpuScore ?? "n/a"} / {benchmark?.can_read_local_hardware ? "실제 PC 기준으로 자동 적용됨" : "배포 화면의 CPU/RAM은 Vercel 샌드박스이며 실제 PC가 아닙니다"}
+                          </small>
+                          {resourceStopReason ? <small>안전중지: {resourceStopReason}</small> : null}
                         </div>
                       </div>
                     ) : null}
@@ -1601,12 +1752,15 @@ export default function BakeBoardPage() {
                           <span data-state="running">Backpressure: {stability.backpressure_policy?.length ?? 0} 규칙</span>
                           <span data-state="complete">Checkpoint {stability.checkpoint_policy?.training_checkpoint_interval_minutes ?? 15}분</span>
                           <span data-state="complete" title={stability.graph_policy?.ui_render_strategy ?? "enabled"}>Graph LOD: frontier/anchor</span>
+                          <span data-state={resourceStopReason ? "running" : "complete"}>{resourceStopReason ? "Auto-stop armed" : "Auto-stop clear"}</span>
                         </div>
                         <div className="learning-budget-summary">
                           <span>{stability.profile_name ?? "Sustained Profile"}</span>
                           <strong>{stability.target_workload?.target_nodes ?? 10000} 노드</strong>
                           <strong>{stability.target_workload?.target_edges ?? 40000} 관계</strong>
                           <small>저장 여유 {stability.runtime_envelope?.storage_reserve_gb ?? 200}GB 유지</small>
+                          {diskFreeGb !== null ? <small>현재 디스크 여유 {diskFreeGb.toFixed(1)}GB / {telemetryLabel}</small> : null}
+                          {resourceStopReason ? <small>현재 판단: {resourceStopReason}</small> : null}
                         </div>
                       </div>
                     ) : null}

@@ -447,3 +447,66 @@
   - `docs/screenshots/110-infinite-learning-running-local.png`
   - `docs/screenshots/111-infinite-learning-stopped-local.png`
   - `docs/screenshots/112-infinite-learning-production.png`
+
+## 2026-06-11 - Reality boundary, adaptive zoom, and safety stop
+
+- Audited whether infinite learning was real data flow or visual simulation.
+- Confirmed the current Alpha boundary:
+  - harvested references and base 3D anchor graph come from API results
+  - `live-synapse-*` nodes are deterministic client-side growth events
+  - old live events can be summarized by `live-summary-*` nodes when the render
+    window is full
+  - durable crawler, graph event log, and real training updates remain future
+    work
+- Added UI telemetry to show:
+  - preserved API anchor node count
+  - visible new live node count
+  - summarized history count
+  - latest new live node id
+  - hidden event count caused by render LOD
+- Removed the old fixed 3D zoom-out ceiling and replaced it with graph-size
+  responsive camera limits.
+- Added `data-camera-z`, `data-max-zoom`, and `data-node-count` on the 3D host
+  so browser verification can confirm camera range numerically.
+- Extended local FastAPI system telemetry with RAM total/used/available,
+  disk free, and source labels.
+- Extended Next telemetry fallback with explicit `deployment-sandbox` /
+  `local-next` source labels so production CPU/RAM numbers are not mistaken for
+  the viewer PC.
+- Wired real local benchmark hardware into stability recalculation.
+- Added infinite-learning preflight/auto-stop checks for RAM, VRAM, and disk
+  reserve pressure when real telemetry is available.
+- Verified local actual hardware:
+  - 32 CPU threads
+  - about 31.1GB RAM
+  - RTX 5080 with about 15.9GB VRAM
+  - about 165.5GB free disk
+  - benchmark recommendation: `max`
+  - 250,000-node stability reserve: about 186.1GB
+- Browser verification:
+  - local FastAPI + local Next showed `actual PC` telemetry
+  - infinite learning was preflight-blocked because RAM crossed soft watermark
+  - finite max build showed `310` preserved anchors and newly generated
+    `live-synapse-*` ids
+  - repeated zoom-out reached camera distance `187.4`, above the previous fixed
+    limit of `34`
+- Deployed production:
+  https://web-plao78fl2-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Production verification:
+  - `/api/telemetry/system` returned `source: deployment-sandbox`
+  - benchmark fallback remained `can_read_local_hardware: false`
+  - infinite build still returned `alpha-continuous-harvest`
+  - browser showed preserved anchors, visible new live nodes, summarized
+    history, and `Alpha boundary` copy
+  - production zoom-out reached camera distance `134.7` on a 600-node view
+- Verified:
+  - `npm --workspace apps/web run build`
+  - full Alpha Python suite with explicit `PYTHONPATH`: 60 passed
+  - `python -m compileall apps\api\app packages\neuro_efficiency`
+- Captured screenshots:
+  - `docs/screenshots/113-local-safety-preflight-block.png`
+  - `docs/screenshots/114-local-anchor-new-node-trace.png`
+  - `docs/screenshots/115-responsive-zoom-out-local.png`
+  - `docs/screenshots/116-production-live-summary-zoom.png`

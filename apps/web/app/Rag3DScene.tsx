@@ -66,6 +66,7 @@ const palette: Record<string, number> = {
   verification: 0xe89d2a,
   learning: 0x111715,
   efficiency: 0x006a9f,
+  summary: 0x6d746f,
 };
 
 function labelSprite(text: string, scale = 1) {
@@ -130,7 +131,16 @@ function edgeKey(source: string, target: string) {
 }
 
 function cameraDistanceForNodeCount(total: number) {
-  return Math.min(31, 11 + Math.sqrt(Math.max(1, total)) * 0.68);
+  return Math.min(44, 11 + Math.sqrt(Math.max(1, total)) * 0.82);
+}
+
+function maxZoomDistanceForNodeCount(total: number) {
+  const fitDistance = cameraDistanceForNodeCount(total);
+  return Math.min(900, Math.max(80, fitDistance * 7.5, Math.sqrt(Math.max(1, total)) * 7.2));
+}
+
+function clampCameraZ(camera: THREE.PerspectiveCamera, total: number) {
+  camera.position.z = Math.max(4.8, Math.min(maxZoomDistanceForNodeCount(total), camera.position.z));
 }
 
 function initialSpreadPosition(node: Rag3DNode, index: number, total: number) {
@@ -189,6 +199,7 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   const nextKnownNodeIds = new Set<string>();
   const positions = spreadPositions(graph.nodes);
   state.camera.position.z = Math.max(state.camera.position.z, cameraDistanceForNodeCount(graph.nodes.length));
+  clampCameraZ(state.camera, graph.nodes.length);
 
   for (const [index, node] of graph.nodes.entries()) {
     nextKnownNodeIds.add(node.id);
@@ -280,14 +291,15 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
     if (!state) return;
     const { camera, group } = state;
 
-    if (control.action === "zoom-in") camera.position.z = Math.max(5.2, camera.position.z - 1.1);
-    if (control.action === "zoom-out") camera.position.z = Math.min(34, camera.position.z + 1.1);
+    const totalNodes = graphRef.current?.nodes?.length ?? 0;
+    if (control.action === "zoom-in") camera.position.z = Math.max(4.8, camera.position.z - Math.max(1.1, camera.position.z * 0.09));
+    if (control.action === "zoom-out") camera.position.z = Math.min(maxZoomDistanceForNodeCount(totalNodes), camera.position.z + Math.max(1.2, camera.position.z * 0.13));
     if (control.action === "left") group.rotation.y -= 0.22;
     if (control.action === "right") group.rotation.y += 0.22;
     if (control.action === "up") group.rotation.x -= 0.18;
     if (control.action === "down") group.rotation.x += 0.18;
     if (control.action === "reset") {
-      camera.position.set(0, 0, cameraDistanceForNodeCount(graphRef.current?.nodes?.length ?? 0));
+      camera.position.set(0, 0, cameraDistanceForNodeCount(totalNodes));
       group.rotation.set(0, 0, 0);
     }
   }, [control]);
@@ -373,7 +385,8 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
 
     function handleWheel(event: WheelEvent) {
       event.preventDefault();
-      camera.position.z = Math.max(6, Math.min(34, camera.position.z + event.deltaY * 0.01));
+      const totalNodes = graphRef.current?.nodes?.length ?? 0;
+      camera.position.z = Math.max(4.8, Math.min(maxZoomDistanceForNodeCount(totalNodes), camera.position.z + event.deltaY * Math.max(0.01, camera.position.z * 0.0009)));
     }
 
     function handleResize() {
@@ -398,6 +411,10 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
         const activePulse = mesh.userData.active ? 1 + Math.sin(state.frame * 0.14 + mesh.position.x) * 0.18 : 1;
         mesh.scale.setScalar(age * activePulse * (1 + Math.sin(state.frame * 0.02 + mesh.position.x) * 0.025));
       }
+      const totalNodes = graphRef.current?.nodes?.length ?? 0;
+      container.dataset.cameraZ = camera.position.z.toFixed(1);
+      container.dataset.maxZoom = maxZoomDistanceForNodeCount(totalNodes).toFixed(1);
+      container.dataset.nodeCount = String(totalNodes);
       renderer.render(scene, camera);
     }
     animate();

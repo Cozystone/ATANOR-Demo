@@ -199,12 +199,35 @@ def telemetry_gpu() -> dict[str, Any]:
 
 
 def telemetry_system() -> dict[str, Any]:
-    return {
+    disk = shutil.disk_usage(".")
+    payload: dict[str, Any] = {
+        "source": "local-fastapi",
         "cpu_count": os.cpu_count(),
-        "disk_total_gb": round(shutil.disk_usage(".").total / (1024 ** 3), 2),
-        "disk_used_gb": round(shutil.disk_usage(".").used / (1024 ** 3), 2),
+        "disk_total_gb": round(disk.total / (1024 ** 3), 2),
+        "disk_used_gb": round(disk.used / (1024 ** 3), 2),
+        "disk_free_gb": round(disk.free / (1024 ** 3), 2),
         "timestamp": utc_now_iso(),
     }
+    try:
+        import psutil  # type: ignore
+
+        memory = psutil.virtual_memory()
+        payload |= {
+            "ram_total_gb": round(memory.total / (1024 ** 3), 2),
+            "ram_available_gb": round(memory.available / (1024 ** 3), 2),
+            "ram_used_gb": round(memory.used / (1024 ** 3), 2),
+            "ram_used_percent": round(float(memory.percent), 1),
+            "cpu_percent": psutil.cpu_percent(interval=None),
+        }
+    except Exception:
+        payload |= {
+            "ram_total_gb": None,
+            "ram_available_gb": None,
+            "ram_used_gb": None,
+            "ram_used_percent": None,
+            "cpu_percent": None,
+        }
+    return payload
 
 
 alpha_service = AlphaService()

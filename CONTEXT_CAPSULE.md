@@ -10,7 +10,9 @@ questions still generate a native architecture answer, external unknown facts
 return no-evidence memory coverage instead of architecture leakage, and GraphRAG
 signals now show active node pulses rather than path text. The latest update
 adds `∞` continuous learning mode with cumulative elapsed time, a stop control,
-and a bounded rolling 3D graph render window.
+and a bounded rolling 3D graph render window. The current follow-up clarifies
+the real/simulated boundary, adds adaptive 3D zoom, and blocks/stops infinite
+learning when real local telemetry crosses safety watermarks.
 
 ## Current Branch
 
@@ -82,6 +84,19 @@ Latest local commit before this update: Improve no-evidence RAG and graph scalin
   `training_gate.continuous: true` for infinite learning.
 - Live-synapse growth now supports a rolling window so candidate nodes can keep
   accumulating while the browser renders a bounded representative graph.
+- Live-synapse display now reports preserved API anchor nodes, visible new
+  `live-synapse-*` nodes, summarized `live-summary-*` history nodes, and the
+  latest new node id.
+- 3D zoom-out is graph-size responsive instead of capped at a fixed camera
+  distance; the 3D host exposes camera/node debug data for browser verification.
+- FastAPI system telemetry now includes `source: local-fastapi`, RAM total/used,
+  RAM available, disk free, and CPU percent when available.
+- Next system telemetry fallback marks itself as `deployment-sandbox` or
+  `local-next` so deployed sandbox CPU/RAM values are not confused with the
+  user's PC.
+- Real local benchmark hardware is passed into stability recalculation.
+- Infinite learning preflight/auto-stop now checks real telemetry for RAM,
+  VRAM, and disk reserve pressure.
 - Current Alpha learning is not random sentence learning: the system chunks
   accepted/reference text, extracts concept candidates deterministically,
   generates typed relations, and visualizes continual growth until durable graph
@@ -142,6 +157,22 @@ Latest local commit before this update: Improve no-evidence RAG and graph scalin
 - Production API/browser verification passed for `∞` continuous learning:
   `alpha-continuous-harvest`, 2,000 chunks, 600 visual nodes, cumulative elapsed
   time, candidate-node growth, and stop control.
+- Local actual telemetry verification passed:
+  - system telemetry read 32 CPU threads, about 31.1GB RAM, about 165.5GB free
+    disk, and `source: local-fastapi`
+  - GPU telemetry read RTX 5080, about 15.9GB VRAM, and about 9GB VRAM currently
+    used during verification
+  - benchmark recommended `max`
+  - 250,000-node stability plan used about 186.1GB storage reserve
+  - infinite learning preflight was correctly blocked because RAM crossed the
+    soft watermark
+  - finite max build showed preserved anchors plus new `live-synapse-*` ids
+  - responsive zoom-out reached camera distance `187.4` on a 358-node graph
+- Production verification passed after redeploy:
+  - system telemetry labels deployment values as `deployment-sandbox`
+  - browser showed preserved anchors, visible new live nodes, summarized history,
+    and Alpha boundary copy
+  - zoom-out reached camera distance `134.7` on a 600-node graph
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -163,6 +194,10 @@ Latest local commit before this update: Improve no-evidence RAG and graph scalin
 - Infinite learning mode is currently a local/deployed Alpha runtime loop in the
   browser. It is not yet a durable background crawler and does not persist every
   live graph mutation across refreshes.
+- With real local telemetry, infinite learning can refuse to start or stop
+  itself before resource pressure kills the machine. In the latest verification,
+  current RAM usage and disk reserve were already above safety thresholds for
+  the 250,000-node workload.
 - Hardware benchmark auto-apply requires local FastAPI. Deployed fallback cannot
   measure the viewer PC and returns `can_read_local_hardware: false`.
 - No-direct-evidence architecture answers use internal Homage context for
