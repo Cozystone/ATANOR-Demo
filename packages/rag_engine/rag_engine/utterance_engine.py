@@ -98,6 +98,22 @@ def _compact_join(parts: list[str], limit: int = 900) -> str:
     return text[:limit].rstrip()
 
 
+def _raw_no_node_generation(query: str, active_concepts: list[str], intent: str) -> str:
+    """Emit the native generator's rough fragment when memory has no node hit."""
+
+    tokens = active_concepts or _tokens(query)[:4] or ["null"]
+    head = tokens[0]
+    tail = " / ".join(tokens[1:4]) if len(tokens) > 1 else "?"
+    fragments = [
+        f"{query.strip()}",
+        f"raw_no_node::{intent}",
+        f"{head} -> {tail}",
+        f"{head} = ?",
+        f"{' '.join(tokens[:3])} ...",
+    ]
+    return "\n".join(fragment for fragment in fragments if fragment.strip())
+
+
 def build_native_utterance(
     query: str,
     evidence_docs: list[dict[str, Any]],
@@ -145,15 +161,7 @@ def build_native_utterance(
         claim_plan.append({"claim": evidence["text"], "support": evidence["doc_id"]})
 
     if not evidence_docs:
-        topic = query.strip() or "현재 질문"
-        answer = (
-            f"현재 Homage 메모리에는 '{topic}'에 대해 검증된 문서 근거가 아직 없습니다. "
-            "외부 LLM이나 일반 지식 데이터베이스를 쓰지 않는 Alpha 모드라서, "
-            "학습되지 않은 외부 사실은 단정하지 않습니다. "
-            "Build Start나 Harvest 입력으로 관련 자료를 넣으면 DataGate가 문서를 거르고, "
-            "Ontology Forge가 인물/개념 노드를 만든 뒤 GraphRAG가 그 근거로 답변할 수 있습니다. "
-            f"현재 활성화된 후보 개념은 {', '.join(active_concepts) if active_concepts else '없음'}입니다."
-        )
+        answer = _raw_no_node_generation(query, active_concepts, intent)
     else:
         lead_by_intent = {
             "explain_cause": "핵심 이유는 지식을 모델 파라미터에만 맡기지 않고, 그래프 경로와 근거 청크로 분리해 확인하기 때문입니다.",
@@ -174,7 +182,7 @@ def build_native_utterance(
         "active_concepts": active_concepts,
         "answer_engine": {
             "name": "Homage Utterance Engine",
-            "mode": "native-next-thought-alpha",
+            "mode": "native-raw-no-node-alpha" if not evidence_docs else "native-next-thought-alpha",
             "external_llm": False,
             "homage_core": "homage-core-30m-scaffold",
             "stages": [

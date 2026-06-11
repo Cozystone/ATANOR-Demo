@@ -537,7 +537,7 @@ def _synthesize_answer(
         follow_up = (
             ["현재 활성 노드를 보여줄까요?", "이 구조를 Build Start 흐름과 연결해서 볼까요?"]
             if use_internal_context
-            else ["관련 자료를 Harvest 입력으로 넣어볼까요?", "Build Start로 새 온톨로지 노드를 만들까요?"]
+            else []
         )
     return utterance["answer"], citations, follow_up, utterance
 
@@ -565,6 +565,7 @@ def query_graphrag(
     ranked_docs = _rank_chunks(query, query_counts, expanded_terms, chunks)
     evidence_docs = ranked_docs[:5]
     use_internal_context = not evidence_docs and _is_internal_structure_query(query)
+    raw_no_node = not evidence_docs and not use_internal_context and not matched_nodes
     answer, citations, follow_up_questions, utterance = _synthesize_answer(
         query,
         evidence_docs,
@@ -586,7 +587,7 @@ def query_graphrag(
 
     return {
         "query": query,
-        "method": "homage-native-graphrag-utterance-v1",
+        "method": "homage-native-raw-no-node-v1" if raw_no_node else "homage-native-graphrag-utterance-v1",
         "answer": answer,
         "matched_nodes": matched_nodes,
         "matched_edges": matched_edges,
@@ -599,7 +600,11 @@ def query_graphrag(
         "answer_engine": utterance["answer_engine"],
         "follow_up_questions": follow_up_questions,
         "retrieval_trace": {
-            "strategy": "hybrid lexical BM25-style ranking + ontology 1-hop expansion + Homage Utterance Engine native synthesis",
+            "strategy": (
+                "no node hit; raw native fragment emitted"
+                if raw_no_node
+                else "hybrid lexical BM25-style ranking + ontology 1-hop expansion + Homage Utterance Engine native synthesis"
+            ),
             "query_terms": sorted(query_terms),
             "expanded_terms": sorted(expanded_terms)[:30],
             "ranked_chunk_ids": [doc["chunk_id"] for doc in ranked_docs[:8]],

@@ -440,21 +440,28 @@ function makeOpenGenerationResult(query: string) {
 
 function makeNoEvidenceResult(query: string) {
   const queryTerms = normalizedQuery(query).split(/\s+/).filter(Boolean);
+  const tokens = queryTerms.slice(0, 4);
+  const head = tokens[0] ?? "null";
+  const tail = tokens.slice(1, 4).join(" / ") || "?";
+  const answer = [
+    query.trim(),
+    "raw_no_node::answer_grounded",
+    `${head} -> ${tail}`,
+    `${head} = ?`,
+    `${tokens.slice(0, 3).join(" ")} ...`,
+  ].filter(Boolean).join("\n");
   return {
     query,
-    method: "homage-native-no-evidence-v1",
-    answer:
-      `현재 Homage 메모리에는 '${query}'에 대해 검증된 문서 근거가 아직 없습니다. ` +
-      "외부 LLM이나 일반 지식 데이터베이스를 쓰지 않는 Alpha 모드라서, 학습되지 않은 외부 사실은 단정하지 않습니다. " +
-      "Build Start나 Harvest 입력으로 관련 자료를 넣으면 DataGate가 문서를 거르고, Ontology Forge가 인물/개념 노드를 만든 뒤 GraphRAG가 그 근거로 답변할 수 있습니다.",
+    method: "homage-native-raw-no-node-v1",
+    answer,
     matched_nodes: [],
     matched_edges: [],
     evidence_docs: [],
     citations: [],
     graph_paths: [],
-    follow_up_questions: ["관련 자료를 Harvest 입력으로 넣어볼까요?", "Build Start로 새 온톨로지 노드를 만들까요?"],
+    follow_up_questions: [],
     retrieval_trace: {
-      strategy: "no direct document hit; external facts are not guessed in native alpha mode",
+      strategy: "no node hit; raw native fragment emitted",
       query_terms: queryTerms,
       expanded_terms: [],
       ranked_chunk_ids: [],
@@ -463,15 +470,15 @@ function makeNoEvidenceResult(query: string) {
     pmv: {
       intent: "answer_grounded",
       topic: query,
-      stance: "grounded and cautious",
+      stance: "raw ungrounded fragment",
       audience_level: "general technical",
-      answer_goal: "state memory coverage honestly",
+      answer_goal: "emit rough no-node generation",
       required_evidence: true,
-      style: "clear Korean technical explanation",
+      style: "raw broken surface text",
     },
     claim_plan: [],
     active_concepts: queryTerms.slice(0, 4),
-    answer_engine: nativeAnswerEngine("native-no-evidence-alpha"),
+    answer_engine: nativeAnswerEngine("native-raw-no-node-alpha"),
     confidence: 0.28,
   };
 }

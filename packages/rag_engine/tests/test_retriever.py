@@ -145,9 +145,13 @@ def test_query_graphrag_unknown_external_entity_does_not_use_structure_context(t
 
     result = query_graphrag("유재석이 누구야", str(cleaned), str(ontology))
 
+    assert result["method"] == "homage-native-raw-no-node-v1"
     assert result["answer_engine"]["external_llm"] is False
+    assert result["answer_engine"]["mode"] == "native-raw-no-node-alpha"
     assert result["evidence_docs"] == []
     assert result["citations"] == []
     assert "Homage1.0은 Harvest" not in result["answer"]
-    assert "검증된 문서 근거" in result["answer"]
-    assert "외부 LLM" in result["answer"]
+    assert "검증된 문서 근거" not in result["answer"]
+    assert "외부 LLM" not in result["answer"]
+    assert "raw_no_node::" in result["answer"]
+    assert result["follow_up_questions"] == []
