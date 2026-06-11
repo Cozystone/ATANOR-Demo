@@ -23,16 +23,16 @@ def test_sustained_run_plan_defaults_match_target_hardware() -> None:
 def test_sustained_run_plan_scales_graph_window_without_rendering_all_nodes() -> None:
     plan = build_sustained_run_plan(
         {
-            "target_nodes": 50_000,
-            "target_edges": 240_000,
+            "target_nodes": 500_000,
+            "target_edges": 2_400_000,
             "duration_hours": 168,
         }
     )
 
     assert plan["target_workload"]["duration_hours"] == 168
     assert plan["target_workload"]["expected_relation_density"] == 4.8
-    assert plan["graph_policy"]["hot_window_nodes"] == 6_000
-    assert plan["graph_policy"]["hot_window_edges"] == 48_000
-    assert plan["graph_policy"]["ui_render_nodes"] == 600
+    assert plan["graph_policy"]["hot_window_nodes"] == 24_000
+    assert plan["graph_policy"]["hot_window_edges"] == 192_000
+    assert plan["graph_policy"]["ui_render_nodes"] == 2_000
     assert plan["queue_policy"]["harvest_pending_cap"] == 4_096
     assert plan["checkpoint_policy"]["checkpoint_keep_last"] == 8

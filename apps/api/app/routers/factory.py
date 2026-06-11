@@ -14,8 +14,14 @@ LearningVolume = Literal["lite", "standard", "deep", "max", "infinite"]
 
 class BuildStartRequest(BaseModel):
     learning_volume: LearningVolume = "standard"
-    target_nodes: int | None = Field(default=None, ge=100, le=250_000)
+    target_nodes: int | None = Field(default=None, ge=100, le=500_000)
     seed_urls: list[str] | None = None
+
+
+MAX_TARGET_NODES = 500_000
+MAX_VISUAL_NODE_BUDGET = 2_000
+MAX_CHUNK_BUDGET = 4_096
+MAX_TEXT_BUDGET_CHARS = 4_800_000
 
 
 SEED_URLS = [
@@ -29,8 +35,8 @@ PRESETS = {
     "lite": {"chunkBudget": 32, "label": "가볍게", "targetNodes": 3_000, "textBudgetChars": 12_000, "textBudgetLabel": "12k chars", "visualNodeBudget": 12},
     "standard": {"chunkBudget": 128, "label": "표준", "targetNodes": 10_000, "textBudgetChars": 48_000, "textBudgetLabel": "48k chars", "visualNodeBudget": 24},
     "deep": {"chunkBudget": 384, "label": "깊게", "targetNodes": 25_000, "textBudgetChars": 160_000, "textBudgetLabel": "160k chars", "visualNodeBudget": 36},
-    "max": {"chunkBudget": 768, "label": "최대", "targetNodes": 50_000, "textBudgetChars": 420_000, "textBudgetLabel": "420k chars", "visualNodeBudget": 48},
-    "infinite": {"chunkBudget": 2000, "label": "∞", "targetNodes": 250_000, "textBudgetChars": 2_400_000, "textBudgetLabel": "continuous", "visualNodeBudget": 600},
+    "max": {"chunkBudget": 4096, "label": "최대", "targetNodes": 500_000, "textBudgetChars": 4_500_000, "textBudgetLabel": "4.5m chars", "visualNodeBudget": 2000},
+    "infinite": {"chunkBudget": 4096, "label": "∞", "targetNodes": 500_000, "textBudgetChars": 4_800_000, "textBudgetLabel": "continuous", "visualNodeBudget": 2000},
 }
 
 MEMORY_TOPICS = [
@@ -133,11 +139,11 @@ def build_start(payload: BuildStartRequest) -> dict[str, Any]:
 
 def _learning_preset(volume: str, target_nodes_input: int | None) -> dict[str, Any]:
     base = PRESETS.get(volume, PRESETS["standard"])
-    target_nodes = max(100, min(250_000, int(target_nodes_input or base["targetNodes"])))
-    visual_limit = 600 if volume == "infinite" else 360
-    visual_node_budget = max(base["visualNodeBudget"], min(visual_limit, round(target_nodes**0.5 * 2.1)))
-    chunk_budget = max(base["chunkBudget"], min(2_000, round(target_nodes / 12)))
-    text_budget_chars = max(base["textBudgetChars"], min(2_400_000, target_nodes * 9))
+    fallback_target_nodes = MAX_TARGET_NODES if volume in {"max", "infinite"} else base["targetNodes"]
+    target_nodes = max(100, min(MAX_TARGET_NODES, int(target_nodes_input or fallback_target_nodes)))
+    visual_node_budget = max(base["visualNodeBudget"], min(MAX_VISUAL_NODE_BUDGET, round(target_nodes**0.5 * 4.8)))
+    chunk_budget = max(base["chunkBudget"], min(MAX_CHUNK_BUDGET, round(target_nodes / 12)))
+    text_budget_chars = max(base["textBudgetChars"], min(MAX_TEXT_BUDGET_CHARS, target_nodes * 9))
     text_budget_label = "continuous" if volume == "infinite" else (f"{round(text_budget_chars / 1000)}k chars")
     return {
         **base,

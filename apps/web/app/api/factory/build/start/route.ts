@@ -21,6 +21,11 @@ type LearningPreset = {
   visualNodeBudget: number;
 };
 
+const maxTargetNodes = 500_000;
+const maxVisualNodeBudget = 2_000;
+const maxChunkBudget = 4_096;
+const maxTextBudgetChars = 4_800_000;
+
 const seedUrls = [
   "https://www.reddit.com/r/MachineLearning/comments/1ookxb0/r_knowledge_graph_traversal_with_llms_and/?tl=ko",
   "https://github.com/glacier-creative-git/similarity-graph-traversal-semantic-rag-research",
@@ -65,8 +70,8 @@ const learningPresets: Record<LearningVolume, LearningPreset> = {
   lite: { chunkBudget: 32, label: "가볍게", targetNodes: 3_000, textBudgetChars: 12_000, textBudgetLabel: "12k chars", visualNodeBudget: 12 },
   standard: { chunkBudget: 128, label: "표준", targetNodes: 10_000, textBudgetChars: 48_000, textBudgetLabel: "48k chars", visualNodeBudget: 24 },
   deep: { chunkBudget: 384, label: "깊게", targetNodes: 25_000, textBudgetChars: 160_000, textBudgetLabel: "160k chars", visualNodeBudget: 36 },
-  max: { chunkBudget: 768, label: "최대", targetNodes: 50_000, textBudgetChars: 420_000, textBudgetLabel: "420k chars", visualNodeBudget: 48 },
-  infinite: { chunkBudget: 2000, label: "∞", targetNodes: 250_000, textBudgetChars: 2_400_000, textBudgetLabel: "continuous", visualNodeBudget: 600 },
+  max: { chunkBudget: 4096, label: "최대", targetNodes: 500_000, textBudgetChars: 4_500_000, textBudgetLabel: "4.5m chars", visualNodeBudget: 2000 },
+  infinite: { chunkBudget: 4096, label: "∞", targetNodes: 500_000, textBudgetChars: 4_800_000, textBudgetLabel: "continuous", visualNodeBudget: 2000 },
 };
 
 const memoryTopics = [
@@ -105,14 +110,14 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
 function learningPresetFor(value: unknown, targetNodesInput?: unknown): LearningPreset & { id: LearningVolume; targetNodes: number } {
   const id = typeof value === "string" && value in learningPresets ? value as LearningVolume : "standard";
   const base = learningPresets[id];
-  const targetNodes = boundedNumber(targetNodesInput, base.targetNodes ?? 10_000, 100, 250_000);
-  const visualLimit = id === "infinite" ? 600 : 360;
+  const fallbackTargetNodes = id === "max" || id === "infinite" ? maxTargetNodes : base.targetNodes ?? 10_000;
+  const targetNodes = boundedNumber(targetNodesInput, fallbackTargetNodes, 100, maxTargetNodes);
   const visualNodeBudget = Math.max(
     base.visualNodeBudget,
-    Math.min(visualLimit, Math.round(Math.sqrt(targetNodes) * 2.1)),
+    Math.min(maxVisualNodeBudget, Math.round(Math.sqrt(targetNodes) * 4.8)),
   );
-  const chunkBudget = Math.max(base.chunkBudget, Math.min(2_000, Math.round(targetNodes / 12)));
-  const textBudgetChars = Math.max(base.textBudgetChars, Math.min(2_400_000, targetNodes * 9));
+  const chunkBudget = Math.max(base.chunkBudget, Math.min(maxChunkBudget, Math.round(targetNodes / 12)));
+  const textBudgetChars = Math.max(base.textBudgetChars, Math.min(maxTextBudgetChars, targetNodes * 9));
   const textBudgetLabel = id === "infinite"
     ? "continuous"
     : textBudgetChars >= 1_000_000

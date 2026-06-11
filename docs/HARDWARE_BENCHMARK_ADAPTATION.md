@@ -39,7 +39,7 @@ On the current target machine, the local benchmark verified:
 
 - Profile: `Performance desktop`
 - Recommendation: `max`
-- Target: 50,000 nodes / 240,000 edges / 168h
+- Target: 500,000 nodes / 2,400,000 edges / 168h
 - CPU threads: 32
 - RAM reported by OS: about 31.1GB
 - GPU: NVIDIA GeForce RTX 5080

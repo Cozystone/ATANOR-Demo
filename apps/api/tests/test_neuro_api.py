@@ -31,8 +31,8 @@ def test_neuro_stability_api() -> None:
     response = client.post(
         "/api/neuro/stability",
         json={
-            "target_nodes": 50_000,
-            "target_edges": 240_000,
+            "target_nodes": 500_000,
+            "target_edges": 2_400_000,
             "duration_hours": 168,
         },
     )
@@ -42,9 +42,9 @@ def test_neuro_stability_api() -> None:
     assert body["hardware_profile"]["gpu"].startswith("ZOTAC GAMING GeForce RTX 5080")
     assert body["runtime_envelope"]["ram_soft_gb"] == 23.0
     assert body["runtime_envelope"]["vram_soft_gb"] == 11.8
-    assert body["target_workload"]["target_nodes"] == 50_000
-    assert body["graph_policy"]["hot_window_nodes"] == 6_000
-    assert body["graph_policy"]["ui_render_nodes"] == 600
+    assert body["target_workload"]["target_nodes"] == 500_000
+    assert body["graph_policy"]["hot_window_nodes"] == 24_000
+    assert body["graph_policy"]["ui_render_nodes"] == 2_000
     assert body["queue_policy"]["edge_write_batch"] == 2_000
     assert body["checkpoint_policy"]["checkpoint_keep_last"] == 8
     assert body["backpressure_policy"]
@@ -74,6 +74,8 @@ def test_neuro_benchmark_api() -> None:
     body = response.json()
     assert body["can_read_local_hardware"] is True
     assert body["recommended_learning_volume"] == "max"
-    assert body["recommended_stability_payload"]["target_edges"] == 240_000
-    assert body["ontology_tuning"]["hot_window_nodes"] == 6_000
+    assert body["recommended_stability_payload"]["target_nodes"] == 500_000
+    assert body["recommended_stability_payload"]["target_edges"] == 2_400_000
+    assert body["ontology_tuning"]["hot_window_nodes"] == 24_000
+    assert body["ontology_tuning"]["ui_render_nodes"] == 2_000
     assert body["training_tuning"]["precision"] == "bf16-preferred"

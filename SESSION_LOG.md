@@ -559,3 +559,29 @@
   - `docs/screenshots/118-local-fastapi-connected-render-cap-fixed.png`
   - `docs/screenshots/119-local-fastapi-target-sample-explanation.png`
   - `docs/screenshots/120-production-local-http-boundary-message.png`
+
+## 2026-06-11 - 500k long-run target and larger rolling graph window
+
+- Raised Build Start long-run `target_nodes` ceiling from `250,000` to
+  `500,000` in both the Next.js fallback route and the local FastAPI route.
+- Changed the `max` and `infinite` learning presets to default to `500,000`
+  nodes, `4,096` chunks, and a `2,000` node representative render window.
+- Increased standard `10,000` runs from the old `210` render cap to a `480`
+  node window with about `413` API anchor nodes.
+- Changed live growth from a fixed 8-pulse demo stop to a target-driven loop:
+  it now keeps accumulating until the selected long-run target is reached,
+  while the 3D canvas keeps only a rolling frontier plus summary nodes visible.
+- Removed the finite graph-mode freeze that previously capped graph inspection
+  around two pulses.
+- Raised stability and benchmark planning to accept `500,000` nodes and up to
+  `3,000,000` relations, with a `24,000` node hot window and `2,000` node UI
+  render budget for 500k workloads.
+- Optimized the Three.js scene for larger representative graphs by skipping
+  pairwise collision passes above 600 nodes, reducing sphere segments, thinning
+  halos, and sampling dense edge sets.
+- Browser verification on local Next dev (`http://localhost:3010`) confirmed
+  `최대` sets the input to `500000`, Build Start reaches `2000/2000`
+  representative nodes, the 3D host reports `nodeCount: 2000`, and the overlay
+  shows summary bundles plus hidden live history.
+- Captured screenshot:
+  - `docs/screenshots/121-500k-max-render-cap-local.png`

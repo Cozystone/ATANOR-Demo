@@ -32,8 +32,8 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
     ram_gb = _bounded_float(hardware.get("ram_gb"), default=32, minimum=8, maximum=512)
     vram_gb = _bounded_float(hardware.get("vram_gb"), default=16, minimum=4, maximum=192)
     storage_gb = _bounded_float(hardware.get("storage_gb"), default=1000, minimum=128, maximum=16_000)
-    target_nodes = _bounded_int(payload.get("target_nodes"), default=10_000, minimum=1_000, maximum=250_000)
-    target_edges = _bounded_int(payload.get("target_edges"), default=max(30_000, target_nodes * 4), minimum=2_000, maximum=1_500_000)
+    target_nodes = _bounded_int(payload.get("target_nodes"), default=10_000, minimum=1_000, maximum=500_000)
+    target_edges = _bounded_int(payload.get("target_edges"), default=max(30_000, target_nodes * 4), minimum=2_000, maximum=3_000_000)
     duration_hours = _bounded_int(payload.get("duration_hours"), default=72, minimum=1, maximum=720)
 
     ram_soft = round(ram_gb * 0.72, 1)
@@ -43,9 +43,9 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
     storage_reserve = round(max(120, storage_gb * 0.2), 1)
     graph_budget_gb = round(max(80, storage_gb - storage_reserve - 120), 1)
 
-    hot_window_nodes = min(max(1_024, target_nodes // 6), 6_000)
-    hot_window_edges = min(max(6_000, hot_window_nodes * 8), 60_000)
-    render_nodes = min(600, max(96, hot_window_nodes // 8))
+    hot_window_nodes = min(max(2_048, target_nodes // 10), 24_000)
+    hot_window_edges = min(max(12_000, hot_window_nodes * 8), 240_000)
+    render_nodes = min(2_000, max(240, hot_window_nodes // 8))
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),

@@ -164,6 +164,7 @@ function initialSpreadPosition(node: Rag3DNode, index: number, total: number) {
 function spreadPositions(nodes: Rag3DNode[]) {
   const positions = nodes.map((node, index) => initialSpreadPosition(node, index, nodes.length));
   if (nodes.length <= 1) return positions;
+  if (nodes.length > 600) return positions;
   const minDistance = nodes.length > 140 ? 0.38 : nodes.length > 80 ? 0.48 : nodes.length > 40 ? 0.58 : 0.74;
   const iterations = nodes.length > 140 ? 4 : nodes.length > 80 ? 5 : 7;
   for (let pass = 0; pass < iterations; pass += 1) {
@@ -198,6 +199,7 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   const labelScale = graph.nodes.length > 18 ? 0.72 : graph.nodes.length > 12 ? 0.84 : 1;
   const nextKnownNodeIds = new Set<string>();
   const positions = spreadPositions(graph.nodes);
+  const sphereSegments = graph.nodes.length > 1_200 ? 10 : graph.nodes.length > 600 ? 14 : 24;
   state.camera.position.z = Math.max(state.camera.position.z, cameraDistanceForNodeCount(graph.nodes.length));
   clampCameraZ(state.camera, graph.nodes.length);
 
@@ -208,7 +210,7 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     const isActive = activeNodeIds.has(node.id);
     const color = isActive ? 0xff6b35 : palette[node.type] ?? 0x68736d;
     const radius = 0.17 + (node.confidence ?? 0.7) * 0.12;
-    const geometry = new THREE.SphereGeometry(radius, 24, 24);
+    const geometry = new THREE.SphereGeometry(radius, sphereSegments, sphereSegments);
     const material = new THREE.MeshStandardMaterial({
       color,
       emissive: isActive ? 0xff6b35 : 0x000000,
@@ -224,12 +226,14 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     state.raycastMeshes.push(mesh);
     addDynamicObject(state, mesh);
 
-    const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(radius * 1.7, 24, 24),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: isActive ? 0.26 : 0.08 }),
-    );
-    halo.position.copy(position);
-    addDynamicObject(state, halo);
+    if (graph.nodes.length <= 800 || isActive || node.type === "summary") {
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(radius * 1.7, sphereSegments, sphereSegments),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: isActive ? 0.26 : 0.08 }),
+      );
+      halo.position.copy(position);
+      addDynamicObject(state, halo);
+    }
 
     if (shouldShowLabel(node, graph.nodes.length, isActive)) {
       const sprite = labelSprite(node.label, labelScale);
@@ -243,12 +247,19 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     traversalPairs.add(`${graph.traversal_path?.[index]}:${graph.traversal_path?.[index + 1]}`);
   }
 
-  for (const edge of graph.edges) {
+  const maxEdges = graph.nodes.length > 1_600 ? 3_200 : graph.nodes.length > 800 ? 2_400 : Number.POSITIVE_INFINITY;
+  const edgeStride = Number.isFinite(maxEdges) && graph.edges.length > maxEdges
+    ? Math.ceil(graph.edges.length / maxEdges)
+    : 1;
+  for (const [index, edge] of graph.edges.entries()) {
+    const isTraversalCandidate = traversalPairs.has(`${edge.source}:${edge.target}`);
+    const isActiveCandidate = activeEdgeKeys.has(edgeKey(edge.source, edge.target)) || activeEdgeKeys.has(edgeKey(edge.target, edge.source));
+    if (!isTraversalCandidate && !isActiveCandidate && index % edgeStride !== 0) continue;
     const source = nodeMap.get(edge.source);
     const target = nodeMap.get(edge.target);
     if (!source || !target) continue;
-    const isTraversal = traversalPairs.has(`${edge.source}:${edge.target}`);
-    const isActive = activeEdgeKeys.has(edgeKey(edge.source, edge.target)) || activeEdgeKeys.has(edgeKey(edge.target, edge.source));
+    const isTraversal = isTraversalCandidate;
+    const isActive = isActiveCandidate;
     const geometry = new THREE.BufferGeometry().setFromPoints([source, target]);
     const material = new THREE.LineBasicMaterial({
       color: isActive ? 0xff6b35 : isTraversal ? 0x9aa39e : 0x73827a,

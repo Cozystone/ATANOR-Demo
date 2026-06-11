@@ -68,8 +68,8 @@ Edge는 중복 row를 계속 늘리지 않고 `(source_id, target_id, relation_t
 
 수천 노드가 생겨도 브라우저는 전체 그래프를 렌더링하지 않는다.
 
-- Hot window: 기본 1,600 nodes / 12,800 edges, max 6,000 nodes / 60,000 edges
-- UI render budget: 96~600 nodes
+- Hot window: 기본 2,048 nodes / 12,000 edges, max 24,000 nodes / 240,000 edges
+- UI render budget: 240~2,000 nodes
 - 렌더링 대상: 질문/학습 frontier, 고신뢰 anchor, 커뮤니티 summary, 사용자가 선택한 주변 이웃
 - 이동/확대/축소는 카메라 상태를 유지하고, 새 노드가 들어와도 scene reset을 하지 않는다.
 - 전체 탐색은 search-first로 처리하고, 상세 확장은 선택한 subgraph만 가져온다.

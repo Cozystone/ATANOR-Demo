@@ -24,11 +24,11 @@ function demoStabilityPlan(input: Record<string, any> = {}) {
   const ramGb = boundedNumber(hardware.ram_gb, 32, 8, 512);
   const vramGb = boundedNumber(hardware.vram_gb, 16, 4, 192);
   const storageGb = boundedNumber(hardware.storage_gb, 1000, 128, 16000);
-  const targetNodes = boundedNumber(input.target_nodes, 10_000, 1_000, 250_000);
-  const targetEdges = boundedNumber(input.target_edges, Math.max(30_000, targetNodes * 4), 2_000, 1_500_000);
+  const targetNodes = boundedNumber(input.target_nodes, 10_000, 1_000, 500_000);
+  const targetEdges = boundedNumber(input.target_edges, Math.max(30_000, targetNodes * 4), 2_000, 3_000_000);
   const ramSoft = Number((ramGb * 0.72).toFixed(1));
   const vramSoft = Number((vramGb * 0.74).toFixed(1));
-  const hotWindowNodes = Math.min(Math.max(1024, Math.floor(targetNodes / 6)), 6000);
+  const hotWindowNodes = Math.min(Math.max(2048, Math.floor(targetNodes / 10)), 24000);
 
   return {
     generated_at: new Date().toISOString(),
@@ -63,8 +63,8 @@ function demoStabilityPlan(input: Record<string, any> = {}) {
       identity_model: "stable normalized node ids; merge duplicate labels before writing edges",
       edge_model: "one edge row per typed relation with evidence_count, confidence, status, and last_seen_at",
       hot_window_nodes: hotWindowNodes,
-      hot_window_edges: Math.min(Math.max(6000, hotWindowNodes * 8), 60000),
-      ui_render_nodes: Math.min(600, Math.max(96, Math.floor(hotWindowNodes / 8))),
+      hot_window_edges: Math.min(Math.max(12000, hotWindowNodes * 8), 240000),
+      ui_render_nodes: Math.min(2000, Math.max(240, Math.floor(hotWindowNodes / 8))),
       ui_render_strategy: "LOD sampling: render active frontier, top-confidence anchors, and community summaries only",
       compaction_trigger: { event_log_mb: 512, edge_duplication_ratio: 1.35, ram_soft_gb: ramSoft },
     },

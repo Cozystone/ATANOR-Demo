@@ -51,9 +51,14 @@ Deployment:
 - Build Start target/sample clarification:
   - `target_nodes` is now labeled as a long-run storage/training budget
   - `graph_3d` is explicitly labeled as a bounded representative browser sample
-  - standard `10,000` target runs can visibly stop around `210` rendered nodes
-    and about `427` rendered relations because the representative render window
-    has reached its current cap, not because the long-run target was realized
+  - standard `10,000` target runs now use a `480` node render window with
+    about `413` API anchor nodes, so they can grow beyond the old `210` node /
+    `427` relation visual ceiling
+  - max and infinite runs now accept a `500,000` node long-run target with a
+    `2,000` node rolling frontier/summary render window rather than trying to
+    draw all nodes in WebGL at once
+  - local browser verification screenshot:
+    `docs/screenshots/121-500k-max-render-cap-local.png`
 - Native RAG open-structure generation:
   - structure/self-description questions such as `네 구조 설명해봐` generate a
     native answer even when no direct document evidence is retrieved
@@ -351,10 +356,10 @@ Deployment:
   FastAPI and connects it through the UI. Deployed BakeBoard remains in
   deterministic fallback mode in browsers that block HTTPS pages from calling
   HTTP loopback APIs.
-- Standard/deep/max Build Start modes currently complete a representative
-  browser sample, not the full long-run `target_nodes` budget. Full target
-  realization requires the planned append-only ontology event log and SQLite
-  hot graph index.
+- Standard/deep/max Build Start modes now accumulate live growth toward the
+  long-run `target_nodes` budget and can target `500,000` nodes, but the
+  durable realization of every mutation across refreshes still requires the
+  planned append-only ontology event log and SQLite hot graph index.
 - External facts that are not present in memory are not guessed. The Alpha
   native engine returns a no-evidence answer and asks for Harvest/Build Start
   input instead.

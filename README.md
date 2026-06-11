@@ -146,8 +146,9 @@ npm --workspace apps/web run build
 - `Build 시작` fetches a small allowlisted reference set and stores source
   signals for visualization; it is not an open-ended crawler.
 - `target_nodes` is a long-run storage/training budget. `graph_3d` is a bounded
-  representative browser sample, so a standard run can visibly stop around 210
-  nodes / 427 relations even though the long-run target is 10,000 nodes.
+  representative browser sample. Standard runs now use a 480-node render window,
+  and max/infinite runs can target 500,000 nodes while rendering a 2,000-node
+  rolling frontier plus summary nodes.
 - No LLM judging.
 - No pretrained model weights.
 - Homage Oven is a safe dry-run scaffold, not real long training.

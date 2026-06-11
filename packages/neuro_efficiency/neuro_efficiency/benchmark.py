@@ -192,7 +192,7 @@ def _recommend_profile(hardware: dict[str, Any], probes: dict[str, Any]) -> dict
 
     if score >= 8:
         volume = "max"
-        payload = {"target_nodes": 50_000, "target_edges": 240_000, "duration_hours": 168}
+        payload = {"target_nodes": 500_000, "target_edges": 2_400_000, "duration_hours": 168}
         microbatch_tokens = 1024
         accumulation = 8
         profile_name = "Performance desktop"

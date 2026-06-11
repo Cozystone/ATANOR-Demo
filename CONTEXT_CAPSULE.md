@@ -79,10 +79,10 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - Added direct target-node input for learning volume and wired it into
   stability planning plus Build Start.
 - Added `∞` learning-volume mode:
-  - target nodes: 250,000
-  - scheduled chunks: 2,000
+  - target nodes: 500,000
+  - scheduled chunks: 4,096
   - text budget: continuous
-  - representative 3D render window: 600 nodes
+  - representative 3D render window: 2,000 nodes
   - cumulative learning timer and `학습 중지` stop control
 - Updated Build Start fallback to return `alpha-continuous-harvest` and
   `training_gate.continuous: true` for infinite learning.
@@ -113,9 +113,9 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - Local connector GET requests no longer force CORS preflights with
   `Content-Type: application/json`; transient local API failures now keep the
   connector healthy when `/health` still succeeds.
-- The UI now explains that standard `10,000` target runs can visibly stop around
-  `210` nodes / `427` relations because the representative render window is
-  full; this is not full long-run target realization.
+- The UI now explains that standard `10,000` target runs use a `480` node
+  render window with about `413` API anchors; max/infinite runs can target
+  `500,000` nodes while the browser renders a bounded frontier/summary window.
 - Real local benchmark hardware is passed into stability recalculation.
 - Infinite learning preflight/auto-stop now checks real telemetry for RAM,
   VRAM, and disk reserve pressure.
@@ -196,20 +196,32 @@ Latest local commit before this update: Clarify live learning limits and safety 
     and Alpha boundary copy
   - zoom-out reached camera distance `134.7` on a 600-node graph
 - Local FastAPI companion verification passed:
-  - FastAPI factory route returned standard `visual_node_budget: 210`,
-    `representative_node_count: 181`, and `target_realized: false`
+  - FastAPI factory route previously returned standard `visual_node_budget:
+    210`; this has now been raised so standard `10,000` runs use
+    `visual_node_budget: 480` and about `413` API anchors
   - local browser connected to `http://127.0.0.1:8000` from a separate Next
     production server
   - re-verification used fresh FastAPI on `127.0.0.1:8003` and Next production
     server on `127.0.0.1:3032`; FastAPI logs confirmed browser
     `OPTIONS/POST /api/factory/build/start` returned 200
-  - standard Build Start showed `10,000` long-run target, `210/210`
-    representative sample, `181` API anchors, and explicit copy explaining the
-    render cap
+  - standard Build Start should now show `10,000` long-run target,
+    `480` visual budget, about `413` API anchors, and explicit copy explaining
+    the bounded render window
   - screenshot: `docs/screenshots/117-local-fastapi-standard-sample-explained.png`
   - screenshot: `docs/screenshots/118-local-fastapi-connected-render-cap-fixed.png`
   - screenshot: `docs/screenshots/119-local-fastapi-target-sample-explanation.png`
   - screenshot: `docs/screenshots/120-production-local-http-boundary-message.png`
+- 2026-06-11 update:
+  - Build Start now accepts a `500,000` node long-run target in both Next.js
+    fallback and local FastAPI.
+  - `max` and `infinite` presets default to `500,000` nodes, `4,096` chunks,
+    and a `2,000` node rolling frontier/summary render budget.
+  - Live growth no longer stops after 8 demo pulses; it accumulates until the
+    selected long-run target while the 3D scene renders only a bounded
+    representative window.
+  - Stability/benchmark planning now supports `500,000` nodes, `3,000,000`
+    max relation input, a `24,000` hot graph window, and a `2,000` UI render
+    budget for high-end desktop profiles.
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -232,9 +244,8 @@ Latest local commit before this update: Clarify live learning limits and safety 
   browser. It is not yet a durable background crawler and does not persist every
   live graph mutation across refreshes.
 - With real local telemetry, infinite learning can refuse to start or stop
-  itself before resource pressure kills the machine. In the latest verification,
-  current RAM usage and disk reserve were already above safety thresholds for
-  the 250,000-node workload.
+  itself before resource pressure kills the machine. The current maximum
+  workload target is `500,000` nodes with a bounded `2,000` node render window.
 - Hardware benchmark auto-apply requires local FastAPI. Deployed fallback cannot
   measure the viewer PC and returns `can_read_local_hardware: false`.
 - Local UI can use real viewer hardware through the local FastAPI connector.

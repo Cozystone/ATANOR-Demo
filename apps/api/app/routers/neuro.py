@@ -21,8 +21,8 @@ class NeuroPlanRequest(BaseModel):
 
 class SustainedRunPlanRequest(BaseModel):
     hardware_profile: dict[str, Any] | None = None
-    target_nodes: int | None = Field(default=None, ge=1_000, le=250_000)
-    target_edges: int | None = Field(default=None, ge=2_000, le=1_500_000)
+    target_nodes: int | None = Field(default=None, ge=1_000, le=500_000)
+    target_edges: int | None = Field(default=None, ge=2_000, le=3_000_000)
     duration_hours: int | None = Field(default=None, ge=1, le=720)
 
 

@@ -88,18 +88,22 @@ const liveGrowthTemplates = [
   { label: "수면 압축", type: "visualization", source: "3d", relation: "consolidates" },
 ];
 
-const liveGrowthBatchSize = 6;
-const maxLiveGrowthPulses = 8;
-const graphInspectionPulseCap = 2;
+const maxTargetNodes = 500_000;
+const liveGrowthBatchSize = 24;
+const minLiveGrowthPulses = 8;
 const liveSummaryBatchSize = 72;
 
 const learningVolumePresets: Record<LearningVolume, { label: string; textBudget: string; chunkBudget: number; visualNodes: number; targetNodes: number; edgeRatio: number; durationHours: number; detail: string }> = {
   lite: { label: "가볍게", textBudget: "12k chars", chunkBudget: 32, visualNodes: 12, targetNodes: 3_000, edgeRatio: 3, durationHours: 12, detail: "응답 확인용" },
   standard: { label: "표준", textBudget: "48k chars", chunkBudget: 128, visualNodes: 24, targetNodes: 10_000, edgeRatio: 4, durationHours: 72, detail: "기본 학습" },
   deep: { label: "깊게", textBudget: "160k chars", chunkBudget: 384, visualNodes: 36, targetNodes: 25_000, edgeRatio: 4, durationHours: 168, detail: "대량 텍스트" },
-  max: { label: "최대", textBudget: "420k chars", chunkBudget: 768, visualNodes: 48, targetNodes: 50_000, edgeRatio: 4.8, durationHours: 168, detail: "압축 메모리" },
-  infinite: { label: "∞", textBudget: "continuous", chunkBudget: 2000, visualNodes: 600, targetNodes: 250_000, edgeRatio: 6, durationHours: 720, detail: "중지 전까지 지속" },
+  max: { label: "최대", textBudget: "4.5m chars", chunkBudget: 4096, visualNodes: 2000, targetNodes: 500_000, edgeRatio: 4.8, durationHours: 168, detail: "압축 메모리" },
+  infinite: { label: "∞", textBudget: "continuous", chunkBudget: 4096, visualNodes: 2000, targetNodes: 500_000, edgeRatio: 6, durationHours: 720, detail: "중지 전까지 지속" },
 };
+
+function defaultTargetNodesForVolume(volume: LearningVolume) {
+  return volume === "max" || volume === "infinite" ? maxTargetNodes : learningVolumePresets[volume].targetNodes;
+}
 
 function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = Number.POSITIVE_INFINITY, rollingWindow = false): Rag3DGraph {
   const liveNodes: Rag3DNode[] = [];
@@ -335,7 +339,7 @@ function asPercent(value?: number | null) {
 
 function stabilityPayloadForVolume(volume: LearningVolume, targetNodeCount?: number, hardwareProfile?: AnyRecord | null) {
   const preset = learningVolumePresets[volume];
-  const targetNodes = clamp(Math.round(targetNodeCount ?? preset.targetNodes), 100, 250_000);
+  const targetNodes = clamp(Math.round(targetNodeCount ?? defaultTargetNodesForVolume(volume)), 100, maxTargetNodes);
   return {
     ...(hardwareProfile ? { hardware_profile: hardwareProfile } : {}),
     target_nodes: targetNodes,
@@ -670,7 +674,6 @@ export default function BakeBoardPage() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("split");
   const [rightMode, setRightMode] = useState<RightMode>("process");
   const [autoChatOpened, setAutoChatOpened] = useState(false);
-  const [graphInspectionPulse, setGraphInspectionPulse] = useState<number | null>(null);
   const [pipeline, setPipeline] = useState<PipelineStatus | null>(null);
   const [datagate, setDatagate] = useState<AnyRecord | null>(null);
   const [ontology, setOntology] = useState<AnyRecord | null>(null);
@@ -699,6 +702,7 @@ export default function BakeBoardPage() {
   const [continuousLearningActive, setContinuousLearningActive] = useState(false);
   const [learningStartedAt, setLearningStartedAt] = useState<number | null>(null);
   const [learningElapsedMs, setLearningElapsedMs] = useState(0);
+  const [clockNow, setClockNow] = useState<Date | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [graphMode] = useState<"2d" | "3d">("3d");
   const [rag3dControl, setRag3dControl] = useState<Rag3DControl>({ serial: 0, action: "reset" });
@@ -775,7 +779,7 @@ export default function BakeBoardPage() {
       const recommended = benchmarkStatus?.recommended_learning_volume as LearningVolume | undefined;
       if (benchmarkStatus?.can_read_local_hardware && recommended && learningVolumePresets[recommended]) {
         setLearningVolume(recommended);
-        setTargetNodeCount(learningVolumePresets[recommended].targetNodes);
+        setTargetNodeCount(defaultTargetNodesForVolume(recommended));
       }
     } catch (caught) {
       setLocalBackendStatus("failed");
@@ -844,6 +848,13 @@ export default function BakeBoardPage() {
   }, [learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at, localBackendConnected, localBackendUrl]);
 
   useEffect(() => {
+    const updateClock = () => setClockNow(new Date());
+    updateClock();
+    const timer = window.setInterval(updateClock, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     runHardwareBenchmark({ applyRecommendation: true }).catch((caught) => {
       setError(caught instanceof Error ? caught.message : "시스템 벤치마크에 실패했습니다.");
     });
@@ -873,10 +884,14 @@ export default function BakeBoardPage() {
     const timer = window.setInterval(() => {
       setBuildTick((tick) => {
         const isInfiniteRun = buildRun.learning_profile?.id === "infinite";
-        if (layoutMode === "graph" && !isInfiniteRun) return tick;
         const rawPulse = Math.max(0, tick - buildRun.graph_frames.length + 1);
         if (isInfiniteRun && !continuousLearningActive) return tick;
-        if (!continuousLearningActive && rawPulse >= maxLiveGrowthPulses) return tick;
+        const targetNodes = Number(buildRun.training_gate?.target_nodes ?? buildRun.learning_profile?.target_nodes ?? 0);
+        const baseNodes = buildRun.graph_3d?.nodes?.length ?? 0;
+        const targetPulseLimit = targetNodes > baseNodes
+          ? Math.ceil((targetNodes - baseNodes) / liveGrowthBatchSize)
+          : minLiveGrowthPulses;
+        if (rawPulse >= Math.max(minLiveGrowthPulses, targetPulseLimit)) return tick;
         return tick + 1;
       });
     }, 1200);
@@ -1068,7 +1083,7 @@ export default function BakeBoardPage() {
     ) {
       benchmarkAppliedRef.current = true;
       nextVolume = recommended;
-      nextTargetNodeCount = learningVolumePresets[recommended].targetNodes;
+      nextTargetNodeCount = defaultTargetNodesForVolume(recommended);
       setLearningVolume(recommended);
       setTargetNodeCount(nextTargetNodeCount);
     }
@@ -1132,7 +1147,6 @@ export default function BakeBoardPage() {
     setLearningElapsedMs(0);
     setContinuousLearningActive(false);
     setBuildTick(0);
-    setGraphInspectionPulse(null);
     setLayoutMode("split");
     setRightMode("process");
     try {
@@ -1232,9 +1246,12 @@ export default function BakeBoardPage() {
   const accumulatedLearningEdges = buildRun
     ? buildRun.graph_3d.edges.length + rawGrowthPulseCount * liveGrowthBatchSize * 2
     : 0;
+  const livePulseTargetLimit = buildRun
+    ? Math.max(minLiveGrowthPulses, Math.ceil(Math.max(0, buildTargetNodes - representativeNodeCount) / liveGrowthBatchSize))
+    : minLiveGrowthPulses;
   const growthPulseCount = Math.min(
-    layoutMode === "graph" && graphInspectionPulse !== null ? graphInspectionPulse : rawGrowthPulseCount,
-    layoutMode === "graph" && !buildIsInfinite ? graphInspectionPulseCap : buildIsInfinite ? Number.POSITIVE_INFINITY : maxLiveGrowthPulses,
+    rawGrowthPulseCount,
+    livePulseTargetLimit,
   );
   const activeBuildFrame = buildRun
     ? growthPulseCount > 0
@@ -1253,7 +1270,7 @@ export default function BakeBoardPage() {
     : null;
   const activeGraph3D = useMemo<Rag3DGraph | null>(() => {
     if (!buildRun?.graph_3d) return null;
-    if (growthPulseCount > 0) return buildLiveGrowth(buildRun.graph_3d, growthPulseCount, visualNodeCap, Boolean(buildIsInfinite));
+    if (growthPulseCount > 0) return buildLiveGrowth(buildRun.graph_3d, growthPulseCount, visualNodeCap, Boolean(buildIsInfinite || buildTargetNodes > visualNodeCap));
     const visibleNodeCount = activeBuildFrame?.node_count ?? buildRun.graph_3d.nodes.length;
     const nodeIds = new Set(buildRun.graph_3d.nodes.slice(0, visibleNodeCount).map((node) => node.id));
     return {
@@ -1261,7 +1278,7 @@ export default function BakeBoardPage() {
       edges: buildRun.graph_3d.edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)),
       traversal_path: buildRun.graph_3d.traversal_path?.filter((id) => nodeIds.has(id)),
     };
-  }, [activeBuildFrame?.node_count, buildIsInfinite, buildRun, growthPulseCount, visualNodeCap]);
+  }, [activeBuildFrame?.node_count, buildIsInfinite, buildRun, buildTargetNodes, growthPulseCount, visualNodeCap]);
 
   const displayGraph3D = activeGraph3D ?? memoryGraph3D;
   const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
@@ -1298,8 +1315,8 @@ export default function BakeBoardPage() {
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const ramSoftGb = stability?.runtime_envelope?.ram_soft_gb ?? 23;
   const vramSoftGb = stability?.runtime_envelope?.vram_soft_gb ?? 12;
-  const hotWindowNodes = stability?.graph_policy?.hot_window_nodes ?? 1600;
-  const uiRenderNodes = stability?.graph_policy?.ui_render_nodes ?? 200;
+  const hotWindowNodes = stability?.graph_policy?.hot_window_nodes ?? 2048;
+  const uiRenderNodes = stability?.graph_policy?.ui_render_nodes ?? 240;
   const telemetryLabel = telemetrySourceText(system, benchmark);
   const resourceStopReason = resourcePressureReason(system, gpu, stability, benchmark);
   const diskFreeGb = numeric(system?.disk_free_gb);
@@ -1428,22 +1445,18 @@ export default function BakeBoardPage() {
     },
   ];
 
+  const logTime = clockNow ? fmtClock(clockNow) : "--:--:--";
   const logs = [
-    ...(buildRun ? [{ time: fmtClock(), message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}${buildIsInfinite ? ` / 누적 ${learningElapsedText}` : ""}` }] : []),
-    { time: fmtClock(), message: `벤치마크: ${benchmark?.profile_name ?? "대기"} / 추천 ${benchmarkVolumeLabel} / ${benchmarkSourceLabel}` },
-    { time: fmtClock(), message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
-    { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
-    { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / 마지막 손실 ${oven?.last_loss ?? "없음"}` },
-    { time: fmtClock(), message: `효율 계획: 추정 연산 절감 ${energyReduction}%` },
-    { time: fmtClock(), message: `지속 운전: RAM soft ${ramSoftGb}GB / VRAM soft ${vramSoftGb}GB / hot window ${hotWindowNodes} 노드` },
+    ...(buildRun ? [{ time: logTime, message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}${buildIsInfinite ? ` / 누적 ${learningElapsedText}` : ""}` }] : []),
+    { time: logTime, message: `벤치마크: ${benchmark?.profile_name ?? "대기"} / 추천 ${benchmarkVolumeLabel} / ${benchmarkSourceLabel}` },
+    { time: logTime, message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
+    { time: logTime, message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
+    { time: logTime, message: `학습 상태: ${statusText(oven?.state)} / 마지막 손실 ${oven?.last_loss ?? "없음"}` },
+    { time: logTime, message: `효율 계획: 추정 연산 절감 ${energyReduction}%` },
+    { time: logTime, message: `지속 운전: RAM soft ${ramSoftGb}GB / VRAM soft ${vramSoftGb}GB / hot window ${hotWindowNodes} 노드` },
   ];
 
   function changeLayoutMode(mode: LayoutMode) {
-    if (mode === "graph" && buildRun && !buildIsInfinite) {
-      setGraphInspectionPulse(Math.min(rawGrowthPulseCount, graphInspectionPulseCap));
-    } else {
-      setGraphInspectionPulse(null);
-    }
     setLayoutMode(mode);
   }
 
@@ -1736,7 +1749,7 @@ export default function BakeBoardPage() {
                     key={volume}
                     onClick={() => {
                       setLearningVolume(volume);
-                      setTargetNodeCount(learningVolumePresets[volume].targetNodes);
+                      setTargetNodeCount(defaultTargetNodesForVolume(volume));
                     }}
                     title={`${learningVolumePresets[volume].textBudget} / ${learningVolumePresets[volume].chunkBudget} 청크`}
                   >
@@ -1749,14 +1762,14 @@ export default function BakeBoardPage() {
                     aria-label="장기 목표 노드 수"
                     disabled={isBuilding || continuousLearningActive}
                     inputMode="numeric"
-                    max={250000}
+                    max={maxTargetNodes}
                     min={100}
                     step={100}
                     type="number"
                     value={targetNodeCount}
                     onChange={(event) => {
                       const nextValue = Number(event.currentTarget.value);
-                      setTargetNodeCount(Number.isFinite(nextValue) ? clamp(nextValue, 100, 250_000) : learningVolumePresets[learningVolume].targetNodes);
+                      setTargetNodeCount(Number.isFinite(nextValue) ? clamp(nextValue, 100, maxTargetNodes) : defaultTargetNodesForVolume(learningVolume));
                     }}
                   />
                 </label>
@@ -1806,7 +1819,7 @@ export default function BakeBoardPage() {
                     </div>
                     <p>{step.description}</p>
                     <div className="process-metrics">
-                      {step.metrics.map((metric) => <span key={metric}>{metric}</span>)}
+                      {step.metrics.map((metric, metricIndex) => <span key={`${step.number}-${metricIndex}-${metric}`}>{metric}</span>)}
                     </div>
                     <button
                       className="inline-action"
@@ -1852,7 +1865,7 @@ export default function BakeBoardPage() {
                             장기 목표 {buildRun.training_gate.target_nodes?.toLocaleString?.() ?? targetNodeCount.toLocaleString()}개는 저장/학습 예산이고, API graph_3d는 대표 앵커 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}개를 보냅니다.
                           </small>
                           <small>
-                            현재 화면은 live 이벤트를 합쳐 {displayGraph3D.nodes.length}개를 렌더링 중이며 장기 목표의 약 {renderedTargetPercent}%입니다. 표준 10,000 목표에서 210 노드 근처에 멈춘 것처럼 보이는 이유는 이 대표 렌더 상한 때문입니다.
+                            현재 화면은 live 이벤트를 합쳐 {displayGraph3D.nodes.length}개를 렌더링 중이며 장기 목표의 약 {renderedTargetPercent}%입니다. 장기 목표는 계속 누적되고, 3D 화면은 선택한 대표 렌더 윈도우와 요약 노드로 안정화됩니다.
                           </small>
                           <small>
                             API 대표 앵커만 보면 장기 목표의 약 {representativeTargetPercent}%입니다. 전체 목표를 실제 저장하려면 다음 단계인 append-only 온톨로지 이벤트 로그와 SQLite hot index가 필요합니다.

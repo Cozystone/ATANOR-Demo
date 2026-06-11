@@ -11,7 +11,7 @@ const volumePayloads = {
   lite: { target_nodes: 3_000, target_edges: 9_000, duration_hours: 12 },
   standard: { target_nodes: 10_000, target_edges: 40_000, duration_hours: 72 },
   deep: { target_nodes: 25_000, target_edges: 100_000, duration_hours: 168 },
-  max: { target_nodes: 50_000, target_edges: 240_000, duration_hours: 168 },
+  max: { target_nodes: 500_000, target_edges: 2_400_000, duration_hours: 168 },
 };
 
 function num(value: unknown, fallback: number) {
@@ -44,7 +44,7 @@ function fallbackBenchmark(input: BenchmarkInput = {}) {
     learningVolume = "standard";
   }
   const payload = volumePayloads[learningVolume as keyof typeof volumePayloads];
-  const hotWindowNodes = Math.min(Math.max(1024, Math.floor(payload.target_nodes / 6)), 6000);
+  const hotWindowNodes = Math.min(Math.max(2048, Math.floor(payload.target_nodes / 10)), 24000);
 
   return {
     generated_at: new Date().toISOString(),
@@ -68,8 +68,8 @@ function fallbackBenchmark(input: BenchmarkInput = {}) {
       node_write_batch: 500,
       edge_write_batch: 2000,
       hot_window_nodes: hotWindowNodes,
-      hot_window_edges: Math.min(Math.max(6000, hotWindowNodes * 8), 60000),
-      ui_render_nodes: Math.min(600, Math.max(96, Math.floor(hotWindowNodes / 8))),
+      hot_window_edges: Math.min(Math.max(12000, hotWindowNodes * 8), 240000),
+      ui_render_nodes: Math.min(2000, Math.max(240, Math.floor(hotWindowNodes / 8))),
       storage_model: "append-only graph event log + SQLite WAL hot index + periodic compacted snapshots",
     },
     training_tuning: {

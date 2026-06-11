@@ -24,12 +24,12 @@ def test_benchmark_recommends_max_for_target_desktop() -> None:
     assert benchmark["can_read_local_hardware"] is True
     assert benchmark["recommended_learning_volume"] == "max"
     assert benchmark["recommended_stability_payload"] == {
-        "target_nodes": 50_000,
-        "target_edges": 240_000,
+        "target_nodes": 500_000,
+        "target_edges": 2_400_000,
         "duration_hours": 168,
     }
-    assert benchmark["ontology_tuning"]["hot_window_nodes"] == 6_000
-    assert benchmark["ontology_tuning"]["ui_render_nodes"] == 600
+    assert benchmark["ontology_tuning"]["hot_window_nodes"] == 24_000
+    assert benchmark["ontology_tuning"]["ui_render_nodes"] == 2_000
     assert benchmark["training_tuning"]["precision"] == "bf16-preferred"
     assert benchmark["probes"]["ran"] is False
 
