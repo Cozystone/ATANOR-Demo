@@ -16,4 +16,8 @@ def test_query_graphrag_matches_docs_and_graph(tmp_path):
 
     assert result["evidence_docs"]
     assert result["matched_nodes"]
+    assert result["answer"]
+    assert result["citations"]
+    assert result["retrieval_trace"]["ranked_chunk_ids"]
+    assert result["method"] == "homage-hybrid-graphrag-v1"
     assert result["confidence"] > 0

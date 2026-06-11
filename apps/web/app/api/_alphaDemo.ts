@@ -188,25 +188,43 @@ export function demoNeuroPlan(input?: { text?: string; task_type?: string; targe
 }
 
 export function makeEvidence(query: string) {
+  const matchedNodes = demoNodes.filter((node) => query.toLowerCase().includes(node.label.toLowerCase()) || node.id === "evidence");
+  const evidenceDocs = [
+    {
+      doc_id: "demo-001",
+      chunk_id: "demo-001#1",
+      path: "data/cleaned/demo-001.txt",
+      score: 1.42,
+      snippet: "GraphRAG uses KnowledgeGraph structure to retrieve Evidence for grounded answers.",
+      retrieval_signals: { lexical: 1.04, coverage: 0.75, graph_boost: 0.31, phrase_bonus: 0.2 },
+    },
+    {
+      doc_id: "demo-002",
+      chunk_id: "demo-002#1",
+      path: "data/cleaned/demo-002.txt",
+      score: 0.96,
+      snippet: "Guardrail checks claims against Evidence and flags overconfident answer text.",
+      retrieval_signals: { lexical: 0.62, coverage: 0.5, graph_boost: 0.2, phrase_bonus: 0 },
+    },
+  ];
+  const graphPaths = demoEdges.map((edge) => [edge.source, edge.relation, edge.target]);
   return {
     query,
-    matched_nodes: demoNodes.filter((node) => query.toLowerCase().includes(node.label.toLowerCase()) || node.id === "evidence"),
+    method: "homage-hybrid-graphrag-v1",
+    answer: `질문 '${query}'는 ${matchedNodes.map((node) => node.label).join(", ") || "Ontology Memory"}와 연결됩니다. GraphRAG는 지식 그래프 경로를 먼저 확장한 뒤 상위 문서 chunk를 근거로 답변을 합성합니다.`,
+    matched_nodes: matchedNodes,
     matched_edges: demoEdges,
-    evidence_docs: [
-      {
-        doc_id: "demo-001",
-        path: "data/cleaned/demo-001.txt",
-        score: 1.12,
-        snippet: "GraphRAG uses KnowledgeGraph structure to retrieve Evidence for grounded answers.",
-      },
-      {
-        doc_id: "demo-002",
-        path: "data/cleaned/demo-002.txt",
-        score: 0.88,
-        snippet: "Guardrail checks claims against Evidence and flags overconfident answer text.",
-      },
-    ],
-    graph_paths: demoEdges.map((edge) => [edge.source, edge.relation, edge.target]),
+    evidence_docs: evidenceDocs,
+    citations: evidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.path, score: doc.score })),
+    graph_paths: graphPaths,
+    follow_up_questions: ["이 답변을 Guardrail로 검증할까요?", "관련 온톨로지 경로를 더 넓게 확장할까요?"],
+    retrieval_trace: {
+      strategy: "hybrid lexical BM25-style ranking + ontology 1-hop expansion + deterministic synthesis",
+      query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
+      expanded_terms: ["graphrag", "knowledgegraph", "evidence", "guardrail"],
+      ranked_chunk_ids: evidenceDocs.map((doc) => doc.chunk_id),
+      matched_node_ids: matchedNodes.map((node) => node.id),
+    },
     confidence: 0.82,
   };
 }

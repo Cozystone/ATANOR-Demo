@@ -6,7 +6,7 @@ packages, and a deployed interactive BakeBoard demo.
 
 Production demo:
 
-- https://web-2ro6t5sdi-anthony-kims-projects-bc874109.vercel.app
+- https://homage-alpha.vercel.app
 
 ## Repository Layout
 
@@ -65,7 +65,7 @@ deterministic Alpha demo fallback so the deployed app is directly testable.
 1. Put `.txt` or `.md` files in `data/raw`.
 2. Run DataGate from BakeBoard.
 3. Run Ontology Forge.
-4. Query GraphRAG.
+4. Query GraphRAG from the RAG chat workbench.
 5. Check a draft in Guardrail.
 6. Inspect GPU telemetry or fallback.
 7. Run the Homage Oven dry-run scaffold.
@@ -81,6 +81,10 @@ Outputs:
 - `data/ontology/edges.json`
 - `data/ontology/ontology_report.json`
 - `checkpoints/homage-core-30m-dev/manifest.json`
+
+GraphRAG responses include synthesized `answer` text, `citations`,
+`retrieval_trace`, graph paths, and per-evidence retrieval signals in addition
+to matched nodes and evidence documents.
 
 ## Main APIs
 
@@ -118,3 +122,7 @@ npm --workspace apps/web run build
 - Homage Oven is a safe dry-run scaffold, not real long training.
 - Neuro-Efficiency uses deterministic estimates until real event traces and
   hardware profiles are added.
+- `docs/RAG_REFERENCE.md` records the Microsoft GraphRAG, Haystack, and
+  MiroFish references used for the Alpha RAG/UI structure.
+- The BakeBoard UI now follows a MiroFish-inspired console structure: left
+  ontology memory graph, right learning/RAG workbench, and bottom system log.

@@ -28,6 +28,8 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     rag = client.post("/api/graphrag/query", json={"query": "GraphRAG evidence"})
     assert rag.status_code == 200
     assert rag.json()["result"]["evidence_docs"]
+    assert rag.json()["result"]["answer"]
+    assert rag.json()["result"]["citations"]
 
     guard = client.post("/api/guard/check", json={"draft_answer": "GraphRAG always guarantees perfect answers."})
     assert guard.status_code == 200

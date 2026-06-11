@@ -90,3 +90,44 @@
   button.
 - Deployed production:
   https://web-2ro6t5sdi-anthony-kims-projects-bc874109.vercel.app
+
+## 2026-06-11 - MiroFish-inspired Korean console UI
+
+- Inspected `666ghj/MiroFish` and the live demo at
+  `https://666ghj.github.io/mirofish-demo/console/process/proj_f95898d38529`.
+- Confirmed the useful UI pattern: top graph/split/workbench switcher, left
+  memory graph, right process/workbench panel, and bottom system dashboard log.
+- Noted MiroFish is AGPL-3.0, so no code was copied verbatim.
+- Rebuilt the BakeBoard frontend in Korean as a MiroFish-inspired console:
+  left ontology memory visualization, right learning-process/RAG-chat
+  workbench, graph/split/workbench layout controls, and system log.
+- Made RAG visible as a first-class chat workbench with evidence-backed
+  responses.
+- Verified `npm --workspace apps/web run build`.
+- Verified local browser UI: split layout, layout switcher, and RAG chat
+  response with evidence.
+- Deployed and verified production:
+  https://web-5rxd988wn-anthony-kims-projects-bc874109.vercel.app
+
+## 2026-06-11 - Hybrid GraphRAG upgrade
+
+- Reviewed Microsoft GraphRAG, Haystack, and MiroFish references for the RAG
+  and visualization direction.
+- Kept Homage on an internal deterministic engine instead of copying external
+  code; MiroFish remains UI-structure inspiration only because it is AGPL-3.0.
+- Upgraded `packages/rag_engine` from keyword matching to hybrid GraphRAG:
+  document chunking, BM25-style lexical scoring, ontology node matching,
+  one-hop graph expansion, phrase/coverage/graph retrieval signals, answer
+  synthesis, citations, follow-up questions, and retrieval trace.
+- Updated the Vercel fallback GraphRAG response to expose the same answer,
+  citation, trace, and evidence-signal shape.
+- Updated the Korean RAG chat UI to render synthesized answers and retrieval
+  signals inside evidence cards.
+- Added `docs/RAG_REFERENCE.md`.
+- Verified locally in a browser at `http://127.0.0.1:3014`.
+- Deployed production:
+  https://web-8hayowqq4-anthony-kims-projects-bc874109.vercel.app
+- `homage.vercel.app` was unavailable, so the deployment was aliased to:
+  https://homage-alpha.vercel.app
+- Verified the alias in-browser, including RAG chat answer rendering and
+  retrieval-signal evidence cards.
