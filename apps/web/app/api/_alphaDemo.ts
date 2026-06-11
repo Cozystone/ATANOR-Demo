@@ -383,6 +383,54 @@ function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "
   };
 }
 
+function makeOpenGenerationResult(query: string) {
+  const internalDocs = [
+    {
+      doc_id: "homage-internal-architecture",
+      chunk_id: "homage-internal-architecture#1",
+      path: "internal://homage-architecture",
+      score: 0.32,
+      snippet:
+        "Homage1.0은 Harvest, DataGate, Ontology Forge, GraphRAG, Guardrail, Homage Oven, Neuro-Efficiency, Hardware Benchmark, BakeBoard UI로 나뉩니다. DataGate는 입력 품질을 거르고, Ontology Forge는 개념과 관계를 만들고, GraphRAG는 질문 시 활성 노드와 문서 chunk를 모아 context bundle을 만듭니다.",
+      retrieval_signals: { internal_context: true },
+    },
+    {
+      doc_id: "homage-internal-architecture",
+      chunk_id: "homage-internal-architecture#2",
+      path: "internal://homage-architecture",
+      score: 0.3,
+      snippet:
+        "Homage Utterance Engine은 외부 LLM을 쓰지 않고 intent, active concepts, ontology context, claim plan, evidence state, surface text 순서로 답변을 만듭니다. 직접 문서 근거가 약할 때는 내부 구조 컨텍스트와 현재 그래프 상태를 분리해서 설명합니다.",
+      retrieval_signals: { internal_context: true },
+    },
+  ];
+  const graphPaths: string[][] = [];
+  const utterance = makeNativeDemoUtterance(query, demoNodes, graphPaths, internalDocs);
+  return {
+    query,
+    method: "homage-native-open-structure-v1",
+    answer: utterance.answer,
+    matched_nodes: demoNodes,
+    matched_edges: demoEdges,
+    evidence_docs: [],
+    citations: [],
+    graph_paths: graphPaths,
+    follow_up_questions: ["활성 노드를 더 크게 볼까요?", "Build Start 흐름과 연결해서 볼까요?"],
+    retrieval_trace: {
+      strategy: "no direct document hit; native generation from internal architecture context",
+      query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
+      expanded_terms: ["homage", "architecture", "graphrag", "ontology", "guardrail", "oven"],
+      ranked_chunk_ids: [],
+      matched_node_ids: demoNodes.map((node) => node.id),
+    },
+    pmv: utterance.pmv,
+    claim_plan: utterance.claim_plan,
+    active_concepts: utterance.active_concepts,
+    answer_engine: nativeAnswerEngine("native-open-structure-alpha"),
+    confidence: 0.64,
+  };
+}
+
 function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, graphPaths: string[][], evidenceDocs: any[]) {
   const activeConcepts = matchedNodes.map((node) => node.label).slice(0, 6);
   const pathText = graphPaths.slice(0, 2).map((path) => path.join(" -- ")).join("; ");
@@ -429,7 +477,7 @@ export function makeEvidence(query: string) {
   if (isNodeInventoryQuery(query)) return makeNodeInventoryResult(query);
 
   const matchedNodes = demoNodes.filter((node) => nodeMatchesQuery(node.id, query));
-  if (!matchedNodes.length) return makeConversationalResult(query, "no_match");
+  if (!matchedNodes.length) return makeOpenGenerationResult(query);
 
   const matchedNodeIds = new Set(matchedNodes.map((node) => node.id));
   const evidenceDocs = [

@@ -38,6 +38,13 @@ Deployment:
   - ontology batch, graph hot-window, UI render, precision, microbatch, and
     checkpoint tuning payloads
   - BakeBoard `시스템 벤치마크` stage and `벤치마크 재측정` button
+- Native RAG open-structure generation:
+  - structure/self-description questions such as `네 구조 설명해봐` generate a
+    native answer even when no direct document evidence is retrieved
+  - internal architecture context is used for synthesis but not returned as
+    document evidence
+  - active-signal UI now shows pulsing active nodes instead of a path-like
+    signal trace
 - MiroFish-inspired BakeBoard console:
   - top graph/split/workbench layout switcher
   - left ontology-memory graph visualization
@@ -155,6 +162,26 @@ Deployment:
   - screenshot:
     - `docs/screenshots/94-hardware-benchmark-local.png`
     - `docs/screenshots/95-hardware-benchmark-production.png`
+- Native RAG open-structure verification passed:
+  - `네 구조 설명해봐` now returns a generated Homage architecture answer
+  - no direct-evidence fallback text is shown
+  - `evidence_docs` remains empty when the answer uses internal architecture
+    context rather than retrieved document chunks
+  - signal overlay changed from `신호 경로` to `활성 노드`
+  - local browser verification showed nodes pulsing orange without path text
+  - production API at `https://homage-alpha.vercel.app/api/graphrag/query`
+    returns `homage-native-open-structure-v1`, `external_llm: false`,
+    empty retrieved evidence, and no direct-evidence fallback copy for the
+    same structure question
+  - production browser verification passed for generated structure answers,
+    70/30 split layout, and orange active-node pulses without path wording
+  - screenshots:
+    - `docs/screenshots/96-structure-answer-active-nodes-local.png`
+    - `docs/screenshots/97-active-node-pulses-local.png`
+    - `docs/screenshots/98-structure-answer-no-path-local.png`
+    - `docs/screenshots/99-active-node-pulses-no-path-local.png`
+    - `docs/screenshots/100-structure-answer-production.png`
+    - `docs/screenshots/101-active-node-pulses-production.png`
 
 ## Known Limitations
 

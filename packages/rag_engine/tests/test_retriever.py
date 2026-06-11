@@ -98,3 +98,33 @@ def test_query_graphrag_explains_color_legend_without_retrieval(tmp_path):
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
     assert "색깔은 노드의 역할" in result["answer"]
     assert "검색" in result["answer"]
+
+
+def test_query_graphrag_generates_structure_answer_without_direct_evidence(tmp_path):
+    cleaned = tmp_path / "cleaned"
+    ontology = tmp_path / "ontology"
+    cleaned.mkdir()
+    ontology.mkdir()
+    (cleaned / "doc.txt").write_text("GraphRAG uses KnowledgeGraph for Evidence.", encoding="utf-8")
+    (ontology / "nodes.json").write_text(
+        json.dumps(
+            [
+                {"id": "graphrag", "label": "GraphRAG", "type": "retrieval", "confidence": 0.9},
+                {"id": "guardrail", "label": "Guardrail", "type": "guardrail", "confidence": 0.8},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (ontology / "edges.json").write_text(json.dumps([{"source": "graphrag", "relation": "checks", "target": "guardrail"}]), encoding="utf-8")
+
+    result = query_graphrag("네 구조 설명해봐", str(cleaned), str(ontology))
+
+    assert result["method"] == "homage-native-graphrag-utterance-v1"
+    assert result["answer_engine"]["external_llm"] is False
+    assert result["evidence_docs"] == []
+    assert result["citations"] == []
+    assert "직접 연결" not in result["answer"]
+    assert "경로" not in result["answer"]
+    assert "Homage" in result["answer"]
+    assert "DataGate" in result["answer"] or "Ontology Forge" in result["answer"]
+    assert result["follow_up_questions"]

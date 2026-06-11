@@ -313,3 +313,40 @@
 - Captured screenshot:
   - `docs/screenshots/94-hardware-benchmark-local.png`
   - `docs/screenshots/95-hardware-benchmark-production.png`
+
+## 2026-06-11 - Active node signal and open structure answer
+
+- Changed the RAG signal visualization from a path-like trace to active node
+  pulses.
+- The overlay now says `활성 노드` instead of `신호 경로`.
+- Active GraphRAG nodes pulse orange while relation lines stay subdued, so the
+  visualization reads more like momentary brain activation than route finding.
+- Added internal architecture synthesis context for no-direct-evidence answers.
+- `네 구조 설명해봐` now generates a native Homage architecture answer instead
+  of saying the question is not directly connected to current evidence.
+- Internal architecture context is used only for synthesis; returned
+  `evidence_docs` and `citations` remain empty when no retrieved document chunk
+  supports the answer.
+- Added a regression test for structure questions without direct evidence.
+- Verified:
+  - `python -m compileall packages\rag_engine apps\api\app`
+  - full Alpha Python suite with explicit `PYTHONPATH`: 59 passed
+  - `npm --workspace apps/web run build`
+  - local browser at `http://127.0.0.1:3026`
+- Deployed production:
+  https://web-ffvjjolxy-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified production API and browser UI:
+  - `POST /api/graphrag/query` returns
+    `homage-native-open-structure-v1`
+  - `external_llm` remains `false`
+  - no direct-evidence fallback text appears for `네 구조 설명해봐`
+  - active node signal appears as orange pulsing nodes, not a path trace
+- Captured screenshots:
+  - `docs/screenshots/96-structure-answer-active-nodes-local.png`
+  - `docs/screenshots/97-active-node-pulses-local.png`
+  - `docs/screenshots/98-structure-answer-no-path-local.png`
+  - `docs/screenshots/99-active-node-pulses-no-path-local.png`
+  - `docs/screenshots/100-structure-answer-production.png`
+  - `docs/screenshots/101-active-node-pulses-production.png`

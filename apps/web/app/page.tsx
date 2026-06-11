@@ -383,7 +383,7 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
     return `- ${memoryTypeColor(type)} ${memoryTypeText(type)}: ${memoryTypeDescription(type)} 현재 ${count}개`;
   });
   const answer = lines.length
-    ? `색깔은 노드의 역할을 뜻합니다. 현재 3D RAG 그래프에서는 이렇게 읽으면 됩니다.\n${lines.join("\n")}\n\n답변 생성 중 주황색으로 빛나는 노드와 선은 “지금 질문을 처리하면서 읽힌 활성 신호”입니다. 기본 색은 역할, 발광은 실시간 추론 경로라고 보면 됩니다.`
+    ? `색깔은 노드의 역할을 뜻합니다. 현재 3D RAG 그래프에서는 이렇게 읽으면 됩니다.\n${lines.join("\n")}\n\n답변 생성 중 주황색으로 팟팟 켜지는 노드는 “지금 질문을 처리하면서 활성화된 신호”입니다. 기본 색은 역할, 발광은 순간적인 뉴런 활성 상태라고 보면 됩니다.`
     : "아직 표시된 노드가 없어 색상 범례를 만들 수 없습니다. 빌드 시작을 누르면 수집 자료가 온톨로지 노드로 바뀌고, 노드 타입별 색상이 나타납니다.";
   const representativeIds = new Set(representativeNodes.map((node) => node.id));
   const matchedEdges = edges.filter((edge) => representativeIds.has(edge.source) || representativeIds.has(edge.target)).slice(0, 12);
@@ -422,10 +422,6 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
   };
 }
 
-function graphEdgeKey(source: string, target: string) {
-  return `${source}:${target}`;
-}
-
 function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecord | null) {
   const resultNodeIds = new Set((result?.matched_nodes ?? []).map((node: AnyRecord) => String(node.id ?? "")));
   const terms = query
@@ -444,18 +440,13 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
     .sort((left, right) => right.score - left.score);
   const fallbackIds = graph.traversal_path?.slice(0, 5) ?? graph.nodes.slice(0, 5).map((node) => node.id);
   const activeNodeIds = (scored.length ? scored.map((item) => item.node.id) : fallbackIds).slice(0, 8);
-  const activeSet = new Set(activeNodeIds);
-  const activeEdgeKeys = graph.edges
-    .filter((edge) => activeSet.has(edge.source) || activeSet.has(edge.target))
-    .slice(0, 10)
-    .map((edge) => graphEdgeKey(edge.source, edge.target));
   const labels = activeNodeIds
     .map((id) => graph.nodes.find((node) => node.id === id)?.label ?? id)
     .slice(0, 5);
   return {
-    edgeKeys: activeEdgeKeys,
+    edgeKeys: [],
     nodeIds: activeNodeIds,
-    text: labels.length ? `신호 경로: ${labels.join(" → ")}` : "신호 경로 대기",
+    text: labels.length ? `활성 노드: ${labels.join(", ")}` : "활성 신호 대기",
   };
 }
 
@@ -577,7 +568,7 @@ export default function BakeBoardPage() {
   const [selectedMemory, setSelectedMemory] = useState<AnyRecord | null>(null);
   const [activeSignalEdgeKeys, setActiveSignalEdgeKeys] = useState<string[]>([]);
   const [activeSignalNodeIds, setActiveSignalNodeIds] = useState<string[]>([]);
-  const [signalTraceText, setSignalTraceText] = useState("신호 경로 대기");
+  const [signalTraceText, setSignalTraceText] = useState("활성 신호 대기");
   const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
   const [buildRun, setBuildRun] = useState<BuildRun | null>(null);
   const [buildTick, setBuildTick] = useState(0);
@@ -760,7 +751,7 @@ export default function BakeBoardPage() {
     signalTimerRef.current = window.setTimeout(() => {
       setActiveSignalEdgeKeys([]);
       setActiveSignalNodeIds([]);
-      setSignalTraceText("신호 경로 대기");
+      setSignalTraceText("활성 신호 대기");
       signalTimerRef.current = null;
     }, holdMs);
   }

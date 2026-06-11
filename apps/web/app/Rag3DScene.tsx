@@ -185,9 +185,9 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     const isActive = activeEdgeKeys.has(edgeKey(edge.source, edge.target)) || activeEdgeKeys.has(edgeKey(edge.target, edge.source));
     const geometry = new THREE.BufferGeometry().setFromPoints([source, target]);
     const material = new THREE.LineBasicMaterial({
-      color: isActive || isTraversal ? 0xff6b35 : 0x73827a,
+      color: isActive ? 0xff6b35 : isTraversal ? 0x9aa39e : 0x73827a,
       transparent: true,
-      opacity: isActive ? 1 : isTraversal ? 0.95 : 0.58,
+      opacity: isActive ? 0.9 : isTraversal ? 0.7 : 0.52,
     });
     addDynamicObject(state, new THREE.Line(geometry, material));
   }

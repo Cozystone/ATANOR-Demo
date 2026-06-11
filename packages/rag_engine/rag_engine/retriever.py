@@ -445,6 +445,51 @@ def _best_snippet(text: str, terms: set[str], limit: int = 320) -> str:
     return snippet[:limit].strip()
 
 
+def _internal_context_docs(query: str) -> list[dict[str, Any]]:
+    """Internal architecture context used when retrieval has no direct evidence.
+
+    These chunks are not returned as evidence documents. They only let the
+    native utterance stage keep generating an honest system answer instead of
+    stopping with a "not connected" fallback.
+    """
+
+    snippets = [
+        (
+            "Homage1.0은 Harvest, DataGate, Ontology Forge, GraphRAG, Guardrail, "
+            "Homage Oven, Neuro-Efficiency, Hardware Benchmark, BakeBoard UI로 나뉜다. "
+            "DataGate는 입력 품질을 거르고, Ontology Forge는 개념과 관계를 만들고, "
+            "GraphRAG는 질문 시 활성 노드와 문서 chunk를 모아 context bundle을 만든다."
+        ),
+        (
+            "Homage Utterance Engine은 외부 LLM을 쓰지 않고 intent, active concepts, "
+            "ontology context, claim plan, evidence state, surface text 순서로 답변을 만든다. "
+            "직접 문서 근거가 약할 때는 내부 구조 컨텍스트와 현재 그래프 상태를 분리해서 설명한다."
+        ),
+        (
+            "BakeBoard의 신호 시각화는 답변 생성 중 읽힌 노드를 주황색 발광으로 보여준다. "
+            "이 신호는 고정된 최단 경로가 아니라 뇌 활성처럼 관련 노드들이 켜졌다 꺼지는 상태 표시다."
+        ),
+    ]
+    return [
+        {
+            "doc_id": "homage-internal-architecture",
+            "chunk_id": f"homage-internal-architecture#{index}",
+            "path": "internal://homage-architecture",
+            "score": 0.32,
+            "snippet": snippet,
+            "retrieval_signals": {
+                "lexical": 0,
+                "coverage": 0,
+                "graph_boost": 0,
+                "phrase_bonus": 0,
+                "internal_context": True,
+            },
+        }
+        for index, snippet in enumerate(snippets, start=1)
+        if query.strip()
+    ]
+
+
 def _synthesize_answer(
     query: str,
     evidence_docs: list[dict[str, Any]],
@@ -461,13 +506,15 @@ def _synthesize_answer(
         for doc in evidence_docs[:4]
     ]
 
-    utterance = build_native_utterance(query, evidence_docs, matched_nodes, graph_paths)
+    synthesis_docs = evidence_docs or _internal_context_docs(query)
+    synthesis_paths = graph_paths if evidence_docs else []
+    utterance = build_native_utterance(query, synthesis_docs, matched_nodes, synthesis_paths)
     follow_up = [
         "이 답변을 Guardrail로 검증할까요?",
         "관련 온톨로지 경로를 더 넓게 확장할까요?",
     ]
     if not evidence_docs:
-        follow_up = ["어떤 문서를 DataGate에 넣어야 하나요?", "온톨로지 노드를 먼저 확장할까요?"]
+        follow_up = ["현재 활성 노드를 보여줄까요?", "이 구조를 Build Start 흐름과 연결해서 볼까요?"]
     return utterance["answer"], citations, follow_up, utterance
 
 

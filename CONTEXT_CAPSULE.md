@@ -5,6 +5,9 @@
 Homage1.0 Alpha end-to-end MVP is implemented, verified, and deployed with a
 research-backed Neuro-Efficiency Layer and a sustained-learning stability
 profile with startup hardware benchmark adaptation.
+Latest work also changed RAG answer behavior so no-direct-evidence structure
+questions still generate a native architecture answer, and GraphRAG signals now
+show active node pulses rather than path text.
 
 ## Current Branch
 
@@ -12,7 +15,7 @@ profile with startup hardware benchmark adaptation.
 
 ## Last Commit
 
-Latest local commit before this update: Add sustained learning stability profile
+Latest local commit before this update: Add startup hardware benchmark tuning
 
 ## Deployment
 
@@ -59,6 +62,9 @@ Latest local commit before this update: Add sustained learning stability profile
 - Added the BakeBoard `시스템 벤치마크` card and `벤치마크 재측정` action.
 - The actual local machine measured as `Performance desktop` and recommended
   `max`; BakeBoard auto-selected `최대` when connected to local FastAPI.
+- Added open-structure RAG generation for questions like `네 구조 설명해봐`.
+- Changed signal UI from `신호 경로` to `활성 노드`; orange pulsing now marks
+  currently active nodes, not a fixed route.
 - Added research note with SNN, neuromorphic, EWC, prototype, MAE, compression,
   and Loihi references.
 - Added long-run stability note.
@@ -70,13 +76,14 @@ Latest local commit before this update: Add sustained learning stability profile
 - `PYTHONPATH=... python -m pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q`
 - `python -m compileall ...`
 - `npm --workspace apps/web run build`
-- `npx vercel deploy --prod --yes --cwd apps/web`
+- `npx vercel --prod --yes`
+- `npx vercel alias set web-ffvjjolxy-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
 - Local hardware verification used FastAPI on `127.0.0.1:8002` and Next
   production server on `127.0.0.1:3025`.
 
 ## Test Results
 
-- 55 Python tests passed with explicit package `PYTHONPATH`.
+- 59 Python tests passed with explicit package `PYTHONPATH`.
 - Python compile passed.
 - Frontend build passed.
 - Local browser verification passed, including Neuro-Efficiency Rebalance and
@@ -85,6 +92,11 @@ Latest local commit before this update: Add sustained learning stability profile
 - Local browser verification passed for startup hardware benchmark adaptation:
   `Performance desktop`, `추천 최대`, `로컬 측정`, and Build Start at
   768 chunks / 420k chars.
+- Local browser verification passed for structure answer generation and active
+  node pulses with no path wording.
+- Production API and browser verification passed for `네 구조 설명해봐`:
+  native open-structure generation, no direct-evidence fallback copy,
+  `external_llm: false`, and orange active-node pulses instead of path traces.
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -105,12 +117,14 @@ Latest local commit before this update: Add sustained learning stability profile
   unattended multi-day runs.
 - Hardware benchmark auto-apply requires local FastAPI. Deployed fallback cannot
   measure the viewer PC and returns `can_read_local_hardware: false`.
+- No-direct-evidence architecture answers use internal Homage context for
+  synthesis, but do not return it as retrieved document evidence.
 
 ## Next 3 Actions
 
-1. Commit hardware benchmark adaptation changes.
-2. Implement the ontology event log and SQLite WAL hot graph index.
-3. Persist benchmark results by machine/run id and feed them into the writer.
+1. Implement the ontology event log and SQLite WAL hot graph index.
+2. Persist live-synapse graph mutations and replay them as real learning events.
+3. Add real Harvest source allowlists plus durable document provenance.
 
 ## What I Need From You
 
