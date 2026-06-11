@@ -748,7 +748,7 @@ p {
 
 .learning-budget-summary {
   display: grid;
-  grid-template-columns: auto auto auto minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 6px;
   border: 1px solid rgba(255, 107, 53, 0.24);
@@ -765,6 +765,7 @@ p {
 }
 
 .learning-budget-summary span {
+  grid-column: 1 / -1;
   color: var(--orange);
   font-size: 0.72rem;
   font-weight: 900;
@@ -776,8 +777,9 @@ p {
 }
 
 .learning-budget-summary small {
+  grid-column: 1 / -1;
   color: var(--muted);
-  justify-self: end;
+  justify-self: start;
 }
 
 .build-sources {

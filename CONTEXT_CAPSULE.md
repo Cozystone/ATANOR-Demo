@@ -3,7 +3,8 @@
 ## Current Objective
 
 Homage1.0 Alpha end-to-end MVP is implemented, verified, and deployed with a
-research-backed Neuro-Efficiency Layer.
+research-backed Neuro-Efficiency Layer and a sustained-learning stability
+profile.
 
 ## Current Branch
 
@@ -11,11 +12,11 @@ research-backed Neuro-Efficiency Layer.
 
 ## Last Commit
 
-Latest local commit before this update: Build Homage Alpha MVP
+Latest local commit before this update: Add native Homage utterance engine
 
 ## Deployment
 
-- https://web-2ro6t5sdi-anthony-kims-projects-bc874109.vercel.app
+- https://homage-alpha.vercel.app
 
 ## Relevant Files
 
@@ -25,8 +26,10 @@ Latest local commit before this update: Build Homage Alpha MVP
 - `apps/web/app/api/_alphaDemo.ts`
 - `apps/api/app/routers/neuro.py`
 - `apps/web/app/api/neuro/plan/route.ts`
+- `apps/web/app/api/neuro/stability/route.ts`
 - `packages/neuro_efficiency`
 - `docs/RESEARCH_NEURO_EFFICIENCY.md`
+- `docs/LONG_RUN_STABILITY_PLAN.md`
 - `packages/ontology_forge`
 - `packages/rag_engine`
 - `packages/guard`
@@ -42,23 +45,34 @@ Latest local commit before this update: Build Homage Alpha MVP
 - Added Neuro-Efficiency package/API/UI for event sparsity, modular routing,
   continual/few-shot/self-supervised learning policy, compression, and estimated
   compute reduction.
+- Added Sustained Learning Stability Profile with RAM/VRAM/storage watermarks,
+  queue caps, graph hot-window/UI LOD policy, checkpoint cadence, and
+  backpressure rules for the user's target desktop hardware.
+- Added `GET/POST /api/neuro/stability` to FastAPI and the deployable Next.js
+  fallback route.
+- Added the BakeBoard `지속 운전 안전장치` process card and learning-volume
+  targets for lite/standard/deep/max long-run profiles.
 - Added research note with SNN, neuromorphic, EWC, prototype, MAE, compression,
   and Loihi references.
+- Added long-run stability note.
 - Deployed and browser-tested the production app.
 
 ## Commands Run
 
 - `pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q`
+- `PYTHONPATH=... python -m pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q`
 - `python -m compileall ...`
 - `npm --workspace apps/web run build`
 - `npx vercel deploy --prod --yes --cwd apps/web`
 
 ## Test Results
 
-- 49 Python tests passed.
+- 55 Python tests passed with explicit package `PYTHONPATH`.
 - Python compile passed.
 - Frontend build passed.
-- Local browser verification passed, including Neuro-Efficiency Rebalance.
+- Local browser verification passed, including Neuro-Efficiency Rebalance and
+  the sustained stability card with `최대` learning volume persisting after
+  auto-refresh.
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -74,12 +88,15 @@ Latest local commit before this update: Build Homage Alpha MVP
 - Homage Oven is a dry-run scaffold only.
 - Neuro-Efficiency values are deterministic estimates until real traces and
   hardware profiles are persisted.
+- Sustained stability is currently a planning/API/UI layer. The live ontology
+  store still needs append-only graph events plus a SQLite WAL hot index before
+  unattended multi-day runs.
 
 ## Next 3 Actions
 
-1. Commit Neuro-Efficiency changes.
-2. Log real event density from DataGate/GraphRAG traces.
-3. Run a small SpikingJelly SNN experiment against Homage event traces.
+1. Commit sustained-learning stability changes.
+2. Implement the ontology event log and SQLite WAL hot graph index.
+3. Log real event density from DataGate/GraphRAG traces.
 
 ## What I Need From You
 

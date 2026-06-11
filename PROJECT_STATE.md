@@ -25,6 +25,12 @@ Deployment:
 - Neuro-Efficiency Layer for event sparsity, modular routing, continual
   learning policy, few-shot prototypes, self-supervised masking, compression,
   and estimated compute reduction.
+- Sustained Learning Stability Profile:
+  - `GET/POST /api/neuro/stability`
+  - target hardware envelope for Ryzen 9 9950X3D, RTX 5080 16GB, 32GB RAM, 1TB SSD
+  - RAM/VRAM/storage watermarks, queue caps, graph hot-window policy,
+    checkpoint cadence, and backpressure rules
+  - BakeBoard `지속 운전 안전장치` stage with selectable learning-volume targets
 - MiroFish-inspired BakeBoard console:
   - top graph/split/workbench layout switcher
   - left ontology-memory graph visualization
@@ -44,6 +50,7 @@ Deployment:
   - evidence snippets carried into the RAG chat workbench
   - continuous live-synapse growth pulses after Build Start
 - Build flow note: `docs/BUILD_FLOW_3D_RAG.md`.
+- Long-run stability note: `docs/LONG_RUN_STABILITY_PLAN.md`.
 
 ## Verification
 
@@ -106,6 +113,25 @@ Deployment:
     stages, and `external_llm: false`
   - production API at `https://homage-alpha.vercel.app` returned the same
     native engine metadata after redeploy
+- Sustained Learning Stability verification passed:
+  - `python -m compileall packages\neuro_efficiency apps\api\app` passed
+  - `python -m pytest packages\neuro_efficiency apps\api -q` passed: 11 tests
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 55 tests
+  - `npm --workspace apps/web run build` passed
+  - local browser verification passed for the `지속 운전 안전장치` process card,
+    learning-volume `최대` selection, `안정성 계산` button, and persistence after
+    the 10-second auto-refresh interval
+  - production deploy succeeded and `https://homage-alpha.vercel.app` now
+    points to the sustained stability version
+  - production API verification passed for `GET/POST /api/neuro/stability`
+  - production browser verification passed for the `최대` stability profile card
+  - screenshots:
+    - `docs/screenshots/88-sustained-stability-local.png`
+    - `docs/screenshots/89-sustained-stability-max-local.png`
+    - `docs/screenshots/90-sustained-stability-final-local.png`
+    - `docs/screenshots/91-sustained-stability-production.png`
+    - `docs/screenshots/92-sustained-stability-production-card.png`
+    - `docs/screenshots/93-sustained-stability-production-card-visible.png`
 
 ## Known Limitations
 
@@ -135,14 +161,18 @@ Deployment:
 - Live-synapse growth is currently a deterministic client-side Alpha simulation
   of continual learning. It visually proves the growth loop, but persistent
   graph mutation storage and real training updates are still next milestones.
+- Sustained stability is currently an enforceable planning/API/UI layer. The
+  live ontology store still needs to move from JSON snapshots to append-only
+  graph events plus a SQLite WAL hot index before very long unattended runs.
 - npm audit still reports dependency advisories; no force fix applied.
 
 ## Next Recommended Milestone
 
-1. Persist Alpha run history and Build Start graph frames with SQLite.
-2. Persist live-synapse graph mutations and replay them as a real learning
+1. Add the append-only ontology event log and SQLite WAL hot graph index.
+2. Persist Alpha run history and Build Start graph frames with SQLite.
+3. Persist live-synapse graph mutations and replay them as a real learning
    event stream.
-3. Add a real Harvest connector with source allowlists, robots policy, and
+4. Add a real Harvest connector with source allowlists, robots policy, and
    deduped document provenance.
-4. Persist Knowledge Bakery vector/graph memory and graph mutation history.
-5. Log real event density from DataGate and GraphRAG traces.
+5. Persist Knowledge Bakery vector/graph memory and graph mutation history.
+6. Log real event density from DataGate and GraphRAG traces.

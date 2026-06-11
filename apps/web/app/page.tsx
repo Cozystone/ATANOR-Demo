@@ -260,6 +260,16 @@ function asPercent(value?: number | null) {
   return Math.round((value ?? 0) * 100);
 }
 
+function stabilityPayloadForVolume(volume: LearningVolume) {
+  const profiles: Record<LearningVolume, { target_nodes: number; target_edges: number; duration_hours: number }> = {
+    lite: { target_nodes: 3_000, target_edges: 9_000, duration_hours: 12 },
+    standard: { target_nodes: 10_000, target_edges: 40_000, duration_hours: 72 },
+    deep: { target_nodes: 25_000, target_edges: 100_000, duration_hours: 168 },
+    max: { target_nodes: 50_000, target_edges: 240_000, duration_hours: 168 },
+  };
+  return profiles[volume];
+}
+
 function statusText(state?: string) {
   return stateLabels[state ?? "idle"] ?? state ?? "대기";
 }
@@ -561,6 +571,7 @@ export default function BakeBoardPage() {
   const [system, setSystem] = useState<AnyRecord | null>(null);
   const [oven, setOven] = useState<AnyRecord | null>(null);
   const [neuro, setNeuro] = useState<AnyRecord | null>(null);
+  const [stability, setStability] = useState<AnyRecord | null>(null);
   const [learningVolume, setLearningVolume] = useState<LearningVolume>("standard");
   const [selectedMemory, setSelectedMemory] = useState<AnyRecord | null>(null);
   const [activeSignalEdgeKeys, setActiveSignalEdgeKeys] = useState<string[]>([]);
@@ -601,6 +612,7 @@ export default function BakeBoardPage() {
       systemStatus,
       ovenStatus,
       neuroStatus,
+      stabilityStatus,
     ] = await Promise.all([
       fetchJson<PipelineStatus>("/api/pipeline/status"),
       fetchJson<AnyRecord>("/api/datagate/status"),
@@ -612,6 +624,10 @@ export default function BakeBoardPage() {
       fetchJson<AnyRecord>("/api/telemetry/system"),
       fetchJson<AnyRecord>("/api/oven/status"),
       fetchJson<AnyRecord>("/api/neuro/plan"),
+      fetchJson<AnyRecord>("/api/neuro/stability", {
+        method: "POST",
+        body: JSON.stringify(stabilityPayloadForVolume(learningVolume)),
+      }),
     ]);
     setPipeline(pipelineStatus);
     setDatagate(datagateStatus);
@@ -623,6 +639,7 @@ export default function BakeBoardPage() {
     setSystem(systemStatus);
     setOven(ovenStatus);
     setNeuro(neuroStatus);
+    setStability(stabilityStatus);
   }
 
   useEffect(() => {
@@ -631,7 +648,7 @@ export default function BakeBoardPage() {
       refreshAll().catch(() => undefined);
     }, 10000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [learningVolume]);
 
   useEffect(() => {
     if (!autoChatOpened && oven?.state === "completed") {
@@ -821,6 +838,19 @@ export default function BakeBoardPage() {
     }
   }
 
+  async function refreshStabilityPlan() {
+    setError(null);
+    try {
+      const plan = await fetchJson<AnyRecord>("/api/neuro/stability", {
+        method: "POST",
+        body: JSON.stringify(stabilityPayloadForVolume(learningVolume)),
+      });
+      setStability(plan);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "지속 운전 계획 계산에 실패했습니다.");
+    }
+  }
+
   async function startFactoryBuild() {
     setError(null);
     setIsBuilding(true);
@@ -956,6 +986,10 @@ export default function BakeBoardPage() {
   const displayMemoryEdgeCount = displayGraph3D.edges.length;
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
+  const ramSoftGb = stability?.runtime_envelope?.ram_soft_gb ?? 23;
+  const vramSoftGb = stability?.runtime_envelope?.vram_soft_gb ?? 12;
+  const hotWindowNodes = stability?.graph_policy?.hot_window_nodes ?? 1600;
+  const uiRenderNodes = stability?.graph_policy?.ui_render_nodes ?? 200;
   const flowHealth = useMemo(() => {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
     return Math.round((complete / 7) * 100);
@@ -1041,6 +1075,16 @@ export default function BakeBoardPage() {
       action: () => runProcessAction("06", rebalanceNeuro),
       actionLabel: activeAction === "06" ? "계산 중" : "효율 재계산",
     },
+    {
+      number: "07",
+      title: "지속 운전 안전장치",
+      api: "POST /api/neuro/stability",
+      state: activeAction === "07" ? "running" : "completed",
+      description: "수천 개 노드/관계가 생겨도 큐, 체크포인트, 그래프 hot window, UI LOD로 시스템이 죽지 않게 제한합니다.",
+      metrics: [`RAM soft ${ramSoftGb}GB`, `VRAM soft ${vramSoftGb}GB`, `hot ${hotWindowNodes} 노드`, `UI ${uiRenderNodes} 노드`],
+      action: () => runProcessAction("07", refreshStabilityPlan),
+      actionLabel: activeAction === "07" ? "계산 중" : "안정성 계산",
+    },
   ];
 
   const logs = [
@@ -1049,6 +1093,7 @@ export default function BakeBoardPage() {
     { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
     { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / 마지막 손실 ${oven?.last_loss ?? "없음"}` },
     { time: fmtClock(), message: `효율 계획: 추정 연산 절감 ${energyReduction}%` },
+    { time: fmtClock(), message: `지속 운전: RAM soft ${ramSoftGb}GB / VRAM soft ${vramSoftGb}GB / hot window ${hotWindowNodes} 노드` },
   ];
 
   function changeLayoutMode(mode: LayoutMode) {
@@ -1346,7 +1391,7 @@ export default function BakeBoardPage() {
               <div className="mini-metrics">
                 <span>흐름 {flowHealth}%</span>
                 <span>GPU {gpu?.utilization ?? 0}%</span>
-                <span>CPU {system?.cpu_count ?? "n/a"}</span>
+                <span>RAM soft {ramSoftGb}GB</span>
               </div>
             </div>
 
@@ -1396,6 +1441,21 @@ export default function BakeBoardPage() {
                               <small>{sourceTypeText(doc.source_type)} / {sourceStatusText(doc.status)} / {licenseStatusText(doc.license_status)}</small>
                             </a>
                           ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {step.number === "07" && stability ? (
+                      <div className="build-run-detail">
+                        <div className="build-trace">
+                          <span data-state="running">Backpressure: {stability.backpressure_policy?.length ?? 0} 규칙</span>
+                          <span data-state="complete">Checkpoint {stability.checkpoint_policy?.training_checkpoint_interval_minutes ?? 15}분</span>
+                          <span data-state="complete" title={stability.graph_policy?.ui_render_strategy ?? "enabled"}>Graph LOD: frontier/anchor</span>
+                        </div>
+                        <div className="learning-budget-summary">
+                          <span>{stability.profile_name ?? "Sustained Profile"}</span>
+                          <strong>{stability.target_workload?.target_nodes ?? 10000} 노드</strong>
+                          <strong>{stability.target_workload?.target_edges ?? 40000} 관계</strong>
+                          <small>저장 여유 {stability.runtime_envelope?.storage_reserve_gb ?? 200}GB 유지</small>
                         </div>
                       </div>
                     ) : null}

@@ -235,3 +235,42 @@
   https://homage-alpha.vercel.app
 - Verified production API responses for native GraphRAG and color legend
   answers with `external_llm: false`.
+
+## 2026-06-11 - Sustained learning stability profile
+
+- Added a target-hardware stability planner for Ryzen 9 9950X3D, RTX 5080
+  16GB, 32GB RAM, and 1TB SSD.
+- Added `GET/POST /api/neuro/stability` in FastAPI and the deployable Next.js
+  fallback API route.
+- Added queue caps, RAM/VRAM/storage watermarks, graph hot-window sizing,
+  UI render budgets, checkpoint cadence, and backpressure policy.
+- Added the BakeBoard `지속 운전 안전장치` process card and made learning-volume
+  presets recalculate stability targets:
+  - lite: 3,000 nodes / 9,000 edges / 12h
+  - standard: 10,000 nodes / 40,000 edges / 72h
+  - deep: 25,000 nodes / 100,000 edges / 168h
+  - max: 50,000 nodes / 240,000 edges / 168h
+- Fixed an auto-refresh bug where the stability card could revert from the
+  selected learning volume back to the default profile.
+- Tightened the stability summary card layout to avoid cramped text in the
+  70/30 split view.
+- Added `docs/LONG_RUN_STABILITY_PLAN.md`.
+- Verified:
+  - `python -m compileall packages\neuro_efficiency apps\api\app`
+  - `python -m pytest packages\neuro_efficiency apps\api -q`: 11 passed
+  - full Alpha Python suite with explicit `PYTHONPATH`: 55 passed
+  - `npm --workspace apps/web run build`
+  - local in-app browser at `http://127.0.0.1:3024`
+- Deployed production:
+  https://web-i1wdnz9bk-anthony-kims-projects-bc874109.vercel.app
+- Re-aliased production to:
+  https://homage-alpha.vercel.app
+- Verified production `GET/POST /api/neuro/stability`.
+- Verified production browser UI with the `최대` sustained-stability profile.
+- Captured screenshots:
+  - `docs/screenshots/88-sustained-stability-local.png`
+  - `docs/screenshots/89-sustained-stability-max-local.png`
+  - `docs/screenshots/90-sustained-stability-final-local.png`
+  - `docs/screenshots/91-sustained-stability-production.png`
+  - `docs/screenshots/92-sustained-stability-production-card.png`
+  - `docs/screenshots/93-sustained-stability-production-card-visible.png`
