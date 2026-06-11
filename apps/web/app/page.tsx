@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import Rag3DScene, { type Rag3DControl, type Rag3DGraph, type Rag3DNode } from "./Rag3DScene";
+import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode } from "./Rag3DScene";
 
 type StageState = "idle" | "running" | "warning" | "complete";
 type LayoutMode = "graph" | "split" | "workbench";
@@ -85,22 +85,28 @@ const liveGrowthTemplates = [
   { label: "수면 압축", type: "visualization", source: "3d", relation: "consolidates" },
 ];
 
-const maxLiveGrowthPulses = 24;
-const graphInspectionPulseCap = 12;
+const liveGrowthBatchSize = 6;
+const maxLiveGrowthPulses = 8;
+const graphInspectionPulseCap = 2;
 
 function buildLiveGrowth(base: Rag3DGraph, pulseCount: number): Rag3DGraph {
   const cappedPulseCount = clamp(pulseCount, 0, maxLiveGrowthPulses);
   const liveNodes: Rag3DNode[] = [];
-  const liveEdges = [];
+  const liveEdges: Rag3DEdge[] = [];
   const baseIds = new Set(base.nodes.map((node) => node.id));
-  for (let index = 0; index < cappedPulseCount; index += 1) {
+  const liveNodeCount = cappedPulseCount * liveGrowthBatchSize;
+  for (let index = 0; index < liveNodeCount; index += 1) {
     const template = liveGrowthTemplates[index % liveGrowthTemplates.length];
     const ring = Math.floor(index / liveGrowthTemplates.length);
     const angle = index * 0.78;
     const radius = 3.8 + (ring % 5) * 0.55;
     const id = `live-synapse-${index + 1}`;
     const previous = index > 0 ? `live-synapse-${index}` : null;
-    const source = previous && index % 2 === 1 ? previous : baseIds.has(template.source) ? template.source : base.nodes[index % Math.max(1, base.nodes.length)]?.id;
+    const batchStart = Math.floor(index / liveGrowthBatchSize) * liveGrowthBatchSize;
+    const batchAnchor = base.nodes[(index + Math.floor(index / liveGrowthBatchSize)) % Math.max(1, base.nodes.length)]?.id;
+    const source = index === batchStart
+      ? baseIds.has(template.source) ? template.source : batchAnchor
+      : previous ?? batchAnchor;
     liveNodes.push({
       id,
       label: `${template.label} ${index + 1}`,
@@ -112,6 +118,12 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number): Rag3DGraph {
     });
     if (source) {
       liveEdges.push({ source, target: id, relation: template.relation, weight: 0.58 + ((index % 6) * 0.045) });
+    }
+    if (previous && index !== batchStart) {
+      liveEdges.push({ source: previous, target: id, relation: "parallel_association", weight: 0.62 });
+    }
+    if (index >= liveGrowthBatchSize) {
+      liveEdges.push({ source: `live-synapse-${index + 1 - liveGrowthBatchSize}`, target: id, relation: "consolidates_with", weight: 0.55 });
     }
   }
   return {
@@ -281,7 +293,7 @@ export default function BakeBoardPage() {
   const [buildTick, setBuildTick] = useState(0);
   const [isBuilding, setIsBuilding] = useState(false);
   const [activeAction, setActiveAction] = useState<string | null>(null);
-  const [graphMode, setGraphMode] = useState<"2d" | "3d">("2d");
+  const [graphMode] = useState<"2d" | "3d">("3d");
   const [rag3dControl, setRag3dControl] = useState<Rag3DControl>({ serial: 0, action: "reset" });
   const graphRef = useRef<SVGSVGElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
@@ -496,7 +508,6 @@ export default function BakeBoardPage() {
     setIsBuilding(true);
     setBuildTick(0);
     setGraphInspectionPulse(null);
-    setGraphMode("3d");
     setLayoutMode("split");
     setRightMode("process");
     try {
@@ -520,7 +531,7 @@ export default function BakeBoardPage() {
         ...messages,
         {
           role: "assistant",
-          text: `Build ${run.run_id}가 시작됐습니다. 인터넷 참조 ${run.harvest_docs.length}개를 수집하고, ${run.graph_3d.nodes.length}개 3D RAG 노드와 ${run.graph_3d.edges.length}개 관계를 만들었습니다. 학습 gate는 ${run.training_gate.ready ? "준비 완료" : "대기"} 상태입니다.`,
+          text: `빌드 ${run.run_id}가 시작됐습니다. 인터넷 참조 ${run.harvest_docs.length}개를 수집하고, ${run.graph_3d.nodes.length}개 3D RAG 노드와 ${run.graph_3d.edges.length}개 관계를 만들었습니다. 학습 gate는 ${run.training_gate.ready ? "준비 완료" : "대기"} 상태입니다.`,
           evidence: run.harvest_docs.map((doc) => ({
             chunk_id: doc.id,
             doc_id: doc.id,
@@ -531,7 +542,7 @@ export default function BakeBoardPage() {
         },
       ]);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Build 시작에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "빌드 시작에 실패했습니다.");
     } finally {
       setIsBuilding(false);
     }
@@ -542,6 +553,24 @@ export default function BakeBoardPage() {
   const memoryNodes = useMemo(() => makeMemoryNodes(graph), [graph]);
   const memoryEdges = useMemo(() => makeMemoryEdges(graph, memoryNodes), [graph, memoryNodes]);
   const memoryMap = useMemo(() => new Map(memoryNodes.map((node) => [node.id, node])), [memoryNodes]);
+  const memoryGraph3D = useMemo<Rag3DGraph>(() => ({
+    nodes: memoryNodes.map((node, index) => ({
+      id: node.id,
+      label: node.label,
+      type: node.type,
+      x: (node.x - 50) / 8,
+      y: (50 - node.y) / 8,
+      z: ((index % 5) - 2) * 0.7,
+      confidence: node.confidence,
+    })),
+    edges: memoryEdges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+      relation: edge.relation,
+      weight: edge.confidence,
+    })),
+    traversal_path: memoryNodes.map((node) => node.id),
+  }), [memoryEdges, memoryNodes]);
   const rawGrowthPulseCount = buildRun ? Math.max(0, buildTick - buildRun.graph_frames.length + 1) : 0;
   const growthPulseCount = Math.min(
     layoutMode === "graph" && graphInspectionPulse !== null ? graphInspectionPulse : rawGrowthPulseCount,
@@ -551,8 +580,8 @@ export default function BakeBoardPage() {
     ? growthPulseCount > 0
       ? {
           tick: buildTick + 1,
-          node_count: buildRun.graph_3d.nodes.length + growthPulseCount,
-          edge_count: buildRun.graph_3d.edges.length + growthPulseCount,
+          node_count: buildRun.graph_3d.nodes.length + growthPulseCount * liveGrowthBatchSize,
+          edge_count: buildRun.graph_3d.edges.length + growthPulseCount * liveGrowthBatchSize * 2,
           message:
             rawGrowthPulseCount > growthPulseCount
               ? `그래프 검사 모드: ${growthPulseCount}개 pulse에서 안정화했습니다.`
@@ -572,6 +601,8 @@ export default function BakeBoardPage() {
     };
   }, [activeBuildFrame?.node_count, buildRun, growthPulseCount]);
 
+  const displayGraph3D = activeGraph3D ?? memoryGraph3D;
+
   useEffect(() => {
     if (!activeGraph3D || !buildRun) return;
     setGraph({
@@ -590,8 +621,8 @@ export default function BakeBoardPage() {
     });
   }, [activeGraph3D, buildRun]);
 
-  const displayMemoryNodeCount = activeGraph3D?.nodes.length ?? memoryNodes.length;
-  const displayMemoryEdgeCount = activeGraph3D?.edges.length ?? memoryEdges.length;
+  const displayMemoryNodeCount = displayGraph3D.nodes.length;
+  const displayMemoryEdgeCount = displayGraph3D.edges.length;
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const flowHealth = useMemo(() => {
@@ -602,18 +633,18 @@ export default function BakeBoardPage() {
   const processSteps = [
     {
       number: "00",
-      title: "Build 시작",
+      title: "빌드 시작",
       api: "POST /api/factory/build/start",
       state: isBuilding ? "running" : buildRun ? "completed" : "idle",
-      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG traversal, Homage Oven gate까지 한 번에 흐르게 합니다.",
+      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, Homage Oven gate까지 한 번에 흐르게 합니다.",
       metrics: [
-        `${buildRun?.harvest_docs?.length ?? 0} web refs`,
-        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? Math.max(buildRun.graph_3d.nodes.length, activeGraph3D?.nodes?.length ?? 0) : 0} 3D nodes`,
-        `${growthPulseCount} live pulses`,
-        buildRun?.training_gate?.ready ? "training gate ready" : "gate waiting",
+        `${buildRun?.harvest_docs?.length ?? 0} 웹 참조`,
+        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? Math.max(buildRun.graph_3d.nodes.length, activeGraph3D?.nodes?.length ?? 0) : 0} 3D 노드`,
+        `${growthPulseCount} 실시간 pulse`,
+        buildRun?.training_gate?.ready ? "학습 gate 준비" : "gate 대기",
       ],
       action: () => runProcessAction("00", startFactoryBuild),
-      actionLabel: isBuilding || activeAction === "00" ? "Build 진행 중" : "Build 시작",
+      actionLabel: isBuilding || activeAction === "00" ? "빌드 진행 중" : "빌드 시작",
     },
     {
       number: "01",
@@ -682,7 +713,7 @@ export default function BakeBoardPage() {
 
   const logs = [
     ...(buildRun ? [{ time: fmtClock(), message: `Build ${buildRun.run_id}: ${activeBuildFrame?.message ?? "factory build ready"} / gate ${buildRun.training_gate.ready ? "ready" : "waiting"}` }] : []),
-    { time: fmtClock(), message: `메모리 그래프 로드: ${displayMemoryNodeCount} nodes / ${displayMemoryEdgeCount} edges` },
+    { time: fmtClock(), message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
     { time: fmtClock(), message: `RAG 상태: ${statusText(graphrag?.state)} / confidence ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
     { time: fmtClock(), message: `학습 상태: ${statusText(oven?.state)} / last loss ${oven?.last_loss ?? "none"}` },
     { time: fmtClock(), message: `효율 계획: estimated compute reduction ${energyReduction}%` },
@@ -830,10 +861,10 @@ export default function BakeBoardPage() {
         </div>
         <div className="header-status">
           <button className="build-button" onClick={startFactoryBuild} disabled={isBuilding || Boolean(activeAction)}>
-            {isBuilding ? "Build 중" : "Build 시작"}
+            {isBuilding ? "빌드 중" : "빌드 시작"}
           </button>
-          <span>Step 5/6</span>
-          <strong>{rightMode === "chat" ? "RAG Chat" : "Learning Process"}</strong>
+          <span>단계 5/6</span>
+          <strong>{rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
           <StatusDot state={pipeline?.system_state === "mock" ? "running" : "completed"} />
         </div>
       </header>
@@ -845,15 +876,14 @@ export default function BakeBoardPage() {
           <section className="memory-panel">
             <div className="memory-header">
               <div>
-                <h1>Ontology Memory</h1>
+                <h1>온톨로지 메모리</h1>
                 <p>RAG가 참조하는 개념 기억망</p>
               </div>
               <div className="memory-tools">
-                <span>{displayMemoryNodeCount} nodes</span>
-                <span>{displayMemoryEdgeCount} edges</span>
-                <button onClick={() => runAction(refreshAll)}>Refresh</button>
+                <span>{displayMemoryNodeCount} 노드</span>
+                <span>{displayMemoryEdgeCount} 관계</span>
+                <button onClick={() => runAction(refreshAll)}>새로고침</button>
                 <button onClick={() => changeLayoutMode(layoutMode === "graph" ? "split" : "graph")}>확대</button>
-                <button data-active={graphMode === "3d"} onClick={() => setGraphMode(graphMode === "3d" ? "2d" : "3d")}>3D RAG</button>
               </div>
             </div>
             <div className="graph-control-strip">
@@ -876,18 +906,18 @@ export default function BakeBoardPage() {
                 <button onClick={() => panGraph(-8, 0)} title="왼쪽 이동">←</button>
                 <button onClick={() => panGraph(8, 0)} title="오른쪽 이동">→</button>
                 <button onClick={() => panGraph(0, 8)} title="아래로 이동">↓</button>
-                <button onClick={resetGraph} title="그래프 초기화">Reset</button>
+                <button onClick={resetGraph} title="그래프 초기화" aria-label="그래프 초기화">↺</button>
               </div>
               <span className="zoom-readout">{Math.round(graphView.scale * 100)}%</span>
             </div>
             <div className="memory-canvas" data-dragging={dragState ? "true" : "false"}>
-              {graphMode === "3d" && activeGraph3D ? (
+              {graphMode === "3d" && displayGraph3D.nodes.length ? (
                 <>
-                  <Rag3DScene graph={activeGraph3D} control={rag3dControl} onSelect={(node: Rag3DNode) => setSelectedMemory(node)} />
+                  <Rag3DScene graph={displayGraph3D} control={rag3dControl} onSelect={(node: Rag3DNode) => setSelectedMemory(node)} />
                   <div className="rag3d-overlay">
-                    <strong>3D GraphRAG Traversal</strong>
-                    <span>{activeGraph3D.nodes.length} nodes / {activeGraph3D.edges.length} edges</span>
-                    <span>{activeBuildFrame?.message ?? "Build 시작을 누르면 노드가 파생됩니다."}</span>
+                    <strong>3D GraphRAG 탐색</strong>
+                    <span>{displayGraph3D.nodes.length} 노드 / {displayGraph3D.edges.length} 관계</span>
+                    <span>{activeBuildFrame?.message ?? "빌드 시작을 누르면 노드가 파생됩니다."}</span>
                   </div>
                 </>
               ) : (

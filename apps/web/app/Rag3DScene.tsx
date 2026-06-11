@@ -37,6 +37,17 @@ type Rag3DSceneProps = {
   onSelect?: (node: Rag3DNode) => void;
 };
 
+type SceneState = {
+  camera: THREE.PerspectiveCamera;
+  dynamicObjects: THREE.Object3D[];
+  frame: number;
+  group: THREE.Group;
+  knownNodeIds: Set<string>;
+  raycastMeshes: THREE.Mesh[];
+  renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
+};
+
 const palette: Record<string, number> = {
   source: 0xff6b35,
   critique: 0xc5283d,
@@ -72,21 +83,115 @@ function shouldShowLabel(node: Rag3DNode) {
   return !node.id.startsWith("live-synapse");
 }
 
+function disposeMaterial(material?: THREE.Material | THREE.Material[]) {
+  if (Array.isArray(material)) {
+    material.forEach((item) => item.dispose());
+    return;
+  }
+  material?.dispose();
+}
+
+function disposeObject(object: THREE.Object3D) {
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    mesh.geometry?.dispose?.();
+    disposeMaterial(mesh.material as THREE.Material | THREE.Material[] | undefined);
+  });
+}
+
+function clearDynamicObjects(state: SceneState) {
+  for (const object of state.dynamicObjects) {
+    state.group.remove(object);
+    disposeObject(object);
+  }
+  state.dynamicObjects = [];
+  state.raycastMeshes = [];
+}
+
+function addDynamicObject(state: SceneState, object: THREE.Object3D) {
+  state.dynamicObjects.push(object);
+  state.group.add(object);
+}
+
+function renderGraph(state: SceneState, graph: Rag3DGraph | null) {
+  clearDynamicObjects(state);
+  if (!graph?.nodes?.length) return;
+
+  const nodeMap = new Map<string, THREE.Vector3>();
+  const labelScale = graph.nodes.length > 18 ? 0.72 : graph.nodes.length > 12 ? 0.84 : 1;
+  const nextKnownNodeIds = new Set<string>();
+
+  for (const node of graph.nodes) {
+    nextKnownNodeIds.add(node.id);
+    const position = new THREE.Vector3(node.x, node.y, node.z);
+    nodeMap.set(node.id, position);
+    const color = palette[node.type] ?? 0x68736d;
+    const radius = 0.17 + (node.confidence ?? 0.7) * 0.12;
+    const geometry = new THREE.SphereGeometry(radius, 24, 24);
+    const material = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.18 });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(position);
+    mesh.userData.node = node;
+    mesh.userData.spawnFrame = state.knownNodeIds.has(node.id) ? state.frame - 100 : state.frame;
+    state.raycastMeshes.push(mesh);
+    addDynamicObject(state, mesh);
+
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 1.7, 24, 24),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.08 }),
+    );
+    halo.position.copy(position);
+    addDynamicObject(state, halo);
+
+    if (shouldShowLabel(node)) {
+      const sprite = labelSprite(node.label, labelScale);
+      sprite.position.set(position.x + 0.32, position.y + 0.18, position.z);
+      addDynamicObject(state, sprite);
+    }
+  }
+
+  const traversalPairs = new Set<string>();
+  for (let index = 0; index < (graph.traversal_path?.length ?? 0) - 1; index += 1) {
+    traversalPairs.add(`${graph.traversal_path?.[index]}:${graph.traversal_path?.[index + 1]}`);
+  }
+
+  for (const edge of graph.edges) {
+    const source = nodeMap.get(edge.source);
+    const target = nodeMap.get(edge.target);
+    if (!source || !target) continue;
+    const isTraversal = traversalPairs.has(`${edge.source}:${edge.target}`);
+    const geometry = new THREE.BufferGeometry().setFromPoints([source, target]);
+    const material = new THREE.LineBasicMaterial({
+      color: isTraversal ? 0xff6b35 : 0x73827a,
+      transparent: true,
+      opacity: isTraversal ? 0.95 : 0.58,
+    });
+    addDynamicObject(state, new THREE.Line(geometry, material));
+  }
+  state.knownNodeIds = nextKnownNodeIds;
+}
+
 export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const groupRef = useRef<THREE.Group | null>(null);
+  const sceneStateRef = useRef<SceneState | null>(null);
+  const graphRef = useRef<Rag3DGraph | null>(graph);
 
   useEffect(() => {
     selectRef.current = onSelect;
   }, [onSelect]);
 
   useEffect(() => {
+    graphRef.current = graph;
+    const state = sceneStateRef.current;
+    if (state) renderGraph(state, graph);
+  }, [graph]);
+
+  useEffect(() => {
     if (!control) return;
-    const camera = cameraRef.current;
-    const group = groupRef.current;
-    if (!camera || !group) return;
+    const state = sceneStateRef.current;
+    if (!state) return;
+    const { camera, group } = state;
 
     if (control.action === "zoom-in") camera.position.z = Math.max(5.2, camera.position.z - 1.1);
     if (control.action === "zoom-out") camera.position.z = Math.min(25, camera.position.z + 1.1);
@@ -102,14 +207,13 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || !graph?.nodes?.length) return;
+    if (!host) return;
     const container = host;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf8faf8);
     const camera = new THREE.PerspectiveCamera(48, container.clientWidth / Math.max(1, container.clientHeight), 0.1, 1000);
     camera.position.set(0, 0, 13);
-    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -117,7 +221,6 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
     container.replaceChildren(renderer.domElement);
 
     const group = new THREE.Group();
-    groupRef.current = group;
     scene.add(group);
     scene.add(new THREE.AmbientLight(0xffffff, 1.6));
     const light = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -129,53 +232,18 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
     grid.position.z = -2.2;
     group.add(grid);
 
-    const nodeMap = new Map<string, THREE.Vector3>();
-    const raycastMeshes: THREE.Mesh[] = [];
-    const labelScale = graph.nodes.length > 18 ? 0.72 : graph.nodes.length > 12 ? 0.84 : 1;
-    for (const node of graph.nodes) {
-      const position = new THREE.Vector3(node.x, node.y, node.z);
-      nodeMap.set(node.id, position);
-      const color = palette[node.type] ?? 0x68736d;
-      const geometry = new THREE.SphereGeometry(0.17 + (node.confidence ?? 0.7) * 0.12, 24, 24);
-      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.18 });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.copy(position);
-      mesh.userData.node = node;
-      raycastMeshes.push(mesh);
-      group.add(mesh);
-
-      const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(0.36, 24, 24),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.08 }),
-      );
-      halo.position.copy(position);
-      group.add(halo);
-
-      if (shouldShowLabel(node)) {
-        const sprite = labelSprite(node.label, labelScale);
-        sprite.position.set(position.x + 0.32, position.y + 0.18, position.z);
-        group.add(sprite);
-      }
-    }
-
-    const traversalPairs = new Set<string>();
-    for (let index = 0; index < (graph.traversal_path?.length ?? 0) - 1; index += 1) {
-      traversalPairs.add(`${graph.traversal_path?.[index]}:${graph.traversal_path?.[index + 1]}`);
-    }
-
-    for (const edge of graph.edges) {
-      const source = nodeMap.get(edge.source);
-      const target = nodeMap.get(edge.target);
-      if (!source || !target) continue;
-      const isTraversal = traversalPairs.has(`${edge.source}:${edge.target}`);
-      const geometry = new THREE.BufferGeometry().setFromPoints([source, target]);
-      const material = new THREE.LineBasicMaterial({
-        color: isTraversal ? 0xff6b35 : 0x7d8780,
-        transparent: true,
-        opacity: isTraversal ? 0.95 : 0.42,
-      });
-      group.add(new THREE.Line(geometry, material));
-    }
+    const state: SceneState = {
+      camera,
+      dynamicObjects: [],
+      frame: 0,
+      group,
+      knownNodeIds: new Set(),
+      raycastMeshes: [],
+      renderer,
+      scene,
+    };
+    sceneStateRef.current = state;
+    renderGraph(state, graphRef.current);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -212,7 +280,7 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
       if (drag.moved) return;
       pointerEventToNdc(event);
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(raycastMeshes)[0];
+      const hit = raycaster.intersectObjects(state.raycastMeshes)[0];
       if (hit?.object.userData.node) selectRef.current?.(hit.object.userData.node);
     }
 
@@ -233,14 +301,14 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
     renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("resize", handleResize);
 
-    let frame = 0;
     let animation = 0;
     function animate() {
       animation = requestAnimationFrame(animate);
-      frame += 1;
-      if (!drag.active) group.rotation.y += 0.0018;
-      for (const mesh of raycastMeshes) {
-        mesh.scale.setScalar(1 + Math.sin(frame * 0.025 + mesh.position.x) * 0.035);
+      state.frame += 1;
+      if (!drag.active) group.rotation.y += 0.00125;
+      for (const mesh of state.raycastMeshes) {
+        const age = Math.min(1, (state.frame - (mesh.userData.spawnFrame ?? state.frame)) / 18);
+        mesh.scale.setScalar(age * (1 + Math.sin(state.frame * 0.02 + mesh.position.x) * 0.025));
       }
       renderer.render(scene, camera);
     }
@@ -253,19 +321,13 @@ export default function Rag3DScene({ graph, control, onSelect }: Rag3DSceneProps
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
       renderer.domElement.removeEventListener("wheel", handleWheel);
+      clearDynamicObjects(state);
       renderer.dispose();
       container.replaceChildren();
-      cameraRef.current = null;
-      groupRef.current = null;
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        mesh.geometry?.dispose?.();
-        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(material)) material.forEach((item) => item.dispose());
-        else material?.dispose?.();
-      });
+      sceneStateRef.current = null;
+      disposeObject(grid);
     };
-  }, [graph]);
+  }, []);
 
   return <div className="rag3d-host" ref={hostRef} aria-label="3D RAG traversal graph" />;
 }
