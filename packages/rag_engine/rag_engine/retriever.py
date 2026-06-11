@@ -587,7 +587,7 @@ def query_graphrag(
 
     return {
         "query": query,
-        "method": "homage-native-raw-no-node-v1" if raw_no_node else "homage-native-graphrag-utterance-v1",
+        "method": "homage-native-no-node-utterance-v1" if raw_no_node else "homage-native-graphrag-utterance-v1",
         "answer": answer,
         "matched_nodes": matched_nodes,
         "matched_edges": matched_edges,
@@ -601,7 +601,7 @@ def query_graphrag(
         "follow_up_questions": follow_up_questions,
         "retrieval_trace": {
             "strategy": (
-                "no node hit; raw native fragment emitted"
+                "no node hit; native no-node sentence generated"
                 if raw_no_node
                 else "hybrid lexical BM25-style ranking + ontology 1-hop expansion + Homage Utterance Engine native synthesis"
             ),

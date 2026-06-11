@@ -15,7 +15,7 @@ type LearningVolume = "lite" | "standard" | "deep" | "max" | "infinite";
 type LearningPreset = {
   chunkBudget: number;
   label: string;
-  targetNodes?: number;
+  targetNodes?: number | null;
   textBudgetChars: number;
   textBudgetLabel: string;
   visualNodeBudget: number;
@@ -71,7 +71,7 @@ const learningPresets: Record<LearningVolume, LearningPreset> = {
   standard: { chunkBudget: 128, label: "표준", targetNodes: 10_000, textBudgetChars: 48_000, textBudgetLabel: "48k chars", visualNodeBudget: 24 },
   deep: { chunkBudget: 384, label: "깊게", targetNodes: 25_000, textBudgetChars: 160_000, textBudgetLabel: "160k chars", visualNodeBudget: 36 },
   max: { chunkBudget: 4096, label: "최대", targetNodes: 500_000, textBudgetChars: 4_500_000, textBudgetLabel: "4.5m chars", visualNodeBudget: 2000 },
-  infinite: { chunkBudget: 4096, label: "∞", targetNodes: 500_000, textBudgetChars: 4_800_000, textBudgetLabel: "continuous", visualNodeBudget: 2000 },
+  infinite: { chunkBudget: 4096, label: "∞", targetNodes: null, textBudgetChars: 4_800_000, textBudgetLabel: "continuous", visualNodeBudget: 2000 },
 };
 
 const memoryTopics = [
@@ -99,6 +99,9 @@ const memoryTopics = [
   ["guard-memory", "Guard Memory", "guardrail"],
   ["token-pack", "Token Pack", "source"],
   ["adaptive-batch", "Adaptive Batch", "training"],
+  ["extracts-signal", "Extracts Signal", "verb"],
+  ["evidence-phrase", "Evidence Phrase", "phrase"],
+  ["co-occurs", "Co-occurrence", "relation"],
 ] as const;
 
 function boundedNumber(value: unknown, fallback: number, min: number, max: number) {
@@ -107,10 +110,13 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
-function learningPresetFor(value: unknown, targetNodesInput?: unknown): LearningPreset & { id: LearningVolume; targetNodes: number } {
+function learningPresetFor(value: unknown, targetNodesInput?: unknown): LearningPreset & { id: LearningVolume; targetNodes: number | null } {
   const id = typeof value === "string" && value in learningPresets ? value as LearningVolume : "standard";
   const base = learningPresets[id];
-  const fallbackTargetNodes = id === "max" || id === "infinite" ? maxTargetNodes : base.targetNodes ?? 10_000;
+  if (id === "infinite") {
+    return { id, ...base, chunkBudget: maxChunkBudget, targetNodes: null, textBudgetChars: maxTextBudgetChars, textBudgetLabel: "continuous", visualNodeBudget: maxVisualNodeBudget };
+  }
+  const fallbackTargetNodes = id === "max" ? maxTargetNodes : base.targetNodes ?? 10_000;
   const targetNodes = boundedNumber(targetNodesInput, fallbackTargetNodes, 100, maxTargetNodes);
   const visualNodeBudget = Math.max(
     base.visualNodeBudget,
@@ -118,9 +124,7 @@ function learningPresetFor(value: unknown, targetNodesInput?: unknown): Learning
   );
   const chunkBudget = Math.max(base.chunkBudget, Math.min(maxChunkBudget, Math.round(targetNodes / 12)));
   const textBudgetChars = Math.max(base.textBudgetChars, Math.min(maxTextBudgetChars, targetNodes * 9));
-  const textBudgetLabel = id === "infinite"
-    ? "continuous"
-    : textBudgetChars >= 1_000_000
+  const textBudgetLabel = textBudgetChars >= 1_000_000
     ? `${Number((textBudgetChars / 1_000_000).toFixed(1))}m chars`
     : `${Math.round(textBudgetChars / 1000)}k chars`;
   return { id, ...base, chunkBudget, targetNodes, textBudgetChars, textBudgetLabel, visualNodeBudget };
@@ -275,11 +279,13 @@ export async function POST(request: Request) {
       : "chunk budget grows independently; 3D graph renders sampled representative memory nodes.",
     visual_node_budget: learningPreset.visualNodeBudget,
     target_nodes: learningPreset.targetNodes,
-    target_semantics: "long_run_storage_goal",
+    target_semantics: learningPreset.targetNodes === null ? "unbounded_continuous_goal" : "long_run_storage_goal",
     representative_node_count: nodes.length,
     representative_edge_count: edges.length,
-    target_realized: nodes.length >= learningPreset.targetNodes,
-    sampling_explanation: "target_nodes is the long-run ontology budget; graph_3d contains a bounded representative sample for browser rendering.",
+    target_realized: learningPreset.targetNodes === null ? false : nodes.length >= learningPreset.targetNodes,
+    sampling_explanation: learningPreset.targetNodes === null
+      ? "infinite mode has no target_nodes cap; graph_3d contains a bounded rolling representative sample for browser rendering."
+      : "target_nodes is the long-run ontology budget; graph_3d contains a bounded representative sample for browser rendering.",
     continuous: learningPreset.id === "infinite",
     next_action: learningPreset.id === "infinite"
       ? "Continue Harvest/DataGate/Ontology growth until the operator presses stop."

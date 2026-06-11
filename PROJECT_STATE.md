@@ -54,11 +54,29 @@ Deployment:
   - standard `10,000` target runs now use a `480` node render window with
     about `413` API anchor nodes, so they can grow beyond the old `210` node /
     `427` relation visual ceiling
-  - max and infinite runs now accept a `500,000` node long-run target with a
-    `2,000` node rolling frontier/summary render window rather than trying to
-    draw all nodes in WebGL at once
+  - max runs accept a `500,000` node long-run target with a `2,000` node
+    rolling frontier/summary render window rather than trying to draw all
+    nodes in WebGL at once
+  - infinite runs now use `target_nodes: null` / `unbounded_continuous_goal`;
+    the UI shows `∞` instead of a hidden 500,000-node cap while keeping the
+    same safe rolling frontier render window
   - local browser verification screenshot:
     `docs/screenshots/121-500k-max-render-cap-local.png`
+- Sentence-element ontology extraction:
+  - Ontology Forge now extracts sentence tokens, `verb` action nodes, `phrase`
+    nodes, and measured `precedes`, `forms_phrase`, `co_occurs`, `does`, and
+    `acts_on` relations instead of only noun-like concept/keyword nodes.
+  - BakeBoard legend and live growth templates include `행위`, `구`, and `관계`
+    node types.
+- Native no-node answer generation:
+  - unknown questions such as `김안석이 누구야` now return a clean sentence answer
+    with no `raw_no_node::` debug marker or arrow-fragment output.
+  - Korean topic tokens trim simple particles, so `김안석이` is handled as
+    `김안석` in the no-node answer.
+- Active neuron-like signal fallback:
+  - if matched node ids roll out of the 3D render window during sustained
+    growth, the signal retargets visible live frontier / summary / traversal
+    nodes so orange activation remains visible.
 - Native RAG open-structure generation:
   - structure/self-description questions such as `네 구조 설명해봐` generate a
     native answer even when no direct document evidence is retrieved
@@ -95,6 +113,17 @@ Deployment:
 - `pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q` passed: 49 tests.
 - Python compile check passed for backend and packages.
 - `npm --workspace apps/web run build` passed.
+- Latest local verification for the unbounded/no-node/sentence-element update:
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 63 tests.
+  - `npm --workspace apps/web run build` passed.
+  - `POST /api/factory/build/start` with `learning_volume: infinite` returned
+    `target_nodes: null`, `target_semantics: unbounded_continuous_goal`,
+    `continuous: true`, `visual_node_budget: 2000`, and `chunk_count: 4096`.
+  - local browser verification on `http://localhost:3010` passed for `∞`
+    selection, unbounded Build Start growth, Korean no-node RAG answer, and
+    visible orange active-node signal over rolling 3D graph growth.
+  - screenshot:
+    - `docs/screenshots/122-infinite-no-node-signal-local.png`
 - MiroFish repo and live demo were inspected; code was not copied because the
   source license is AGPL-3.0.
 - Local API smoke passed:

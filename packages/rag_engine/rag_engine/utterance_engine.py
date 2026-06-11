@@ -98,20 +98,42 @@ def _compact_join(parts: list[str], limit: int = 900) -> str:
     return text[:limit].rstrip()
 
 
-def _raw_no_node_generation(query: str, active_concepts: list[str], intent: str) -> str:
-    """Emit the native generator's rough fragment when memory has no node hit."""
+def _clean_topic_token(token: str) -> str:
+    if re.fullmatch(r"[가-힣]{2,}(에게|에서|으로|은|는|이|가|을|를|의|와|과)", token):
+        return re.sub(r"(에게|에서|으로|은|는|이|가|을|를|의|와|과)$", "", token)
+    return token
 
-    tokens = active_concepts or _tokens(query)[:4] or ["null"]
-    head = tokens[0]
-    tail = " / ".join(tokens[1:4]) if len(tokens) > 1 else "?"
-    fragments = [
-        f"{query.strip()}",
-        f"raw_no_node::{intent}",
-        f"{head} -> {tail}",
-        f"{head} = ?",
-        f"{' '.join(tokens[:3])} ...",
-    ]
-    return "\n".join(fragment for fragment in fragments if fragment.strip())
+
+def _native_no_node_generation(query: str, active_concepts: list[str], intent: str) -> str:
+    """Generate a clean native answer when memory has no node hit."""
+
+    clean_query = re.sub(r"\s+", " ", query.strip())
+    tokens = [token for token in (active_concepts or _tokens(query)[:5]) if token]
+    topic = _clean_topic_token(tokens[0]) if tokens else clean_query or "이 질문"
+    tail = ", ".join(tokens[1:4])
+    question_mark = "?" if clean_query and not clean_query.endswith(("?", "？")) else ""
+    seed = sum(ord(char) for char in clean_query) % 3 if clean_query else 0
+
+    if intent == "define" or re.search(r"(누구|무엇|뭐|who|what)", clean_query, re.IGNORECASE):
+        variants = [
+            f"지금 메모리 안에는 '{topic}' 설명에 필요한 근거 노드나 문서가 아직 없습니다. 그래서 누구라고 단정하지 않고, 이 이름을 새 entity 후보로 남겨 다음 수집 때 관계와 근거를 붙이겠습니다.",
+            f"{topic}에 대한 확인된 온톨로지 노드는 아직 없습니다. 현재 질문은 식별 요청으로 읽혔고, 학습 파이프라인은 이 표현을 미학습 대상 후보로 보관합니다.",
+            f"아직 '{topic}' 대상을 특정할 수 있는 문서 근거가 없습니다. 지금은 알 수 없다고 답하는 편이 맞고, Harvest가 관련 자료를 모으면 인물/대상 노드로 연결할 수 있습니다.",
+        ]
+    elif intent == "explain_process":
+        variants = [
+            f"{clean_query}{question_mark} 지금 메모리에는 이 절차를 뒷받침할 노드가 없어서 확정 설명은 만들지 않습니다. 대신 질문의 핵심 단서 {topic}{f', {tail}' if tail else ''}를 다음 온톨로지 후보로 남깁니다.",
+            f"이 과정은 아직 학습된 경로로 이어지지 않았습니다. Homage는 질문 토큰을 후보 노드로 분리해 두고, 새 문서가 들어오면 순서 관계를 다시 계산합니다.",
+            f"현재 그래프에는 이 절차를 설명할 연결이 없습니다. 수집이 진행되면 {topic} 주변의 선후 관계와 행위 관계를 먼저 만들겠습니다.",
+        ]
+    else:
+        variants = [
+            f"지금 그래프에는 '{topic}' 항목과 직접 이어지는 근거가 없습니다. 답을 꾸며내지 않고, 질문에서 감지한 단서를 미학습 노드 후보로 남겨 두겠습니다.",
+            f"{clean_query}{question_mark} 현재 Homage 메모리는 이 질문을 뒷받침할 문서 조각을 찾지 못했습니다. 새 근거가 들어오면 {topic} 주변 관계부터 다시 활성화합니다.",
+            f"아직 이 질문은 온톨로지의 활성 노드와 맞물리지 않습니다. 감지된 단서 {topic}{f', {tail}' if tail else ''}를 후보로 보관하고 다음 빌드에서 연결을 시도합니다.",
+        ]
+
+    return variants[seed]
 
 
 def build_native_utterance(
@@ -161,7 +183,7 @@ def build_native_utterance(
         claim_plan.append({"claim": evidence["text"], "support": evidence["doc_id"]})
 
     if not evidence_docs:
-        answer = _raw_no_node_generation(query, active_concepts, intent)
+        answer = _native_no_node_generation(query, active_concepts, intent)
     else:
         lead_by_intent = {
             "explain_cause": "핵심 이유는 지식을 모델 파라미터에만 맡기지 않고, 그래프 경로와 근거 청크로 분리해 확인하기 때문입니다.",
@@ -182,7 +204,7 @@ def build_native_utterance(
         "active_concepts": active_concepts,
         "answer_engine": {
             "name": "Homage Utterance Engine",
-            "mode": "native-raw-no-node-alpha" if not evidence_docs else "native-next-thought-alpha",
+            "mode": "native-no-node-sentence-alpha" if not evidence_docs else "native-next-thought-alpha",
             "external_llm": False,
             "homage_core": "homage-core-30m-scaffold",
             "stages": [

@@ -36,7 +36,7 @@ PRESETS = {
     "standard": {"chunkBudget": 128, "label": "표준", "targetNodes": 10_000, "textBudgetChars": 48_000, "textBudgetLabel": "48k chars", "visualNodeBudget": 24},
     "deep": {"chunkBudget": 384, "label": "깊게", "targetNodes": 25_000, "textBudgetChars": 160_000, "textBudgetLabel": "160k chars", "visualNodeBudget": 36},
     "max": {"chunkBudget": 4096, "label": "최대", "targetNodes": 500_000, "textBudgetChars": 4_500_000, "textBudgetLabel": "4.5m chars", "visualNodeBudget": 2000},
-    "infinite": {"chunkBudget": 4096, "label": "∞", "targetNodes": 500_000, "textBudgetChars": 4_800_000, "textBudgetLabel": "continuous", "visualNodeBudget": 2000},
+    "infinite": {"chunkBudget": 4096, "label": "∞", "targetNodes": None, "textBudgetChars": 4_800_000, "textBudgetLabel": "continuous", "visualNodeBudget": 2000},
 }
 
 MEMORY_TOPICS = [
@@ -64,6 +64,9 @@ MEMORY_TOPICS = [
     ("guard-memory", "Guard Memory", "guardrail"),
     ("token-pack", "Token Pack", "source"),
     ("adaptive-batch", "Adaptive Batch", "training"),
+    ("extracts-signal", "Extracts Signal", "verb"),
+    ("evidence-phrase", "Evidence Phrase", "phrase"),
+    ("co-occurs", "Co-occurrence", "relation"),
 ]
 
 
@@ -93,11 +96,15 @@ def build_start(payload: BuildStartRequest) -> dict[str, Any]:
         ),
         "visual_node_budget": preset["visualNodeBudget"],
         "target_nodes": preset["targetNodes"],
-        "target_semantics": "long_run_storage_goal",
+        "target_semantics": "unbounded_continuous_goal" if preset["targetNodes"] is None else "long_run_storage_goal",
         "representative_node_count": len(nodes),
         "representative_edge_count": len(edges),
-        "target_realized": len(nodes) >= preset["targetNodes"],
-        "sampling_explanation": "target_nodes is the long-run ontology budget; graph_3d contains a bounded representative sample for browser rendering.",
+        "target_realized": False if preset["targetNodes"] is None else len(nodes) >= preset["targetNodes"],
+        "sampling_explanation": (
+            "infinite mode has no target_nodes cap; graph_3d contains a bounded rolling representative sample for browser rendering."
+            if preset["targetNodes"] is None
+            else "target_nodes is the long-run ontology budget; graph_3d contains a bounded representative sample for browser rendering."
+        ),
         "continuous": continuous,
         "next_action": (
             "Continue Harvest/DataGate/Ontology growth until the operator presses stop."
@@ -139,7 +146,17 @@ def build_start(payload: BuildStartRequest) -> dict[str, Any]:
 
 def _learning_preset(volume: str, target_nodes_input: int | None) -> dict[str, Any]:
     base = PRESETS.get(volume, PRESETS["standard"])
-    fallback_target_nodes = MAX_TARGET_NODES if volume in {"max", "infinite"} else base["targetNodes"]
+    if volume == "infinite":
+        return {
+            **base,
+            "id": volume,
+            "targetNodes": None,
+            "visualNodeBudget": MAX_VISUAL_NODE_BUDGET,
+            "chunkBudget": MAX_CHUNK_BUDGET,
+            "textBudgetChars": MAX_TEXT_BUDGET_CHARS,
+            "textBudgetLabel": "continuous",
+        }
+    fallback_target_nodes = MAX_TARGET_NODES if volume == "max" else base["targetNodes"]
     target_nodes = max(100, min(MAX_TARGET_NODES, int(target_nodes_input or fallback_target_nodes)))
     visual_node_budget = max(base["visualNodeBudget"], min(MAX_VISUAL_NODE_BUDGET, round(target_nodes**0.5 * 4.8)))
     chunk_budget = max(base["chunkBudget"], min(MAX_CHUNK_BUDGET, round(target_nodes / 12)))

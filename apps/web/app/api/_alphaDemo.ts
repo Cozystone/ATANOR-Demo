@@ -191,6 +191,12 @@ function normalizedQuery(query: string) {
   return query.trim().toLowerCase();
 }
 
+function cleanTopicToken(token: string) {
+  return /^[가-힣]{2,}(에게|에서|으로|은|는|이|가|을|를|의|와|과)$/.test(token)
+    ? token.replace(/(에게|에서|으로|은|는|이|가|을|를|의|와|과)$/, "")
+    : token;
+}
+
 function includesAny(query: string, terms: string[]) {
   return terms.some((term) => query.includes(term));
 }
@@ -441,18 +447,18 @@ function makeOpenGenerationResult(query: string) {
 function makeNoEvidenceResult(query: string) {
   const queryTerms = normalizedQuery(query).split(/\s+/).filter(Boolean);
   const tokens = queryTerms.slice(0, 4);
-  const head = tokens[0] ?? "null";
-  const tail = tokens.slice(1, 4).join(" / ") || "?";
-  const answer = [
-    query.trim(),
-    "raw_no_node::answer_grounded",
-    `${head} -> ${tail}`,
-    `${head} = ?`,
-    `${tokens.slice(0, 3).join(" ")} ...`,
-  ].filter(Boolean).join("\n");
+  const head = cleanTopicToken(tokens[0] ?? "null");
+  const tail = tokens.slice(1, 4).join(", ");
+  const seed = Array.from(query.trim()).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 3;
+  const variants = [
+    `지금 메모리 안에는 '${head}' 설명에 필요한 근거 노드나 문서가 아직 없습니다. 그래서 단정하지 않고 이 표현을 새 entity 후보로 남겨 다음 수집 때 관계와 근거를 붙이겠습니다.`,
+    `${head}에 대한 확인된 온톨로지 노드는 아직 없습니다. 현재 질문은 식별 요청으로 읽혔고, 학습 파이프라인은 ${tail ? `${head}, ${tail}` : head} 단서를 미학습 후보로 보관합니다.`,
+    `아직 '${head}' 대상을 특정할 수 있는 문서 근거가 없습니다. 지금은 알 수 없다고 답하는 편이 맞고, Harvest가 관련 자료를 모으면 새 노드와 관계로 연결할 수 있습니다.`,
+  ];
+  const answer = variants[seed];
   return {
     query,
-    method: "homage-native-raw-no-node-v1",
+    method: "homage-native-no-node-utterance-v1",
     answer,
     matched_nodes: [],
     matched_edges: [],
@@ -461,7 +467,7 @@ function makeNoEvidenceResult(query: string) {
     graph_paths: [],
     follow_up_questions: [],
     retrieval_trace: {
-      strategy: "no node hit; raw native fragment emitted",
+      strategy: "no node hit; native no-node sentence generated",
       query_terms: queryTerms,
       expanded_terms: [],
       ranked_chunk_ids: [],
@@ -470,15 +476,15 @@ function makeNoEvidenceResult(query: string) {
     pmv: {
       intent: "answer_grounded",
       topic: query,
-      stance: "raw ungrounded fragment",
+      stance: "ungrounded but explicit",
       audience_level: "general technical",
-      answer_goal: "emit rough no-node generation",
+      answer_goal: "answer without inventing unsupported facts",
       required_evidence: true,
-      style: "raw broken surface text",
+      style: "clean native sentence",
     },
     claim_plan: [],
     active_concepts: queryTerms.slice(0, 4),
-    answer_engine: nativeAnswerEngine("native-raw-no-node-alpha"),
+    answer_engine: nativeAnswerEngine("native-no-node-sentence-alpha"),
     confidence: 0.28,
   };
 }

@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
       body,
     });
-    if (proxied) return NextResponse.json(proxied.body, { status: proxied.status });
+    if (proxied?.body?.result?.answer) return NextResponse.json(proxied.body, { status: proxied.status });
   } catch {
     // Fall through to deterministic demo.
   }
