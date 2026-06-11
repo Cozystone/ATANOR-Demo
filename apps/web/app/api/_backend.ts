@@ -12,6 +12,9 @@ export async function proxyJson(path: string, init?: RequestInit) {
     ...init,
     cache: "no-store",
   });
+  if (response.status === 404 || response.status === 405) {
+    return null;
+  }
   return {
     body: await response.json(),
     status: response.status,

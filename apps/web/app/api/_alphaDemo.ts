@@ -205,6 +205,53 @@ function isThanksQuery(query: string) {
   return /^(고마워|감사|감사합니다|땡큐|thanks|thank you)[\s!.?。！？]*$/i.test(normalized);
 }
 
+export function isConversationalQuery(query: string) {
+  return isGreetingQuery(query) || isThanksQuery(query);
+}
+
+export function isNodeInventoryQuery(query: string) {
+  const normalized = normalizedQuery(query);
+  return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
+}
+
+function nodeTypeText(type?: string) {
+  const labels: Record<string, string> = {
+    concept: "개념",
+    keyword: "키워드",
+    source: "자료",
+    ontology: "온톨로지",
+    retrieval: "검색",
+    guardrail: "가드레일",
+    training: "학습",
+    visualization: "시각화",
+    critique: "비평",
+  };
+  return labels[type ?? ""] ?? type ?? "기억";
+}
+
+function makeNodeInventoryResult(query: string) {
+  const nodeLines = demoNodes.map((node, index) => `${index + 1}. ${node.label} (${nodeTypeText(node.type)}, id: ${node.id}, 신뢰도 ${Math.round(node.confidence * 100)}%)`);
+  return {
+    query,
+    method: "homage-graph-inspection-v1",
+    answer: `현재 데모 온톨로지 메모리에는 ${demoNodes.length}개 노드와 ${demoEdges.length}개 관계가 있습니다.\n${nodeLines.join("\n")}`,
+    matched_nodes: demoNodes,
+    matched_edges: demoEdges,
+    evidence_docs: [],
+    citations: [],
+    graph_paths: demoEdges.map((edge) => [edge.source, edge.relation, edge.target]),
+    follow_up_questions: ["관계선도 모두 보여줄까요?", "특정 노드의 이웃만 펼쳐볼까요?"],
+    retrieval_trace: {
+      strategy: "graph inventory intent; retrieval skipped",
+      query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
+      expanded_terms: [],
+      ranked_chunk_ids: [],
+      matched_node_ids: demoNodes.map((node) => node.id),
+    },
+    confidence: 0.99,
+  };
+}
+
 function nodeMatchesQuery(nodeId: string, query: string) {
   const normalized = normalizedQuery(query);
   const termMap: Record<string, string[]> = {
@@ -219,7 +266,7 @@ function nodeMatchesQuery(nodeId: string, query: string) {
 function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "no_match") {
   const answerByKind = {
     greeting:
-      "안녕하세요. 저는 Homage RAG 콘솔입니다. 빌드로 만들어진 온톨로지 메모리와 근거 문서를 바탕으로 답할 수 있어요. 예를 들어 GraphRAG, Guardrail, 온톨로지 관계, 학습 과정에 대해 물어보면 근거 경로를 함께 보여드릴게요.",
+      "안녕하세요. 저는 Homage RAG 콘솔입니다. 인사에는 근거 문서를 억지로 붙이지 않고, 빌드로 만들어진 온톨로지 메모리와 문서 근거가 필요한 질문일 때만 GraphRAG 검색을 실행합니다. GraphRAG, Guardrail, 온톨로지 관계, 학습 과정 중 궁금한 것을 물어보면 근거 경로와 함께 답할게요.",
     thanks:
       "천만에요. 이어서 GraphRAG 검색, Guardrail 검증, 온톨로지 메모리 구조 중 궁금한 부분을 물어보면 바로 이어서 확인해드릴게요.",
     no_match:
@@ -249,6 +296,7 @@ function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "
 export function makeEvidence(query: string) {
   if (isGreetingQuery(query)) return makeConversationalResult(query, "greeting");
   if (isThanksQuery(query)) return makeConversationalResult(query, "thanks");
+  if (isNodeInventoryQuery(query)) return makeNodeInventoryResult(query);
 
   const matchedNodes = demoNodes.filter((node) => nodeMatchesQuery(node.id, query));
   if (!matchedNodes.length) return makeConversationalResult(query, "no_match");

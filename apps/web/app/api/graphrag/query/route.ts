@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { demoGraphRAGQuery } from "../../_alphaDemo";
+import { demoGraphRAGQuery, isConversationalQuery, isNodeInventoryQuery } from "../../_alphaDemo";
 import { proxyJson } from "../../_backend";
 
 export async function POST(request: Request) {
@@ -7,6 +7,15 @@ export async function POST(request: Request) {
   let query = "GraphRAG evidence";
   try {
     query = JSON.parse(body || "{}").query ?? query;
+  } catch {
+    // Fall through to deterministic demo with the default query.
+  }
+
+  if (isConversationalQuery(query) || isNodeInventoryQuery(query)) {
+    return NextResponse.json(demoGraphRAGQuery(query));
+  }
+
+  try {
     const proxied = await proxyJson("/api/graphrag/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -168,6 +168,24 @@ const licenseStatusLabels: Record<string, string> = {
   reference_only: "참조 전용",
 };
 
+const memoryTypeLabels: Record<string, string> = {
+  concept: "개념",
+  source: "자료",
+  critique: "비평",
+  ontology: "온톨로지",
+  retrieval: "검색",
+  visualization: "시각화",
+  guardrail: "가드레일",
+  training: "학습",
+  quality: "품질",
+  memory: "메모리",
+  verification: "검증",
+  learning: "학습",
+  efficiency: "효율",
+  keyword: "키워드",
+  heading: "제목",
+};
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -214,6 +232,55 @@ function sourceStatusText(status?: string) {
 
 function licenseStatusText(status?: string) {
   return licenseStatusLabels[status ?? ""] ?? status ?? "라이선스 미확인";
+}
+
+function memoryTypeText(type?: string) {
+  return memoryTypeLabels[type ?? ""] ?? type ?? "기억";
+}
+
+function isNodeInventoryQuestion(query: string) {
+  const normalized = query.trim().toLowerCase();
+  return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
+}
+
+function graphInventoryStatus(query: string, graph: Rag3DGraph) {
+  const nodes = graph.nodes ?? [];
+  const edges = graph.edges ?? [];
+  const nodeLines = nodes.map((node, index) => {
+    const confidence = node.confidence === undefined ? "" : `, 신뢰도 ${asPercent(node.confidence)}%`;
+    return `${index + 1}. ${node.label} (${memoryTypeText(node.type)}, id: ${node.id}${confidence})`;
+  });
+  const answer = nodes.length
+    ? `현재 화면의 온톨로지 메모리에는 ${nodes.length}개 노드와 ${edges.length}개 관계가 있습니다.\n${nodeLines.join("\n")}`
+    : "현재 화면에 표시할 온톨로지 메모리 노드가 없습니다. 빌드 시작 또는 메모리 생성을 먼저 실행해 주세요.";
+
+  return {
+    state: "completed",
+    started_at: new Date().toISOString(),
+    finished_at: new Date().toISOString(),
+    error: null,
+    last_query: query,
+    confidence: nodes.length ? 0.99 : 0.2,
+    result: {
+      query,
+      method: "homage-graph-inspection-v1",
+      answer,
+      matched_nodes: nodes,
+      matched_edges: edges,
+      evidence_docs: [],
+      citations: [],
+      graph_paths: edges.slice(0, 12).map((edge) => [edge.source, edge.relation, edge.target]),
+      follow_up_questions: ["관계선도 모두 보여줄까요?", "특정 노드의 이웃만 펼쳐볼까요?"],
+      retrieval_trace: {
+        strategy: "graph inventory intent; retrieval skipped",
+        query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
+        expanded_terms: [],
+        ranked_chunk_ids: [],
+        matched_node_ids: nodes.map((node) => node.id),
+      },
+      confidence: nodes.length ? 0.99 : 0.2,
+    },
+  };
 }
 
 function fmtClock(date = new Date()) {
@@ -489,6 +556,19 @@ export default function BakeBoardPage() {
     if (!question) return;
     setError(null);
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
+    if (isNodeInventoryQuestion(question)) {
+      const inventory = graphInventoryStatus(question, displayGraph3D);
+      setGraphRag(inventory);
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          role: "assistant",
+          text: inventory.result.answer,
+          evidence: [],
+        },
+      ]);
+      return;
+    }
     try {
       const result = await fetchJson<AnyRecord>("/api/graphrag/query", {
         method: "POST",
@@ -593,6 +673,14 @@ export default function BakeBoardPage() {
   const memoryNodes = useMemo(() => makeMemoryNodes(graph), [graph]);
   const memoryEdges = useMemo(() => makeMemoryEdges(graph, memoryNodes), [graph, memoryNodes]);
   const memoryMap = useMemo(() => new Map(memoryNodes.map((node) => [node.id, node])), [memoryNodes]);
+  const memoryLegendItems = useMemo(() => {
+    const seen = new Set<string>();
+    return memoryNodes.filter((node) => {
+      if (seen.has(node.type)) return false;
+      seen.add(node.type);
+      return true;
+    });
+  }, [memoryNodes]);
   const memoryGraph3D = useMemo<Rag3DGraph>(() => ({
     nodes: memoryNodes.map((node, index) => ({
       id: node.id,
@@ -1007,16 +1095,16 @@ export default function BakeBoardPage() {
               </svg>
               )}
               <div className="memory-legend">
-                {memoryNodes.slice(0, 8).map((node) => (
-                  <span key={node.id}><i style={{ background: node.color }} />{node.type}</span>
+                {memoryLegendItems.slice(0, 8).map((node) => (
+                  <span key={node.type}><i style={{ background: node.color }} />{memoryTypeText(node.type)}</span>
                 ))}
               </div>
               {selectedMemory ? (
                 <div className="memory-detail">
                   <button onClick={() => setSelectedMemory(null)}>×</button>
-                  <span>{selectedMemory.relation ? "Relationship" : "Memory Node"}</span>
+                  <span>{selectedMemory.relation ? "관계" : "메모리 노드"}</span>
                   <strong>{selectedMemory.label ?? selectedMemory.relation}</strong>
-                  <p>{selectedMemory.type ?? `${selectedMemory.source} → ${selectedMemory.target}`}</p>
+                  <p>{selectedMemory.type ? memoryTypeText(selectedMemory.type) : `${selectedMemory.source} → ${selectedMemory.target}`}</p>
                 </div>
               ) : null}
             </div>

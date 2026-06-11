@@ -26,8 +26,120 @@ def _tokens(text: str) -> list[str]:
     return [token for token in tokens if len(token) > 1 or token.isdigit()]
 
 
+def _normalized_query(query: str) -> str:
+    return " ".join(query.strip().lower().split())
+
+
+def _is_greeting_query(query: str) -> bool:
+    normalized = _normalized_query(query)
+    return bool(re.fullmatch(r"(안녕|안녕하세요|하이|헬로|반가워|hi|hello|hey|yo)[\s!.?。！？]*", normalized, re.IGNORECASE))
+
+
+def _is_thanks_query(query: str) -> bool:
+    normalized = _normalized_query(query)
+    return bool(re.fullmatch(r"(고마워|감사|감사합니다|땡큐|thanks|thank you)[\s!.?。！？]*", normalized, re.IGNORECASE))
+
+
+def _is_node_inventory_query(query: str) -> bool:
+    normalized = _normalized_query(query)
+    asks_for_nodes = bool(re.search(r"(노드|node|nodes)", normalized, re.IGNORECASE))
+    asks_for_inventory = bool(re.search(r"(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)", normalized, re.IGNORECASE))
+    return asks_for_nodes and asks_for_inventory
+
+
+def _conversational_result(query: str, kind: str) -> dict[str, Any]:
+    answers = {
+        "greeting": (
+            "안녕하세요. 저는 Homage RAG 콘솔입니다. 인사에는 근거 문서를 억지로 붙이지 않고, "
+            "빌드로 만들어진 온톨로지 메모리와 문서 근거가 필요한 질문일 때만 GraphRAG 검색을 실행합니다. "
+            "GraphRAG, Guardrail, 온톨로지 관계, 학습 과정 중 궁금한 것을 물어보면 근거 경로와 함께 답할게요."
+        ),
+        "thanks": (
+            "천만에요. 이어서 GraphRAG 검색, Guardrail 검증, 온톨로지 메모리 구조 중 궁금한 부분을 물어보면 "
+            "관련 노드와 근거 문서를 함께 확인해드릴게요."
+        ),
+    }
+    return {
+        "query": query,
+        "method": "homage-conversation-router-v1",
+        "answer": answers.get(kind, answers["greeting"]),
+        "matched_nodes": [],
+        "matched_edges": [],
+        "evidence_docs": [],
+        "citations": [],
+        "graph_paths": [],
+        "follow_up_questions": [
+            "GraphRAG가 근거를 어떻게 쓰는지 볼까요?",
+            "Guardrail 검증 흐름을 확인할까요?",
+        ],
+        "retrieval_trace": {
+            "strategy": "conversational intent; retrieval skipped",
+            "query_terms": _tokens(query),
+            "expanded_terms": [],
+            "ranked_chunk_ids": [],
+            "matched_node_ids": [],
+        },
+        "confidence": 0.96,
+    }
+
+
 def _load_json(path: Path, default: Any) -> Any:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+
+
+def _node_type_text(node_type: str | None) -> str:
+    labels = {
+        "concept": "개념",
+        "keyword": "키워드",
+        "heading": "제목",
+        "source": "자료",
+        "ontology": "온톨로지",
+        "retrieval": "검색",
+        "guardrail": "가드레일",
+        "training": "학습",
+        "visualization": "시각화",
+        "critique": "비평",
+    }
+    return labels.get(node_type or "", node_type or "기억")
+
+
+def _node_inventory_result(query: str, ontology_dir: Path) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = _load_json(ontology_dir / "nodes.json", [])
+    edges: list[dict[str, Any]] = _load_json(ontology_dir / "edges.json", [])
+    node_lines = []
+    for index, node in enumerate(nodes, start=1):
+        label = node.get("label") or node.get("id") or f"node-{index}"
+        node_type = _node_type_text(str(node.get("type") or node.get("labels", [""])[0] or ""))
+        confidence = node.get("confidence")
+        confidence_text = f", 신뢰도 {round(float(confidence) * 100)}%" if isinstance(confidence, (int, float)) else ""
+        node_lines.append(f"{index}. {label} ({node_type}, id: {node.get('id', label)}{confidence_text})")
+    answer = (
+        f"현재 온톨로지 메모리에는 {len(nodes)}개 노드와 {len(edges)}개 관계가 있습니다.\n" + "\n".join(node_lines)
+        if nodes
+        else "현재 온톨로지 메모리에 저장된 노드가 없습니다. DataGate와 Ontology Forge를 먼저 실행해 주세요."
+    )
+    return {
+        "query": query,
+        "method": "homage-graph-inspection-v1",
+        "answer": answer,
+        "matched_nodes": nodes,
+        "matched_edges": edges,
+        "evidence_docs": [],
+        "citations": [],
+        "graph_paths": [
+            [str(edge.get("source", "")), str(edge.get("relation", "relates")), str(edge.get("target", ""))]
+            for edge in edges[:12]
+        ],
+        "follow_up_questions": ["관계선도 모두 보여줄까요?", "특정 노드의 이웃만 펼쳐볼까요?"],
+        "retrieval_trace": {
+            "strategy": "graph inventory intent; retrieval skipped",
+            "query_terms": _tokens(query),
+            "expanded_terms": [],
+            "ranked_chunk_ids": [],
+            "matched_node_ids": [str(node.get("id", "")) for node in nodes],
+        },
+        "confidence": 0.99 if nodes else 0.2,
+    }
 
 
 def _sentences(text: str) -> list[str]:
@@ -254,6 +366,13 @@ def query_graphrag(
     cleaned_dir: str = "data/cleaned",
     ontology_dir: str = "data/ontology",
 ) -> dict[str, Any]:
+    if _is_greeting_query(query):
+        return _conversational_result(query, "greeting")
+    if _is_thanks_query(query):
+        return _conversational_result(query, "thanks")
+    if _is_node_inventory_query(query):
+        return _node_inventory_result(query, Path(ontology_dir))
+
     query_counts = Counter(_tokens(query))
     query_terms = set(query_counts)
     ontology_root = Path(ontology_dir)

@@ -31,6 +31,20 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert rag.json()["result"]["answer"]
     assert rag.json()["result"]["citations"]
 
+    greeting = client.post("/api/graphrag/query", json={"query": "안녕"})
+    assert greeting.status_code == 200
+    greeting_result = greeting.json()["result"]
+    assert greeting_result["method"] == "homage-conversation-router-v1"
+    assert greeting_result["evidence_docs"] == []
+    assert greeting_result["matched_nodes"] == []
+
+    inventory = client.post("/api/graphrag/query", json={"query": "너한테 있는 노드 다 말해봐"})
+    assert inventory.status_code == 200
+    inventory_result = inventory.json()["result"]
+    assert inventory_result["method"] == "homage-graph-inspection-v1"
+    assert inventory_result["evidence_docs"] == []
+    assert inventory_result["matched_nodes"]
+
     guard = client.post("/api/guard/check", json={"draft_answer": "GraphRAG always guarantees perfect answers."})
     assert guard.status_code == 200
     assert guard.json()["overall_guard_score"] < 100
