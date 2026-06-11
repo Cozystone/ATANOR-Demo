@@ -60,6 +60,27 @@ The frontend uses same-origin Next.js API routes. Locally those routes proxy to
 FastAPI at `API_BASE_URL` or `http://127.0.0.1:8000`; on Vercel they use a
 deterministic Alpha demo fallback so the deployed app is directly testable.
 
+## Use Local FastAPI For Real PC Measurement
+
+The deployed Vercel app cannot measure the viewer's PC by itself. The reliable
+way for any user to run real CPU/RAM/GPU/disk telemetry and the local FastAPI
+factory route on their own machine is:
+
+1. Start FastAPI on that machine with the backend command above.
+2. Start the frontend locally with the frontend command above.
+3. Open http://localhost:3000.
+4. In the local FastAPI control, enter `http://127.0.0.1:8000`.
+5. Click connect.
+
+After connection, BakeBoard calls the user's local FastAPI directly for
+benchmark, telemetry, stability, and Build Start APIs. The Vercel fallback
+remains available when no local backend is connected.
+
+The production URL still exposes the same connector, but modern browsers may
+block `https://homage-alpha.vercel.app` from calling an `http://localhost` API.
+Use the local frontend for real hardware measurement unless you have an HTTPS
+local companion configured.
+
 ## Alpha Flow
 
 1. Click `Build 시작` in BakeBoard to start the Alpha factory flow.
@@ -124,6 +145,9 @@ npm --workspace apps/web run build
 - No web crawling.
 - `Build 시작` fetches a small allowlisted reference set and stores source
   signals for visualization; it is not an open-ended crawler.
+- `target_nodes` is a long-run storage/training budget. `graph_3d` is a bounded
+  representative browser sample, so a standard run can visibly stop around 210
+  nodes / 427 relations even though the long-run target is 10,000 nodes.
 - No LLM judging.
 - No pretrained model weights.
 - Homage Oven is a safe dry-run scaffold, not real long training.

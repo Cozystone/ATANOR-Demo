@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+import math
+from datetime import datetime, timezone
+from typing import Any, Literal
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+
+router = APIRouter(prefix="/api/factory", tags=["factory"])
+
+LearningVolume = Literal["lite", "standard", "deep", "max", "infinite"]
+
+
+class BuildStartRequest(BaseModel):
+    learning_volume: LearningVolume = "standard"
+    target_nodes: int | None = Field(default=None, ge=100, le=250_000)
+    seed_urls: list[str] | None = None
+
+
+SEED_URLS = [
+    "https://www.reddit.com/r/MachineLearning/comments/1ookxb0/r_knowledge_graph_traversal_with_llms_and/?tl=ko",
+    "https://github.com/glacier-creative-git/similarity-graph-traversal-semantic-rag-research",
+    "https://github.com/microsoft/graphrag",
+    "https://github.com/666ghj/MiroFish",
+]
+
+PRESETS = {
+    "lite": {"chunkBudget": 32, "label": "가볍게", "targetNodes": 3_000, "textBudgetChars": 12_000, "textBudgetLabel": "12k chars", "visualNodeBudget": 12},
+    "standard": {"chunkBudget": 128, "label": "표준", "targetNodes": 10_000, "textBudgetChars": 48_000, "textBudgetLabel": "48k chars", "visualNodeBudget": 24},
+    "deep": {"chunkBudget": 384, "label": "깊게", "targetNodes": 25_000, "textBudgetChars": 160_000, "textBudgetLabel": "160k chars", "visualNodeBudget": 36},
+    "max": {"chunkBudget": 768, "label": "최대", "targetNodes": 50_000, "textBudgetChars": 420_000, "textBudgetLabel": "420k chars", "visualNodeBudget": 48},
+    "infinite": {"chunkBudget": 2000, "label": "∞", "targetNodes": 250_000, "textBudgetChars": 2_400_000, "textBudgetLabel": "continuous", "visualNodeBudget": 600},
+}
+
+MEMORY_TOPICS = [
+    ("entity-cache", "Entity Cache", "ontology"),
+    ("claim-store", "Claim Store", "guardrail"),
+    ("chunk-router", "Chunk Router", "retrieval"),
+    ("event-gate", "SNN Event Gate", "source"),
+    ("fewshot-proto", "Few-shot Prototype", "training"),
+    ("self-supervised", "Masked Signal", "training"),
+    ("quant-plan", "Quantization Plan", "training"),
+    ("replay-buffer", "Replay Buffer", "ontology"),
+    ("citation-map", "Citation Map", "retrieval"),
+    ("quality-band", "Quality Band", "guardrail"),
+    ("semantic-anchor", "Semantic Anchor", "retrieval"),
+    ("synapse-plastic", "Synapse Plasticity", "ontology"),
+    ("distill-student", "Distilled Student", "training"),
+    ("energy-route", "Energy Route", "visualization"),
+    ("memory-index", "Memory Index", "ontology"),
+    ("context-bridge", "Context Bridge", "retrieval"),
+    ("source-license", "Source License", "guardrail"),
+    ("edge-summary", "Edge Summary", "visualization"),
+    ("task-router", "Task Router", "training"),
+    ("novelty-score", "Novelty Score", "ontology"),
+    ("graph-window", "Graph Window", "visualization"),
+    ("guard-memory", "Guard Memory", "guardrail"),
+    ("token-pack", "Token Pack", "source"),
+    ("adaptive-batch", "Adaptive Batch", "training"),
+]
+
+
+@router.post("/build/start")
+def build_start(payload: BuildStartRequest) -> dict[str, Any]:
+    preset = _learning_preset(payload.learning_volume, payload.target_nodes)
+    docs = [_harvest_doc(url, index) for index, url in enumerate((payload.seed_urls or SEED_URLS)[:6])]
+    units = _training_units(docs, preset)
+    graph = _graph_for_preset(preset)
+    nodes = graph["nodes"]
+    edges = graph["edges"]
+    frames = _graph_frames(len(nodes))
+    continuous = preset["id"] == "infinite"
+    training_gate = {
+        "threshold_nodes": 8,
+        "threshold_edges": 7,
+        "chunk_count": len(units),
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "evidence_count": len(docs),
+        "text_budget_chars": preset["textBudgetChars"],
+        "ready": len(nodes) >= 8 and len(edges) >= 7,
+        "render_strategy": (
+            "continuous collection accumulates graph events; 3D renders a rolling frontier plus stable anchors."
+            if continuous
+            else "target_nodes is a long-run storage goal; graph_3d renders a bounded representative sample."
+        ),
+        "visual_node_budget": preset["visualNodeBudget"],
+        "target_nodes": preset["targetNodes"],
+        "target_semantics": "long_run_storage_goal",
+        "representative_node_count": len(nodes),
+        "representative_edge_count": len(edges),
+        "target_realized": len(nodes) >= preset["targetNodes"],
+        "sampling_explanation": "target_nodes is the long-run ontology budget; graph_3d contains a bounded representative sample for browser rendering.",
+        "continuous": continuous,
+        "next_action": (
+            "Continue Harvest/DataGate/Ontology growth until the operator presses stop."
+            if continuous
+            else "Representative build sample is ready; persistent graph events are the next milestone."
+        ),
+    }
+    return {
+        "run_id": f"build-{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "alpha-continuous-harvest" if continuous else "alpha-live-harvest",
+        "harvest_docs": docs,
+        "learning_profile": {
+            "id": preset["id"],
+            "label": preset["label"],
+            "text_budget_chars": preset["textBudgetChars"],
+            "text_budget_label": preset["textBudgetLabel"],
+            "chunk_budget": preset["chunkBudget"],
+            "target_nodes": preset["targetNodes"],
+            "visual_node_budget": preset["visualNodeBudget"],
+        },
+        "training_units": units[:24],
+        "graph_3d": graph,
+        "graph_frames": frames,
+        "training_gate": training_gate,
+        "learning_trace": [
+            {"step": "Harvest", "state": "running" if continuous else "complete", "detail": f"{len(docs)} reference sources captured / {len(units)} text chunks scheduled"},
+            {"step": "DataGate", "state": "complete", "detail": f"{preset['textBudgetLabel']} text budget passed through compressed chunk routing"},
+            {"step": "Ontology Forge", "state": "running" if continuous else "complete", "detail": f"{len(nodes)} representative nodes and {len(edges)} typed relations created"},
+            {"step": "GraphRAG", "state": "complete", "detail": "Anchor traversal path and evidence bundle generated"},
+            {"step": "Homage Oven", "state": "ready" if training_gate["ready"] else "waiting", "detail": training_gate["next_action"]},
+        ],
+        "notes": [
+            "Alpha stores representative graph samples for the browser; target_nodes is the long-run storage/training budget.",
+            "Durable graph event persistence is the next milestone before target_nodes can be fully realized locally.",
+        ],
+    }
+
+
+def _learning_preset(volume: str, target_nodes_input: int | None) -> dict[str, Any]:
+    base = PRESETS.get(volume, PRESETS["standard"])
+    target_nodes = max(100, min(250_000, int(target_nodes_input or base["targetNodes"])))
+    visual_limit = 600 if volume == "infinite" else 360
+    visual_node_budget = max(base["visualNodeBudget"], min(visual_limit, round(target_nodes**0.5 * 2.1)))
+    chunk_budget = max(base["chunkBudget"], min(2_000, round(target_nodes / 12)))
+    text_budget_chars = max(base["textBudgetChars"], min(2_400_000, target_nodes * 9))
+    text_budget_label = "continuous" if volume == "infinite" else (f"{round(text_budget_chars / 1000)}k chars")
+    return {
+        **base,
+        "id": volume,
+        "targetNodes": target_nodes,
+        "visualNodeBudget": visual_node_budget,
+        "chunkBudget": chunk_budget,
+        "textBudgetChars": text_budget_chars,
+        "textBudgetLabel": text_budget_label,
+    }
+
+
+def _harvest_doc(url: str, index: int) -> dict[str, Any]:
+    return {
+        "id": f"web-{index + 1:03d}",
+        "url": url,
+        "title": url.split("//", 1)[-1].split("/", 1)[0],
+        "status": "fallback",
+        "snippet": "Reference signal queued for local Homage Factory Build.",
+        "source_type": "discussion" if "reddit" in url else "repository_or_docs",
+        "license_status": "reference_only",
+    }
+
+
+def _training_units(docs: list[dict[str, Any]], preset: dict[str, Any]) -> list[dict[str, Any]]:
+    units = []
+    for index in range(preset["chunkBudget"]):
+        doc = docs[index % max(1, len(docs))]
+        topic = MEMORY_TOPICS[index % len(MEMORY_TOPICS)]
+        units.append(
+            {
+                "id": f"chunk-{index + 1:04d}",
+                "source_id": doc["id"],
+                "topic": topic[1],
+                "char_budget": max(180, preset["textBudgetChars"] // max(1, preset["chunkBudget"])),
+                "text_preview": f"{doc['snippet']} {topic[1]} GraphRAG ontology memory".strip()[:240],
+                "route": "TRAINABLE" if index % 3 == 0 else "RAG_ONLY" if index % 3 == 1 else "REVIEW",
+            }
+        )
+    return units
+
+
+def _graph_for_preset(preset: dict[str, Any]) -> dict[str, Any]:
+    base_nodes = [
+        {"id": "harvest", "label": "Web Harvest", "type": "source", "x": -5, "y": 1.4, "z": -1.2, "confidence": 0.86},
+        {"id": "reddit-kg", "label": "KG vs SSG", "type": "critique", "x": -2.8, "y": 2.3, "z": 0.6, "confidence": 0.9},
+        {"id": "dedupe", "label": "Entity Dedupe", "type": "ontology", "x": -1.1, "y": 0.8, "z": 1.8, "confidence": 0.84},
+        {"id": "mutable-kg", "label": "Mutable KG", "type": "ontology", "x": -0.2, "y": -1.2, "z": -0.7, "confidence": 0.79},
+        {"id": "anchor", "label": "Anchor Chunk", "type": "retrieval", "x": 1.5, "y": 1.7, "z": -1.5, "confidence": 0.86},
+        {"id": "traversal", "label": "Graph Traversal", "type": "retrieval", "x": 3.1, "y": 0.2, "z": 1.2, "confidence": 0.88},
+        {"id": "3d", "label": "3D Triangulation", "type": "visualization", "x": 4.2, "y": -1.5, "z": -0.2, "confidence": 0.81},
+        {"id": "guard", "label": "Guarded Evidence", "type": "guardrail", "x": 2.6, "y": -2.4, "z": 1.7, "confidence": 0.78},
+        {"id": "oven", "label": "Homage Oven Gate", "type": "training", "x": 5.4, "y": 0.9, "z": 0.5, "confidence": 0.76},
+    ]
+    seed_budget = min(preset["visualNodeBudget"], max(12, round(preset["visualNodeBudget"] * 0.86)))
+    extra_count = max(0, seed_budget - len(base_nodes))
+    extra_nodes = []
+    for index in range(extra_count):
+        topic = MEMORY_TOPICS[index % len(MEMORY_TOPICS)]
+        wave = index // len(MEMORY_TOPICS)
+        ring = index // 8
+        angle = index * 0.82
+        radius = 4.2 + ring * 0.55
+        extra_nodes.append(
+            {
+                "id": f"{topic[0]}-{wave + 1}" if wave else topic[0],
+                "label": f"{topic[1]} {wave + 1}" if wave else topic[1],
+                "type": topic[2],
+                "x": math.cos(angle) * radius,
+                "y": math.sin(angle) * radius * 0.72,
+                "z": ((index % 7) - 3) * 0.56,
+                "confidence": 0.68 + (index % 8) * 0.025,
+            }
+        )
+    nodes = [*base_nodes, *extra_nodes]
+    base_edges = [
+        {"source": "harvest", "target": "reddit-kg", "relation": "extracts_signal", "weight": 0.82},
+        {"source": "reddit-kg", "target": "dedupe", "relation": "requires", "weight": 0.86},
+        {"source": "dedupe", "target": "mutable-kg", "relation": "stabilizes", "weight": 0.74},
+        {"source": "mutable-kg", "target": "anchor", "relation": "seeds", "weight": 0.69},
+        {"source": "anchor", "target": "traversal", "relation": "starts", "weight": 0.88},
+        {"source": "traversal", "target": "3d", "relation": "projects", "weight": 0.73},
+        {"source": "traversal", "target": "guard", "relation": "grounds", "weight": 0.8},
+        {"source": "guard", "target": "oven", "relation": "approves_training", "weight": 0.71},
+    ]
+    extra_edges = []
+    for index, node in enumerate(extra_nodes):
+        anchor = ["anchor", "mutable-kg", "guard", "oven"][index % 4]
+        extra_edges.append({"source": anchor, "target": node["id"], "relation": "compresses_chunk", "weight": 0.62 + (index % 5) * 0.04})
+        if index > 0:
+            extra_edges.append({"source": extra_nodes[index - 1]["id"], "target": node["id"], "relation": "associates", "weight": 0.52})
+    return {
+        "nodes": nodes,
+        "edges": [*base_edges, *extra_edges],
+        "traversal_path": ["harvest", "reddit-kg", "dedupe", "mutable-kg", "anchor", "traversal", "guard", "oven", *[node["id"] for node in extra_nodes[:8]]],
+    }
+
+
+def _graph_frames(node_count: int) -> list[dict[str, Any]]:
+    counts: list[int] = []
+    for count in [2, 5, 9, round(node_count * 0.72), node_count]:
+        if not counts or count > counts[-1]:
+            counts.append(count)
+    messages = [
+        "Harvest accepted web references",
+        "Ontology dedupe merged concepts",
+        "GraphRAG traversal found anchor path",
+        "Compressed memory samples were projected",
+        "Representative sample reached selected render budget",
+    ]
+    return [
+        {"tick": index + 1, "node_count": count, "edge_count": max(1, count - 1), "message": messages[index]}
+        for index, count in enumerate(counts)
+    ]

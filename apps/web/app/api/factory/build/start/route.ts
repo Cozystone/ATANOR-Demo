@@ -270,6 +270,11 @@ export async function POST(request: Request) {
       : "chunk budget grows independently; 3D graph renders sampled representative memory nodes.",
     visual_node_budget: learningPreset.visualNodeBudget,
     target_nodes: learningPreset.targetNodes,
+    target_semantics: "long_run_storage_goal",
+    representative_node_count: nodes.length,
+    representative_edge_count: edges.length,
+    target_realized: nodes.length >= learningPreset.targetNodes,
+    sampling_explanation: "target_nodes is the long-run ontology budget; graph_3d contains a bounded representative sample for browser rendering.",
     continuous: learningPreset.id === "infinite",
     next_action: learningPreset.id === "infinite"
       ? "Continue Harvest/DataGate/Ontology growth until the operator presses stop."

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.routers.datagate import router as datagate_router
+from app.routers.factory import router as factory_router
 from app.routers.graphrag import router as graphrag_router
 from app.routers.guard import router as guard_router
 from app.routers.neuro import router as neuro_router
@@ -45,13 +46,25 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3030",
+        "http://127.0.0.1:3030",
+        "https://homage-alpha.vercel.app",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def allow_browser_local_companion(request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
 app.include_router(datagate_router)
+app.include_router(factory_router)
 app.include_router(ontology_router)
 app.include_router(graphrag_router)
 app.include_router(guard_router)

@@ -290,6 +290,37 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
+function normalizeLocalBackendUrl(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  return trimmed || "http://127.0.0.1:8000";
+}
+
+function localBackendErrorMessage(baseUrl: string, caught: unknown) {
+  const message = caught instanceof Error ? caught.message : "로컬 FastAPI 응답 실패";
+  if (typeof window !== "undefined" && window.location.protocol === "https:" && normalizeLocalBackendUrl(baseUrl).startsWith("http://")) {
+    return "HTTPS 배포본에서는 브라우저가 HTTP 로컬 FastAPI를 차단할 수 있습니다. 실제 PC 측정은 로컬 웹을 함께 실행하거나 HTTPS 로컬 companion을 사용하세요.";
+  }
+  return message;
+}
+
+async function directBackendJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers ?? undefined);
+  const method = init?.method?.toUpperCase() ?? "GET";
+  if ((init?.body || method !== "GET") && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  const response = await fetch(`${normalizeLocalBackendUrl(baseUrl)}${path}`, {
+    ...init,
+    cache: "no-store",
+    headers,
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.detail ?? body.error ?? `Local FastAPI returned ${response.status}`);
+  }
+  return body;
+}
+
 function percent(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
@@ -652,6 +683,9 @@ export default function BakeBoardPage() {
   const [neuro, setNeuro] = useState<AnyRecord | null>(null);
   const [stability, setStability] = useState<AnyRecord | null>(null);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
+  const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8000");
+  const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
+  const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
   const [learningVolume, setLearningVolume] = useState<LearningVolume>("standard");
   const [targetNodeCount, setTargetNodeCount] = useState(learningVolumePresets.standard.targetNodes);
   const [selectedMemory, setSelectedMemory] = useState<AnyRecord | null>(null);
@@ -684,6 +718,76 @@ export default function BakeBoardPage() {
     },
   ]);
   const [error, setError] = useState<string | null>(null);
+  const localBackendConnected = localBackendStatus === "connected";
+
+  useEffect(() => {
+    const savedUrl = window.localStorage.getItem("homage.localFastApiUrl");
+    if (savedUrl) {
+      setLocalBackendUrl(savedUrl);
+      connectLocalBackend(savedUrl).catch(() => undefined);
+    }
+  }, []);
+
+  async function apiJson<T>(path: string, init?: RequestInit, options: { localOnly?: boolean; preferLocal?: boolean } = {}): Promise<T> {
+    const shouldUseLocal = options.localOnly || options.preferLocal || localBackendConnected;
+    if (shouldUseLocal) {
+      try {
+        return await directBackendJson<T>(localBackendUrl, path, init);
+      } catch (caught) {
+        if (localBackendConnected) {
+          const message = localBackendErrorMessage(localBackendUrl, caught);
+          try {
+            await directBackendJson<AnyRecord>(localBackendUrl, "/health");
+            setLocalBackendStatus("connected");
+            setLocalBackendMessage(`로컬 FastAPI 연결됨 / 일부 API fallback: ${message}`);
+          } catch {
+            setLocalBackendStatus("failed");
+            setLocalBackendMessage(message);
+          }
+        }
+        if (options.localOnly) throw caught;
+      }
+    }
+    return fetchJson<T>(path, init);
+  }
+
+  async function connectLocalBackend(candidateUrl = localBackendUrl) {
+    const url = normalizeLocalBackendUrl(candidateUrl);
+    setLocalBackendUrl(url);
+    setLocalBackendStatus("checking");
+    setLocalBackendMessage("로컬 FastAPI 확인 중");
+    try {
+      await directBackendJson<AnyRecord>(url, "/health");
+      const [systemStatus, gpuStatus, benchmarkStatus] = await Promise.all([
+        directBackendJson<AnyRecord>(url, "/api/telemetry/system"),
+        directBackendJson<AnyRecord>(url, "/api/telemetry/gpu"),
+        directBackendJson<AnyRecord>(url, "/api/neuro/benchmark", {
+          method: "POST",
+          body: JSON.stringify({ run_probes: true }),
+        }),
+      ]);
+      setSystem(systemStatus);
+      setGpu(gpuStatus);
+      setBenchmark(benchmarkStatus);
+      setLocalBackendStatus("connected");
+      setLocalBackendMessage("로컬 FastAPI 연결됨");
+      window.localStorage.setItem("homage.localFastApiUrl", url);
+      const recommended = benchmarkStatus?.recommended_learning_volume as LearningVolume | undefined;
+      if (benchmarkStatus?.can_read_local_hardware && recommended && learningVolumePresets[recommended]) {
+        setLearningVolume(recommended);
+        setTargetNodeCount(learningVolumePresets[recommended].targetNodes);
+      }
+    } catch (caught) {
+      setLocalBackendStatus("failed");
+      setLocalBackendMessage(localBackendErrorMessage(url, caught));
+    }
+  }
+
+  function disconnectLocalBackend() {
+    setLocalBackendStatus("idle");
+    setLocalBackendMessage("배포 fallback 사용 중");
+    window.localStorage.removeItem("homage.localFastApiUrl");
+  }
 
   async function refreshAll() {
     const [
@@ -699,17 +803,17 @@ export default function BakeBoardPage() {
       neuroStatus,
       stabilityStatus,
     ] = await Promise.all([
-      fetchJson<PipelineStatus>("/api/pipeline/status"),
-      fetchJson<AnyRecord>("/api/datagate/status"),
-      fetchJson<AnyRecord>("/api/ontology/status"),
-      fetchJson<AnyRecord>("/api/ontology/graph"),
-      fetchJson<AnyRecord>("/api/graphrag/status"),
-      fetchJson<AnyRecord>("/api/guard/status"),
-      fetchJson<AnyRecord>("/api/telemetry/gpu"),
-      fetchJson<AnyRecord>("/api/telemetry/system"),
-      fetchJson<AnyRecord>("/api/oven/status"),
-      fetchJson<AnyRecord>("/api/neuro/plan"),
-      fetchJson<AnyRecord>("/api/neuro/stability", {
+      apiJson<PipelineStatus>("/api/pipeline/status"),
+      apiJson<AnyRecord>("/api/datagate/status"),
+      apiJson<AnyRecord>("/api/ontology/status"),
+      apiJson<AnyRecord>("/api/ontology/graph"),
+      apiJson<AnyRecord>("/api/graphrag/status"),
+      apiJson<AnyRecord>("/api/guard/status"),
+      apiJson<AnyRecord>("/api/telemetry/gpu"),
+      apiJson<AnyRecord>("/api/telemetry/system"),
+      apiJson<AnyRecord>("/api/oven/status"),
+      apiJson<AnyRecord>("/api/neuro/plan"),
+      apiJson<AnyRecord>("/api/neuro/stability", {
         method: "POST",
         body: JSON.stringify(stabilityPayloadForVolume(
           learningVolume,
@@ -737,7 +841,7 @@ export default function BakeBoardPage() {
       refreshAll().catch(() => undefined);
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at]);
+  }, [learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at, localBackendConnected, localBackendUrl]);
 
   useEffect(() => {
     runHardwareBenchmark({ applyRecommendation: true }).catch((caught) => {
@@ -813,7 +917,7 @@ export default function BakeBoardPage() {
 
   async function runDataGateStep() {
     setDatagate((current) => ({ ...(current ?? {}), state: "running" }));
-    const result = await fetchJson<AnyRecord>("/api/datagate/run", {
+    const result = await apiJson<AnyRecord>("/api/datagate/run", {
       method: "POST",
       body: JSON.stringify({ input_dir: "data/raw" }),
     });
@@ -830,7 +934,7 @@ export default function BakeBoardPage() {
 
   async function runOntologyStep() {
     setOntology((current) => ({ ...(current ?? {}), state: "running" }));
-    const result = await fetchJson<AnyRecord>("/api/ontology/run", { method: "POST" });
+    const result = await apiJson<AnyRecord>("/api/ontology/run", { method: "POST" });
     await refreshAll().catch(() => undefined);
     setOntology(result);
     if (result?.newest_nodes || result?.newest_edges) {
@@ -842,7 +946,7 @@ export default function BakeBoardPage() {
     setError(null);
     setRightMode("process");
     try {
-      const result = await fetchJson<AnyRecord>("/api/oven/dry-run", { method: "POST" });
+      const result = await apiJson<AnyRecord>("/api/oven/dry-run", { method: "POST" });
       setOven(result);
       setRightMode("chat");
       setAutoChatOpened(true);
@@ -889,7 +993,7 @@ export default function BakeBoardPage() {
       return;
     }
     try {
-      const result = await fetchJson<AnyRecord>("/api/graphrag/query", {
+      const result = await apiJson<AnyRecord>("/api/graphrag/query", {
         method: "POST",
         body: JSON.stringify({ query: question }),
       });
@@ -917,7 +1021,7 @@ export default function BakeBoardPage() {
   async function checkGuard() {
     setError(null);
     try {
-      const result = await fetchJson<AnyRecord>("/api/guard/check", {
+      const result = await apiJson<AnyRecord>("/api/guard/check", {
         method: "POST",
         body: JSON.stringify({ draft_answer: draft, evidence_bundle: graphResult }),
       });
@@ -930,7 +1034,7 @@ export default function BakeBoardPage() {
   async function rebalanceNeuro() {
     setError(null);
     try {
-      const plan = await fetchJson<AnyRecord>("/api/neuro/plan", {
+      const plan = await apiJson<AnyRecord>("/api/neuro/plan", {
         method: "POST",
         body: JSON.stringify({
           text: `${chatInput}\n${draft}`,
@@ -947,7 +1051,7 @@ export default function BakeBoardPage() {
 
   async function runHardwareBenchmark(options: { applyRecommendation?: boolean } = {}) {
     setError(null);
-    const result = await fetchJson<AnyRecord>("/api/neuro/benchmark", {
+    const result = await apiJson<AnyRecord>("/api/neuro/benchmark", {
       method: "POST",
       body: JSON.stringify({ run_probes: true }),
     });
@@ -968,7 +1072,7 @@ export default function BakeBoardPage() {
       setLearningVolume(recommended);
       setTargetNodeCount(nextTargetNodeCount);
     }
-    const stabilityPlan = await fetchJson<AnyRecord>("/api/neuro/stability", {
+    const stabilityPlan = await apiJson<AnyRecord>("/api/neuro/stability", {
       method: "POST",
       body: JSON.stringify(stabilityPayloadForVolume(
         nextVolume,
@@ -988,7 +1092,7 @@ export default function BakeBoardPage() {
         targetNodeCount,
         benchmark?.can_read_local_hardware ? benchmark.hardware_profile : null,
       );
-      const plan = await fetchJson<AnyRecord>("/api/neuro/stability", {
+      const plan = await apiJson<AnyRecord>("/api/neuro/stability", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -1032,7 +1136,7 @@ export default function BakeBoardPage() {
     setLayoutMode("split");
     setRightMode("process");
     try {
-      const run = await fetchJson<BuildRun>("/api/factory/build/start", {
+      const run = await apiJson<BuildRun>("/api/factory/build/start", {
         method: "POST",
         body: JSON.stringify({ learning_volume: learningVolume, target_nodes: targetNodeCount }),
       });
@@ -1120,6 +1224,8 @@ export default function BakeBoardPage() {
   const learningElapsedText = formatDuration(learningElapsedMs);
   const rawGrowthPulseCount = buildRun ? Math.max(0, buildTick - buildRun.graph_frames.length + 1) : 0;
   const visualNodeCap = buildRun?.training_gate?.visual_node_budget ?? currentLearningPreset.visualNodes;
+  const buildTargetNodes = buildRun?.training_gate?.target_nodes ?? targetNodeCount;
+  const representativeNodeCount = buildRun?.training_gate?.representative_node_count ?? buildRun?.graph_3d?.nodes.length ?? 0;
   const accumulatedLearningNodes = buildRun
     ? buildRun.graph_3d.nodes.length + rawGrowthPulseCount * liveGrowthBatchSize
     : 0;
@@ -1164,6 +1270,9 @@ export default function BakeBoardPage() {
   const preservedAnchorNodeCount = buildRun?.graph_3d?.nodes.length ?? displayGraph3D.nodes.length;
   const hiddenLiveNodeCount = Math.max(0, totalLiveNodeCount - visibleLiveNodeCount);
   const newestLiveNodeId = totalLiveNodeCount > 0 ? `live-synapse-${totalLiveNodeCount}` : null;
+  const representativeCapReached = Boolean(buildRun && displayGraph3D.nodes.length >= visualNodeCap);
+  const representativeTargetPercent = buildRun ? percent(representativeNodeCount, buildTargetNodes) : 0;
+  const renderedTargetPercent = buildRun ? percent(displayGraph3D.nodes.length, buildTargetNodes) : 0;
 
   useEffect(() => {
     if (!activeGraph3D || !buildRun) return;
@@ -1231,10 +1340,13 @@ export default function BakeBoardPage() {
       state: isBuilding || continuousLearningActive ? "running" : buildRun ? "completed" : "idle",
       description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, Homage Oven 학습 게이트까지 한 번에 흐르게 합니다.",
       metrics: [
-        `${targetNodeCount.toLocaleString()} 목표 노드`,
+        `${targetNodeCount.toLocaleString()} 장기 목표`,
         `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 청크`,
         `${buildRun?.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}`,
-        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? visualNodeCap : currentLearningPreset.visualNodes} 대표 노드`,
+        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? visualNodeCap : currentLearningPreset.visualNodes} 대표 샘플`,
+        buildRun ? `${buildRun.graph_3d.nodes.length.toLocaleString()} API 앵커` : `${currentLearningPreset.visualNodes} 초기 표시`,
+        representativeCapReached ? "표시 상한 도달" : "표시 여유 있음",
+        buildRun?.training_gate?.target_realized ? "장기 목표 달성" : buildRun ? "장기 목표 미실현" : "대기",
         buildIsInfinite ? `누적 ${learningElapsedText}` : `${growthPulseCount} 실시간 펄스`,
         buildIsInfinite ? `${accumulatedLearningNodes.toLocaleString()} 후보 노드` : buildRun?.training_gate?.ready ? "학습 게이트 준비" : "게이트 대기",
       ],
@@ -1632,9 +1744,9 @@ export default function BakeBoardPage() {
                   </button>
                 ))}
                 <label className="node-target-input">
-                  <span>목표 노드</span>
+                  <span>장기 목표</span>
                   <input
-                    aria-label="목표 노드 수"
+                    aria-label="장기 목표 노드 수"
                     disabled={isBuilding || continuousLearningActive}
                     inputMode="numeric"
                     max={250000}
@@ -1648,6 +1760,29 @@ export default function BakeBoardPage() {
                     }}
                   />
                 </label>
+              </div>
+              <div className="local-backend-control" data-state={localBackendStatus}>
+                <span>로컬 FastAPI</span>
+                <input
+                  aria-label="로컬 FastAPI 주소"
+                  disabled={localBackendStatus === "checking"}
+                  value={localBackendUrl}
+                  onChange={(event) => {
+                    setLocalBackendUrl(event.currentTarget.value);
+                    if (localBackendConnected) {
+                      setLocalBackendStatus("idle");
+                      setLocalBackendMessage("주소가 바뀌었습니다. 다시 연결하세요.");
+                    }
+                  }}
+                />
+                <button
+                  disabled={localBackendStatus === "checking"}
+                  onClick={() => connectLocalBackend()}
+                >
+                  {localBackendStatus === "checking" ? "확인 중" : localBackendConnected ? "재연결" : "연결"}
+                </button>
+                {localBackendConnected ? <button onClick={disconnectLocalBackend}>해제</button> : null}
+                <small>{localBackendMessage}</small>
               </div>
               <div className="mini-metrics">
                 <span>흐름 {flowHealth}%</span>
@@ -1695,6 +1830,9 @@ export default function BakeBoardPage() {
                           {buildRun ? (
                             <span data-state="complete">기존 앵커 {preservedAnchorNodeCount} 유지</span>
                           ) : null}
+                          {representativeCapReached ? (
+                            <span data-state="running">대표 렌더 상한 {visualNodeCap} 도달</span>
+                          ) : null}
                           {buildIsInfinite ? (
                             <span data-state="running">새 노드 표시 {visibleLiveNodeCount} / 요약 {summaryNodeCount}</span>
                           ) : null}
@@ -1709,6 +1847,15 @@ export default function BakeBoardPage() {
                           <small>
                             대표 노드 최대 {buildRun.training_gate.visual_node_budget ?? buildRun.graph_3d.nodes.length}개
                             {buildIsInfinite ? ` / 누적 후보 ${accumulatedLearningNodes.toLocaleString()}개 / 비표시 이력 ${hiddenLiveNodeCount.toLocaleString()}개` : ""}
+                          </small>
+                          <small>
+                            장기 목표 {buildRun.training_gate.target_nodes?.toLocaleString?.() ?? targetNodeCount.toLocaleString()}개는 저장/학습 예산이고, API graph_3d는 대표 앵커 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}개를 보냅니다.
+                          </small>
+                          <small>
+                            현재 화면은 live 이벤트를 합쳐 {displayGraph3D.nodes.length}개를 렌더링 중이며 장기 목표의 약 {renderedTargetPercent}%입니다. 표준 10,000 목표에서 210 노드 근처에 멈춘 것처럼 보이는 이유는 이 대표 렌더 상한 때문입니다.
+                          </small>
+                          <small>
+                            API 대표 앵커만 보면 장기 목표의 약 {representativeTargetPercent}%입니다. 전체 목표를 실제 저장하려면 다음 단계인 append-only 온톨로지 이벤트 로그와 SQLite hot index가 필요합니다.
                           </small>
                           {buildIsInfinite ? (
                             <small>Alpha 경계: 수집 문서와 앵커 그래프는 API 결과, live-synapse는 저장 전 지속 성장 이벤트입니다.</small>

@@ -12,7 +12,11 @@ signals now show active node pulses rather than path text. The latest update
 adds `∞` continuous learning mode with cumulative elapsed time, a stop control,
 and a bounded rolling 3D graph render window. The current follow-up clarifies
 the real/simulated boundary, adds adaptive 3D zoom, and blocks/stops infinite
-learning when real local telemetry crosses safety watermarks.
+learning when real local telemetry crosses safety watermarks. Current work adds
+a local-web-to-local-FastAPI companion connection and clarifies that
+`target_nodes` is a long-run budget while `graph_3d` is a representative browser
+sample. Production UI still works as a fallback demo; real PC measurement should
+use local web + local FastAPI unless an HTTPS local companion is configured.
 
 ## Current Branch
 
@@ -20,7 +24,7 @@ learning when real local telemetry crosses safety watermarks.
 
 ## Last Commit
 
-Latest local commit before this update: Improve no-evidence RAG and graph scaling controls
+Latest local commit before this update: Clarify live learning limits and safety telemetry
 
 ## Deployment
 
@@ -94,6 +98,24 @@ Latest local commit before this update: Improve no-evidence RAG and graph scalin
 - Next system telemetry fallback marks itself as `deployment-sandbox` or
   `local-next` so deployed sandbox CPU/RAM values are not confused with the
   user's PC.
+- Local BakeBoard can now connect from the browser to the viewer's own
+  `http://127.0.0.1:8000` FastAPI backend for local telemetry, benchmark,
+  stability, and Build Start APIs.
+- Production browser verification showed that HTTPS deployment pages can be
+  blocked from calling an HTTP loopback backend before the request reaches
+  FastAPI; the UI now explains this and recommends local web or HTTPS local
+  companion for real PC measurement.
+- FastAPI now serves `POST /api/factory/build/start` with the same Alpha Build
+  Start contract as the Next fallback.
+- Build Start responses now expose target/sample semantics:
+  `target_semantics`, `representative_node_count`, `representative_edge_count`,
+  `target_realized`, and `sampling_explanation`.
+- Local connector GET requests no longer force CORS preflights with
+  `Content-Type: application/json`; transient local API failures now keep the
+  connector healthy when `/health` still succeeds.
+- The UI now explains that standard `10,000` target runs can visibly stop around
+  `210` nodes / `427` relations because the representative render window is
+  full; this is not full long-run target realization.
 - Real local benchmark hardware is passed into stability recalculation.
 - Infinite learning preflight/auto-stop now checks real telemetry for RAM,
   VRAM, and disk reserve pressure.
@@ -173,6 +195,21 @@ Latest local commit before this update: Improve no-evidence RAG and graph scalin
   - browser showed preserved anchors, visible new live nodes, summarized history,
     and Alpha boundary copy
   - zoom-out reached camera distance `134.7` on a 600-node graph
+- Local FastAPI companion verification passed:
+  - FastAPI factory route returned standard `visual_node_budget: 210`,
+    `representative_node_count: 181`, and `target_realized: false`
+  - local browser connected to `http://127.0.0.1:8000` from a separate Next
+    production server
+  - re-verification used fresh FastAPI on `127.0.0.1:8003` and Next production
+    server on `127.0.0.1:3032`; FastAPI logs confirmed browser
+    `OPTIONS/POST /api/factory/build/start` returned 200
+  - standard Build Start showed `10,000` long-run target, `210/210`
+    representative sample, `181` API anchors, and explicit copy explaining the
+    render cap
+  - screenshot: `docs/screenshots/117-local-fastapi-standard-sample-explained.png`
+  - screenshot: `docs/screenshots/118-local-fastapi-connected-render-cap-fixed.png`
+  - screenshot: `docs/screenshots/119-local-fastapi-target-sample-explanation.png`
+  - screenshot: `docs/screenshots/120-production-local-http-boundary-message.png`
 - Deployed browser verification passed, including Neuro-Efficiency Rebalance.
 
 ## Current Blockers
@@ -200,6 +237,13 @@ Latest local commit before this update: Improve no-evidence RAG and graph scalin
   the 250,000-node workload.
 - Hardware benchmark auto-apply requires local FastAPI. Deployed fallback cannot
   measure the viewer PC and returns `can_read_local_hardware: false`.
+- Local UI can use real viewer hardware through the local FastAPI connector.
+  Deployed UI remains a deterministic fallback when the browser blocks HTTPS to
+  HTTP loopback calls.
+- Finite Build Start modes currently fill a representative render sample rather
+  than persisting the full long-run `target_nodes` budget. The append-only
+  ontology event log and SQLite hot graph index are still required for true
+  multi-thousand-node realization.
 - No-direct-evidence architecture answers use internal Homage context for
   synthesis, but do not return it as retrieved document evidence.
 - Unknown external facts are not guessed without memory evidence or Harvest

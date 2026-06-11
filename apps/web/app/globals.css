@@ -639,6 +639,64 @@ p {
   font-weight: 900;
 }
 
+.local-backend-control {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto auto;
+  align-items: center;
+  flex: 1 1 100%;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  background: #f8faf8;
+}
+
+.local-backend-control[data-state="connected"] {
+  border-color: rgba(26, 147, 111, 0.38);
+  background: #f3fbf7;
+}
+
+.local-backend-control[data-state="failed"] {
+  border-color: rgba(197, 40, 61, 0.32);
+  background: #fff7f7;
+}
+
+.local-backend-control span {
+  padding-left: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.local-backend-control input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 7px;
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.local-backend-control button {
+  min-width: 48px;
+  padding: 5px 7px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.local-backend-control small {
+  grid-column: 1 / -1;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
 .mini-metrics {
   justify-content: flex-end;
   gap: 8px;

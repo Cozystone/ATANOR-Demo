@@ -38,6 +38,22 @@ Deployment:
   - ontology batch, graph hot-window, UI render, precision, microbatch, and
     checkpoint tuning payloads
   - BakeBoard `시스템 벤치마크` stage and `벤치마크 재측정` button
+- Local FastAPI companion connector:
+  - local BakeBoard can connect from the browser to the viewer's own
+    `http://127.0.0.1:8000` FastAPI backend
+  - CORS and Private Network Access headers are enabled for localhost,
+    `127.0.0.1`, and Vercel preview/production origins
+  - connected clients use local telemetry, benchmark, stability, and
+    `POST /api/factory/build/start` instead of deployment-sandbox fallbacks
+  - production BakeBoard exposes the same connector, but browser security can
+    block `https://homage-alpha.vercel.app` from calling an `http://localhost`
+    backend unless an HTTPS local companion is configured
+- Build Start target/sample clarification:
+  - `target_nodes` is now labeled as a long-run storage/training budget
+  - `graph_3d` is explicitly labeled as a bounded representative browser sample
+  - standard `10,000` target runs can visibly stop around `210` rendered nodes
+    and about `427` rendered relations because the representative render window
+    has reached its current cap, not because the long-run target was realized
 - Native RAG open-structure generation:
   - structure/self-description questions such as `네 구조 설명해봐` generate a
     native answer even when no direct document evidence is retrieved
@@ -268,6 +284,26 @@ Deployment:
     - `docs/screenshots/114-local-anchor-new-node-trace.png`
     - `docs/screenshots/115-responsive-zoom-out-local.png`
     - `docs/screenshots/116-production-live-summary-zoom.png`
+- Local FastAPI companion / representative-sample verification passed:
+  - local FastAPI `POST /api/factory/build/start` mirrors the Next fallback
+    Build Start contract
+  - standard `10,000` target returns `visual_node_budget: 210`,
+    `representative_node_count: 181`, and `target_realized: false`
+  - local browser verification connected BakeBoard to `http://127.0.0.1:8000`
+    from a separate Next production server
+  - fixed the local connector so GET requests no longer force unnecessary CORS
+    preflights with `Content-Type: application/json`
+  - re-verified with fresh FastAPI on `127.0.0.1:8003` and Next production
+    server on `127.0.0.1:3032`; FastAPI logs confirmed browser
+    `OPTIONS/POST /api/factory/build/start` returned 200
+  - the UI now shows `10,000` as the long-run target, `210/210` as the
+    representative render sample, `181` as API anchors, and explains that the
+    visible cap is not the completed long-run ontology
+  - screenshot:
+    - `docs/screenshots/117-local-fastapi-standard-sample-explained.png`
+    - `docs/screenshots/118-local-fastapi-connected-render-cap-fixed.png`
+    - `docs/screenshots/119-local-fastapi-target-sample-explanation.png`
+    - `docs/screenshots/120-production-local-http-boundary-message.png`
 
 ## Known Limitations
 
@@ -311,6 +347,14 @@ Deployment:
 - Hardware benchmark auto-apply requires the local FastAPI backend. The Vercel
   fallback route cannot read the viewer's actual PC and marks itself as
   `can_read_local_hardware: false`.
+- Local BakeBoard can use real viewer hardware after the user starts local
+  FastAPI and connects it through the UI. Deployed BakeBoard remains in
+  deterministic fallback mode in browsers that block HTTPS pages from calling
+  HTTP loopback APIs.
+- Standard/deep/max Build Start modes currently complete a representative
+  browser sample, not the full long-run `target_nodes` budget. Full target
+  realization requires the planned append-only ontology event log and SQLite
+  hot graph index.
 - External facts that are not present in memory are not guessed. The Alpha
   native engine returns a no-evidence answer and asks for Harvest/Build Start
   input instead.

@@ -510,3 +510,52 @@
   - `docs/screenshots/114-local-anchor-new-node-trace.png`
   - `docs/screenshots/115-responsive-zoom-out-local.png`
   - `docs/screenshots/116-production-live-summary-zoom.png`
+
+## 2026-06-11 - Local FastAPI companion and target/sample clarity
+
+- Investigated why `lite` with a 3,000-node target showed about 115 nodes and
+  why `standard` with a 10,000-node target stopped around 210 nodes / 427
+  relations.
+- Confirmed the cause: `target_nodes` was being treated as a long-run storage
+  and training budget, while the 3D UI intentionally renders a bounded
+  representative sample. For standard, the visual budget is
+  `round(sqrt(10000) * 2.1) = 210`; relations grow to about 427 after visible
+  live-synapse pulses fill that render window.
+- Added FastAPI `POST /api/factory/build/start` so the local backend can serve
+  Build Start directly instead of relying on the Next.js fallback route.
+- Added target/sample metadata to Build Start responses:
+  `target_semantics`, `representative_node_count`, `representative_edge_count`,
+  `target_realized`, and `sampling_explanation`.
+- Added CORS and Private Network Access support for localhost, `127.0.0.1`, and
+  Vercel origins. Local BakeBoard can connect directly to the user's own
+  `http://127.0.0.1:8000` FastAPI.
+- Production browser verification showed that modern browsers can still block
+  `https://homage-alpha.vercel.app` from calling an `http://localhost` backend
+  before the request reaches FastAPI. The UI now explains that real PC
+  measurement should use local web + local FastAPI unless an HTTPS local
+  companion is configured.
+- Added a BakeBoard local FastAPI connector control with URL entry, connect,
+  reconnect, disconnect, and saved local URL behavior.
+- Routed benchmark, telemetry, stability, and Build Start calls through local
+  FastAPI when connected, with Vercel fallback still available when disconnected.
+- Fixed a browser-side local connector bug where GET requests unnecessarily sent
+  `Content-Type: application/json`, forcing many parallel CORS preflights and
+  intermittently dropping the local backend state to `Failed to fetch`.
+- Local GET requests now avoid custom headers, and transient local API failures
+  keep the connector marked healthy when `/health` still succeeds.
+- Updated the UI labels from `target` wording to `long-run target` wording and
+  added explicit copy explaining that `graph_3d` is a representative browser
+  sample, not the full target realization.
+- Added regression tests for the FastAPI factory route, including the standard
+  `10,000 -> 210 visual budget / 181 API anchors / target_realized false`
+  behavior.
+- Verified local browser behavior with FastAPI on `127.0.0.1:8000` and a Next
+  production server on `127.0.0.1:3031`.
+- Re-verified with fresh FastAPI on `127.0.0.1:8003` and Next production server
+  on `127.0.0.1:3032`; FastAPI logs confirmed browser
+  `OPTIONS/POST /api/factory/build/start` returned 200.
+- Captured screenshot:
+  - `docs/screenshots/117-local-fastapi-standard-sample-explained.png`
+  - `docs/screenshots/118-local-fastapi-connected-render-cap-fixed.png`
+  - `docs/screenshots/119-local-fastapi-target-sample-explanation.png`
+  - `docs/screenshots/120-production-local-http-boundary-message.png`
