@@ -204,7 +204,13 @@ export function demoLearningDaemonCheckpoint() {
 }
 
 function demoCloudBrainShell() {
-  const daemon = demoLearningDaemonStatus();
+  const daemon = {
+    ...demoLearningDaemonStatus(),
+    state: "viewer_only",
+    latest_event_count: 0,
+    latest_node_count: 0,
+    latest_edge_count: 0,
+  };
   return {
     name: "Cloud Brain",
     mode: "shared-public-ontology-facade",
@@ -244,17 +250,16 @@ export function demoCloudBrainStatus() {
 }
 
 export function demoCloudBrainQuery(query: string) {
-  const activation = demoMemoryActivate(query);
   return {
     ...demoCloudBrainShell(),
     query,
-    state: activation.state,
+    state: "viewer_only",
     source: "deployment_cloud_brain_viewer",
     public_cloud_backend_enabled: false,
     fragments: {
-      active_nodes: activation.active_nodes,
-      active_edges: activation.active_edges,
-      semantic_skeleton: activation.semantic_skeleton,
+      active_nodes: [],
+      active_edges: [],
+      semantic_skeleton: [],
     },
     promotion_policy: {
       requires_repeated_signal: true,
@@ -262,7 +267,8 @@ export function demoCloudBrainQuery(query: string) {
       requires_guardrail_pass: true,
       writes_public_cloud: false,
     },
-    drift_report: activation.drift_report,
+    drift_report: null,
+    reason: "Deployment Cloud Brain is a read-only viewer until a local worker or shared graph backend is connected.",
   };
 }
 

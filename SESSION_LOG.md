@@ -876,5 +876,10 @@
 - Verified the Cloud Brain UI in the in-app browser at
   `http://127.0.0.1:3057/?workspace=cloud-brain&api=http://127.0.0.1:8045`;
   saved `docs/screenshots/149-cloud-brain-local-verified.png`.
+- Verified production at `https://homage-alpha.vercel.app/?workspace=cloud-brain`;
+  saved `docs/screenshots/150-cloud-brain-production-verified.png`.
+- Tightened the deployed `/api/cloud-brain/status` and `/api/cloud-brain/query`
+  fallback so Cloud Brain viewer APIs return `0` counts and empty fragments
+  until a local worker or shared backend is connected.
 - Updated README, Project State, Task Board, Context Capsule, and Codex research
   prompt references to use Cloud Brain terminology.

@@ -43,6 +43,11 @@ Latest Cloud Brain design update:
   alive, shows `0 노드 / 0 관계`, and no longer shows the old `누적학습`
   label.
 - Verification screenshot: `docs/screenshots/149-cloud-brain-local-verified.png`.
+- Production verified at `https://homage-alpha.vercel.app/?workspace=cloud-brain`:
+  the deployed viewer also keeps an empty graph before local API connection,
+  and the `/api/cloud-brain/status` fallback now reports `0` Cloud Brain
+  nodes/edges instead of demo memory counts.
+- Production screenshot: `docs/screenshots/150-cloud-brain-production-verified.png`.
 
 Latest 2026-06-12 follow-up:
 
