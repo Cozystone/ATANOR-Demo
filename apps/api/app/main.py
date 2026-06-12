@@ -10,6 +10,7 @@ from app.routers.factory import router as factory_router
 from app.routers.graphrag import router as graphrag_router
 from app.routers.guard import router as guard_router
 from app.routers.harvest import router as harvest_router
+from app.routers.learning import router as learning_router
 from app.routers.memory import router as memory_router
 from app.routers.neuro import router as neuro_router
 from app.routers.ontology import router as ontology_router
@@ -67,6 +68,7 @@ async def allow_browser_local_companion(request, call_next):
 
 app.include_router(datagate_router)
 app.include_router(harvest_router)
+app.include_router(learning_router)
 app.include_router(factory_router)
 app.include_router(ontology_router)
 app.include_router(graphrag_router)

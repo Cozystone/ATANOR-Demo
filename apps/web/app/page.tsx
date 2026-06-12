@@ -6,6 +6,7 @@ import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Ra
 
 type StageState = "idle" | "running" | "warning" | "complete";
 type LayoutMode = "graph" | "split" | "workbench";
+type WorkspaceMode = "daemon" | "lab";
 type LearningVolume = "lite" | "standard" | "deep" | "max" | "infinite";
 type RightMode = "process" | "chat";
 type AnyRecord = Record<string, any>;
@@ -96,6 +97,19 @@ const maxTargetNodes = 500_000;
 const liveGrowthBatchSize = 24;
 const minLiveGrowthPulses = 8;
 const liveSummaryBatchSize = 72;
+
+const codexResearchGoalPrompt = `Homage1.0을 장기 연구 목표로 계속 개선한다.
+
+목표: 외부 LLM과 로컬 양자화 LLM 없이, 로컬 워크스테이션에서 장시간 누적되는 온톨로지/그래프 메모리와 독자 생성기를 연구해 중형 LLM에 가까운 답변 품질을 실험적으로 달성한다.
+
+반복 루프:
+1. 로컬 FastAPI와 Next BakeBoard를 실행하고 브라우저로 직접 조작한다.
+2. 누적학습 daemon 상태, Knowledge Bakery SQLite/JSONL 이벤트, 노드/관계/활성 신호를 조회한다.
+3. 생성 결과가 깨지면 그대로 관찰하고, 규칙 기반 포장으로 숨기지 않는다.
+4. 병목이나 자원 경고가 뜨면 실패 실험으로 기록하고 학술/전문 자료를 찾아 새 구조안을 반영한다.
+5. 구현, 테스트, 브라우저 스크린샷, 문서 업데이트, 커밋을 반복한다.
+
+제약: 답변 엔진에는 외부 LLM, sLLM, 사전학습 생성 가중치를 쓰지 않는다. 웹 검색과 논문 조사는 연구/수집 입력으로만 사용하고, 엔진이 실제로 학습하지 않은 능력을 가진 것처럼 표시하지 않는다.`;
 
 const learningVolumePresets: Record<LearningVolume, { label: string; textBudget: string; chunkBudget: number; visualNodes: number; targetNodes: number | null; edgeRatio: number; durationHours: number; detail: string }> = {
   lite: { label: "가볍게", textBudget: "12k chars", chunkBudget: 32, visualNodes: 12, targetNodes: 3_000, edgeRatio: 3, durationHours: 12, detail: "응답 확인용" },
@@ -759,6 +773,7 @@ function makeMemoryEdges(graph: AnyRecord | null, nodes: MemoryNode[]): MemoryEd
 
 export default function BakeBoardPage() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("split");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("lab");
   const [rightMode, setRightMode] = useState<RightMode>("process");
   const [autoChatOpened, setAutoChatOpened] = useState(false);
   const [pipeline, setPipeline] = useState<PipelineStatus | null>(null);
@@ -774,6 +789,7 @@ export default function BakeBoardPage() {
   const [stability, setStability] = useState<AnyRecord | null>(null);
   const [memoryStatus, setMemoryStatus] = useState<AnyRecord | null>(null);
   const [memoryDrift, setMemoryDrift] = useState<AnyRecord | null>(null);
+  const [learningDaemon, setLearningDaemon] = useState<AnyRecord | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
   const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8000");
@@ -892,6 +908,7 @@ export default function BakeBoardPage() {
       memoryStatusResult,
       memoryGraphResult,
       memoryDriftResult,
+      learningDaemonStatus,
       graphragStatus,
       guardStatus,
       gpuStatus,
@@ -907,6 +924,7 @@ export default function BakeBoardPage() {
       apiJson<AnyRecord>("/api/memory/status"),
       apiJson<AnyRecord>("/api/memory/graph?limit=900"),
       apiJson<AnyRecord>("/api/memory/drift-check"),
+      apiJson<AnyRecord>("/api/learning/daemon/status"),
       apiJson<AnyRecord>("/api/graphrag/status"),
       apiJson<AnyRecord>("/api/guard/status"),
       apiJson<AnyRecord>("/api/telemetry/gpu"),
@@ -927,6 +945,7 @@ export default function BakeBoardPage() {
     setOntology(ontologyStatus);
     setMemoryStatus(memoryStatusResult);
     setMemoryDrift(memoryDriftResult);
+    setLearningDaemon(learningDaemonStatus);
     setGraph(memoryGraphResult?.nodes?.length ? memoryGraphResult : ontologyGraph);
     setGraphRag(graphragStatus);
     setGuard(guardStatus);
@@ -1063,6 +1082,42 @@ export default function BakeBoardPage() {
     setMemoryStatus(result);
     setMemoryDrift(driftResult);
     if (graphResult?.nodes?.length) setGraph(graphResult);
+  }
+
+  async function startLearningDaemon() {
+    const result = await apiJson<AnyRecord>("/api/learning/daemon/start", {
+      method: "POST",
+      body: JSON.stringify({ interval_seconds: 30, resume: true }),
+    });
+    setLearningDaemon(result);
+    await refreshAll().catch(() => undefined);
+  }
+
+  async function resumeLearningDaemon() {
+    const result = await apiJson<AnyRecord>("/api/learning/daemon/resume", {
+      method: "POST",
+      body: JSON.stringify({ interval_seconds: 30, resume: true }),
+    });
+    setLearningDaemon(result);
+    await refreshAll().catch(() => undefined);
+  }
+
+  async function stopLearningDaemon() {
+    const result = await apiJson<AnyRecord>("/api/learning/daemon/stop", {
+      method: "POST",
+      body: JSON.stringify({ reason: "operator" }),
+    });
+    setLearningDaemon(result);
+    await refreshAll().catch(() => undefined);
+  }
+
+  async function checkpointLearningDaemon() {
+    const result = await apiJson<AnyRecord>("/api/learning/daemon/checkpoint", {
+      method: "POST",
+      body: JSON.stringify({ reason: "operator" }),
+    });
+    setLearningDaemon(result);
+    await refreshAll().catch(() => undefined);
   }
 
   async function runTrainingDryRun() {
@@ -1447,6 +1502,14 @@ export default function BakeBoardPage() {
   const diskFreeGb = numeric(system?.disk_free_gb);
   const ramUsedGb = numeric(system?.ram_used_gb);
   const vramUsedGb = numeric(gpu?.vram_used) === null ? null : (numeric(gpu?.vram_used) ?? 0) / 1024;
+  const daemonCanOperate = learningDaemon?.mode === "local-daemon";
+  const daemonViewerOnly = !daemonCanOperate;
+  const daemonRuntimeText = formatDuration(Number(learningDaemon?.total_runtime_seconds ?? 0) * 1000);
+  const daemonStateText = learningDaemon?.state === "resume_needed" ? "재개 필요" : learningDaemon?.state === "demo" ? "실험실 뷰어" : statusText(learningDaemon?.state);
+  const daemonModeText = daemonCanOperate ? "로컬 상시학습" : "배포 실험실 뷰어";
+  const daemonCheckpointText = learningDaemon?.last_checkpoint_at
+    ? new Date(learningDaemon.last_checkpoint_at).toLocaleString("ko-KR")
+    : "아직 없음";
   const flowHealth = useMemo(() => {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
     return Math.round((complete / Math.max(1, pipeline?.stages.length ?? 8)) * 100);
@@ -1589,6 +1652,7 @@ export default function BakeBoardPage() {
   const logTime = clockNow ? fmtClock(clockNow) : "--:--:--";
   const logs = [
     ...(buildRun ? [{ time: logTime, message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}${buildIsInfinite ? ` / 누적 ${learningElapsedText}` : ""}` }] : []),
+    { time: logTime, message: `학습 공간: ${daemonModeText} / 상태 ${daemonStateText} / 누적 ${daemonRuntimeText}` },
     { time: logTime, message: `벤치마크: ${benchmark?.profile_name ?? "대기"} / 추천 ${benchmarkVolumeLabel} / ${benchmarkSourceLabel}` },
     { time: logTime, message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
     { time: logTime, message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
@@ -1720,6 +1784,10 @@ export default function BakeBoardPage() {
         <div className="brand-block">
           <button className="back-button" onClick={resetConsole} title="기본 화면으로 돌아가기" aria-label="기본 화면으로 돌아가기">←</button>
           <strong>Homage</strong>
+        </div>
+        <div className="workspace-switcher" aria-label="작업 공간 전환">
+          <button data-active={workspaceMode === "daemon"} onClick={() => setWorkspaceMode("daemon")}>누적학습</button>
+          <button data-active={workspaceMode === "lab"} onClick={() => setWorkspaceMode("lab")}>실험실</button>
         </div>
         <div className="layout-switcher" aria-label="레이아웃 전환">
           {[
@@ -1964,7 +2032,82 @@ export default function BakeBoardPage() {
               </div>
             </div>
 
-            {rightMode === "process" ? (
+            {workspaceMode === "daemon" ? (
+              <div className="daemon-view">
+                <section className="daemon-hero" data-viewer-only={daemonViewerOnly}>
+                  <div>
+                    <span>{daemonModeText}</span>
+                    <h2>누적학습 모델 공간</h2>
+                    <p>
+                      장시간 켜두는 로컬 학습 구역입니다. 배포본에서는 실험실 뷰어처럼 구조와 상태만 보여주고,
+                      실제 상시학습은 로컬 FastAPI와 `data/memory` 저장소에서만 실행합니다.
+                    </p>
+                  </div>
+                  <strong>{daemonStateText}</strong>
+                </section>
+
+                {daemonViewerOnly ? (
+                  <div className="viewer-notice">
+                    배포본은 작은 데모/뷰어입니다. 실제 장기 운전, 체크포인트, 재부팅 복구는 로컬에서
+                    FastAPI를 실행한 뒤 이 화면을 로컬 앱으로 열었을 때 활성화됩니다.
+                  </div>
+                ) : null}
+
+                <div className="daemon-metrics">
+                  <div><span>누적 시간</span><strong>{daemonRuntimeText}</strong></div>
+                  <div><span>라운드</span><strong>{learningDaemon?.total_rounds ?? 0}</strong></div>
+                  <div><span>학습 반영</span><strong>{learningDaemon?.learned_rounds ?? 0}</strong></div>
+                  <div><span>노드</span><strong>{learningDaemon?.latest_node_count ?? memoryStatus?.node_count ?? 0}</strong></div>
+                  <div><span>관계</span><strong>{learningDaemon?.latest_edge_count ?? memoryStatus?.edge_count ?? 0}</strong></div>
+                  <div><span>이벤트</span><strong>{learningDaemon?.latest_event_count ?? memoryStatus?.event_count ?? 0}</strong></div>
+                </div>
+
+                <div className="daemon-controls">
+                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(startLearningDaemon)}>상시학습 시작</button>
+                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(resumeLearningDaemon)}>재개</button>
+                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(checkpointLearningDaemon)}>체크포인트</button>
+                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(stopLearningDaemon)}>중지</button>
+                </div>
+
+                <section className="daemon-section">
+                  <div>
+                    <h3>재부팅 대비</h3>
+                    <p>
+                      상태 파일은 {learningDaemon?.reboot_resilience?.state_file ?? "data/memory/daemon_state.json"}에 저장됩니다.
+                      마지막 체크포인트는 {daemonCheckpointText}입니다. PC 재부팅 후 로컬 FastAPI를 다시 켜면
+                      상태가 `resume_needed`로 뜨고, 재개 버튼으로 SQLite WAL과 이벤트 로그에서 이어갑니다.
+                    </p>
+                  </div>
+                  <div className="daemon-lines">
+                    <span>worker {learningDaemon?.worker_alive ? "alive" : "not alive"}</span>
+                    <span>checkpoint {learningDaemon?.checkpoint_count ?? 0}</span>
+                    <span>disk {learningDaemon?.resource_snapshot?.disk_free_gb ?? "n/a"}GB free</span>
+                    <span>RAM {learningDaemon?.resource_snapshot?.ram_available_gb ?? "n/a"}GB free</span>
+                  </div>
+                </section>
+
+                <section className="daemon-section">
+                  <div>
+                    <h3>연구 목표 프롬프트</h3>
+                    <p>
+                      Codex Desktop 목표 설정에 넣을 장기 연구 지시문입니다. 생성 결과가 깨지면 그대로 관찰하고,
+                      자원 한계 경고가 뜨면 실패 실험으로 간주해 새 연구안을 찾아 반영하는 루프를 명시했습니다.
+                    </p>
+                  </div>
+                  <textarea className="goal-prompt-box" readOnly value={codexResearchGoalPrompt} />
+                </section>
+
+                <section className="daemon-section">
+                  <div>
+                    <h3>실험실 뷰어 경계</h3>
+                    <p>
+                      이 배포 화면은 노드/관계/활성 신호를 이해하기 위한 뷰어입니다. 장기 수집과 학습은 사용자의
+                      로컬 워크스테이션에서 천천히 누적하고, 배포본은 그 구조를 작게 보여주는 창으로 유지합니다.
+                    </p>
+                  </div>
+                </section>
+              </div>
+            ) : rightMode === "process" ? (
               <div className="process-view">
                 {processSteps.map((step) => (
                   <article className="process-card" data-state={step.state} key={step.number}>

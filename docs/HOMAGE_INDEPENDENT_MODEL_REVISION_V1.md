@@ -457,3 +457,32 @@ Still not implemented:
   log.
 - A separate `/api/native/generate` decoder endpoint.
 - From-scratch Homage-Core training beyond the existing dry-run scaffold.
+
+## Implementation Status - 2026-06-12 Local Long-Run Split
+
+Implemented after the first Knowledge Bakery layer:
+
+- A local cumulative-learning daemon state layer on top of Knowledge Bakery.
+- Persistent daemon files:
+  - `data/memory/daemon_state.json`
+  - `data/memory/daemon_checkpoints/*.json`
+- FastAPI daemon endpoints:
+  - `GET /api/learning/daemon/status`
+  - `POST /api/learning/daemon/start`
+  - `POST /api/learning/daemon/resume`
+  - `POST /api/learning/daemon/checkpoint`
+  - `POST /api/learning/daemon/stop`
+- Deployment fallback returns lab-viewer status only. It does not pretend that
+  Vercel is running the long-lived learner.
+- BakeBoard now has two spaces:
+  - `누적학습`: local daemon/runtime/checkpoint/reboot-recovery view
+  - `실험실`: demo and structural experiment workbench
+- `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` records the long-run Codex goal
+  prompt and reboot protocol.
+
+Still not implemented in this layer:
+
+- A governed background Harvest queue that continuously fetches new text.
+- Incremental append-only graph mutations for every browser-side live-synapse
+  pulse.
+- A native graph-memory decoder evaluation harness.

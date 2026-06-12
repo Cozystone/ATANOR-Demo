@@ -15,8 +15,9 @@ the real/simulated boundary, adds adaptive 3D zoom, and blocks/stops infinite
 learning when real local telemetry crosses safety watermarks. Current work adds
 a local-web-to-local-FastAPI companion connection and clarifies that
 `target_nodes` is a long-run budget while `graph_3d` is a representative browser
-sample. Production UI still works as a fallback demo; real PC measurement should
-use local web + local FastAPI unless an HTTPS local companion is configured.
+sample. Production UI now works as a fallback demo/lab viewer; real PC
+measurement and real cumulative learning should use local web + local FastAPI
+unless an HTTPS local companion is configured.
 
 ## Current Branch
 
@@ -41,9 +42,12 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - `apps/web/app/api/neuro/stability/route.ts`
 - `apps/web/app/api/neuro/benchmark/route.ts`
 - `packages/neuro_efficiency`
+- `packages/knowledge_bakery/knowledge_bakery/daemon.py`
+- `apps/api/app/routers/learning.py`
 - `docs/RESEARCH_NEURO_EFFICIENCY.md`
 - `docs/LONG_RUN_STABILITY_PLAN.md`
 - `docs/HARDWARE_BENCHMARK_ADAPTATION.md`
+- `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md`
 - `packages/ontology_forge`
 - `packages/rag_engine`
 - `packages/guard`
@@ -116,6 +120,13 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - The UI now explains that standard `10,000` target runs use a `480` node
   render window with about `413` API anchors; max/infinite runs can target
   `500,000` nodes while the browser renders a bounded frontier/summary window.
+- Added a local cumulative-learning daemon layer that persists
+  `daemon_state.json`, writes checkpoint snapshots, reports `resume_needed`
+  after process/PC restart, and exposes FastAPI status/start/resume/stop/
+  checkpoint endpoints.
+- Split BakeBoard into `누적학습` and `실험실` workspaces. The deployed app
+  treats `누적학습` as a lab viewer only; real daemon controls are local.
+- Added the Codex Desktop long-run research goal prompt document.
 - Real local benchmark hardware is passed into stability recalculation.
 - Infinite learning preflight/auto-stop now checks real telemetry for RAM,
   VRAM, and disk reserve pressure.
@@ -136,6 +147,7 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - `PYTHONPATH=... python -m pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q`
 - `python -m compileall ...`
 - `npm --workspace apps/web run build`
+- `PYTHONPATH=... python -m pytest packages/knowledge_bakery/tests/test_daemon.py apps/api/tests/test_learning_daemon_api.py -q`
 - `git diff --check`
 - `npx vercel --prod --yes`
 - `npx vercel alias set web-ffvjjolxy-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`

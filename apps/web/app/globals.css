@@ -67,6 +67,7 @@ p {
 .brand-block,
 .header-status,
 .layout-switcher,
+.workspace-switcher,
 .status-indicator,
 .memory-tools,
 .right-toolbar,
@@ -103,6 +104,7 @@ p {
 }
 
 .layout-switcher,
+.workspace-switcher,
 .mode-tabs {
   gap: 4px;
   border-radius: 8px;
@@ -111,6 +113,7 @@ p {
 }
 
 .layout-switcher button,
+.workspace-switcher button,
 .mode-tabs button {
   border: 1px solid transparent;
   border-radius: 6px;
@@ -122,11 +125,21 @@ p {
 }
 
 .layout-switcher button[data-active="true"],
+.workspace-switcher button[data-active="true"],
 .mode-tabs button[data-active="true"] {
   border-color: var(--line);
   background: var(--white);
   color: var(--ink);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.workspace-switcher {
+  margin-right: auto;
+  margin-left: 10px;
+}
+
+.workspace-switcher button {
+  padding-inline: 12px;
 }
 
 .header-status {
@@ -947,6 +960,156 @@ p {
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--muted);
+}
+
+.daemon-view {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.daemon-hero,
+.daemon-section,
+.viewer-notice {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+}
+
+.daemon-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 13px;
+}
+
+.daemon-hero[data-viewer-only="true"] {
+  border-color: rgba(0, 106, 159, 0.22);
+  background: #f5fafc;
+}
+
+.daemon-hero span,
+.daemon-section h3 {
+  color: var(--orange);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.daemon-hero h2 {
+  margin: 3px 0 7px;
+  font-size: 1.04rem;
+}
+
+.daemon-hero p,
+.daemon-section p,
+.viewer-notice {
+  margin: 0;
+  color: #515c56;
+  line-height: 1.48;
+  font-size: 0.82rem;
+}
+
+.daemon-hero strong {
+  border: 1px solid rgba(255, 107, 53, 0.28);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--orange);
+  background: #fff8f5;
+  font-size: 0.72rem;
+}
+
+.viewer-notice {
+  padding: 10px 12px;
+}
+
+.daemon-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.daemon-metrics div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px;
+  background: #fafafa;
+}
+
+.daemon-metrics span,
+.daemon-lines span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.daemon-metrics strong {
+  overflow-wrap: anywhere;
+  font-size: 0.94rem;
+}
+
+.daemon-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.daemon-controls button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.daemon-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.daemon-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.daemon-section h3 {
+  margin: 0 0 6px;
+}
+
+.daemon-lines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.daemon-lines span {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: #fafafa;
+  overflow-wrap: anywhere;
+}
+
+.goal-prompt-box {
+  width: 100%;
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  resize: vertical;
+  background: #fbfbfb;
+  color: var(--ink);
+  line-height: 1.5;
+  font-size: 0.78rem;
 }
 
 .chat-view {

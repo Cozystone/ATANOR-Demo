@@ -15,6 +15,11 @@ Production demo:
 
 - https://homage-alpha.vercel.app
 
+The production deployment is intentionally a small lab viewer/demo. It shows
+the graph, pipeline, activation behavior, and research controls, but it does
+not run the long-lived cumulative learner on Vercel. Real cumulative learning
+is a local FastAPI + Knowledge Bakery process on the user's own workstation.
+
 ## Repository Layout
 
 ```text
@@ -29,9 +34,11 @@ packages/
   model/
   trainer/
   neuro_efficiency/
+  knowledge_bakery/
 data/
   raw/             local input documents
   train_sample/    safe dry-run training sample
+  memory/          local SQLite WAL/events/checkpoints; ignored by git
 docs/
 ```
 
@@ -87,6 +94,36 @@ The production URL still exposes the same connector, but modern browsers may
 block `https://homage-alpha.vercel.app` from calling an `http://localhost` API.
 Use the local frontend for real hardware measurement unless you have an HTTPS
 local companion configured.
+
+## Local Cumulative Learning
+
+BakeBoard now has two workspaces:
+
+- `누적학습`: the long-running local learner space. On Vercel it behaves as a
+  read-only lab viewer; on local FastAPI it can start, resume, checkpoint, and
+  stop the learner.
+- `실험실`: the current demo/workbench space for Build Start, graph inspection,
+  GraphRAG/native-generation tests, Guardrail checks, and structure demos.
+
+The learner persists reboot-safe state in:
+
+- `data/memory/homage.db`
+- `data/memory/events.jsonl`
+- `data/memory/daemon_state.json`
+- `data/memory/daemon_checkpoints/*.json`
+
+If the PC reboots, start the backend and frontend again, open `누적학습`, and
+press `재개` if the daemon reports `재개 필요`.
+
+Optional autostart after FastAPI startup:
+
+```powershell
+$env:HOMAGE_AUTOSTART_DAEMON="1"
+npm run api:dev
+```
+
+Autostart only resumes when the previous persisted daemon state had
+`desired_running=true`.
 
 ## Optional Web Search / Grounding
 
@@ -184,6 +221,11 @@ as inspection/control output, not model generation.
 - `GET /api/memory/graph`
 - `POST /api/memory/activate`
 - `GET /api/memory/drift-check`
+- `GET /api/learning/daemon/status`
+- `POST /api/learning/daemon/start`
+- `POST /api/learning/daemon/resume`
+- `POST /api/learning/daemon/checkpoint`
+- `POST /api/learning/daemon/stop`
 - `POST /api/graphrag/query`
 - `GET /api/graphrag/status`
 - `POST /api/guard/check`
@@ -230,6 +272,11 @@ npm --workspace apps/web run build
   `data/memory/events.jsonl`, builds token transitions, phrase nodes,
   co-occurrence windows, local 3D projections, and spread-activation traces
   without external or local pretrained LLMs.
+- `packages/knowledge_bakery` also exposes a local learning daemon state layer
+  with `daemon_state.json`, checkpoint snapshots, resource guards, and
+  `resume_needed` reporting after process/PC restarts.
+- `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` contains the long-running Codex
+  Desktop goal prompt for autonomous Homage research.
 - `docs/PRD_ENGINE_AUDIT.md` records what is implemented versus still missing
   against the original PRD.
 - The BakeBoard UI now follows a MiroFish-inspired console structure: left

@@ -585,3 +585,32 @@
   shows summary bundles plus hidden live history.
 - Captured screenshot:
   - `docs/screenshots/121-500k-max-render-cap-local.png`
+
+## 2026-06-12 - Local cumulative-learning daemon and lab-viewer deployment split
+
+- Added a local Knowledge Bakery daemon state layer:
+  - `packages/knowledge_bakery/knowledge_bakery/daemon.py`
+  - persistent `data/memory/daemon_state.json`
+  - persistent `data/memory/daemon_checkpoints/*.json`
+  - status/start/resume/stop/checkpoint/tick helpers
+  - resource guard for low disk/RAM before long local runs destabilize the PC
+- Added FastAPI endpoints:
+  - `GET /api/learning/daemon/status`
+  - `POST /api/learning/daemon/start`
+  - `POST /api/learning/daemon/resume`
+  - `POST /api/learning/daemon/checkpoint`
+  - `POST /api/learning/daemon/stop`
+  - `POST /api/learning/daemon/tick`
+- Added deployable Next.js fallback routes for the daemon endpoints. The
+  fallback explicitly returns `mode: deployment-demo` and `local_required: true`
+  so Vercel stays an honest lab viewer, not a fake long-running learner.
+- Split BakeBoard into two workspaces:
+  - `누적학습`: local long-running learner status, runtime, node/edge/event
+    counts, checkpoint state, reboot recovery, and Codex research prompt
+  - `실험실`: existing Build Start, GraphRAG, Guardrail, and structure demo
+    workbench
+- Added `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` with a paste-ready Codex
+  Desktop goal prompt for indefinite research/monitoring.
+- Updated README, PROJECT_STATE, and TASK_BOARD with the deployment/demo versus
+  local-development boundary.
+- Verified targeted daemon/API tests and Next production build.

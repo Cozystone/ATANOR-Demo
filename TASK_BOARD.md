@@ -32,12 +32,19 @@
 - [x] Continuous live-synapse graph growth after Build Start.
 - [x] Learning Process buttons now show running state and update card results
       immediately in deployed fallback mode.
+- [x] Split BakeBoard into `누적학습` and `실험실` workspaces.
+- [x] Add local cumulative-learning daemon status/start/resume/checkpoint/stop
+      APIs with reboot-safe state and checkpoints.
+- [x] Keep deployed build as a lab viewer/demo for the daemon area.
+- [x] Add Codex Desktop long-run research goal prompt document.
 
 ## Next
 
 - [ ] Persist run history.
 - [ ] Persist Build Start graph frames and source provenance.
 - [ ] Persist live-synapse growth pulses as durable learning events.
+- [ ] Add governed background Harvest queue feeding the local daemon.
+- [ ] Add a native graph-memory decoder evaluation harness.
 - [ ] Replace allowlisted reference fetch with governed Harvest connectors.
 - [ ] Add document-level metadata browsing.
 - [ ] Add graph mutation timeline and replay.

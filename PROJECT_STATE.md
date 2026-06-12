@@ -3,7 +3,9 @@
 ## Current Status
 
 Homage1.0 Alpha is implemented and deployed as an interactive MVP with a
-MiroFish-inspired console UI and research-backed Neuro-Efficiency Layer.
+MiroFish-inspired console UI and research-backed Neuro-Efficiency Layer. The
+deployment is treated as a small lab viewer/demo; real cumulative learning is
+run locally through FastAPI and Knowledge Bakery.
 
 Deployment:
 
@@ -50,6 +52,28 @@ Deployment:
     - `docs/screenshots/124-knowledge-bakery-drift-local.png`
     - `docs/screenshots/125-large-graph-1912-nodes-local.png`
     - `docs/screenshots/126-large-graph-active-signal-local.png`
+- Local Cumulative Learning daemon:
+  - `packages/knowledge_bakery/knowledge_bakery/daemon.py`
+  - persists `data/memory/daemon_state.json` and
+    `data/memory/daemon_checkpoints/*.json`
+  - exposes local state as running/stopped/failed/resume_needed without
+    pretending that deployment fallback is doing long-lived learning
+  - resource guard stops before disk/RAM pressure can destabilize the PC
+  - `HOMAGE_AUTOSTART_DAEMON=1` can resume a previously desired-running daemon
+    when FastAPI imports the package after reboot
+  - FastAPI endpoints:
+    - `GET /api/learning/daemon/status`
+    - `POST /api/learning/daemon/start`
+    - `POST /api/learning/daemon/resume`
+    - `POST /api/learning/daemon/checkpoint`
+    - `POST /api/learning/daemon/stop`
+- BakeBoard workspace split:
+  - `누적학습` shows the long-running local learner, runtime, checkpoints,
+    resource snapshot, reboot recovery state, and Codex research goal prompt
+  - deployment fallback renders this area as a lab-viewer-only space
+  - `실험실` keeps the existing Build Start / GraphRAG / Guardrail workbench
+- Added `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` with the paste-ready Codex
+  Desktop goal prompt and reboot protocol.
 - Neuro-Efficiency Layer for event sparsity, modular routing, continual
   learning policy, few-shot prototypes, self-supervised masking, compression,
   and estimated compute reduction.

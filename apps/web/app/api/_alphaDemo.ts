@@ -100,7 +100,108 @@ export const demoState = {
       { step: 5, loss: 1.982, tokens: 640 },
     ],
   },
+  learningDaemon: {
+    state: "demo",
+    desired_running: false,
+    resume_needed: false,
+    started_at: null as string | null,
+    last_heartbeat_at: null as string | null,
+    last_checkpoint_at: null as string | null,
+    total_runtime_seconds: 0,
+    total_rounds: 0,
+    learned_rounds: 0,
+    idle_rounds: 0,
+  },
 };
+
+export function demoLearningDaemonStatus() {
+  return {
+    mode: "deployment-demo",
+    state: demoState.learningDaemon.state,
+    desired_running: demoState.learningDaemon.desired_running,
+    resume_after_reboot: true,
+    resume_needed: demoState.learningDaemon.resume_needed,
+    worker_alive: false,
+    started_at: demoState.learningDaemon.started_at,
+    last_heartbeat_at: demoState.learningDaemon.last_heartbeat_at,
+    last_checkpoint_at: demoState.learningDaemon.last_checkpoint_at,
+    interval_seconds: 30,
+    total_runtime_seconds: demoState.learningDaemon.total_runtime_seconds,
+    total_rounds: demoState.learningDaemon.total_rounds,
+    learned_rounds: demoState.learningDaemon.learned_rounds,
+    idle_rounds: demoState.learningDaemon.idle_rounds,
+    latest_event_count: demoMemoryStatus().event_count,
+    latest_node_count: demoMemoryStatus().node_count,
+    latest_edge_count: demoMemoryStatus().edge_count,
+    checkpoint_count: demoState.learningDaemon.last_checkpoint_at ? 1 : 0,
+    local_required: true,
+    deployment_policy: "Vercel 배포본은 작은 데모입니다. 실제 누적학습은 사용자의 로컬 FastAPI와 data/memory 저장소에서만 실행됩니다.",
+    last_round_action: "deployment_demo_boundary",
+    last_round_message: "배포본에서는 장기 worker를 유지하지 않습니다. 로컬 FastAPI를 연결하면 실제 daemon 상태를 읽습니다.",
+    resource_snapshot: {
+      disk_free_gb: null,
+      disk_total_gb: null,
+      ram_available_gb: null,
+      ram_total_gb: null,
+    },
+    reboot_resilience: {
+      state_file: "data/memory/daemon_state.json",
+      checkpoint_dir: "data/memory/daemon_checkpoints",
+      heartbeat_interval_seconds: 30,
+      checkpoint_interval_seconds: 300,
+      resume_contract: "PC 재부팅 후 로컬 FastAPI를 다시 켜고 재개 버튼을 누르면 daemon_state.json과 SQLite WAL에서 이어갑니다.",
+    },
+    llm_policy: {
+      external_llm: false,
+      local_quantized_llm: false,
+      pretrained_generation_weights: false,
+    },
+  };
+}
+
+export function demoLearningDaemonStart() {
+  demoState.learningDaemon = {
+    ...demoState.learningDaemon,
+    state: "demo",
+    desired_running: false,
+    resume_needed: false,
+    last_heartbeat_at: now(),
+    last_round_action: "deployment_demo_boundary",
+  } as typeof demoState.learningDaemon;
+  return demoLearningDaemonStatus();
+}
+
+export function demoLearningDaemonResume() {
+  demoState.learningDaemon = {
+    ...demoState.learningDaemon,
+    state: "demo",
+    desired_running: false,
+    resume_needed: false,
+    last_heartbeat_at: now(),
+  };
+  return demoLearningDaemonStatus();
+}
+
+export function demoLearningDaemonStop() {
+  demoState.learningDaemon = {
+    ...demoState.learningDaemon,
+    state: "demo",
+    desired_running: false,
+    resume_needed: false,
+    last_heartbeat_at: now(),
+  };
+  return demoLearningDaemonStatus();
+}
+
+export function demoLearningDaemonCheckpoint() {
+  demoState.learningDaemon = {
+    ...demoState.learningDaemon,
+    state: "demo",
+    desired_running: false,
+    last_checkpoint_at: now(),
+  };
+  return demoLearningDaemonStatus();
+}
 
 export function demoNeuroPlan(input?: { text?: string; task_type?: string; target_device?: string; token_budget?: number; module_budget?: number }) {
   const text = input?.text || defaultNeuroText;
