@@ -183,6 +183,7 @@ const stateLabels: Record<string, string> = {
   warning: "점검",
   ready: "준비",
   waiting: "대기",
+  resume_needed: "재개 필요",
 };
 
 const fallbackMemoryColors = ["#ff6b35", "#006a9f", "#8c3fa7", "#22936f", "#c5283d", "#e89d2a", "#4a8fdb"];
@@ -628,6 +629,11 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
   };
 }
 
+function edgeKeyFromParts(source: unknown, target: unknown) {
+  if (!source || !target) return "";
+  return `${String(source)}:${String(target)}`;
+}
+
 function fmtClock(date = new Date()) {
   return date.toLocaleTimeString("ko-KR", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
@@ -700,7 +706,7 @@ function makeMemoryNodes(graph: AnyRecord | null): MemoryNode[] {
     [18, 72],
     [86, 20],
   ];
-  return rawNodes.slice(0, 12).map((node: AnyRecord, index: number) => ({
+  return rawNodes.slice(0, 900).map((node: AnyRecord, index: number) => ({
     id: node.id ?? node.label ?? `node-${index}`,
     label: node.label ?? node.name ?? node.id ?? `Node ${index + 1}`,
     type: node.type ?? node.labels?.[0] ?? "concept",
@@ -724,7 +730,7 @@ function makeMemoryEdges(graph: AnyRecord | null, nodes: MemoryNode[]): MemoryEd
       ];
   return rawEdges
     .filter((edge: AnyRecord) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
-    .slice(0, 18)
+    .slice(0, 1800)
     .map((edge: AnyRecord, index: number) => ({
       id: `${edge.source}-${edge.target}-${index}`,
       source: edge.source,
@@ -753,6 +759,9 @@ export default function BakeBoardPage() {
   const [memoryStatus, setMemoryStatus] = useState<AnyRecord | null>(null);
   const [memoryDrift, setMemoryDrift] = useState<AnyRecord | null>(null);
   const [learningDaemon, setLearningDaemon] = useState<AnyRecord | null>(null);
+  const [graphSourceMode, setGraphSourceMode] = useState<"build" | "memory">("memory");
+  const [workbenchInfoOpen, setWorkbenchInfoOpen] = useState(false);
+  const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
   const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8000");
@@ -880,6 +889,7 @@ export default function BakeBoardPage() {
   }
 
   async function refreshAll() {
+    const localStrict = localBackendConnected ? { localOnly: true } : {};
     const [
       pipelineStatus,
       datagateStatus,
@@ -902,7 +912,7 @@ export default function BakeBoardPage() {
       apiJson<AnyRecord>("/api/ontology/status"),
       apiJson<AnyRecord>("/api/ontology/graph"),
       apiJson<AnyRecord>("/api/memory/status"),
-      apiJson<AnyRecord>("/api/memory/graph?limit=900"),
+      apiJson<AnyRecord>("/api/memory/graph?limit=900", undefined, localStrict),
       apiJson<AnyRecord>("/api/memory/drift-check"),
       apiJson<AnyRecord>("/api/learning/daemon/status"),
       apiJson<AnyRecord>("/api/graphrag/status"),
@@ -1055,13 +1065,40 @@ export default function BakeBoardPage() {
   }
 
   async function runMemoryBuildStep() {
+    const localStrict = localBackendConnected ? { localOnly: true } : {};
+    const previousEdgeKeys = new Set(
+      ((graph?.edges ?? []) as AnyRecord[])
+        .map((edge) => edgeKeyFromParts(edge.source, edge.target))
+        .filter(Boolean),
+    );
+    const previousEdgeCount = Number(memoryStatus?.edge_count ?? graph?.edges?.length ?? 0);
     setMemoryStatus((current) => ({ ...(current ?? {}), state: "running" }));
-    const result = await apiJson<AnyRecord>("/api/memory/build", { method: "POST" });
-    const graphResult = await apiJson<AnyRecord>("/api/memory/graph?limit=900");
-    const driftResult = await apiJson<AnyRecord>("/api/memory/drift-check");
+    const result = await apiJson<AnyRecord>("/api/memory/build", { method: "POST" }, localStrict);
+    const graphResult = await apiJson<AnyRecord>("/api/memory/graph?limit=900", undefined, localStrict);
+    const driftResult = await apiJson<AnyRecord>("/api/memory/drift-check", undefined, localStrict);
     setMemoryStatus(result);
     setMemoryDrift(driftResult);
-    if (graphResult?.nodes?.length) setGraph(graphResult);
+    if (graphResult?.nodes?.length) {
+      setGraph(graphResult);
+      setGraphSourceMode("memory");
+      const learnedEdges = ((graphResult.edges ?? []) as AnyRecord[])
+        .filter((edge) => {
+          const key = edgeKeyFromParts(edge.source, edge.target);
+          return key && !previousEdgeKeys.has(key);
+        })
+        .slice(0, 18);
+      const nextEdgeCount = Number(result?.edge_count ?? graphResult.edges?.length ?? 0);
+      if (nextEdgeCount > previousEdgeCount && learnedEdges.length > 0) {
+        const learnedTrace = {
+          edgeKeys: learnedEdges.map((edge) => edgeKeyFromParts(edge.source, edge.target)).filter(Boolean),
+          nodeIds: Array.from(new Set(learnedEdges.flatMap((edge) => [String(edge.source), String(edge.target)]))).slice(0, 16),
+          text: `학습 연결 확정: 새 관계 ${learnedEdges.length}개가 메모리에 저장됨`,
+        };
+        window.setTimeout(() => activateSignal(learnedTrace, 12000), 80);
+      } else {
+        setSignalTraceText("학습 완료: 새 연결 변화 없음");
+      }
+    }
   }
 
   async function runLearningStage() {
@@ -1167,6 +1204,18 @@ export default function BakeBoardPage() {
       const nodes = result?.result?.matched_nodes ?? [];
       const answer = result?.result?.answer;
       const nodeText = nodes.length ? nodes.map((node: AnyRecord) => node.label).join(", ") : "현재 메모리";
+      if (answer) {
+        setDraft(answer);
+        try {
+          const guardResult = await apiJson<AnyRecord>("/api/guard/check", {
+            method: "POST",
+            body: JSON.stringify({ draft_answer: answer, evidence_bundle: result?.result ?? null }),
+          });
+          setGuard(guardResult);
+        } catch {
+          // Guardrail is an automatic output check; answer generation should not fail if the check is unavailable.
+        }
+      }
       setChatMessages((messages) => [
         ...messages,
         {
@@ -1310,6 +1359,7 @@ export default function BakeBoardPage() {
       const isInfiniteRun = run.learning_profile?.id === "infinite";
       setContinuousLearningActive(isInfiniteRun);
       setBuildRun(run);
+      setGraphSourceMode("build");
       setGraph({
         nodes: run.graph_3d.nodes.map((node) => ({
           id: node.id,
@@ -1435,7 +1485,7 @@ export default function BakeBoardPage() {
     };
   }, [activeBuildFrame?.node_count, buildIsInfinite, buildRun, buildTargetNodes, growthPulseCount, visualNodeCap]);
 
-  const displayGraph3D = activeGraph3D ?? memoryGraph3D;
+  const displayGraph3D = graphSourceMode === "memory" ? memoryGraph3D : activeGraph3D ?? memoryGraph3D;
   const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
   const visibleLiveNodeCount = displayGraph3D.nodes.filter((node) => node.id.startsWith("live-synapse")).length;
   const preservedAnchorNodeCount = buildRun?.graph_3d?.nodes.length ?? displayGraph3D.nodes.length;
@@ -1457,6 +1507,7 @@ export default function BakeBoardPage() {
 
   useEffect(() => {
     if (!activeGraph3D || !buildRun) return;
+    if (graphSourceMode === "memory") return;
     setGraph({
       nodes: activeGraph3D.nodes.map((node) => ({
         id: node.id,
@@ -1471,7 +1522,7 @@ export default function BakeBoardPage() {
         confidence: edge.weight ?? 0.66,
       })),
     });
-  }, [activeGraph3D, buildRun]);
+  }, [activeGraph3D, buildRun, graphSourceMode]);
 
   const displayMemoryNodeCount = displayGraph3D.nodes.length;
   const displayMemoryEdgeCount = displayGraph3D.edges.length;
@@ -1494,6 +1545,30 @@ export default function BakeBoardPage() {
   const daemonCheckpointText = learningDaemon?.last_checkpoint_at
     ? new Date(learningDaemon.last_checkpoint_at).toLocaleString("ko-KR")
     : "아직 없음";
+  const daemonStatusState = daemonCanOperate
+    ? learningDaemon?.worker_alive ? "running" : learningDaemon?.state === "failed" ? "failed" : learningDaemon?.state === "resume_needed" ? "warning" : "idle"
+    : "completed";
+  const labStatusState = error
+    ? "failed"
+    : isBuilding || continuousLearningActive || Boolean(activeAction) || isGeneratingAnswer
+      ? "running"
+      : "ready";
+  const headerStatusState = workspaceMode === "daemon"
+    ? daemonStatusState
+    : labStatusState;
+  const guardScore = guard?.overall_guard_score ?? guard?.result?.overall_guard_score ?? null;
+  const guardClaimCount = guard?.result?.claims?.length ?? 0;
+  const compactInfoSummary = [
+    `${currentLearningPreset.label}${learningVolume === "infinite" ? "" : ` ${targetNodeCount.toLocaleString()}`}`,
+    localBackendConnected ? "로컬 연결" : "fallback",
+    `GPU ${gpu?.utilization ?? 0}%`,
+    `RAM ${ramSoftGb}GB`,
+  ].join(" · ");
+  const chatSummaryText = [
+    `RAG ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
+    `근거 ${graphResult?.evidence_docs?.length ?? 0}`,
+    guardScore === null ? "Guard 자동" : `Guard ${guardScore}점`,
+  ].join(" · ");
   const flowHealth = useMemo(() => {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
     return Math.round((complete / Math.max(1, pipeline?.stages.length ?? 8)) * 100);
@@ -1667,14 +1742,14 @@ export default function BakeBoardPage() {
     {
       number: "03",
       title: "출력",
-      api: "POST /api/graphrag/query",
+      api: "POST /api/graphrag/query + /api/guard/check",
       state: activeAction === "output" || isGeneratingAnswer ? "running" : graphrag?.state ?? "idle",
-      description: "질문을 자연어로 넣으면 활성 노드와 그래프 전이를 읽어, 외부 LLM 없이 Homage 생성기가 답변을 만듭니다.",
+      description: "질문을 자연어로 넣으면 활성 노드와 그래프 전이를 읽어 답변을 만들고, 같은 근거 묶음으로 Guardrail을 자동 검증합니다.",
       metrics: [
         `신뢰도 ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
         `${graphResult?.evidence_docs?.length ?? 0} 근거`,
+        guardScore === null ? "Guard 자동 대기" : `Guard ${guardScore}점`,
         `웹 ${webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}`,
-        graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "준비",
       ],
       action: () => runProcessAction("output", async () => {
         setRightMode("chat");
@@ -1859,7 +1934,7 @@ export default function BakeBoardPage() {
           )}
           <span>{workspaceMode === "lab" ? `단계 ${processSteps.length}` : "로컬 뷰어"}</span>
           <strong>{workspaceMode === "daemon" ? "누적학습 상태" : rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
-          <StatusDot state={pipeline?.system_state === "mock" ? "running" : "completed"} />
+          <StatusDot state={headerStatusState} />
         </div>
       </header>
 
@@ -1994,11 +2069,23 @@ export default function BakeBoardPage() {
           <div className="right-panel">
             <div className="right-toolbar">
               {workspaceMode === "lab" ? (
-                <>
-                  <div className="mode-tabs">
-                    <button data-active={rightMode === "process"} onClick={() => setRightMode("process")}>학습 과정</button>
-                    <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 채팅</button>
-                  </div>
+                <div className="mode-tabs">
+                  <button data-active={rightMode === "process"} onClick={() => setRightMode("process")}>학습 과정</button>
+                  <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 채팅</button>
+                </div>
+              ) : (
+                <span className="toolbar-title">누적학습 뷰어</span>
+              )}
+              <button className="toolbar-toggle" onClick={() => setWorkbenchInfoOpen((open) => !open)}>
+                {workbenchInfoOpen ? "정보 접기" : "설정/상태"}
+              </button>
+              {!workbenchInfoOpen ? (
+                <div className="compact-toolbar-summary">
+                  <span>{workspaceMode === "daemon" ? `${daemonStateText} · worker ${learningDaemon?.worker_alive ? "alive" : "not alive"}` : compactInfoSummary}</span>
+                </div>
+              ) : (
+                <div className="toolbar-details">
+                  {workspaceMode === "lab" ? (
                   <div className="learning-volume-switcher" aria-label="학습량 선택">
                     <span>학습량</span>
                     {(Object.keys(learningVolumePresets) as LearningVolume[]).map((volume) => (
@@ -2052,37 +2139,38 @@ export default function BakeBoardPage() {
                       <span>웹 검색</span>
                     </label>
                   </div>
-                </>
-              ) : null}
-              <div className="local-backend-control" data-state={localBackendStatus}>
-                <span>로컬 FastAPI</span>
-                <input
-                  aria-label="로컬 FastAPI 주소"
-                  disabled={localBackendStatus === "checking"}
-                  value={localBackendUrl}
-                  onChange={(event) => {
-                    setLocalBackendUrl(event.currentTarget.value);
-                    if (localBackendConnected) {
-                      setLocalBackendStatus("idle");
-                      setLocalBackendMessage("주소가 바뀌었습니다. 다시 연결하세요.");
-                    }
-                  }}
-                />
-                <button
-                  disabled={localBackendStatus === "checking"}
-                  onClick={() => connectLocalBackend()}
-                >
-                  {localBackendStatus === "checking" ? "확인 중" : localBackendConnected ? "재연결" : "연결"}
-                </button>
-                {localBackendConnected ? <button onClick={disconnectLocalBackend}>해제</button> : null}
-                <small>{localBackendMessage}</small>
-              </div>
-              <div className="mini-metrics">
-                <span>흐름 {flowHealth}%</span>
-                <span>GPU {gpu?.utilization ?? 0}%</span>
-                <span>RAM soft {ramSoftGb}GB</span>
-                <span>{telemetryLabel}</span>
-              </div>
+                  ) : null}
+                  <div className="local-backend-control" data-state={localBackendStatus}>
+                    <span>로컬 FastAPI</span>
+                    <input
+                      aria-label="로컬 FastAPI 주소"
+                      disabled={localBackendStatus === "checking"}
+                      value={localBackendUrl}
+                      onChange={(event) => {
+                        setLocalBackendUrl(event.currentTarget.value);
+                        if (localBackendConnected) {
+                          setLocalBackendStatus("idle");
+                          setLocalBackendMessage("주소가 바뀌었습니다. 다시 연결하세요.");
+                        }
+                      }}
+                    />
+                    <button
+                      disabled={localBackendStatus === "checking"}
+                      onClick={() => connectLocalBackend()}
+                    >
+                      {localBackendStatus === "checking" ? "확인 중" : localBackendConnected ? "재연결" : "연결"}
+                    </button>
+                    {localBackendConnected ? <button onClick={disconnectLocalBackend}>해제</button> : null}
+                    <small>{localBackendMessage}</small>
+                  </div>
+                  <div className="mini-metrics">
+                    <span>흐름 {flowHealth}%</span>
+                    <span>GPU {gpu?.utilization ?? 0}%</span>
+                    <span>RAM soft {ramSoftGb}GB</span>
+                    <span>{telemetryLabel}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {workspaceMode === "daemon" ? (
@@ -2292,12 +2380,18 @@ export default function BakeBoardPage() {
               </div>
             ) : (
               <div className="chat-view">
-                <div className="chat-status-row">
-                  <div><span>RAG 신뢰도</span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
-                  <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
-                  <div><span>생성 방식</span><strong>{graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "준비"}</strong></div>
-                  <div><span>웹 검색</span><strong>{webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}</strong></div>
-                </div>
+                <button className="chat-info-toggle" onClick={() => setChatInfoOpen((open) => !open)}>
+                  {chatInfoOpen ? "상태 접기" : `상태 펼치기 · ${chatSummaryText}`}
+                </button>
+                {chatInfoOpen ? (
+                  <div className="chat-status-row">
+                    <div><span>RAG 신뢰도</span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
+                    <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
+                    <div><span>생성 방식</span><strong>{graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "준비"}</strong></div>
+                    <div><span>Guardrail</span><strong>{guardScore === null ? "자동 대기" : `${guardScore}점 / ${guardClaimCount} 주장`}</strong></div>
+                    <div><span>웹 검색</span><strong>{webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}</strong></div>
+                  </div>
+                ) : null}
                 <div className="chat-scroll" ref={chatScrollRef}>
                   {chatMessages.map((message, index) => (
                     <article className="message" data-role={message.role} key={`${message.role}-${index}`}>
@@ -2320,10 +2414,6 @@ export default function BakeBoardPage() {
                     </article>
                   ))}
                 </div>
-                <div className="draft-checker">
-                  <textarea value={draft} onChange={(event) => setDraft(event.target.value)} aria-label="검증할 답변 초안" />
-                  <button onClick={checkGuard}>Guardrail 검증</button>
-                </div>
                 <div className="chat-composer">
                   <textarea value={chatInput} onChange={(event) => setChatInput(event.target.value)} aria-label="RAG 질문 입력" />
                   <button disabled={isGeneratingAnswer} onClick={sendChat}>{isGeneratingAnswer ? "생성 중" : "질문 보내기"}</button>
@@ -2336,7 +2426,7 @@ export default function BakeBoardPage() {
 
       <section className="system-log">
         <div className="log-head">
-          <span>SYSTEM DASHBOARD</span>
+          <span>시스템 로그</span>
           <span>{pipeline?.generated_at ? new Date(pipeline.generated_at).toLocaleString("ko-KR") : "waiting"}</span>
         </div>
         {logs.map((log, index) => (

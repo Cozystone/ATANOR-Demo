@@ -673,3 +673,61 @@
   - screenshots:
     - `docs/screenshots/132-lab-first-three-stage-anchor-growth-local.png`
     - `docs/screenshots/133-daemon-readonly-local-api-viewer.png`
+
+## 2026-06-12 - Truthful learning signal, auto Guardrail, and compact lab UI
+
+- Added real connectivity-learning motion in the 3D GraphRAG scene:
+  - active relation lines now draw small orange pulses moving along the edge
+  - the pulses are created only for `activeEdgeKeys` that match rendered graph
+    edges
+  - the 3D host exposes `data-active-edge-count` and `data-edge-pulse-count`
+    for browser verification
+- Changed the `학습` process action so it compares the previous memory graph
+  with the graph returned after `POST /api/memory/build`.
+  - if the backend reports more relations and the UI can see newly stored
+    edges, the graph shows `학습 연결 확정`
+  - if no stored relation changed, the graph shows `학습 완료: 새 연결 변화 없음`
+    and no moving edge signal is drawn
+- Fixed the local memory graph display cap that made real memory growth look
+  stuck:
+  - memory nodes now render up to 900 instead of 12
+  - memory edges now render up to 1,800 instead of 18
+  - local FastAPI verification shows the current memory graph as 152 nodes /
+    540 relations instead of the fallback/demo-sized sample
+- Folded Guardrail into the `출력` stage:
+  - `POST /api/graphrag/query` answers are automatically passed to
+    `POST /api/guard/check`
+  - the manual Guardrail textarea/button is no longer shown in the chat panel
+  - the collapsed chat status summarizes RAG confidence, evidence count, and
+    Guard score
+- Collapsed the right-side learning/settings/status block behind `설정/상태`
+  by default, leaving more vertical room for RAG chat.
+- Made header state truthful:
+  - lab mode says `준비` unless a build/action/chat generation is actually
+    running
+  - cumulative viewer uses the daemon's actual worker state instead of the mock
+    pipeline state
+- Reduced the bottom log into a shorter Korean `시스템 로그` strip.
+- Verified in the browser with local FastAPI on `http://127.0.0.1:8042` and a
+  fresh Next production server on `http://127.0.0.1:3050`.
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 69 tests
+  - `npm --workspace apps/web run build` passed
+  - no-change learning run: 152 nodes / 540 relations, active edges 0, pulses 0
+  - real new-input learning probe: 152 -> 239 nodes, 540 -> 855 relations,
+    active edge keys 18, rendered pulse objects 69
+  - after removing the probe document and rebuilding: restored to 152 nodes /
+    540 relations, active edges 0, pulses 0
+  - chat auto-Guardrail: `GraphRAG가 뭐야?` updated the collapsed status to
+    `근거 5 · Guard 65점` without showing the old manual checker
+  - cumulative viewer: read-only, no start/build buttons, `stopped · worker not
+    alive`, 152 nodes / 540 relations
+- Deployed to Vercel production:
+  - `https://web-dxspwpa3d-anthony-kims-projects-bc874109.vercel.app`
+  - `https://homage-alpha.vercel.app` alias updated successfully
+  - production browser verification passed for lab three-stage cards, collapsed
+    status, hidden manual Guardrail checker, and read-only cumulative viewer
+- Captured screenshots:
+  - `docs/screenshots/134-learning-edge-pulse-actual.png`
+  - `docs/screenshots/135-chat-collapsed-auto-guard.png`
+  - `docs/screenshots/136-daemon-readonly-viewer.png`
+  - `docs/screenshots/137-final-lab-local-3050.png`

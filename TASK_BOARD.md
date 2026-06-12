@@ -43,12 +43,22 @@
       controls in the deployed UI.
 - [x] Smooth graph-frame growth and anchor live-synapse placement to avoid
       misleading third-step bursts and detached visual clusters.
+- [x] Show learning-edge motion only when `POST /api/memory/build` actually
+      stores new visible relations.
+- [x] Fold Guardrail into the output stage as an automatic answer check instead
+      of a separate manual chat control.
+- [x] Collapse right-side settings/status blocks by default so RAG chat has
+      more usable space.
+- [x] Make `누적학습` status truthful: read-only viewer, no daemon controls, and
+      no fake running state when the local worker is stopped.
 
 ## Next
 
 - [ ] Persist run history.
 - [ ] Persist Build Start graph frames and source provenance.
 - [ ] Persist live-synapse growth pulses as durable learning events.
+- [ ] Promote learning-edge pulse diagnostics into a persistent graph mutation
+      timeline once the append-only ontology event log is implemented.
 - [ ] Add governed background Harvest queue feeding the local daemon.
 - [ ] Add a native graph-memory decoder evaluation harness.
 - [ ] Replace allowlisted reference fetch with governed Harvest connectors.

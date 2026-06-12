@@ -21,7 +21,11 @@ unless an HTTPS local companion is configured.
 Current UI follow-up makes `실험실` the first/default workspace, turns
 `누적학습` into a read-only local/API viewer, collapses the lab flow to
 `수집 / 학습 / 출력`, and fixes misleading graph growth jumps/detached visual
-clusters.
+clusters. Latest follow-up makes the learning signal truthful: moving orange
+edge pulses are shown only when `POST /api/memory/build` actually adds visible
+relations, Guardrail is folded into the output stage automatically, the right
+status/settings area is collapsed by default, and the cumulative viewer reports
+the real local daemon worker state.
 
 ## Current Branch
 
@@ -143,6 +147,23 @@ Latest local commit before this update: Clarify live learning limits and safety 
   - live-synapse placement no longer drifts by an unbounded ring offset and the
     3D renderer preserves source-anchor coordinates more strongly, reducing
     detached side clusters and misleading long relation lines.
+- Added truthful 3D learning-edge motion:
+  - `관계 계산` compares previous and newly returned memory graph edges
+  - moving orange edge particles are rendered only for new stored relation edges
+    that are present in the visible graph
+  - no-change runs show `학습 완료: 새 연결 변화 없음` and keep active
+    edge/pulse counts at zero
+  - browser verification used an uncommitted temporary cleaned document to
+    confirm a real increase from 152/540 to 239/855, then removed it and rebuilt
+    back to 152/540
+- Folded Guardrail into the output flow:
+  - RAG chat automatically calls `/api/guard/check` after `/api/graphrag/query`
+  - the manual Guardrail checker is hidden
+  - collapsed chat status shows RAG confidence, evidence count, and Guard score
+- Raised the local memory graph display from a demo cap to 900 nodes and 1,800
+  edges so real local memory growth is visible.
+- Collapsed the right-side settings/status UI by default and shortened the
+  bottom dashboard into `시스템 로그`.
 - Added the Codex Desktop long-run research goal prompt document.
 - Real local benchmark hardware is passed into stability recalculation.
 - Infinite learning preflight/auto-stop now checks real telemetry for RAM,
@@ -164,11 +185,14 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - `PYTHONPATH=... python -m pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q`
 - `python -m compileall ...`
 - `npm --workspace apps/web run build`
+- local browser verification on `http://127.0.0.1:3050` with FastAPI
+  `http://127.0.0.1:8042`
 - `PYTHONPATH=... python -m pytest packages/knowledge_bakery/tests/test_daemon.py apps/api/tests/test_learning_daemon_api.py -q`
 - `git diff --check`
 - `npx vercel --prod --yes`
 - `npx vercel alias set web-ffvjjolxy-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
 - `npx vercel alias set web-7784z7z4w-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
+- `npx vercel alias set web-dxspwpa3d-anthony-kims-projects-bc874109.vercel.app homage-alpha.vercel.app`
 - Local hardware verification used FastAPI on `127.0.0.1:8002` and Next
   production server on `127.0.0.1:3025`.
 
@@ -178,6 +202,20 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - Latest targeted verification: `npm --workspace apps/web run build` passed and
   `PYTHONPATH=... python -m pytest apps/api packages/knowledge_bakery
   packages/rag_engine -q` passed with 23 tests.
+- Latest UI/browser verification:
+  - final local lab link: `http://127.0.0.1:3050/?workspace=lab&api=http://127.0.0.1:8042`
+  - cumulative viewer link: `http://127.0.0.1:3050/?workspace=daemon&api=http://127.0.0.1:8042`
+  - no-change learning run produced active edges 0 / pulses 0
+  - real temporary learning probe produced active edge keys 18 / pulse objects
+    69, then was removed and memory rebuilt back to 152 nodes / 540 relations
+  - RAG chat auto-Guardrail produced a collapsed status with `Guard 65점`
+  - screenshots: `docs/screenshots/134-learning-edge-pulse-actual.png`,
+    `135-chat-collapsed-auto-guard.png`,
+    `136-daemon-readonly-viewer.png`,
+    `137-final-lab-local-3050.png`
+  - production alias `https://homage-alpha.vercel.app` points to
+    `web-dxspwpa3d-anthony-kims-projects-bc874109.vercel.app` and was
+    browser-verified for lab three-stage cards and read-only cumulative viewer
 - Python compile passed.
 - Frontend build passed.
 - Local browser verification passed, including Neuro-Efficiency Rebalance and

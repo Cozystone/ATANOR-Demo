@@ -42,6 +42,7 @@ type Rag3DSceneProps = {
 type SceneState = {
   camera: THREE.PerspectiveCamera;
   dynamicObjects: THREE.Object3D[];
+  edgePulseCount: number;
   frame: number;
   group: THREE.Group;
   knownNodeIds: Set<string>;
@@ -276,6 +277,7 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     traversalPairs.add(`${graph.traversal_path?.[index]}:${graph.traversal_path?.[index + 1]}`);
   }
 
+  let edgePulseCount = 0;
   const maxEdges = graph.nodes.length > 1_600 ? 3_200 : graph.nodes.length > 800 ? 2_400 : Number.POSITIVE_INFINITY;
   const edgeStride = Number.isFinite(maxEdges) && graph.edges.length > maxEdges
     ? Math.ceil(graph.edges.length / maxEdges)
@@ -296,7 +298,25 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
       opacity: isActive ? 0.9 : isTraversal ? 0.7 : 0.52,
     });
     addDynamicObject(state, new THREE.Line(geometry, material));
+
+    if (isActive) {
+      for (let pulse = 0; pulse < 3; pulse += 1) {
+        const pulseMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.075 + pulse * 0.008, 12, 12),
+          new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.78 - pulse * 0.14 }),
+        );
+        pulseMesh.position.copy(source);
+        pulseMesh.userData.edgePulse = {
+          source: source.clone(),
+          target: target.clone(),
+          phase: pulse / 3,
+        };
+        addDynamicObject(state, pulseMesh);
+        edgePulseCount += 1;
+      }
+    }
   }
+  state.edgePulseCount = edgePulseCount;
   state.knownNodeIds = nextKnownNodeIds;
 }
 
@@ -374,6 +394,7 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
     const state: SceneState = {
       camera,
       dynamicObjects: [],
+      edgePulseCount: 0,
       frame: 0,
       group,
       knownNodeIds: new Set(),
@@ -456,10 +477,19 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
         const pulse = 1 + Math.sin(state.frame * 0.16 + object.position.y) * 0.2;
         object.scale.setScalar(pulse);
       }
+      for (const object of state.dynamicObjects) {
+        const pulse = object.userData.edgePulse as { source: THREE.Vector3; target: THREE.Vector3; phase: number } | undefined;
+        if (!pulse) continue;
+        const t = (state.frame * 0.018 + pulse.phase) % 1;
+        object.position.copy(pulse.source).lerp(pulse.target, t);
+        object.scale.setScalar(0.75 + Math.sin((t * Math.PI)) * 0.7);
+      }
       const totalNodes = graphRef.current?.nodes?.length ?? 0;
       container.dataset.cameraZ = camera.position.z.toFixed(1);
       container.dataset.maxZoom = maxZoomDistanceForNodeCount(totalNodes).toFixed(1);
       container.dataset.nodeCount = String(totalNodes);
+      container.dataset.activeEdgeCount = String(activeEdgeRef.current.size);
+      container.dataset.edgePulseCount = String(state.edgePulseCount);
       renderer.render(scene, camera);
     }
     animate();

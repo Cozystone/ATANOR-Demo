@@ -76,6 +76,31 @@ Deployment:
   - `실험실` is simplified to the three intended stages:
     수집(문장 분해 및 GraphRAG 구축), 학습(온톨로지 생성 및 관계 계산),
     출력(자연어 입력/답변)
+- Lab UI truthfulness and density cleanup:
+  - right-side learning volume / local FastAPI / metric details are collapsed
+    behind `설정/상태` by default so chat has more space
+  - the bottom dashboard is now a shorter Korean `시스템 로그`
+  - lab header status shows `준비` unless a build/action/chat generation is
+    actually running
+  - cumulative viewer status uses the real local daemon worker state instead of
+    the mock pipeline status
+- Truthful 3D learning-edge signal:
+  - the `학습` action compares the previous memory graph with the graph returned
+    after `POST /api/memory/build`
+  - moving orange edge pulses are drawn only when new stored relations are
+    detected and those edges are present in the rendered graph
+  - no-change learning runs show `학습 완료: 새 연결 변화 없음` and keep active
+    edge/pulse counts at zero
+  - the 3D host exposes active-edge and edge-pulse debug attributes for browser
+    verification
+- Output-stage Guardrail integration:
+  - RAG answers are automatically passed through `POST /api/guard/check`
+  - the old manual chat Guardrail checker is hidden
+  - chat status summarizes RAG confidence, evidence count, and Guard score
+- Memory graph display fix:
+  - memory nodes now render up to 900 and edges up to 1,800
+  - local FastAPI memory graph now displays the actual current 152-node /
+    540-relation graph instead of looking capped at the demo-sized sample
 - Added `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` with the paste-ready Codex
   Desktop goal prompt and reboot protocol.
 - Neuro-Efficiency Layer for event sparsity, modular routing, continual
@@ -188,6 +213,32 @@ Deployment:
 
 ## Verification
 
+- Latest truthful learning-signal / compact UI verification:
+  - `npm --workspace apps/web run build` passed.
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 69 tests.
+  - local FastAPI `http://127.0.0.1:8042` and local Next production server
+    `http://127.0.0.1:3050` were browser-tested directly.
+  - no-change `관계 계산` run: 152 nodes / 540 relations, active edges 0,
+    edge pulses 0, and `학습 완료: 새 연결 변화 없음`.
+  - temporary new-input probe run: 152 -> 239 nodes, 540 -> 855 relations,
+    active edge keys 18, rendered pulse objects 69, and
+    `학습 연결 확정`.
+  - after deleting the probe and rebuilding, local memory restored to 152 nodes
+    / 540 relations with active edges 0 and pulses 0.
+  - `RAG 채팅` auto-ran Guardrail; `GraphRAG가 뭐야?` updated collapsed status
+    to `근거 5 · Guard 65점` with no manual checker visible.
+  - `?workspace=daemon&api=http://127.0.0.1:8042` is read-only, shows no
+    start/build controls, and reports `stopped · worker not alive`.
+  - production deploy succeeded:
+    `https://web-dxspwpa3d-anthony-kims-projects-bc874109.vercel.app`
+  - `https://homage-alpha.vercel.app` now points to that deployment and was
+    browser-verified for three lab process cards, no manual Guardrail checker,
+    and read-only cumulative viewer state.
+  - screenshots:
+    - `docs/screenshots/134-learning-edge-pulse-actual.png`
+    - `docs/screenshots/135-chat-collapsed-auto-guard.png`
+    - `docs/screenshots/136-daemon-readonly-viewer.png`
+    - `docs/screenshots/137-final-lab-local-3050.png`
 - Latest UI cleanup/local viewer verification:
   - `npm --workspace apps/web run build` passed.
   - `PYTHONPATH=... python -m pytest apps/api packages/knowledge_bakery packages/rag_engine -q`

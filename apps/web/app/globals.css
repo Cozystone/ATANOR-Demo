@@ -585,6 +585,55 @@ p {
   background: var(--white);
 }
 
+.toolbar-title {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.toolbar-toggle,
+.chat-info-toggle {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.toolbar-toggle {
+  margin-left: auto;
+  padding: 6px 9px;
+}
+
+.compact-toolbar-summary {
+  flex: 1 1 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #fafafa;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.compact-toolbar-summary span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-details {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 .learning-volume-switcher {
   display: flex;
   align-items: center;
@@ -1145,6 +1194,14 @@ p {
   gap: 8px;
 }
 
+.chat-info-toggle {
+  align-self: stretch;
+  padding: 7px 9px;
+  background: #fafafa;
+  color: var(--muted);
+  text-align: left;
+}
+
 .chat-status-row div {
   display: grid;
   gap: 4px;
@@ -1269,26 +1326,26 @@ p {
 }
 
 .system-log {
-  flex: 0 0 92px;
+  flex: 0 0 64px;
   overflow-y: auto;
   border-top: 1px solid #222;
-  padding: 10px 14px;
+  padding: 7px 14px;
   background: #020302;
   color: #d6d8d6;
   font-family: "Consolas", "JetBrains Mono", monospace;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 .log-head {
   justify-content: space-between;
   border-bottom: 1px solid #252a26;
-  padding-bottom: 8px;
-  margin-bottom: 8px;
+  padding-bottom: 5px;
+  margin-bottom: 5px;
   color: #858b87;
 }
 
 .system-log p {
-  margin: 0 0 5px;
+  margin: 0 0 3px;
   color: #c5cbc7;
 }
 
