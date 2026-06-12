@@ -99,6 +99,9 @@ Default behavior:
 - Fresh/current/news queries auto-enable web search. If no provider key is
   configured, Homage first tries a public news RSS fallback (`news-rss`) and
   only then falls back to deterministic static references.
+- Person/knowledge lookup queries auto-enable web search. Without a provider
+  key, Homage tries Korean Wikipedia (`wikipedia`) before static references so
+  questions like "who is this person?" do not answer from GraphRAG docs.
 
 Optional raw-result providers:
 

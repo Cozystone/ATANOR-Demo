@@ -4,10 +4,11 @@ import os
 import re
 import urllib.request
 import xml.etree.ElementTree as ET
+import json
 from html import unescape
 from dataclasses import asdict, dataclass
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 
 @dataclass
@@ -67,10 +68,18 @@ FRESH_SEARCH_PATTERN = re.compile(
     "(\uC624\uB298|\uD604\uC7AC|\uCD5C\uC2E0|\uBC29\uAE08|\uC2E4\uC2DC\uAC04|\uC18D\uBCF4|\uB274\uC2A4|\uB0A0\uC528|\uC8FC\uAC00|\uD658\uC728|today|latest|recent|current|breaking|news|weather|stock|price)",
     re.IGNORECASE,
 )
+KNOWLEDGE_LOOKUP_PATTERN = re.compile(
+    "(\uB204\uAD6C|\uB204\uAD6C\uC57C|\uBB50\uC57C|\uBB34\uC5C7|\uC815\uC758|\uC54C\uB824\uC918|\uC124\uBA85|who is|what is|tell me about|define|explain)",
+    re.IGNORECASE,
+)
 
 
 def is_fresh_search_query(query: str) -> bool:
     return bool(FRESH_SEARCH_PATTERN.search(query))
+
+
+def is_knowledge_lookup_query(query: str) -> bool:
+    return bool(KNOWLEDGE_LOOKUP_PATTERN.search(query))
 
 
 def _provider_configured(provider: str) -> bool:
@@ -94,6 +103,7 @@ def provider_status(provider: str | None = None) -> dict[str, Any]:
             "brave": bool(os.getenv("BRAVE_SEARCH_API_KEY")),
             "serper": bool(os.getenv("SERPER_API_KEY")),
             "tavily": bool(os.getenv("TAVILY_API_KEY")),
+            "wikipedia": True,
             "static": True,
         },
         "microsoft_grounding_with_bing": {
@@ -122,6 +132,68 @@ def static_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     return [asdict(result) | {"search_score": score} for score, result in scored[: max(1, min(count, 10))]]
 
 
+def _strip_html(value: str) -> str:
+    text = unescape(unescape(value or ""))
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"&[a-zA-Z#0-9]+;", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _normalize_lookup_query(query: str) -> str:
+    cleaned = re.sub(r"[?!.,]", " ", query)
+    cleaned = re.sub(
+        "(\uB204\uAD6C\uC57C|\uB204\uAD6C\uB2C8|\uB204\uAD6C|\uBB50\uC57C|\uBB34\uC5C7\uC774\uC57C|\uBB34\uC5C7|\uC54C\uB824\uC918|\uC124\uBA85\uD574\uC918|\uC18C\uAC1C\uD574\uC918|\uC815\uC758|who is|what is|tell me about|define|explain)",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    tokens = [token for token in re.split(r"\s+", cleaned.strip()) if token]
+    trimmed = [re.sub("[\uC740\uB294\uC774\uAC00\uC744\uB97C]$", "", token) for token in tokens]
+    return " ".join(token for token in trimmed if token).strip() or query.strip()
+
+
+def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
+    lookup = _normalize_lookup_query(query)
+    bounded_count = max(1, min(count, 10))
+    api_url = (
+        "https://ko.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1"
+        f"&srlimit={bounded_count}&srsearch={quote_plus(lookup)}"
+    )
+    request = urllib.request.Request(api_url, headers={"User-Agent": "HomageAlpha/0.1 web-search"})
+    with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public API endpoint
+        body = json.loads(response.read().decode("utf-8"))
+    results: list[dict[str, Any]] = []
+    for index, item in enumerate((body.get("query", {}).get("search", []) or [])[:bounded_count], start=1):
+        title = _strip_html(item.get("title") or lookup)
+        page_slug = quote(title.replace(" ", "_"), safe="")
+        page_url = f"https://ko.wikipedia.org/wiki/{page_slug}"
+        snippet = _strip_html(item.get("snippet") or "")
+        if index <= 2:
+            try:
+                summary_url = f"https://ko.wikipedia.org/api/rest_v1/page/summary/{page_slug}"
+                summary_request = urllib.request.Request(summary_url, headers={"User-Agent": "HomageAlpha/0.1 web-search"})
+                with urllib.request.urlopen(summary_request, timeout=5) as summary_response:  # nosec B310
+                    summary = json.loads(summary_response.read().decode("utf-8"))
+                snippet = _strip_html(summary.get("extract") or snippet)
+                page_url = summary.get("content_urls", {}).get("desktop", {}).get("page") or page_url
+            except Exception:
+                pass
+        if title and snippet:
+            results.append(
+                {
+                    "id": f"wikipedia-{index}",
+                    "title": title,
+                    "url": page_url,
+                    "snippet": snippet,
+                    "provider": "wikipedia",
+                    "source_type": "encyclopedia_search",
+                    "license_status": "reference_only",
+                    "search_score": bounded_count - index + 1,
+                }
+            )
+    return results
+
+
 def news_rss_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     url = f"https://news.google.com/rss/search?q={quote_plus(query)}&hl=ko&gl=KR&ceid=KR:ko"
     request = urllib.request.Request(url, headers={"User-Agent": "HomageAlpha/0.1 web-search"})
@@ -133,10 +205,7 @@ def news_rss_search(query: str, count: int = 5) -> list[dict[str, Any]]:
         title = (item.findtext("title") or "News result").strip()
         link = (item.findtext("link") or "").strip()
         pub_date = (item.findtext("pubDate") or "").strip()
-        description = unescape(unescape(item.findtext("description") or ""))
-        description = re.sub(r"<[^>]+>", " ", description)
-        description = re.sub(r"&[a-zA-Z#0-9]+;", " ", description)
-        description = re.sub(r"\s+", " ", description).strip()
+        description = _strip_html(item.findtext("description") or "")
         if not link:
             continue
         results.append(
@@ -179,6 +248,21 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
             if results:
                 return {
                     "provider": "news-rss",
+                    "query": clean_query,
+                    "results": results,
+                    "configured": True,
+                    "bing_query_url": f"https://www.bing.com/search?q={quote_plus(clean_query)}",
+                    "status": "ok",
+                    "provider_status": provider_status(selected),
+                }
+        except Exception:
+            pass
+    if is_knowledge_lookup_query(clean_query) and selected == "static":
+        try:
+            results = wikipedia_search(clean_query, bounded_count)
+            if results:
+                return {
+                    "provider": "wikipedia",
                     "query": clean_query,
                     "results": results,
                     "configured": True,

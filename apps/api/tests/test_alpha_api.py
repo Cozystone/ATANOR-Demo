@@ -5,7 +5,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.web_search import is_fresh_search_query
+from app.services import web_search as web_search_module
+from app.services.web_search import is_fresh_search_query, is_knowledge_lookup_query
 
 
 def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
@@ -51,6 +52,33 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert "raw_no_node::" not in fresh_result["answer"]
     assert fresh_result["web_search"]["provider"] in {"news-rss", "static"}
     assert fresh_result["answer_engine"]["external_llm"] is False
+
+    person_query = "\uC720\uC7AC\uC11D\uC774 \uB204\uAD6C\uC57C"
+    assert is_knowledge_lookup_query(person_query)
+
+    def fake_wikipedia_search(query: str, count: int = 5) -> list[dict]:
+        return [
+            {
+                "id": "wikipedia-1",
+                "title": "\uC720\uC7AC\uC11D",
+                "url": "https://ko.wikipedia.org/wiki/%EC%9C%A0%EC%9E%AC%EC%84%9D",
+                "snippet": "\uC720\uC7AC\uC11D\uC740 \uB300\uD55C\uBBFC\uAD6D\uC758 \uBC29\uC1A1\uC778\uC774\uC790 MC\uC774\uB2E4.",
+                "provider": "wikipedia",
+                "source_type": "encyclopedia_search",
+                "license_status": "reference_only",
+                "search_score": 5,
+            }
+        ]
+
+    monkeypatch.setattr(web_search_module, "wikipedia_search", fake_wikipedia_search)
+    person_rag = client.post("/api/graphrag/query", json={"query": person_query})
+    assert person_rag.status_code == 200
+    person_result = person_rag.json()["result"]
+    assert person_result["method"] == "homage-native-web-search-rag-v1"
+    assert person_result["web_search"]["provider"] == "wikipedia"
+    assert "\uC720\uC7AC\uC11D" in person_result["answer"]
+    assert "provider" not in person_result["answer"]
+    assert person_result["answer_engine"]["external_llm"] is False
 
     greeting = client.post("/api/graphrag/query", json={"query": "안녕"})
     assert greeting.status_code == 200

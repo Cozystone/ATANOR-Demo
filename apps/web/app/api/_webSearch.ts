@@ -51,9 +51,14 @@ const staticResults: WebSearchResult[] = [
 ];
 
 const freshSearchPattern = /(\uC624\uB298|\uD604\uC7AC|\uCD5C\uC2E0|\uBC29\uAE08|\uC2E4\uC2DC\uAC04|\uC18D\uBCF4|\uB274\uC2A4|\uB0A0\uC528|\uC8FC\uAC00|\uD658\uC728|today|latest|recent|current|breaking|news|weather|stock|price)/i;
+const knowledgeLookupPattern = /(\uB204\uAD6C|\uB204\uAD6C\uC57C|\uBB50\uC57C|\uBB34\uC5C7|\uC815\uC758|\uC54C\uB824\uC918|\uC124\uBA85|who is|what is|tell me about|define|explain)/i;
 
 export function isFreshSearchQuery(query: string) {
   return freshSearchPattern.test(query);
+}
+
+export function isKnowledgeLookupQuery(query: string) {
+  return knowledgeLookupPattern.test(query);
 }
 
 function selectedProvider(provider?: string | null) {
@@ -79,6 +84,7 @@ export function webSearchProviderStatus(provider?: string | null) {
       brave: Boolean(process.env.BRAVE_SEARCH_API_KEY),
       serper: Boolean(process.env.SERPER_API_KEY),
       tavily: Boolean(process.env.TAVILY_API_KEY),
+      wikipedia: true,
       static: true,
     },
     microsoft_grounding_with_bing: {
@@ -108,6 +114,17 @@ function staticSearch(query: string, count: number): WebSearchResult[] {
     .slice(0, Math.max(1, Math.min(count, 10)));
 }
 
+function normalizeLookupQuery(query: string) {
+  const cleaned = query
+    .replace(/[?!.,]/g, " ")
+    .replace(/(\uB204\uAD6C\uC57C|\uB204\uAD6C\uB2C8|\uB204\uAD6C|\uBB50\uC57C|\uBB34\uC5C7\uC774\uC57C|\uBB34\uC5C7|\uC54C\uB824\uC918|\uC124\uBA85\uD574\uC918|\uC18C\uAC1C\uD574\uC918|\uC815\uC758|who is|what is|tell me about|define|explain)/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  const trimmedTokens = tokens.map((token) => token.replace(/[\uC740\uB294\uC774\uAC00\uC744\uB97C]$/u, ""));
+  return trimmedTokens.join(" ").trim() || query.trim();
+}
+
 function stripTags(value: string) {
   const decoded = value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -123,6 +140,57 @@ function stripTags(value: string) {
     .replace(/&[a-zA-Z#0-9]+;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+async function wikipediaSearch(query: string, count: number): Promise<WebSearchResult[]> {
+  const lookup = normalizeLookupQuery(query);
+  const apiUrl = `https://ko.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1&srlimit=${count}&srsearch=${encodeURIComponent(lookup)}`;
+  const response = await fetch(apiUrl, {
+    cache: "no-store",
+    headers: { "User-Agent": "HomageAlpha/0.1 web-search" },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`Wikipedia search returned ${response.status}`);
+  const body = await response.json();
+  const searchItems = (body.query?.search ?? []).slice(0, count);
+  const results: WebSearchResult[] = [];
+
+  for (const [index, item] of searchItems.entries()) {
+    const title = stripTags(item.title ?? lookup);
+    const pageUrl = `https://ko.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, "_"))}`;
+    let snippet = stripTags(item.snippet ?? "");
+    let url = pageUrl;
+    if (index < 2) {
+      try {
+        const summaryResponse = await fetch(`https://ko.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/\s+/g, "_"))}`, {
+          cache: "no-store",
+          headers: { "User-Agent": "HomageAlpha/0.1 web-search" },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (summaryResponse.ok) {
+          const summary = await summaryResponse.json();
+          snippet = stripTags(summary.extract ?? snippet);
+          url = summary.content_urls?.desktop?.page ?? pageUrl;
+        }
+      } catch {
+        // Search snippets are still usable if summary lookup fails.
+      }
+    }
+    if (title && snippet) {
+      results.push({
+        id: `wikipedia-${index + 1}`,
+        title,
+        url,
+        snippet,
+        provider: "wikipedia",
+        source_type: "encyclopedia_search",
+        license_status: "reference_only",
+        search_score: count - index,
+      });
+    }
+  }
+
+  return results;
 }
 
 async function newsRssSearch(query: string, count: number): Promise<WebSearchResult[]> {
@@ -250,6 +318,8 @@ export async function searchWeb(query?: string | null, count = 5, provider?: str
     const results =
       isFreshSearchQuery(cleanQuery) && (!isConfigured(selected) || selected === "static")
         ? await newsRssSearch(cleanQuery, boundedCount)
+        : isKnowledgeLookupQuery(cleanQuery) && (!isConfigured(selected) || selected === "static")
+        ? await wikipediaSearch(cleanQuery, boundedCount)
         : selected === "brave" && isConfigured(selected)
         ? await braveSearch(cleanQuery, boundedCount)
         : selected === "serper" && isConfigured(selected)
@@ -261,7 +331,7 @@ export async function searchWeb(query?: string | null, count = 5, provider?: str
       provider: results[0]?.provider ?? (isConfigured(selected) ? selected : "static"),
       query: cleanQuery,
       results,
-      configured: isConfigured(selected),
+      configured: isConfigured(selected) || ["news-rss", "wikipedia"].includes(results[0]?.provider ?? ""),
       bing_query_url: bingQueryUrl,
       status: selected === "static" || isConfigured(selected) ? "ok" : "fallback_static",
       provider_status: webSearchProviderStatus(selected),

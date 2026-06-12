@@ -531,6 +531,26 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
   };
 }
 
+function cleanWebSnippet(value: any) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function makeExtractiveWebAnswer(query: string, webEvidenceDocs: any[]) {
+  const first = webEvidenceDocs[0];
+  const title = cleanWebSnippet(first?.title || first?.doc_id || "");
+  const snippets = webEvidenceDocs
+    .slice(0, 3)
+    .map((doc) => cleanWebSnippet(doc.snippet))
+    .filter(Boolean);
+  if (!snippets.length) return title || query;
+  const firstProvider = first?.retrieval_signals?.provider || first?.provider;
+  if (firstProvider === "wikipedia" || String(first?.doc_id ?? "").startsWith("wikipedia")) {
+    return title ? `${title}: ${snippets[0]}` : snippets[0];
+  }
+  const body = snippets.join(" ");
+  return title ? `${title}: ${body}` : body;
+}
+
 function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPayload: any) {
   const base = makeNoEvidenceResult(query);
   if (!webEvidenceDocs.length) {
@@ -544,12 +564,10 @@ function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPay
       },
     };
   }
-  const titles = webEvidenceDocs.slice(0, 3).map((doc) => doc.title ?? doc.doc_id).join(", ");
-  const snippets = webEvidenceDocs.slice(0, 2).map((doc) => doc.snippet).join(" ");
   return {
     ...base,
     method: "homage-native-web-search-rag-v1",
-    answer: `웹 검색 근거를 함께 읽었습니다. 현재 질문 '${query}'에 대해 ${webSearchPayload?.provider ?? "web"} provider가 ${webEvidenceDocs.length}개 후보를 반환했고, 우선 확인한 출처는 ${titles}입니다. ${snippets}`,
+    answer: makeExtractiveWebAnswer(query, webEvidenceDocs),
     evidence_docs: webEvidenceDocs,
     citations: webEvidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.url ?? doc.path, url: doc.url, score: doc.score })),
     web_search: webSearchPayload,

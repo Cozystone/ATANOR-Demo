@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { demoGraphRAGQuery, isConversationalQuery, isLegendQuery, isNodeInventoryQuery } from "../../_alphaDemo";
 import { proxyJson } from "../../_backend";
-import { isFreshSearchQuery, searchWeb, webResultsToEvidence } from "../../_webSearch";
+import { isFreshSearchQuery, isKnowledgeLookupQuery, searchWeb, webResultsToEvidence } from "../../_webSearch";
 
 function isRawNoNodeResult(body: any) {
   const result = body?.result ?? {};
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   } catch {
     // Fall through to deterministic demo with the default query.
   }
-  webSearch = webSearch || isFreshSearchQuery(query);
+  webSearch = webSearch || isFreshSearchQuery(query) || isKnowledgeLookupQuery(query);
 
   if (isConversationalQuery(query) || isLegendQuery(query) || isNodeInventoryQuery(query)) {
     return NextResponse.json(demoGraphRAGQuery(query));

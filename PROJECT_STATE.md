@@ -150,9 +150,16 @@ Deployment:
     Korean "today news" query returned `homage-native-web-search-rag-v1`,
     provider `news-rss`, 5 evidence docs, `external_llm: false`, and no
     `raw_no_node::` marker.
+  - Person/knowledge lookup queries now auto-enable web search. Local smoke for
+    a Korean celebrity lookup returned provider `wikipedia`, not `static`,
+    removed provider-count template text from the answer, kept
+    `external_llm: false`, and returned no `raw_no_node::` marker.
   - Production smoke on `https://homage-alpha.vercel.app/api/graphrag/query`
     for the same fresh-news query returned status 200, provider `news-rss`, 5
     evidence docs, `external_llm: false`, and no `raw_no_node::` marker.
+  - Production smoke for the Korean celebrity lookup returned status 200,
+    provider `wikipedia`, 5 evidence docs, no provider-count template text,
+    `external_llm: false`, and no `raw_no_node::` marker.
   - `POST /api/factory/build/start` with `web_search: true` folded search
     results into `harvest_docs` with `search_provider`, `search_query`, and
     `bing_query_url` metadata.

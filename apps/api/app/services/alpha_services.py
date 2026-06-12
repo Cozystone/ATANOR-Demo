@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -14,7 +15,7 @@ from ontology_forge import run_ontology
 from rag_engine import query_graphrag
 from trainer import run_dry_run
 
-from app.services.web_search import is_fresh_search_query, search_web, web_results_to_evidence
+from app.services.web_search import is_fresh_search_query, is_knowledge_lookup_query, search_web, web_results_to_evidence
 
 
 AlphaState = Literal["idle", "running", "completed", "failed"]
@@ -79,8 +80,8 @@ class AlphaService:
             self.graphrag = self.graphrag | {"state": "running", "started_at": utc_now_iso(), "finished_at": None, "error": None, "last_query": query}
         try:
             result = query_graphrag(query)
-            should_search = web_search or is_fresh_search_query(query)
-            if should_search and (_should_web_search(result) or is_fresh_search_query(query)):
+            should_search = web_search or is_fresh_search_query(query) or is_knowledge_lookup_query(query)
+            if should_search and (web_search or _should_web_search(result) or is_fresh_search_query(query) or is_knowledge_lookup_query(query)):
                 search_payload = await search_web(query, 5, web_search_provider)
                 result = _merge_web_search_result(query, result, search_payload)
             status = {
@@ -93,7 +94,7 @@ class AlphaService:
                 "result": result,
             }
         except Exception as exc:  # pragma: no cover
-            status = self.graphrag | {"state": "failed", "finished_at": utc_now_iso(), "error": str(exc)}
+            status = self.graphrag | {"state": "failed", "finished_at": utc_now_iso(), "error": str(exc), "confidence": 0, "result": None}
         with self._lock:
             self.graphrag = status
             return dict(self.graphrag)
@@ -247,6 +248,23 @@ def _should_web_search(result: dict[str, Any]) -> bool:
     )
 
 
+def _clean_web_snippet(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _make_extractive_web_answer(query: str, evidence_docs: list[dict[str, Any]]) -> str:
+    first = evidence_docs[0] if evidence_docs else {}
+    title = _clean_web_snippet(first.get("title") or first.get("doc_id") or "")
+    snippets = [_clean_web_snippet(doc.get("snippet")) for doc in evidence_docs[:3]]
+    body = " ".join(snippet for snippet in snippets if snippet)
+    if not body:
+        return title or query
+    first_provider = first.get("provider") or first.get("retrieval_signals", {}).get("provider")
+    if first_provider == "wikipedia" or str(first.get("doc_id") or "").startswith("wikipedia"):
+        return f"{title}: {snippets[0]}" if title else snippets[0]
+    return f"{title}: {body}" if title else body
+
+
 def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: dict[str, Any]) -> dict[str, Any]:
     evidence_docs = web_results_to_evidence(search_payload.get("results", []))
     if not evidence_docs:
@@ -259,12 +277,7 @@ def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: d
                 "web_search_status": search_payload.get("status"),
             },
         }
-    top_titles = ", ".join(doc.get("title", doc["doc_id"]) for doc in evidence_docs[:3])
-    snippets = " ".join(doc.get("snippet", "") for doc in evidence_docs[:2]).strip()
-    answer = (
-        f"웹 검색 근거를 함께 읽었습니다. 현재 질문 '{query}'에 대해 {search_payload.get('provider', 'web')} provider가 "
-        f"{len(evidence_docs)}개 후보를 반환했고, 우선 확인한 출처는 {top_titles}입니다. {snippets}"
-    ).strip()
+    answer = _make_extractive_web_answer(query, evidence_docs)
     return {
         **base,
         "method": "homage-native-web-search-rag-v1",
