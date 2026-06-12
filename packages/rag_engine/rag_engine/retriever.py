@@ -77,10 +77,16 @@ def _is_internal_structure_query(query: str) -> bool:
 
 
 def _conversational_result(query: str, kind: str) -> dict[str, Any]:
+    if kind == "greeting":
+        answer = "안녕하세요. Homage 실험실입니다. 지금은 외부 LLM 없이 로컬 그래프 메모리와 native 생성기를 실험하는 상태예요."
+    elif kind == "thanks":
+        answer = "천만에요. 지금 실험 결과가 이상하면 그대로 알려주세요. 그래프, 검색, 생성 경로를 분리해서 확인하겠습니다."
+    else:
+        answer = query.strip()
     return {
         "query": query,
         "method": "homage-conversation-router-v1",
-        "answer": f"CONTROL_INTENT\nkind={kind}\nretrieval=skipped\nanswer_surface=disabled",
+        "answer": answer,
         "matched_nodes": [],
         "matched_edges": [],
         "evidence_docs": [],
@@ -95,12 +101,13 @@ def _conversational_result(query: str, kind: str) -> dict[str, Any]:
             "matched_node_ids": [],
         },
         "confidence": 0.96,
-        "answer_kind": "control_intent",
+        "answer_kind": "conversation",
         "answer_engine": {
             "name": "Homage Graph Token Predictor",
-            "mode": "control-intent-no-generation-alpha",
+            "mode": "conversation-surface-no-retrieval-alpha",
             "external_llm": False,
-            "surface_generation": "disabled",
+            "surface_generation": "native_conversation_surface",
+            "control_intent": kind,
         },
     }
 

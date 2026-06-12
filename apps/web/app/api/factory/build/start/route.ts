@@ -297,7 +297,7 @@ export async function POST(request: Request) {
     text_budget_chars: learningPreset.textBudgetChars,
     ready: nodes.length >= 8 && edges.length >= 7,
     render_strategy: learningPreset.id === "infinite"
-      ? "continuous collection accumulates graph events; 3D renders a rolling frontier plus stable anchors."
+      ? "continuous collection accumulates graph events; the lab view appends live nodes without hidden history."
       : "chunk budget grows independently; 3D graph renders sampled representative memory nodes.",
     visual_node_budget: learningPreset.visualNodeBudget,
     target_nodes: learningPreset.targetNodes,
@@ -306,7 +306,7 @@ export async function POST(request: Request) {
     representative_edge_count: edges.length,
     target_realized: learningPreset.targetNodes === null ? false : nodes.length >= learningPreset.targetNodes,
     sampling_explanation: learningPreset.targetNodes === null
-      ? "infinite mode has no target_nodes cap; graph_3d contains a bounded rolling representative sample for browser rendering."
+      ? "infinite mode has no target_nodes cap; graph_3d starts from representative anchors and the lab view appends live nodes directly."
       : "target_nodes is the long-run ontology budget; graph_3d contains a bounded representative sample for browser rendering.",
     continuous: learningPreset.id === "infinite",
     next_action: learningPreset.id === "infinite"

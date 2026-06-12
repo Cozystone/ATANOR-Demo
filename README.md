@@ -253,8 +253,9 @@ npm --workspace apps/web run build
   for visualization; it is not an unrestricted crawler.
 - `target_nodes` is a long-run storage/training budget. `graph_3d` is a bounded
   representative browser sample. Standard runs now use a 480-node render window,
-  and max/infinite runs can target 500,000 nodes while rendering a 2,000-node
-  rolling frontier plus summary nodes.
+  and max/infinite runs can target 500,000 nodes. In the lab workspace, live
+  nodes are appended directly to the 3D graph instead of being folded into
+  hidden history.
 - No external LLM answer generation.
 - No LLM judging.
 - No pretrained model weights.

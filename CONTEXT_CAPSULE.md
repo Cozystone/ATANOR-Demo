@@ -93,8 +93,8 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - Live-synapse growth now supports a rolling window so candidate nodes can keep
   accumulating while the browser renders a bounded representative graph.
 - Live-synapse display now reports preserved API anchor nodes, visible new
-  `live-synapse-*` nodes, summarized `live-summary-*` history nodes, and the
-  latest new node id.
+  `live-synapse-*` nodes, and the latest new node id. Lab mode no longer folds
+  live nodes into hidden history.
 - 3D zoom-out is graph-size responsive instead of capped at a fixed camera
   distance; the 3D host exposes camera/node debug data for browser verification.
 - FastAPI system telemetry now includes `source: local-fastapi`, RAM total/used,
@@ -117,9 +117,9 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - Local connector GET requests no longer force CORS preflights with
   `Content-Type: application/json`; transient local API failures now keep the
   connector healthy when `/health` still succeeds.
-- The UI now explains that standard `10,000` target runs use a `480` node
-  render window with about `413` API anchors; max/infinite runs can target
-  `500,000` nodes while the browser renders a bounded frontier/summary window.
+- The UI now explains that standard `10,000` target runs start from a
+  representative API anchor set; max/infinite runs can target `500,000` nodes
+  while lab live nodes remain visibly appended instead of being hidden.
 - Added a local cumulative-learning daemon layer that persists
   `daemon_state.json`, writes checkpoint snapshots, reports `resume_needed`
   after process/PC restart, and exposes FastAPI status/start/resume/stop/

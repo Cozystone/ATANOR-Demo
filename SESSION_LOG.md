@@ -614,3 +614,23 @@
 - Updated README, PROJECT_STATE, and TASK_BOARD with the deployment/demo versus
   local-development boundary.
 - Verified targeted daemon/API tests and Next production build.
+
+## 2026-06-12 - Lab graph growth and greeting surface fix
+
+- Removed the lab graph rolling-window behavior that made new nodes appear to
+  replace the lower part of the 3D graph.
+- `buildLiveGrowth` now appends all live `live-synapse-*` nodes directly to the
+  visible graph for the lab workspace; it no longer creates `live-summary-*`
+  nodes or hidden history.
+- Updated active-signal fallback so it retargets to recent live nodes and
+  traversal nodes, not summary nodes.
+- Changed greeting/thanks routing so users no longer see:
+  `CONTROL_INTENT kind=greeting retrieval=skipped answer_surface=disabled`.
+- Greeting now returns a short native conversation surface while still marking
+  `external_llm: false`.
+- Verified with local browser: after Build Start the 3D host reached 1,768
+  visible nodes with 48 newly appended live nodes and no `live-summary` DOM.
+- Verified with local browser that `안녕` returns a Korean greeting sentence and
+  no longer exposes `CONTROL_INTENT`.
+- Screenshot:
+  - `docs/screenshots/131-lab-growth-no-hidden-greeting-fixed.png`

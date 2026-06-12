@@ -42,12 +42,13 @@ def test_query_graphrag_routes_greeting_without_evidence(tmp_path):
 
     assert result["method"] == "homage-conversation-router-v1"
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_engine"]["surface_generation"] == "disabled"
+    assert result["answer_engine"]["surface_generation"] == "native_conversation_surface"
     assert result["evidence_docs"] == []
     assert result["matched_nodes"] == []
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
-    assert result["answer"].startswith("CONTROL_INTENT")
-    assert result["answer_kind"] == "control_intent"
+    assert "CONTROL_INTENT" not in result["answer"]
+    assert "안녕하세요" in result["answer"]
+    assert result["answer_kind"] == "conversation"
 
 
 def test_query_graphrag_lists_nodes_without_retrieval(tmp_path):

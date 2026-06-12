@@ -96,7 +96,6 @@ const liveGrowthTemplates = [
 const maxTargetNodes = 500_000;
 const liveGrowthBatchSize = 24;
 const minLiveGrowthPulses = 8;
-const liveSummaryBatchSize = 72;
 
 const codexResearchGoalPrompt = `Homage1.0을 장기 연구 목표로 계속 개선한다.
 
@@ -123,47 +122,15 @@ function defaultTargetNodesForVolume(volume: LearningVolume) {
   return volume === "max" || volume === "infinite" ? maxTargetNodes : learningVolumePresets[volume].targetNodes ?? 10_000;
 }
 
-function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = Number.POSITIVE_INFINITY, rollingWindow = false): Rag3DGraph {
+function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = Number.POSITIVE_INFINITY): Rag3DGraph {
   const liveNodes: Rag3DNode[] = [];
   const liveEdges: Rag3DEdge[] = [];
-  const summaryNodes: Rag3DNode[] = [];
-  const summaryEdges: Rag3DEdge[] = [];
   const baseIds = new Set(base.nodes.map((node) => node.id));
   const totalLiveNodeCount = Math.max(0, Math.floor(pulseCount)) * liveGrowthBatchSize;
   const maxRenderedNodes = Number.isFinite(maxTotalNodes) ? Math.max(base.nodes.length, Math.floor(maxTotalNodes)) : Number.POSITIVE_INFINITY;
-  const preliminarySlots = Math.max(0, Math.floor(maxRenderedNodes - base.nodes.length));
-  const preliminaryHidden = rollingWindow ? Math.max(0, totalLiveNodeCount - preliminarySlots) : 0;
-  const summaryCount = rollingWindow && preliminaryHidden > 0
-    ? Math.min(12, Math.ceil(preliminaryHidden / liveSummaryBatchSize))
-    : 0;
-  const renderSlots = Math.max(0, Math.floor(maxRenderedNodes - base.nodes.length - summaryCount));
-  const startIndex = rollingWindow ? Math.max(0, totalLiveNodeCount - renderSlots) : 0;
-  const endIndex = Math.min(totalLiveNodeCount, startIndex + renderSlots);
-  if (summaryCount > 0) {
-    for (let summaryIndex = 0; summaryIndex < summaryCount; summaryIndex += 1) {
-      const rangeStart = summaryIndex * liveSummaryBatchSize + 1;
-      const rangeEnd = Math.min(startIndex, (summaryIndex + 1) * liveSummaryBatchSize);
-      if (rangeEnd < rangeStart) continue;
-      const angle = summaryIndex * 1.7;
-      const radius = 5.2 + (summaryIndex % 4) * 0.42;
-      const id = `live-summary-${summaryIndex + 1}-${rangeEnd}`;
-      const anchor = base.nodes[(summaryIndex * 17) % Math.max(1, base.nodes.length)]?.id;
-      summaryNodes.push({
-        id,
-        label: `요약 ${rangeStart}-${rangeEnd}`,
-        type: "summary",
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius * 0.72,
-        z: 2.6 + (summaryIndex % 3) * 0.5,
-        confidence: 0.58,
-      });
-      if (anchor) summaryEdges.push({ source: anchor, target: id, relation: "summarizes_hidden_events", weight: 0.5 });
-      if (summaryIndex > 0) {
-        const previousRangeEnd = Math.min(startIndex, summaryIndex * liveSummaryBatchSize);
-        summaryEdges.push({ source: `live-summary-${summaryIndex}-${previousRangeEnd}`, target: id, relation: "continues_history", weight: 0.42 });
-      }
-    }
-  }
+  const renderSlots = Math.max(0, Math.floor(maxRenderedNodes - base.nodes.length));
+  const startIndex = 0;
+  const endIndex = Math.min(totalLiveNodeCount, renderSlots);
   for (let index = startIndex; index < endIndex; index += 1) {
     const template = liveGrowthTemplates[index % liveGrowthTemplates.length];
     const ring = Math.floor(index / liveGrowthTemplates.length);
@@ -195,15 +162,10 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
       liveEdges.push({ source: `live-synapse-${index + 1 - liveGrowthBatchSize}`, target: id, relation: "consolidates_with", weight: 0.55 });
     }
   }
-  const firstVisible = liveNodes[0]?.id;
-  const lastSummary = summaryNodes.at(-1)?.id;
-  if (firstVisible && lastSummary) {
-    summaryEdges.push({ source: lastSummary, target: firstVisible, relation: "opens_live_frontier", weight: 0.5 });
-  }
   return {
-    nodes: [...base.nodes, ...summaryNodes, ...liveNodes],
-    edges: [...base.edges, ...summaryEdges, ...liveEdges],
-    traversal_path: [...(base.traversal_path ?? []), ...summaryNodes.slice(-2).map((node) => node.id), ...liveNodes.slice(-8).map((node) => node.id)],
+    nodes: [...base.nodes, ...liveNodes],
+    edges: [...base.edges, ...liveEdges],
+    traversal_path: [...(base.traversal_path ?? []), ...liveNodes.slice(-8).map((node) => node.id)],
   };
 }
 
@@ -623,14 +585,10 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
       .filter((node) => node.id.startsWith("live-synapse"))
       .slice(-10)
       .map((node) => node.id);
-    const summaryIds = graph.nodes
-      .filter((node) => node.id.startsWith("live-summary"))
-      .slice(-4)
-      .map((node) => node.id);
     const traversalIds = (graph.traversal_path ?? [])
       .filter((id) => visibleNodeIds.has(id))
       .slice(-8);
-    activeNodeIds = Array.from(new Set([...recentLiveIds, ...summaryIds, ...traversalIds])).slice(0, 14);
+    activeNodeIds = Array.from(new Set([...recentLiveIds, ...traversalIds])).slice(0, 14);
     retargeted = Boolean(memoryNodeIds.size && activeNodeIds.length);
   }
   const activeNodeSet = new Set(activeNodeIds);
@@ -1426,7 +1384,7 @@ export default function BakeBoardPage() {
     ? growthPulseCount > 0
       ? {
           tick: buildTick + 1,
-          node_count: Math.min(visualNodeCap, buildRun.graph_3d.nodes.length + growthPulseCount * liveGrowthBatchSize),
+          node_count: buildRun.graph_3d.nodes.length + growthPulseCount * liveGrowthBatchSize,
           edge_count: buildRun.graph_3d.edges.length + growthPulseCount * liveGrowthBatchSize * 2,
           message:
             buildIsInfinite
@@ -1439,7 +1397,7 @@ export default function BakeBoardPage() {
     : null;
   const activeGraph3D = useMemo<Rag3DGraph | null>(() => {
     if (!buildRun?.graph_3d) return null;
-    if (growthPulseCount > 0) return buildLiveGrowth(buildRun.graph_3d, growthPulseCount, visualNodeCap, Boolean(buildIsInfinite || buildTargetNodes > visualNodeCap));
+    if (growthPulseCount > 0) return buildLiveGrowth(buildRun.graph_3d, growthPulseCount, Number.POSITIVE_INFINITY);
     const visibleNodeCount = activeBuildFrame?.node_count ?? buildRun.graph_3d.nodes.length;
     const nodeIds = new Set(buildRun.graph_3d.nodes.slice(0, visibleNodeCount).map((node) => node.id));
     return {
@@ -1452,9 +1410,7 @@ export default function BakeBoardPage() {
   const displayGraph3D = activeGraph3D ?? memoryGraph3D;
   const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
   const visibleLiveNodeCount = displayGraph3D.nodes.filter((node) => node.id.startsWith("live-synapse")).length;
-  const summaryNodeCount = displayGraph3D.nodes.filter((node) => node.id.startsWith("live-summary")).length;
   const preservedAnchorNodeCount = buildRun?.graph_3d?.nodes.length ?? displayGraph3D.nodes.length;
-  const hiddenLiveNodeCount = Math.max(0, totalLiveNodeCount - visibleLiveNodeCount);
   const newestLiveNodeId = totalLiveNodeCount > 0 ? `live-synapse-${totalLiveNodeCount}` : null;
   const representativeCapReached = Boolean(buildRun && displayGraph3D.nodes.length >= visualNodeCap);
   const representativeTargetPercent = buildRun && !buildIsInfinite ? percent(representativeNodeCount, buildTargetNodes) : 0;
@@ -1871,10 +1827,10 @@ export default function BakeBoardPage() {
                     <span>{activeBuildFrame?.message ?? "빌드 시작을 누르면 노드가 파생됩니다."}</span>
                     {buildRun ? (
                       <span>
-                        기존 앵커 {preservedAnchorNodeCount} 유지 / 새 노드 {visibleLiveNodeCount} 표시 / 요약 {summaryNodeCount} 묶음
+                        기존 앵커 {preservedAnchorNodeCount} 유지 / 새 노드 {visibleLiveNodeCount} 전체 누적 표시
                       </span>
                     ) : null}
-                    {newestLiveNodeId ? <span>최신 새 노드 {newestLiveNodeId} / 비표시 이력 {hiddenLiveNodeCount}</span> : null}
+                    {newestLiveNodeId ? <span>최신 새 노드 {newestLiveNodeId} / 전체 live 노드 표시 중</span> : null}
                     <span className="signal-trace" data-active={activeSignalNodeIds.length > 0 || isGeneratingAnswer}>{signalTraceText}</span>
                   </div>
                 </>
@@ -2146,10 +2102,10 @@ export default function BakeBoardPage() {
                             <span data-state="complete">기존 앵커 {preservedAnchorNodeCount} 유지</span>
                           ) : null}
                           {representativeCapReached ? (
-                            <span data-state="running">대표 렌더 상한 {visualNodeCap} 도달</span>
+                            <span data-state="running">대표 기준 {visualNodeCap} 초과, 숨김 없음</span>
                           ) : null}
                           {buildIsInfinite ? (
-                            <span data-state="running">새 노드 표시 {visibleLiveNodeCount} / 요약 {summaryNodeCount}</span>
+                            <span data-state="running">새 노드 표시 {visibleLiveNodeCount} / 숨김 없음</span>
                           ) : null}
                           {resourceStopReason ? (
                             <span data-state="running">안전중지 대기: {resourceStopReason}</span>
@@ -2165,13 +2121,13 @@ export default function BakeBoardPage() {
                           ) : null}
                           <small>
                             대표 노드 최대 {buildRun.training_gate.visual_node_budget ?? buildRun.graph_3d.nodes.length}개
-                            {buildIsInfinite ? ` / 누적 후보 ${accumulatedLearningNodes.toLocaleString()}개 / 비표시 이력 ${hiddenLiveNodeCount.toLocaleString()}개` : ""}
+                            {buildIsInfinite ? ` / 누적 표시 ${accumulatedLearningNodes.toLocaleString()}개 / 전체 표시` : ""}
                           </small>
                           <small>
                             장기 목표 {buildTargetNodeLabel}{buildIsInfinite ? "" : "개"}는 저장/학습 예산이고, API graph_3d는 대표 앵커 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}개를 보냅니다.
                           </small>
                           <small>
-                            현재 화면은 live 이벤트를 합쳐 {displayGraph3D.nodes.length}개를 렌더링 중이며 {buildIsInfinite ? "목표 상한 없이 계속 누적 중" : `장기 목표의 약 ${renderedTargetPercent}%`}입니다. 장기 목표는 계속 누적되고, 3D 화면은 선택한 대표 렌더 윈도우와 요약 노드로 안정화됩니다.
+                            현재 화면은 live 이벤트를 합쳐 {displayGraph3D.nodes.length}개를 렌더링 중이며 {buildIsInfinite ? "목표 상한 없이 계속 누적 중" : `장기 목표의 약 ${renderedTargetPercent}%`}입니다. 실험실에서는 새 노드를 그래프에 그대로 이어 붙입니다.
                           </small>
                           <small>
                             {buildIsInfinite ? "API 대표 앵커는 무제한 학습의 현재 샘플입니다." : `API 대표 앵커만 보면 장기 목표의 약 ${representativeTargetPercent}%입니다.`} 전체 목표를 실제 저장하려면 다음 단계인 append-only 온톨로지 이벤트 로그와 SQLite hot index가 필요합니다.

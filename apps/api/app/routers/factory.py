@@ -103,7 +103,7 @@ async def build_start(payload: BuildStartRequest) -> dict[str, Any]:
         "text_budget_chars": preset["textBudgetChars"],
         "ready": len(nodes) >= 8 and len(edges) >= 7,
         "render_strategy": (
-            "continuous collection accumulates graph events; 3D renders a rolling frontier plus stable anchors."
+            "continuous collection accumulates graph events; the lab view appends live nodes without hidden history."
             if continuous
             else "target_nodes is a long-run storage goal; graph_3d renders a bounded representative sample."
         ),

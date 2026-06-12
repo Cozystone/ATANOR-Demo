@@ -107,11 +107,11 @@ Deployment:
     about `413` API anchor nodes, so they can grow beyond the old `210` node /
     `427` relation visual ceiling
   - max runs accept a `500,000` node long-run target with a `2,000` node
-    rolling frontier/summary render window rather than trying to draw all
-    nodes in WebGL at once
+    representative anchor budget; lab live-synapse nodes are appended visibly
+    instead of being folded into hidden history
   - infinite runs now use `target_nodes: null` / `unbounded_continuous_goal`;
-    the UI shows `∞` instead of a hidden 500,000-node cap while keeping the
-    same safe rolling frontier render window
+    the UI shows `∞` instead of a hidden 500,000-node cap and keeps new
+    live-synapse nodes visible as they are added
   - local browser verification screenshot:
     `docs/screenshots/121-500k-max-render-cap-local.png`
 - Sentence-element ontology extraction:

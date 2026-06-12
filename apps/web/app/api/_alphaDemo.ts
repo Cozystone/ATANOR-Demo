@@ -472,10 +472,15 @@ function nodeMatchesQuery(nodeId: string, query: string) {
 }
 
 function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "no_match") {
+  const answer = kind === "greeting"
+    ? "안녕하세요. Homage 실험실입니다. 지금은 외부 LLM 없이 그래프 메모리와 native 생성기를 실험하는 상태예요."
+    : kind === "thanks"
+      ? "천만에요. 이상한 출력이 보이면 그대로 남겨 주세요. 그래프와 생성 경로를 분리해서 확인하겠습니다."
+      : query;
   return {
     query,
     method: "homage-conversation-router-v1",
-    answer: `CONTROL_INTENT\nkind=${kind}\nretrieval=skipped\nanswer_surface=disabled`,
+    answer,
     matched_nodes: [],
     matched_edges: [],
     evidence_docs: [],
@@ -489,8 +494,12 @@ function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "
       ranked_chunk_ids: [],
       matched_node_ids: [],
     },
-    answer_kind: "control_intent",
-    answer_engine: { ...nativeAnswerEngine("control-intent-no-generation-alpha"), surface_generation: "disabled" },
+    answer_kind: "conversation",
+    answer_engine: {
+      ...nativeAnswerEngine("conversation-surface-no-retrieval-alpha"),
+      surface_generation: "native_conversation_surface",
+      control_intent: kind,
+    },
     confidence: kind === "no_match" ? 0.35 : 0.96,
   };
 }
