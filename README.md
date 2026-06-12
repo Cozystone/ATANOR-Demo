@@ -12,6 +12,28 @@ Tauri desktop packaging path with a Python sidecar.
 
 ![Homage Lab 3D GraphRAG](docs/screenshots/147-production-lab-volumetric-default.png)
 
+## Research Thesis
+
+Homage starts from a simple question: can a personal workstation become more
+useful by storing knowledge as an evolving graph, instead of forcing a language
+model to memorize everything inside opaque weights?
+
+The target architecture separates the system into two brains:
+
+- **Local Brain:** private, persistent, hardware-adaptive memory on the user's
+  own machine.
+- **Cloud Brain:** shared public graph fragments that can be queried or copied
+  without shipping a giant model around.
+
+The current Alpha does not claim to outperform modern LLMs. It is a transparent
+prototype for testing whether graph lookup, synaptic edge weights, pruning,
+lazy loading, and a future local syntax assembler can reduce the amount of
+brute-force generation needed for useful answers.
+
+한국어로 요약하면, Homage는 지식을 거대 모델 파라미터 안에 억지로 숨기는 대신
+3D 온톨로지 그래프에 드러내 놓고, 질문할 때 필요한 하위 그래프만 읽어 자연어
+출력으로 조립하려는 신경망-기호 하이브리드 로컬 AI 실험입니다.
+
 ## What This Is
 
 Homage is a research attempt to replace part of the brute-force LLM workflow
@@ -66,6 +88,20 @@ and survives reboot through SQLite WAL plus daemon state files.
 ![Local daemon running](docs/screenshots/128-local-daemon-running.png)
 
 More UI verification screenshots are available in [docs/screenshots](docs/screenshots).
+
+## Three-Step Flow
+
+Homage is intentionally organized around three visible stages:
+
+| Stage | Purpose | What the UI should reveal |
+| --- | --- | --- |
+| 1. Collect | Ingest web/local text, split sentences, filter noisy inputs | source count, chunks, DataGate pass/fail |
+| 2. Learn | Build ontology concepts, calculate relation weights, checkpoint memory | new nodes, reinforced edges, pruning/decay |
+| 3. Output | Retrieve active graph context and attempt a native answer | activated nodes, confidence, evidence/graph path |
+
+This is why the lab view shows the graph and the process panel together. When a
+node or edge lights up, it should correspond to an actual retrieval, insertion,
+or learning event rather than a decorative animation.
 
 ## Architecture
 
