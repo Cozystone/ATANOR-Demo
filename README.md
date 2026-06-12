@@ -1,8 +1,48 @@
 # Homage1.0 Alpha
 
+**한줄 설명:** 신경망-기호 하이브리드 로컬 AI 엔진 Homage1.0.
+
 Homage1.0 is a transparent neuro-symbolic AI factory MVP. Alpha includes a
 FastAPI backend, a Next.js BakeBoard dashboard, deterministic local pipeline
 packages, and a deployed interactive BakeBoard demo.
+
+## Vision
+
+Homage1.0 is a research project for building a local AI engine that can use a
+personal workstation more like an adaptive brain than a brute-force cloud model.
+The long-term goal is to reduce dependence on massive external inference
+systems by separating knowledge storage, graph reasoning, and language
+generation into distinct local subsystems.
+
+The core idea is neuro-symbolic. Facts, source traces, and concept relations are
+not meant to be hidden inside a giant model's parameters. They are stored as a
+3D ontology knowledge graph managed by CPU, SSD, and a persistent local memory
+layer. The graph acts as an explicit semantic map: document chunks become nodes,
+sentence elements become typed concepts, and repeated relationships become
+weighted edges. Frequently used paths can harden into long-term memory, while
+weak or unused paths can be pruned.
+
+The GPU side is intentionally narrower. Instead of asking a huge pretrained LLM
+to both remember the world and write the answer, Homage aims to train a small
+independent local language module from scratch whose job is closer to syntax
+assembly: read the graph-provided token/concept bundle, then render it into
+natural language. Current Alpha does not yet contain that finished decoder. It
+exposes the intermediate research state through a native Graph Token Predictor,
+so weak graph structure is allowed to produce weak text rather than being hidden
+behind polished rule-based filler.
+
+This architecture is designed for the user's target workstation class
+(Ryzen 9 9950X3D, RTX 5080 16GB, 32GB RAM): CPU/SSD maintain the ontology graph,
+RAM holds the active hot window, and GPU compute is reserved for compact local
+training and generation experiments. Long-running learning is handled locally
+with hardware benchmarking, watermarks, checkpoints, and backpressure so the
+system can pause before RAM, VRAM, or disk pressure destabilizes the machine.
+
+The intended ecosystem is federated. Each user keeps a private local brain for
+secure personal knowledge, while public or shared web ontology fragments can be
+plugged in temporarily when fresh information is needed. In that model, the
+local graph remains the durable source of truth, and web search behaves like a
+short-lived evidence feed rather than a permanent dependency on an external LLM.
 
 The current research answer path is not a polished evidence-summary RAG. It is
 a raw Graph Token Predictor: harvested/web text is decomposed into sentence
