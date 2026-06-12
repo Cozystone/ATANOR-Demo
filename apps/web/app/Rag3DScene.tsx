@@ -47,7 +47,8 @@ type SceneState = {
   group: THREE.Group;
   knownNodeIds: Set<string>;
   lastFitDistance: number;
-  raycastMeshes: THREE.Mesh[];
+  nodePoints: THREE.Points | null;
+  pointNodes: Rag3DNode[];
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
 };
@@ -127,7 +128,8 @@ function clearDynamicObjects(state: SceneState) {
     disposeObject(object);
   }
   state.dynamicObjects = [];
-  state.raycastMeshes = [];
+  state.nodePoints = null;
+  state.pointNodes = [];
 }
 
 function addDynamicObject(state: SceneState, object: THREE.Object3D) {
@@ -255,6 +257,14 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   const nextKnownNodeIds = new Set<string>();
   const positions = spreadPositions(graph.nodes);
   const sphereSegments = graph.nodes.length > 1_200 ? 10 : graph.nodes.length > 600 ? 14 : 24;
+  const identityQuaternion = new THREE.Quaternion();
+  const ringQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+  const instanceMatrix = new THREE.Matrix4();
+  const instanceColor = new THREE.Color();
+  const instanceScale = new THREE.Vector3();
+  const haloInstances: Array<{ color: number; position: THREE.Vector3; scale: number }> = [];
+  const ringInstances: Array<{ position: THREE.Vector3; scale: number }> = [];
+  const pulseInstances: Array<{ phase: number; source: THREE.Vector3; target: THREE.Vector3 }> = [];
   const fitDistance = fitDistanceForPositions(positions, state.camera);
   if (fitDistance > state.lastFitDistance || fitDistance > state.camera.position.z) {
     state.camera.position.z = Math.max(state.camera.position.z, fitDistance);
@@ -265,50 +275,35 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   }
   clampCameraZ(state.camera, graph.nodes.length);
 
+  const pointPositions = new Float32Array(graph.nodes.length * 3);
+  const pointColors = new Float32Array(graph.nodes.length * 3);
+  const colorValue = new THREE.Color();
   for (const [index, node] of graph.nodes.entries()) {
     nextKnownNodeIds.add(node.id);
     const position = positions[index];
     nodeMap.set(node.id, position);
     const isActive = activeNodeIds.has(node.id);
     const color = isActive ? 0xff6b35 : palette[node.type] ?? 0x68736d;
-    const radius = (0.17 + (node.confidence ?? 0.7) * 0.12) * (isActive ? 1.18 : 1);
-    const geometry = new THREE.SphereGeometry(radius, sphereSegments, sphereSegments);
-    const material = new THREE.MeshStandardMaterial({
-      color,
-      emissive: isActive ? 0xff6b35 : 0x000000,
-      emissiveIntensity: isActive ? 1.35 : 0,
-      roughness: 0.42,
-      metalness: 0.18,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.copy(position);
-    mesh.userData.node = node;
-    mesh.userData.active = isActive;
-    mesh.userData.spawnFrame = state.knownNodeIds.has(node.id) ? state.frame - 100 : state.frame;
-    state.raycastMeshes.push(mesh);
-    addDynamicObject(state, mesh);
+    pointPositions[index * 3] = position.x;
+    pointPositions[index * 3 + 1] = position.y;
+    pointPositions[index * 3 + 2] = position.z;
+    colorValue.setHex(color);
+    pointColors[index * 3] = colorValue.r;
+    pointColors[index * 3 + 1] = colorValue.g;
+    pointColors[index * 3 + 2] = colorValue.b;
 
-    if (graph.nodes.length <= 800 || isActive || node.type === "summary") {
-      const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(radius * (isActive ? 2.25 : 1.7), sphereSegments, sphereSegments),
-        new THREE.MeshBasicMaterial({ color: isActive ? 0xff8a3d : color, transparent: true, opacity: isActive ? 0.38 : 0.08 }),
-      );
-      halo.position.copy(position);
-      halo.userData.activeHalo = isActive;
-      halo.userData.spawnFrame = mesh.userData.spawnFrame;
-      addDynamicObject(state, halo);
+    if (isActive || (node.type === "summary" && graph.nodes.length <= 2_000)) {
+      const radius = (0.17 + (node.confidence ?? 0.7) * 0.12) * (isActive ? 1.22 : 1);
+      haloInstances.push({
+        color: isActive ? 0xff8a3d : color,
+        position,
+        scale: radius * (isActive ? 2.25 : 1.7),
+      });
     }
 
     if (isActive) {
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(radius * 2.55, Math.max(0.015, radius * 0.07), 8, 40),
-        new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.56 }),
-      );
-      ring.position.copy(position);
-      ring.rotation.x = Math.PI / 2;
-      ring.userData.activeHalo = true;
-      ring.userData.spawnFrame = mesh.userData.spawnFrame;
-      addDynamicObject(state, ring);
+      const radius = (0.17 + (node.confidence ?? 0.7) * 0.12) * 1.22;
+      ringInstances.push({ position, scale: radius * 2.55 });
     }
 
     if (shouldShowLabel(node, graph.nodes.length, isActive)) {
@@ -317,6 +312,57 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
       addDynamicObject(state, sprite);
     }
   }
+  const pointGeometry = new THREE.BufferGeometry();
+  pointGeometry.setAttribute("position", new THREE.BufferAttribute(pointPositions, 3));
+  pointGeometry.setAttribute("color", new THREE.BufferAttribute(pointColors, 3));
+  pointGeometry.computeBoundingSphere();
+  const pointMaterial = new THREE.PointsMaterial({
+    size: graph.nodes.length > 100_000 ? 0.038 : graph.nodes.length > 25_000 ? 0.05 : graph.nodes.length > 5_000 ? 0.066 : 0.095,
+    vertexColors: true,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.96,
+  });
+  const points = new THREE.Points(pointGeometry, pointMaterial);
+  points.userData.kind = "node-points";
+  state.nodePoints = points;
+  state.pointNodes = graph.nodes;
+  addDynamicObject(state, points);
+
+  if (haloInstances.length) {
+    const haloGeometry = new THREE.SphereGeometry(1, sphereSegments, sphereSegments);
+    const haloMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: activeNodeIds.size ? 0.3 : 0.08,
+      vertexColors: true,
+    });
+    const halos = new THREE.InstancedMesh(haloGeometry, haloMaterial, haloInstances.length);
+    haloInstances.forEach((halo, index) => {
+      instanceScale.setScalar(halo.scale);
+      instanceMatrix.compose(halo.position, identityQuaternion, instanceScale);
+      halos.setMatrixAt(index, instanceMatrix);
+      halos.setColorAt(index, instanceColor.setHex(halo.color));
+    });
+    halos.instanceMatrix.needsUpdate = true;
+    if (halos.instanceColor) halos.instanceColor.needsUpdate = true;
+    halos.userData.activeHalo = true;
+    addDynamicObject(state, halos);
+  }
+
+  if (ringInstances.length) {
+    const ringGeometry = new THREE.TorusGeometry(1, 0.035, 8, 40);
+    const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.56 });
+    const rings = new THREE.InstancedMesh(ringGeometry, ringMaterial, ringInstances.length);
+    ringInstances.forEach((ring, index) => {
+      instanceScale.setScalar(ring.scale);
+      instanceMatrix.compose(ring.position, ringQuaternion, instanceScale);
+      rings.setMatrixAt(index, instanceMatrix);
+    });
+    rings.instanceMatrix.needsUpdate = true;
+    rings.userData.activeHalo = true;
+    addDynamicObject(state, rings);
+  }
 
   const traversalPairs = new Set<string>();
   for (let index = 0; index < (graph.traversal_path?.length ?? 0) - 1; index += 1) {
@@ -324,10 +370,12 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   }
 
   let edgePulseCount = 0;
-  const maxEdges = graph.nodes.length > 1_600 ? 3_200 : graph.nodes.length > 800 ? 2_400 : Number.POSITIVE_INFINITY;
+  const maxEdges = graph.nodes.length > 100_000 ? 18_000 : graph.nodes.length > 25_000 ? 14_000 : graph.nodes.length > 5_000 ? 9_000 : graph.nodes.length > 1_600 ? 5_000 : Number.POSITIVE_INFINITY;
   const edgeStride = Number.isFinite(maxEdges) && graph.edges.length > maxEdges
     ? Math.ceil(graph.edges.length / maxEdges)
     : 1;
+  const edgePositions: number[] = [];
+  const edgeColors: number[] = [];
   for (const [index, edge] of graph.edges.entries()) {
     const isTraversalCandidate = traversalPairs.has(`${edge.source}:${edge.target}`);
     const isActiveCandidate = activeEdgeKeys.has(edgeKey(edge.source, edge.target)) || activeEdgeKeys.has(edgeKey(edge.target, edge.source));
@@ -337,30 +385,45 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     if (!source || !target) continue;
     const isTraversal = isTraversalCandidate;
     const isActive = isActiveCandidate;
-    const geometry = new THREE.BufferGeometry().setFromPoints([source, target]);
-    const material = new THREE.LineBasicMaterial({
-      color: isActive ? 0xff6b35 : isTraversal ? 0x9aa39e : 0x73827a,
-      transparent: true,
-      opacity: isActive ? 0.9 : isTraversal ? 0.7 : 0.52,
-    });
-    addDynamicObject(state, new THREE.Line(geometry, material));
+    const edgeColor = isActive ? 0xff6b35 : isTraversal ? 0x9aa39e : 0x73827a;
+    colorValue.setHex(edgeColor);
+    edgePositions.push(source.x, source.y, source.z, target.x, target.y, target.z);
+    edgeColors.push(colorValue.r, colorValue.g, colorValue.b, colorValue.r, colorValue.g, colorValue.b);
 
     if (isActive) {
       for (let pulse = 0; pulse < 3; pulse += 1) {
-        const pulseMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.075 + pulse * 0.008, 12, 12),
-          new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.78 - pulse * 0.14 }),
-        );
-        pulseMesh.position.copy(source);
-        pulseMesh.userData.edgePulse = {
+        pulseInstances.push({
           source: source.clone(),
           target: target.clone(),
           phase: pulse / 3,
-        };
-        addDynamicObject(state, pulseMesh);
+        });
         edgePulseCount += 1;
       }
     }
+  }
+  if (edgePositions.length) {
+    const edgeGeometry = new THREE.BufferGeometry();
+    edgeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
+    edgeGeometry.setAttribute("color", new THREE.Float32BufferAttribute(edgeColors, 3));
+    const edgeMaterial = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: graph.nodes.length > 25_000 ? 0.32 : 0.5,
+    });
+    addDynamicObject(state, new THREE.LineSegments(edgeGeometry, edgeMaterial));
+  }
+  if (pulseInstances.length) {
+    const pulseGeometry = new THREE.SphereGeometry(1, 8, 8);
+    const pulseMaterial = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.76 });
+    const pulses = new THREE.InstancedMesh(pulseGeometry, pulseMaterial, pulseInstances.length);
+    pulseInstances.forEach((pulse, index) => {
+      instanceScale.setScalar(0.08);
+      instanceMatrix.compose(pulse.source, identityQuaternion, instanceScale);
+      pulses.setMatrixAt(index, instanceMatrix);
+    });
+    pulses.instanceMatrix.needsUpdate = true;
+    pulses.userData.edgePulseBatch = pulseInstances;
+    addDynamicObject(state, pulses);
   }
   state.edgePulseCount = edgePulseCount;
   state.knownNodeIds = nextKnownNodeIds;
@@ -445,7 +508,8 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
       group,
       knownNodeIds: new Set(),
       lastFitDistance: 0,
-      raycastMeshes: [],
+      nodePoints: null,
+      pointNodes: [],
       renderer,
       scene,
     };
@@ -487,8 +551,12 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
       if (drag.moved) return;
       pointerEventToNdc(event);
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(state.raycastMeshes)[0];
-      if (hit?.object.userData.node) selectRef.current?.(hit.object.userData.node);
+      raycaster.params.Points.threshold = Math.max(0.22, camera.position.z * 0.006);
+      const hit = state.nodePoints ? raycaster.intersectObject(state.nodePoints)[0] : null;
+      if (hit && typeof hit.index === "number") {
+        const node = state.pointNodes[hit.index];
+        if (node) selectRef.current?.(node);
+      }
     }
 
     function handleWheel(event: WheelEvent) {
@@ -514,11 +582,6 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
       animation = requestAnimationFrame(animate);
       state.frame += 1;
       if (!drag.active) group.rotation.y += 0.00125;
-      for (const mesh of state.raycastMeshes) {
-        const age = Math.min(1, (state.frame - (mesh.userData.spawnFrame ?? state.frame)) / 18);
-        const activePulse = mesh.userData.active ? 1 + Math.sin(state.frame * 0.14 + mesh.position.x) * 0.18 : 1;
-        mesh.scale.setScalar(age * activePulse * (1 + Math.sin(state.frame * 0.02 + mesh.position.x) * 0.025));
-      }
       for (const object of state.dynamicObjects) {
         if (!object.userData.activeHalo) continue;
         const pulse = 1 + Math.sin(state.frame * 0.16 + object.position.y) * 0.2;
@@ -526,6 +589,22 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
       }
       for (const object of state.dynamicObjects) {
         const pulse = object.userData.edgePulse as { source: THREE.Vector3; target: THREE.Vector3; phase: number } | undefined;
+        const pulseBatch = object.userData.edgePulseBatch as Array<{ source: THREE.Vector3; target: THREE.Vector3; phase: number }> | undefined;
+        if (pulseBatch && object instanceof THREE.InstancedMesh) {
+          const matrix = new THREE.Matrix4();
+          const scale = new THREE.Vector3();
+          const position = new THREE.Vector3();
+          const quaternion = new THREE.Quaternion();
+          pulseBatch.forEach((item, index) => {
+            const t = (state.frame * 0.018 + item.phase) % 1;
+            position.copy(item.source).lerp(item.target, t);
+            scale.setScalar(0.06 + Math.sin(t * Math.PI) * 0.075);
+            matrix.compose(position, quaternion, scale);
+            object.setMatrixAt(index, matrix);
+          });
+          object.instanceMatrix.needsUpdate = true;
+          continue;
+        }
         if (!pulse) continue;
         const t = (state.frame * 0.018 + pulse.phase) % 1;
         object.position.copy(pulse.source).lerp(pulse.target, t);

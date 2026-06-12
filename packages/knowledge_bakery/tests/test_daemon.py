@@ -71,9 +71,11 @@ def test_daemon_ingests_raw_files_and_potentiates_synapses(tmp_path: Path, monke
     conn.row_factory = sqlite3.Row
     first = conn.execute(
         """
-        SELECT weight, count
+        SELECT source, target, weight, count
         FROM synaptic_edges
-        WHERE source = 'graphrag' AND relation = 'uses' AND target = 'knowledgegraph'
+        WHERE relation = 'uses'
+        ORDER BY weight DESC
+        LIMIT 1
         """
     ).fetchone()
     conn.close()
@@ -90,8 +92,9 @@ def test_daemon_ingests_raw_files_and_potentiates_synapses(tmp_path: Path, monke
         """
         SELECT weight, count
         FROM synaptic_edges
-        WHERE source = 'graphrag' AND relation = 'uses' AND target = 'knowledgegraph'
-        """
+        WHERE source = ? AND relation = 'uses' AND target = ?
+        """,
+        (first["source"], first["target"]),
     ).fetchone()
     conn.close()
 

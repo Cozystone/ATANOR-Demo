@@ -2,6 +2,10 @@
 node_modules/
 .next/
 apps/web/.next/
+apps/web/out/
+build/
+src-tauri/target/
+src-tauri/binaries/homage-api-*
 __pycache__/
 *.py[cod]
 *.egg-info/

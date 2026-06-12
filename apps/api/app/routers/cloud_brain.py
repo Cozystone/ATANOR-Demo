@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.services.alpha_services import alpha_service
 from knowledge_bakery import daemon_status, run_synaptic_decay, tick_daemon
+from rag_engine.fusion import epistemic_uncertainty, local_density_score, route_ratio, weighted_rrf
 
 
 router = APIRouter(prefix="/api/cloud-brain", tags=["cloud-brain"])
@@ -88,6 +89,26 @@ def cloud_brain_query(request: CloudBrainQueryRequest) -> dict[str, Any]:
         max_nodes=request.max_nodes,
         max_depth=request.max_depth,
     )
+    density = local_density_score(
+        list(activation.get("active_nodes") or []),
+        list(activation.get("active_edges") or []),
+        [],
+    )
+    ratios = route_ratio(density)
+    fused_fragments = weighted_rrf(
+        [
+            {
+                "chunk_id": f"local-node-{index}",
+                "doc_id": "local-cloud-brain",
+                "snippet": item.get("label") or item.get("node") or item.get("id"),
+                "score": item.get("activation_score", item.get("score", 0)),
+            }
+            for index, item in enumerate(activation.get("semantic_skeleton", []), start=1)
+        ],
+        [],
+        ratios,
+        limit=8,
+    )
     return {
         **_status_shell(daemon),
         "query": request.query,
@@ -98,6 +119,13 @@ def cloud_brain_query(request: CloudBrainQueryRequest) -> dict[str, Any]:
             "active_nodes": activation.get("active_nodes", []),
             "active_edges": activation.get("active_edges", []),
             "semantic_skeleton": activation.get("semantic_skeleton", []),
+            "fused_evidence_preview": fused_fragments,
+        },
+        "fusion": {
+            "local_density": density,
+            "epistemic_uncertainty": epistemic_uncertainty(density),
+            "ratio": ratios,
+            "rrf": "weighted_reciprocal_rank_fusion",
         },
         "promotion_policy": {
             "requires_repeated_signal": True,

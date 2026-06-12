@@ -9,9 +9,13 @@
   "scripts": {
     "api:dev": "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --app-dir apps/api",
     "web:dev": "npm --workspace apps/web run dev",
-    "dev": "concurrently \"npm run api:dev\" \"npm run web:dev\""
+    "dev": "concurrently \"npm run api:dev\" \"npm run web:dev\"",
+    "desktop:sidecar": "python scripts/build_sidecar.py",
+    "tauri": "tauri",
+    "desktop:build": "npm run desktop:sidecar && npm --workspace apps/web run build:desktop && tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
     "concurrently": "^9.2.1"
   }
 }

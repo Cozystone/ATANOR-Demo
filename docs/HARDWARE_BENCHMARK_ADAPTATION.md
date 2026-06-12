@@ -29,6 +29,27 @@ The benchmark returns:
 - `training_tuning`: precision preference, microbatch tokens, gradient
   accumulation, RAG concurrency, and checkpoint cadence
 
+The backend also exposes an Elastic MVH runtime adapter in
+`packages/neuro_efficiency/neuro_efficiency/hardware_adapter.py`. It is separate
+from the visible benchmark card and is meant for startup-time safety limits:
+
+- Target tier: VRAM >= 12GB and RAM >= 32GB
+  - `max_graph_nodes = 500000`
+  - `inference_mode = gpu_native`
+  - `pruning_aggressiveness = low`
+- Baseline tier: VRAM < 12GB and RAM >= 16GB
+  - `max_graph_nodes = 50000`
+  - `inference_mode = cpu_gguf`
+  - `pruning_aggressiveness = high`
+- Minimum tier: RAM < 16GB
+  - `max_graph_nodes = 10000`
+  - `inference_mode = cloud_fallback_api`
+  - `pruning_aggressiveness = extreme`
+
+`rag_engine.graph_store.query_lazy_subgraph` clamps subgraph depth/node/edge
+limits through this adapter, and `rag_engine.utterance_engine` reads the same
+runtime config to cap native token assembly work.
+
 BakeBoard applies the recommendation automatically only when
 `can_read_local_hardware` is `true`. This prevents the deployed Vercel fallback
 from pretending it has measured the viewer's actual PC.
@@ -68,3 +89,6 @@ sandbox. It returns:
    SQLite WAL hot index is implemented.
 3. Use benchmark deltas to lower workload automatically when disk free space,
    VRAM pressure, or thermal readings degrade during a long run.
+4. Package the local worker as a Tauri desktop companion so ordinary users can
+   run the local private brain while the hosted app remains a lightweight Cloud
+   Brain/lab viewer.

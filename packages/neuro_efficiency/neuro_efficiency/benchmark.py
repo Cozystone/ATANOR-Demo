@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from neuro_efficiency.hardware_adapter import build_runtime_config
 from neuro_efficiency.stability import build_sustained_run_plan
 
 
@@ -27,6 +28,13 @@ def build_hardware_benchmark(profile: dict[str, Any] | None = None) -> dict[str,
     hardware = _collect_hardware_snapshot(payload.get("hardware_profile"))
     probes = _run_quick_probes(run_probes)
     recommendation = _recommend_profile(hardware, probes)
+    elastic_runtime = build_runtime_config(
+        {
+            "ram_gb": hardware.get("ram_gb"),
+            "vram_gb": hardware.get("vram_gb"),
+            "gpu_name": hardware.get("gpu"),
+        }
+    )
     stability = build_sustained_run_plan(
         {
             "hardware_profile": recommendation["hardware_profile"],
@@ -63,6 +71,7 @@ def build_hardware_benchmark(profile: dict[str, Any] | None = None) -> dict[str,
             "checkpoint_keep_last": stability["checkpoint_policy"]["checkpoint_keep_last"],
         },
         "runtime_envelope": stability["runtime_envelope"],
+        "elastic_runtime": elastic_runtime.as_dict(),
         "backpressure_policy": stability["backpressure_policy"],
         "adjustment_policy": {
             "auto_apply_when_source": "local-hardware-probe",

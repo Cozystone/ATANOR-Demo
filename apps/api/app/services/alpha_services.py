@@ -13,6 +13,7 @@ from guard import check_guard
 from knowledge_bakery import activate_memory, build_memory, drift_check, export_graph, memory_status
 from ontology_forge import run_ontology
 from rag_engine import query_graphrag
+from rag_engine.fusion import epistemic_uncertainty, local_density_score, route_ratio, weighted_rrf
 from rag_engine.utterance_engine import build_native_utterance
 from trainer import run_dry_run
 
@@ -126,13 +127,42 @@ class AlphaService:
         try:
             result = query_graphrag(query)
             is_conversation = _is_conversation_result(result)
+            is_control = _is_control_result(result)
             memory_activation: dict[str, Any] | None = None
-            if not is_conversation and memory_status().get("state") == "completed":
+            if not is_conversation and not is_control and memory_status().get("state") == "completed":
                 memory_activation = activate_memory(query)
-            should_search = not is_conversation and (web_search or is_fresh_search_query(query) or is_knowledge_lookup_query(query))
-            if should_search and (web_search or _should_web_search(result) or is_fresh_search_query(query) or is_knowledge_lookup_query(query)):
+            local_nodes = list(result.get("matched_nodes") or [])
+            local_edges = list(result.get("matched_edges") or [])
+            if memory_activation is not None:
+                local_nodes.extend(memory_activation.get("active_nodes", []))
+                local_edges.extend(memory_activation.get("active_edges", []))
+            density = local_density_score(local_nodes, local_edges, list(result.get("evidence_docs") or []))
+            ratios = route_ratio(density)
+            should_search = not is_conversation and not is_control and (
+                web_search
+                or is_fresh_search_query(query)
+                or is_knowledge_lookup_query(query)
+                or _should_web_search(result)
+                or ratios["cloud"] >= 0.35
+            )
+            if should_search:
                 search_payload = await search_web(query, 5, web_search_provider)
-                result = _merge_web_search_result(query, result, search_payload)
+                result = _merge_web_search_result(query, result, search_payload, ratios, density)
+            elif not is_conversation and not is_control:
+                result = {
+                    **result,
+                    "fusion": {
+                        "local_density": density,
+                        "epistemic_uncertainty": epistemic_uncertainty(density),
+                        "ratio": ratios,
+                        "rrf": "skipped_no_cloud_needed",
+                    },
+                    "retrieval_trace": {
+                        **result.get("retrieval_trace", {}),
+                        "fusion_ratio": ratios,
+                        "local_density": density,
+                    },
+                }
             if memory_activation is not None:
                 result = {
                     **result,
@@ -306,6 +336,13 @@ def _is_conversation_result(result: dict[str, Any]) -> bool:
     return result.get("method") == "homage-conversation-router-v1" or result.get("answer_kind") in {"greeting", "thanks", "conversation"}
 
 
+def _is_control_result(result: dict[str, Any]) -> bool:
+    return result.get("answer_kind") == "inspection" or result.get("method") in {
+        "homage-graph-inspection-v1",
+        "homage-graph-legend-v1",
+    }
+
+
 def _should_web_search(result: dict[str, Any]) -> bool:
     return (
         result.get("method") in {"homage-native-no-node-utterance-v1", "homage-research-no-evidence-v1"}
@@ -318,16 +355,38 @@ def _make_graph_token_web_utterance(query: str, evidence_docs: list[dict[str, An
     return build_native_utterance(query, evidence_docs, [], [])
 
 
-def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: dict[str, Any]) -> dict[str, Any]:
-    evidence_docs = web_results_to_evidence(search_payload.get("results", []))
+def _merge_web_search_result(
+    query: str,
+    base: dict[str, Any],
+    search_payload: dict[str, Any],
+    ratios: dict[str, float] | None = None,
+    local_density: float | None = None,
+) -> dict[str, Any]:
+    cloud_docs = web_results_to_evidence(search_payload.get("results", []))
+    local_docs = list(base.get("evidence_docs") or [])
+    local_density = local_density if local_density is not None else local_density_score(
+        list(base.get("matched_nodes") or []),
+        list(base.get("matched_edges") or []),
+        local_docs,
+    )
+    ratios = ratios or route_ratio(local_density)
+    evidence_docs = weighted_rrf(local_docs, cloud_docs, ratios, limit=8)
     if not evidence_docs:
         return {
             **base,
             "web_search": search_payload,
+            "fusion": {
+                "local_density": local_density,
+                "epistemic_uncertainty": epistemic_uncertainty(local_density),
+                "ratio": ratios,
+                "rrf": "no_candidates",
+            },
             "retrieval_trace": {
                 **base.get("retrieval_trace", {}),
                 "web_search_provider": search_payload.get("provider"),
                 "web_search_status": search_payload.get("status"),
+                "fusion_ratio": ratios,
+                "local_density": local_density,
             },
         }
     utterance = _make_graph_token_web_utterance(query, evidence_docs)
@@ -347,6 +406,15 @@ def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: d
             for doc in evidence_docs
         ],
         "web_search": search_payload,
+        "fusion": {
+            "local_density": local_density,
+            "epistemic_uncertainty": epistemic_uncertainty(local_density),
+            "ratio": ratios,
+            "rrf": "weighted_reciprocal_rank_fusion",
+            "local_candidate_count": len(local_docs),
+            "cloud_candidate_count": len(cloud_docs),
+            "fused_candidate_count": len(evidence_docs),
+        },
         "answer_engine": {
             **base.get("answer_engine", {}),
             **utterance["answer_engine"],
@@ -362,6 +430,9 @@ def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: d
             "web_search_provider": search_payload.get("provider"),
             "web_search_status": search_payload.get("status"),
             "web_result_urls": [doc.get("url") for doc in evidence_docs],
+            "fusion_ratio": ratios,
+            "local_density": local_density,
+            "epistemic_uncertainty": epistemic_uncertainty(local_density),
         },
         "pmv": utterance["pmv"],
         "claim_plan": utterance["claim_plan"],

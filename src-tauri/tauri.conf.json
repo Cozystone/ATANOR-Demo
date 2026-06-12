@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Homage",
+  "version": "0.1.0",
+  "identifier": "ai.homage.desktop",
+  "build": {
+    "beforeDevCommand": "npm --workspace apps/web run dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm --workspace apps/web run build:desktop",
+    "frontendDist": "../apps/web/out"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Homage",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1120,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "externalBin": ["binaries/homage-api"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://homage-alpha.vercel.app/updater/{{target}}/{{arch}}/{{current_version}}/updater.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUwNDRGMjkwRjg2MDhCRDAKUldUUWkyRDRrUEpFNEQ4SmdwcU5PaXl6R2ZRUUNvUnhIaVkwVUltV0NMaEx6VTkrWVhpT0ZqeEEK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

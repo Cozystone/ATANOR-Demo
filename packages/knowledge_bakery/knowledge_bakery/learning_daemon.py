@@ -54,6 +54,10 @@ def _db_path(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
     return _memory_root(memory_dir) / "homage.db"
 
 
+def _concept_db_path(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
+    return _memory_root(memory_dir) / "canonical_concepts.sqlite3"
+
+
 def _state_path(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
     return _memory_root(memory_dir) / "daemon_state.json"
 
@@ -387,10 +391,10 @@ def _unique_cleaned_path(source: Path, cleaned_dir: Path, fingerprint: str) -> P
     return candidate
 
 
-def _run_ontology(input_dir: str, output_dir: str) -> dict[str, Any]:
+def _run_ontology(input_dir: str, output_dir: str, concept_db_path: str | Path | None = None) -> dict[str, Any]:
     from ontology_forge import run_ontology
 
-    return run_ontology(input_dir, output_dir)
+    return run_ontology(input_dir, output_dir, concept_db_path=concept_db_path)
 
 
 def _upsert_sqlite_synapses(
@@ -659,7 +663,7 @@ def ingest_raw_documents(
         batch_copy = batch_dir / cleaned_path.name
         shutil.copy2(cleaned_path, batch_copy)
 
-        result = _run_ontology(str(batch_dir), str(batch_ontology_dir))
+        result = _run_ontology(str(batch_dir), str(batch_ontology_dir), _concept_db_path(memory_dir))
         nodes = list(result.get("nodes") or [])
         edges = list(result.get("edges") or [])
         upserted = _upsert_sqlite_synapses(conn, nodes, edges, increment=increment)
@@ -693,7 +697,7 @@ def ingest_raw_documents(
     conn.close()
 
     if ingested_files:
-        _run_ontology(str(cleaned_root), str(ontology_root))
+        _run_ontology(str(cleaned_root), str(ontology_root), _concept_db_path(memory_dir))
         build_memory(cleaned_dir=str(cleaned_root), ontology_dir=str(ontology_root), memory_dir=memory_dir)
 
     return {
@@ -844,7 +848,11 @@ def tick_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, force: bool = False, run_d
             or memory.get("state") != "completed"
         )
         if needs_build:
-            _run_ontology(str(state.get("cleaned_dir") or DEFAULT_CLEANED_DIR), str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR))
+            _run_ontology(
+                str(state.get("cleaned_dir") or DEFAULT_CLEANED_DIR),
+                str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR),
+                _concept_db_path(memory_dir),
+            )
             result = build_memory(
                 cleaned_dir=str(state.get("cleaned_dir") or DEFAULT_CLEANED_DIR),
                 ontology_dir=str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR),

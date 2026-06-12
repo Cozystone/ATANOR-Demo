@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:desktop": "node ../../scripts/build_desktop_web.mjs",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
+    "@tauri-apps/plugin-process": "^2.0.0",
+    "@tauri-apps/plugin-updater": "^2.0.0",
     "@types/three": "^0.184.1",
     "next": "^16.0.7",
     "react": "^19.2.1",
@@ -19,6 +22,7 @@
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "cross-env": "^10.0.0",
     "typescript": "^5.9.3"
   }
 }

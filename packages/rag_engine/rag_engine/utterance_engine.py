@@ -6,6 +6,16 @@ from collections import Counter, defaultdict
 from typing import Any
 
 
+def _runtime_utterance_limit(default: int = 56) -> tuple[int, str]:
+    try:
+        from neuro_efficiency import get_runtime_config  # type: ignore
+
+        config = get_runtime_config()
+        return int(config.utterance_max_tokens), config.inference_mode
+    except Exception:
+        return default, "fallback"
+
+
 def _tokens(text: str) -> list[str]:
     tokens: list[str] = []
     current: list[str] = []
@@ -98,8 +108,9 @@ def _predict_tokens(
     evidence_docs: list[dict[str, Any]],
     active_concepts: list[str],
     graph_paths: list[list[str]],
-    max_tokens: int = 56,
+    max_tokens: int | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
+    max_tokens, inference_mode = _runtime_utterance_limit(56 if max_tokens is None else max_tokens)
     texts = [_clean_text(doc.get("snippet") or doc.get("text")) for doc in evidence_docs]
     texts.extend(" ".join(path) for path in graph_paths if path)
     if active_concepts:
@@ -156,6 +167,8 @@ def _predict_tokens(
         "edge_count": sum(len(targets) for targets in transitions.values()),
         "graph_path_count": len(graph_paths),
         "graph_units": ["token_transition", "window_cooccurrence", "ontology_path"],
+        "inference_mode": inference_mode,
+        "max_tokens": max_tokens,
         "used_edges": used_edges[:24],
     }
     return generated, diagnostics

@@ -55,6 +55,27 @@ The current Alpha implementation adds a real continuous cumulative learner in
   `NEO4J_USER`, and `NEO4J_PASSWORD` are configured. Without Neo4j, SQLite WAL
   remains the source of truth.
 
+### Canonical Concept Layer
+
+The ontology pipeline now uses canonical UUID concepts instead of raw strings.
+`packages/ontology_forge/ontology_forge/entity_resolver.py` resolves every
+extracted entity through a contextual embedding path:
+
+- preferred provider: local BGE-m3 (`BAAI/bge-m3`) through
+  `sentence-transformers` or `FlagEmbedding`
+- fallback provider: deterministic contextual hash for offline/dev machines
+- schema: `Concept(concept_id, primary_name, aliases, context_vector)`
+- edge rule: relationships always connect `concept_id -> concept_id`
+
+The learning daemon points batch ingestion and full-memory refreshes at the same
+local `data/memory/canonical_concepts.sqlite3` file. This means repeated
+relations reinforce the same synaptic edge instead of generating fresh UUIDs on
+each ingest.
+
+When BGE-m3 is unavailable, the fallback intentionally refuses cross-alias
+semantic merges. It keeps the system safe and deterministic, but true
+cross-lingual entity linking requires installing the local embedding model.
+
 ### 2. Cloud Brain
 
 Cloud Brain is the public/shared ontology memory.
@@ -66,6 +87,10 @@ Cloud Brain is the public/shared ontology memory.
 - Output: small signed ontology fragments, not natural-language model answers.
 - UI role: deployed Homage shows Cloud Brain as a viewer; local Homage can run
   an actual worker and checkpoint its state.
+- Future distribution: an AWS-hosted public ontology service should exchange
+  signed graph fragments, not LLM completions. Local Homage keeps private memory
+  local, asks Cloud Brain only for public graph fragments, and fuses them with
+  local retrieval through confidence-weighted routing.
 
 ### 3. Lab Working Memory
 

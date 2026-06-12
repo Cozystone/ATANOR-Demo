@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
 import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode } from "./Rag3DScene";
+import { TauriUpdatePrompt } from "./TauriUpdatePrompt";
 
 type StageState = "idle" | "running" | "warning" | "complete";
 type LayoutMode = "graph" | "split" | "workbench";
@@ -11,6 +12,8 @@ type LearningVolume = "lite" | "standard" | "deep" | "max" | "infinite";
 type RightMode = "process" | "chat";
 type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
+
+const labStageOrder: LabStageKey[] = ["collect", "learn", "output"];
 
 type PipelineStage = {
   id: string;
@@ -846,6 +849,7 @@ export default function BakeBoardPage() {
   const [clockNow, setClockNow] = useState<Date | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [labStageProgress, setLabStageProgress] = useState<Record<LabStageKey, number>>({ collect: 0, learn: 0, output: 0 });
+  const [activeLabStage, setActiveLabStage] = useState<LabStageKey>("collect");
   const [graphMode] = useState<"2d" | "3d">("3d");
   const [rag3dControl, setRag3dControl] = useState<Rag3DControl>({ serial: 0, action: "reset" });
   const graphRef = useRef<SVGSVGElement | null>(null);
@@ -1130,7 +1134,11 @@ export default function BakeBoardPage() {
     setError(null);
     try {
       await action();
-      if (labStep) setStageProgress(labStep, 100);
+      if (labStep) {
+        setStageProgress(labStep, 100);
+        if (labStep === "collect") setActiveLabStage("learn");
+        if (labStep === "learn") setActiveLabStage("output");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "학습 과정 실행에 실패했습니다.");
     } finally {
@@ -1519,6 +1527,7 @@ export default function BakeBoardPage() {
     setContinuousLearningActive(false);
     setBuildTick(0);
     setLabStageProgress((current) => ({ ...current, collect: Math.max(current.collect, 6), learn: 0, output: 0 }));
+    setActiveLabStage("collect");
     setLayoutMode("split");
     setRightMode("process");
     try {
@@ -1889,6 +1898,7 @@ export default function BakeBoardPage() {
 
   const processSteps = [
     {
+      key: "collect" as LabStageKey,
       number: "01",
       title: "수집",
       api: "POST /api/factory/build/start + DataGate",
@@ -1907,6 +1917,7 @@ export default function BakeBoardPage() {
       blockedText: "",
     },
     {
+      key: "learn" as LabStageKey,
       number: "02",
       title: "학습",
       api: "POST /api/ontology/run + /api/memory/build",
@@ -1932,6 +1943,7 @@ export default function BakeBoardPage() {
       blockedText: "수집 100% 완료 후 학습할 수 있습니다.",
     },
     {
+      key: "output" as LabStageKey,
       number: "03",
       title: "출력",
       api: "POST /api/graphrag/query + /api/guard/check",
@@ -1955,6 +1967,23 @@ export default function BakeBoardPage() {
   ];
 
   void advancedProcessSteps;
+
+  const activeLabStageIndex = Math.max(0, labStageOrder.indexOf(activeLabStage));
+  const activeProcessStep = processSteps.find((step) => step.key === activeLabStage) ?? processSteps[0];
+  const previousProcessKey = activeLabStageIndex > 0 ? labStageOrder[activeLabStageIndex - 1] : null;
+  const nextProcessKey = activeLabStageIndex < labStageOrder.length - 1 ? labStageOrder[activeLabStageIndex + 1] : null;
+
+  function canOpenProcessStep(step: LabStageKey) {
+    if (step === "collect") return true;
+    if (step === "learn") return collectComplete;
+    return learnComplete;
+  }
+
+  function openProcessStep(step: LabStageKey) {
+    if (!canOpenProcessStep(step)) return;
+    setRightMode("process");
+    setActiveLabStage(step);
+  }
 
   const logTime = clockNow ? fmtClock(clockNow) : "--:--:--";
   const logs = [
@@ -2488,9 +2517,26 @@ export default function BakeBoardPage() {
                 </section>
               </div>
             ) : rightMode === "process" ? (
-              <div className="process-view">
-                {processSteps.map((step) => (
-                  <article className="process-card" data-state={step.state} key={step.number}>
+              <div className="process-view process-stage-screen">
+                <div className="process-stage-switcher" aria-label="실험실 단계 전환">
+                  {processSteps.map((step, index) => (
+                    <button
+                      aria-current={step.key === activeLabStage ? "step" : undefined}
+                      data-active={step.key === activeLabStage}
+                      data-state={step.state}
+                      disabled={!canOpenProcessStep(step.key)}
+                      key={step.key}
+                      onClick={() => openProcessStep(step.key)}
+                    >
+                      <span>{step.number}</span>
+                      <strong>{step.title}</strong>
+                      <em>{step.progress}%</em>
+                      {index < processSteps.length - 1 ? <i /> : null}
+                    </button>
+                  ))}
+                </div>
+                {processSteps.filter((step) => step.key === activeProcessStep.key).map((step) => (
+                  <article className="process-card process-card-stage" data-state={step.state} key={step.number}>
                     <div className="process-head">
                       <span className="process-num">{step.number}</span>
                       <div>
@@ -2616,6 +2662,20 @@ export default function BakeBoardPage() {
                       </div>
                     ) : null}
                     {step.title.includes("학습") ? <LossChart losses={losses} /> : null}
+                    <div className="process-stage-footer">
+                      <button
+                        disabled={!previousProcessKey}
+                        onClick={() => previousProcessKey ? openProcessStep(previousProcessKey) : undefined}
+                      >
+                        이전 단계
+                      </button>
+                      <button
+                        disabled={!nextProcessKey || !canOpenProcessStep(nextProcessKey)}
+                        onClick={() => nextProcessKey ? openProcessStep(nextProcessKey) : undefined}
+                      >
+                        {nextProcessKey ? "다음 단계" : "완료"}
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -2674,6 +2734,7 @@ export default function BakeBoardPage() {
           <p key={`${log.message}-${index}`}><span>{log.time}</span>{log.message}</p>
         ))}
       </section>
+      <TauriUpdatePrompt />
     </main>
   );
 }

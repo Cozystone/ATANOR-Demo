@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from .graph_store import graph_inventory, graph_legend, query_lazy_chunks, query_lazy_subgraph
 from .utterance_engine import build_native_utterance
 
 
@@ -32,6 +33,12 @@ def _normalized_query(query: str) -> str:
     return " ".join(query.strip().lower().split())
 
 
+def _effective_memory_dir(cleaned_dir: str, memory_dir: str) -> str:
+    if memory_dir == "data/memory" and Path(cleaned_dir) != Path("data/cleaned"):
+        return str(Path(cleaned_dir).parent / "memory")
+    return memory_dir
+
+
 def _is_greeting_query(query: str) -> bool:
     normalized = _normalized_query(query)
     return bool(re.fullmatch(r"(안녕|안녕하세요|하이|헬로|반가워|hi|hello|hey|yo)[\s!.?。！？]*", normalized, re.IGNORECASE))
@@ -44,6 +51,10 @@ def _is_thanks_query(query: str) -> bool:
 
 def _is_node_inventory_query(query: str) -> bool:
     normalized = _normalized_query(query)
+    if ("노드" in normalized or "node" in normalized) and any(
+        word in normalized for word in ["모두", "전체", "목록", "리스트", "말해", "보여", "있는", "available", "inventory"]
+    ):
+        return True
     asks_for_nodes = bool(re.search(r"(노드|node|nodes)", normalized, re.IGNORECASE))
     asks_for_inventory = bool(re.search(r"(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)", normalized, re.IGNORECASE))
     return asks_for_nodes and asks_for_inventory
@@ -51,6 +62,10 @@ def _is_node_inventory_query(query: str) -> bool:
 
 def _is_legend_query(query: str) -> bool:
     normalized = _normalized_query(query)
+    if any(word in normalized for word in ["색깔", "색상", "컬러", "범례", "legend", "color"]) and any(
+        word in normalized for word in ["의미", "뜻", "설명", "구분", "차이", "mean", "meaning"]
+    ):
+        return True
     asks_color = bool(re.search(r"(색|색깔|색상|컬러|범례|legend|color)", normalized, re.IGNORECASE))
     asks_meaning = bool(re.search(r"(의미|뜻|뭐|설명|구분|차이|meaning|mean|label)", normalized, re.IGNORECASE))
     graph_context = bool(re.search(r"(노드|그래프|rag|온톨로지|메모리|신호|뉴런|node|graph)", normalized, re.IGNORECASE))
@@ -174,9 +189,10 @@ def _node_type_description(node_type: str | None) -> str:
     return descriptions.get(node_type or "", "현재 그래프에서 관찰된 사용자 정의 기억 노드")
 
 
-def _node_inventory_result(query: str, ontology_dir: Path) -> dict[str, Any]:
-    nodes: list[dict[str, Any]] = _load_json(ontology_dir / "nodes.json", [])
-    edges: list[dict[str, Any]] = _load_json(ontology_dir / "edges.json", [])
+def _node_inventory_result(query: str, memory_dir: str) -> dict[str, Any]:
+    inventory = graph_inventory(memory_dir)
+    nodes: list[dict[str, Any]] = inventory["nodes"]
+    edges: list[dict[str, Any]] = inventory["edges"]
     node_lines = []
     for index, node in enumerate(nodes, start=1):
         label = node.get("label") or node.get("id") or f"node-{index}"
@@ -220,21 +236,14 @@ def _node_inventory_result(query: str, ontology_dir: Path) -> dict[str, Any]:
     }
 
 
-def _graph_legend_result(query: str, ontology_dir: Path) -> dict[str, Any]:
-    nodes: list[dict[str, Any]] = _load_json(ontology_dir / "nodes.json", [])
-    edges: list[dict[str, Any]] = _load_json(ontology_dir / "edges.json", [])
-    type_order: list[str] = []
-    type_counts: Counter[str] = Counter()
-    representatives: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for node in nodes:
-        node_type = str(node.get("type") or node.get("labels", ["concept"])[0] or "concept")
-        type_counts[node_type] += 1
-        if node_type not in type_order:
-            type_order.append(node_type)
-        if node_type not in seen:
-            representatives.append(node)
-            seen.add(node_type)
+def _graph_legend_result(query: str, memory_dir: str) -> dict[str, Any]:
+    legend_payload = graph_legend(memory_dir)
+    representatives: list[dict[str, Any]] = legend_payload["representatives"]
+    matched_edges: list[dict[str, Any]] = legend_payload["edges"]
+    edges = matched_edges
+    nodes = representatives
+    type_order = [item["type"] for item in legend_payload["types"]]
+    type_counts: Counter[str] = Counter({item["type"]: item["count"] for item in legend_payload["types"]})
 
     lines = [
         f"- {_node_type_color(node_type)} {_node_type_text(node_type)}: {_node_type_description(node_type)}. 현재 {type_counts[node_type]}개"
@@ -356,34 +365,18 @@ def _node_score(node: dict[str, Any], query_terms: set[str]) -> float:
     return exact + partial * 0.35
 
 
-def _match_graph(query_terms: set[str], ontology_dir: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[list[str]], set[str]]:
-    nodes: list[dict[str, Any]] = _load_json(ontology_dir / "nodes.json", [])
-    edges: list[dict[str, Any]] = _load_json(ontology_dir / "edges.json", [])
-
-    scored_nodes = [
-        (score, node)
-        for node in nodes
-        if (score := _node_score(node, query_terms)) > 0
-    ]
-    scored_nodes.sort(key=lambda item: (-item[0], item[1].get("id", "")))
-    matched_nodes = [node for _, node in scored_nodes[:12]]
-    matched_ids = {node.get("id") for node in matched_nodes}
-
-    matched_edges = [
-        edge
-        for edge in edges
-        if edge.get("source") in matched_ids or edge.get("target") in matched_ids
-    ][:18]
-    graph_paths = [
-        [str(edge.get("source", "")), str(edge.get("relation", "relates")), str(edge.get("target", ""))]
-        for edge in matched_edges[:8]
-    ]
-
-    expanded_terms = set(query_terms)
-    for node in matched_nodes:
-        expanded_terms.update(_tokens(f"{node.get('id', '')} {node.get('label', '')}"))
-    for edge in matched_edges:
-        expanded_terms.update(_tokens(f"{edge.get('source', '')} {edge.get('relation', '')} {edge.get('target', '')}"))
+def _match_graph(query_terms: set[str], memory_dir: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[list[str]], set[str]]:
+    subgraph = query_lazy_subgraph(
+        list(query_terms),
+        memory_dir,
+        max_depth=3,
+        max_nodes=512,
+        max_edges=2048,
+    )
+    matched_nodes = subgraph["nodes"][:12]
+    matched_edges = subgraph["edges"][:18]
+    graph_paths = subgraph["graph_paths"]
+    expanded_terms = set(subgraph["expanded_terms"])
     return matched_nodes, matched_edges, graph_paths, expanded_terms
 
 
@@ -536,22 +529,23 @@ def query_graphrag(
     query: str,
     cleaned_dir: str = "data/cleaned",
     ontology_dir: str = "data/ontology",
+    memory_dir: str = "data/memory",
 ) -> dict[str, Any]:
+    memory_dir = _effective_memory_dir(cleaned_dir, memory_dir)
     if _is_greeting_query(query):
         return _conversational_result(query, "greeting")
     if _is_thanks_query(query):
         return _conversational_result(query, "thanks")
     if _is_legend_query(query):
-        return _graph_legend_result(query, Path(ontology_dir))
+        return _graph_legend_result(query, memory_dir)
     if _is_node_inventory_query(query):
-        return _node_inventory_result(query, Path(ontology_dir))
+        return _node_inventory_result(query, memory_dir)
 
     query_counts = Counter(_tokens(query))
     query_terms = set(query_counts)
-    ontology_root = Path(ontology_dir)
-    matched_nodes, matched_edges, graph_paths, expanded_terms = _match_graph(query_terms, ontology_root)
+    matched_nodes, matched_edges, graph_paths, expanded_terms = _match_graph(query_terms, memory_dir)
 
-    chunks = _load_doc_chunks(Path(cleaned_dir))
+    chunks = query_lazy_chunks(query, expanded_terms, memory_dir)
     ranked_docs = _rank_chunks(query, query_counts, expanded_terms, chunks)
     evidence_docs = ranked_docs[:5]
     use_internal_context = not evidence_docs and _is_internal_structure_query(query)
