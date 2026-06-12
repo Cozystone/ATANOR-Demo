@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  HOMAGE_RUST_TOOLCHAIN: "1.88.0"
+
 jobs:
   build:
     name: Build ${{ matrix.os }}
@@ -34,7 +38,9 @@ jobs:
           python-version: "3.13"
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.HOMAGE_RUST_TOOLCHAIN }}
 
       - name: Install frontend dependencies
         run: npm ci
