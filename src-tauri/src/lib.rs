@@ -31,7 +31,7 @@ fn find_free_port() -> Result<u16, String> {
 fn kill_sidecar(app: &tauri::AppHandle) {
     if let Some(state) = app.try_state::<ApiRuntimeState>() {
         if let Ok(mut guard) = state.child.lock() {
-            if let Some(mut child) = guard.take() {
+            if let Some(child) = guard.take() {
                 let _ = child.kill();
             }
         }
