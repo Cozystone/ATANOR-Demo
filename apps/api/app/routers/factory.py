@@ -280,15 +280,15 @@ def _graph_for_preset(preset: dict[str, Any]) -> dict[str, Any]:
 
 def _graph_frames(node_count: int) -> list[dict[str, Any]]:
     counts: list[int] = []
-    for count in [2, 5, 9, round(node_count * 0.72), node_count]:
+    for count in [min(12, node_count), math.ceil(node_count * 0.25), math.ceil(node_count * 0.5), math.ceil(node_count * 0.75), node_count]:
         if not counts or count > counts[-1]:
             counts.append(count)
     messages = [
-        "Harvest accepted web references",
-        "Ontology dedupe merged concepts",
-        "GraphRAG traversal found anchor path",
-        "Compressed memory samples were projected",
-        "Representative sample reached selected render budget",
+        "Collection seeded sentence chunks and graph anchors",
+        "Sentence elements were decomposed into candidate nodes",
+        "Ontology relations were calculated",
+        "GraphRAG neighborhood projection expanded",
+        "Output gate reached selected text budget",
     ]
     return [
         {"tick": index + 1, "node_count": count, "edge_count": max(1, count - 1), "message": messages[index]}

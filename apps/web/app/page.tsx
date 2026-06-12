@@ -94,7 +94,7 @@ const liveGrowthTemplates = [
 ];
 
 const maxTargetNodes = 500_000;
-const liveGrowthBatchSize = 24;
+const liveGrowthBatchSize = 12;
 const minLiveGrowthPulses = 8;
 
 const codexResearchGoalPrompt = `Homage1.0을 장기 연구 목표로 계속 개선한다.
@@ -126,6 +126,7 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
   const liveNodes: Rag3DNode[] = [];
   const liveEdges: Rag3DEdge[] = [];
   const baseIds = new Set(base.nodes.map((node) => node.id));
+  const baseNodeMap = new Map(base.nodes.map((node) => [node.id, node]));
   const totalLiveNodeCount = Math.max(0, Math.floor(pulseCount)) * liveGrowthBatchSize;
   const maxRenderedNodes = Number.isFinite(maxTotalNodes) ? Math.max(base.nodes.length, Math.floor(maxTotalNodes)) : Number.POSITIVE_INFINITY;
   const renderSlots = Math.max(0, Math.floor(maxRenderedNodes - base.nodes.length));
@@ -133,23 +134,27 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
   const endIndex = Math.min(totalLiveNodeCount, renderSlots);
   for (let index = startIndex; index < endIndex; index += 1) {
     const template = liveGrowthTemplates[index % liveGrowthTemplates.length];
-    const ring = Math.floor(index / liveGrowthTemplates.length);
-    const angle = index * 0.78;
-    const radius = 3.8 + (ring % 5) * 0.55;
     const id = `live-synapse-${index + 1}`;
     const previous = index > startIndex ? `live-synapse-${index}` : null;
     const batchStart = Math.floor(index / liveGrowthBatchSize) * liveGrowthBatchSize;
-    const batchAnchor = base.nodes[(index + Math.floor(index / liveGrowthBatchSize)) % Math.max(1, base.nodes.length)]?.id;
+    const batchIndex = Math.floor(index / liveGrowthBatchSize);
+    const batchAnchor = base.nodes[(batchIndex * 3 + index) % Math.max(1, base.nodes.length)]?.id;
     const source = index === batchStart
       ? baseIds.has(template.source) ? template.source : batchAnchor
       : previous ?? batchAnchor;
+    const sourceAnchor = baseIds.has(template.source) ? template.source : batchAnchor;
+    const anchorNode = baseNodeMap.get(sourceAnchor ?? "") ?? base.nodes[batchIndex % Math.max(1, base.nodes.length)];
+    const batchOffset = index - batchStart;
+    const angle = batchOffset * 1.28 + batchIndex * 0.49;
+    const radius = 0.62 + (batchOffset % 4) * 0.16 + (batchIndex % 5) * 0.045;
+    const shellLift = ((batchOffset % 5) - 2) * 0.16 + ((batchIndex % 3) - 1) * 0.08;
     liveNodes.push({
       id,
       label: `${template.label} ${index + 1}`,
       type: template.type,
-      x: Math.cos(angle) * radius + 0.3 * ring,
-      y: Math.sin(angle) * radius * 0.72,
-      z: ((index % 7) - 3) * 0.62,
+      x: (anchorNode?.x ?? 0) + Math.cos(angle) * radius,
+      y: (anchorNode?.y ?? 0) + Math.sin(angle) * radius * 0.78,
+      z: (anchorNode?.z ?? 0) + shellLift,
       confidence: 0.62 + ((index % 9) * 0.026),
     });
     if (source) {
@@ -789,10 +794,27 @@ export default function BakeBoardPage() {
   const localBackendConnected = localBackendStatus === "connected";
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("api") || params.has("backend")) return;
     const savedUrl = window.localStorage.getItem("homage.localFastApiUrl");
     if (savedUrl) {
       setLocalBackendUrl(savedUrl);
       connectLocalBackend(savedUrl).catch(() => undefined);
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedWorkspace = params.get("workspace") ?? params.get("view");
+    const requestedApi = params.get("api") ?? params.get("backend");
+    if (requestedWorkspace === "daemon" || requestedWorkspace === "cumulative") {
+      setWorkspaceMode("daemon");
+    } else if (requestedWorkspace === "lab") {
+      setWorkspaceMode("lab");
+    }
+    if (requestedApi) {
+      setLocalBackendUrl(requestedApi);
+      connectLocalBackend(requestedApi).catch(() => undefined);
     }
   }, []);
 
@@ -1040,6 +1062,12 @@ export default function BakeBoardPage() {
     setMemoryStatus(result);
     setMemoryDrift(driftResult);
     if (graphResult?.nodes?.length) setGraph(graphResult);
+  }
+
+  async function runLearningStage() {
+    await runOntologyStep();
+    await runMemoryBuildStep();
+    await refreshStabilityPlan();
   }
 
   async function startLearningDaemon() {
@@ -1476,7 +1504,7 @@ export default function BakeBoardPage() {
     stopContinuousLearning(resourceStopReason);
   }, [continuousLearningActive, resourceStopReason]);
 
-  const processSteps = [
+  const advancedProcessSteps = [
     {
       number: "KB",
       title: "Knowledge Bakery",
@@ -1605,6 +1633,59 @@ export default function BakeBoardPage() {
     },
   ];
 
+  const processSteps = [
+    {
+      number: "01",
+      title: "수집",
+      api: "POST /api/factory/build/start + DataGate",
+      state: isBuilding || continuousLearningActive || activeAction === "collect" ? "running" : buildRun ? "completed" : datagate?.state ?? "idle",
+      description: "웹/문서 입력을 가져와 문장 단위로 쪼개고, GraphRAG가 읽을 수 있는 후보 청크와 초기 앵커 그래프를 만듭니다.",
+      metrics: [
+        `${buildRun?.harvest_docs?.length ?? datagate?.total ?? 0} 자료`,
+        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 청크`,
+        `${displayGraph3D.nodes.length.toLocaleString()} 표시 노드`,
+        buildIsInfinite ? `∞ ${learningElapsedText}` : `${selectedTargetNodeLabel} 목표`,
+      ],
+      action: () => continuousLearningActive ? stopContinuousLearning() : runProcessAction("collect", startFactoryBuild),
+      actionLabel: continuousLearningActive ? "수집 중지" : isBuilding || activeAction === "collect" ? "수집 중" : "수집 시작",
+    },
+    {
+      number: "02",
+      title: "학습",
+      api: "POST /api/ontology/run + /api/memory/build",
+      state: activeAction === "learn" ? "running" : memoryStatus?.state === "completed" || memoryStatus?.state === "complete" ? "completed" : ontology?.state ?? "idle",
+      description: "분해된 문장 요소를 온톨로지 노드로 누적하고, 공출현/전후/행위 관계를 계산해 그래프 메모리로 굽습니다.",
+      metrics: [
+        `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} 노드`,
+        `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} 관계`,
+        `${memoryStatus?.transition_count ?? 0} 전이`,
+        `drift ${memoryDrift?.state ?? "waiting"}`,
+      ],
+      action: () => runProcessAction("learn", runLearningStage),
+      actionLabel: activeAction === "learn" ? "학습 중" : "관계 계산",
+    },
+    {
+      number: "03",
+      title: "출력",
+      api: "POST /api/graphrag/query",
+      state: activeAction === "output" || isGeneratingAnswer ? "running" : graphrag?.state ?? "idle",
+      description: "질문을 자연어로 넣으면 활성 노드와 그래프 전이를 읽어, 외부 LLM 없이 Homage 생성기가 답변을 만듭니다.",
+      metrics: [
+        `신뢰도 ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
+        `${graphResult?.evidence_docs?.length ?? 0} 근거`,
+        `웹 ${webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}`,
+        graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "준비",
+      ],
+      action: () => runProcessAction("output", async () => {
+        setRightMode("chat");
+        await sendChat();
+      }),
+      actionLabel: activeAction === "output" || isGeneratingAnswer ? "생성 중" : "질문 보내기",
+    },
+  ];
+
+  void advancedProcessSteps;
+
   const logTime = clockNow ? fmtClock(clockNow) : "--:--:--";
   const logs = [
     ...(buildRun ? [{ time: logTime, message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}${buildIsInfinite ? ` / 누적 ${learningElapsedText}` : ""}` }] : []),
@@ -1621,8 +1702,16 @@ export default function BakeBoardPage() {
     setLayoutMode(mode);
   }
 
+  function changeWorkspaceMode(mode: WorkspaceMode) {
+    setWorkspaceMode(mode);
+    const url = new URL(window.location.href);
+    url.searchParams.set("workspace", mode);
+    window.history.replaceState(null, "", url);
+  }
+
   function resetConsole() {
     changeLayoutMode("split");
+    changeWorkspaceMode("lab");
     setRightMode("chat");
     setSelectedMemory(null);
     setGraphView({ scale: 1, x: 0, y: 0 });
@@ -1742,8 +1831,8 @@ export default function BakeBoardPage() {
           <strong>Homage</strong>
         </div>
         <div className="workspace-switcher" aria-label="작업 공간 전환">
-          <button data-active={workspaceMode === "daemon"} onClick={() => setWorkspaceMode("daemon")}>누적학습</button>
-          <button data-active={workspaceMode === "lab"} onClick={() => setWorkspaceMode("lab")}>실험실</button>
+          <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>실험실</button>
+          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>누적학습</button>
         </div>
         <div className="layout-switcher" aria-label="레이아웃 전환">
           {[
@@ -1757,15 +1846,19 @@ export default function BakeBoardPage() {
           ))}
         </div>
         <div className="header-status">
-          <button
-            className="build-button"
-            onClick={continuousLearningActive ? () => stopContinuousLearning() : startFactoryBuild}
-            disabled={isBuilding || (Boolean(activeAction) && !continuousLearningActive)}
-          >
-            {continuousLearningActive ? "학습 중지" : isBuilding ? "빌드 중" : "빌드 시작"}
-          </button>
-          <span>단계 {processSteps.length}</span>
-          <strong>{rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
+          {workspaceMode === "lab" ? (
+            <button
+              className="build-button"
+              onClick={continuousLearningActive ? () => stopContinuousLearning() : startFactoryBuild}
+              disabled={isBuilding || (Boolean(activeAction) && !continuousLearningActive)}
+            >
+              {continuousLearningActive ? "학습 중지" : isBuilding ? "빌드 중" : "빌드 시작"}
+            </button>
+          ) : (
+            <span className="viewer-pill">읽기 전용</span>
+          )}
+          <span>{workspaceMode === "lab" ? `단계 ${processSteps.length}` : "로컬 뷰어"}</span>
+          <strong>{workspaceMode === "daemon" ? "누적학습 상태" : rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
           <StatusDot state={pipeline?.system_state === "mock" ? "running" : "completed"} />
         </div>
       </header>
@@ -1900,63 +1993,67 @@ export default function BakeBoardPage() {
         <section className="panel-wrap right" style={rightStyle}>
           <div className="right-panel">
             <div className="right-toolbar">
-              <div className="mode-tabs">
-                <button data-active={rightMode === "process"} onClick={() => setRightMode("process")}>학습 과정</button>
-                <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 채팅</button>
-              </div>
-              <div className="learning-volume-switcher" aria-label="학습량 선택">
-                <span>학습량</span>
-                {(Object.keys(learningVolumePresets) as LearningVolume[]).map((volume) => (
-                  <button
-                    data-active={learningVolume === volume}
-                    data-infinite={volume === "infinite"}
-                    disabled={isBuilding || continuousLearningActive}
-                    key={volume}
-                    onClick={() => {
-                      setLearningVolume(volume);
-                      setTargetNodeCount(defaultTargetNodesForVolume(volume));
-                    }}
-                    title={`${learningVolumePresets[volume].textBudget} / ${learningVolumePresets[volume].chunkBudget} 청크`}
-                  >
-                    {learningVolumePresets[volume].label}
-                  </button>
-                ))}
-                <label className="node-target-input">
-                  <span>장기 목표</span>
-                  {learningVolume === "infinite" ? (
-                    <input
-                      aria-label="장기 목표 노드 수"
-                      disabled={isBuilding || continuousLearningActive}
-                      readOnly
-                      type="text"
-                      value="∞"
-                    />
-                  ) : (
-                    <input
-                      aria-label="장기 목표 노드 수"
-                      disabled={isBuilding || continuousLearningActive}
-                      inputMode="numeric"
-                      max={maxTargetNodes}
-                      min={100}
-                      step={100}
-                      type="number"
-                      value={targetNodeCount}
-                      onChange={(event) => {
-                        const nextValue = Number(event.currentTarget.value);
-                        setTargetNodeCount(Number.isFinite(nextValue) ? clamp(nextValue, 100, maxTargetNodes) : defaultTargetNodesForVolume(learningVolume));
-                      }}
-                    />
-                  )}
-                </label>
-                <label className="web-search-toggle">
-                  <input
-                    checked={webSearchEnabled}
-                    type="checkbox"
-                    onChange={(event) => setWebSearchEnabled(event.currentTarget.checked)}
-                  />
-                  <span>웹 검색</span>
-                </label>
-              </div>
+              {workspaceMode === "lab" ? (
+                <>
+                  <div className="mode-tabs">
+                    <button data-active={rightMode === "process"} onClick={() => setRightMode("process")}>학습 과정</button>
+                    <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 채팅</button>
+                  </div>
+                  <div className="learning-volume-switcher" aria-label="학습량 선택">
+                    <span>학습량</span>
+                    {(Object.keys(learningVolumePresets) as LearningVolume[]).map((volume) => (
+                      <button
+                        data-active={learningVolume === volume}
+                        data-infinite={volume === "infinite"}
+                        disabled={isBuilding || continuousLearningActive}
+                        key={volume}
+                        onClick={() => {
+                          setLearningVolume(volume);
+                          setTargetNodeCount(defaultTargetNodesForVolume(volume));
+                        }}
+                        title={`${learningVolumePresets[volume].textBudget} / ${learningVolumePresets[volume].chunkBudget} 청크`}
+                      >
+                        {learningVolumePresets[volume].label}
+                      </button>
+                    ))}
+                    <label className="node-target-input">
+                      <span>장기 목표</span>
+                      {learningVolume === "infinite" ? (
+                        <input
+                          aria-label="장기 목표 노드 수"
+                          disabled={isBuilding || continuousLearningActive}
+                          readOnly
+                          type="text"
+                          value="∞"
+                        />
+                      ) : (
+                        <input
+                          aria-label="장기 목표 노드 수"
+                          disabled={isBuilding || continuousLearningActive}
+                          inputMode="numeric"
+                          max={maxTargetNodes}
+                          min={100}
+                          step={100}
+                          type="number"
+                          value={targetNodeCount}
+                          onChange={(event) => {
+                            const nextValue = Number(event.currentTarget.value);
+                            setTargetNodeCount(Number.isFinite(nextValue) ? clamp(nextValue, 100, maxTargetNodes) : defaultTargetNodesForVolume(learningVolume));
+                          }}
+                        />
+                      )}
+                    </label>
+                    <label className="web-search-toggle">
+                      <input
+                        checked={webSearchEnabled}
+                        type="checkbox"
+                        onChange={(event) => setWebSearchEnabled(event.currentTarget.checked)}
+                      />
+                      <span>웹 검색</span>
+                    </label>
+                  </div>
+                </>
+              ) : null}
               <div className="local-backend-control" data-state={localBackendStatus}>
                 <span>로컬 FastAPI</span>
                 <input
@@ -2018,11 +2115,13 @@ export default function BakeBoardPage() {
                   <div><span>이벤트</span><strong>{learningDaemon?.latest_event_count ?? memoryStatus?.event_count ?? 0}</strong></div>
                 </div>
 
-                <div className="daemon-controls">
-                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(startLearningDaemon)}>상시학습 시작</button>
-                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(resumeLearningDaemon)}>재개</button>
-                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(checkpointLearningDaemon)}>체크포인트</button>
-                  <button disabled={!daemonCanOperate || Boolean(activeAction)} onClick={() => runAction(stopLearningDaemon)}>중지</button>
+                <div className="daemon-readonly">
+                  <span>읽기 전용 관측</span>
+                  <strong>{localBackendConnected ? "로컬 API 연결됨" : "로컬 API 연결 대기"}</strong>
+                  <p>
+                    이 화면은 누적학습 데몬을 직접 조작하지 않습니다. 로컬 FastAPI가 연결되면 데몬 상태,
+                    체크포인트, 자원 스냅샷, 그래프 누적량만 받아서 보여줍니다.
+                  </p>
                 </div>
 
                 <section className="daemon-section">
@@ -2031,7 +2130,8 @@ export default function BakeBoardPage() {
                     <p>
                       상태 파일은 {learningDaemon?.reboot_resilience?.state_file ?? "data/memory/daemon_state.json"}에 저장됩니다.
                       마지막 체크포인트는 {daemonCheckpointText}입니다. PC 재부팅 후 로컬 FastAPI를 다시 켜면
-                      상태가 `resume_needed`로 뜨고, 재개 버튼으로 SQLite WAL과 이벤트 로그에서 이어갑니다.
+                      상태가 `resume_needed`로 뜹니다. 재개는 로컬 데몬 명령 또는 FastAPI 관리 API에서 수행하고,
+                      이 화면은 이어진 상태를 관측합니다.
                     </p>
                   </div>
                   <div className="daemon-lines">
@@ -2082,11 +2182,11 @@ export default function BakeBoardPage() {
                     <button
                       className="inline-action"
                       onClick={step.action}
-                      disabled={step.number === "00" && continuousLearningActive ? false : Boolean(activeAction) || isBuilding}
+                      disabled={step.number === "01" && continuousLearningActive ? false : Boolean(activeAction) || isBuilding}
                     >
                       {step.actionLabel}
                     </button>
-                    {step.number === "00" && buildRun ? (
+                    {step.number === "01" && buildRun ? (
                       <div className="build-run-detail">
                         <div className="build-trace">
                           {buildRun.learning_trace.map((trace) => (

@@ -168,6 +168,16 @@ p {
   opacity: 0.72;
 }
 
+.viewer-pill {
+  border: 1px solid rgba(0, 106, 159, 0.25);
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #f2f8fb;
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .status-indicator {
   gap: 8px;
   font-size: 0.86rem;
@@ -726,6 +736,8 @@ p {
 
 .local-backend-control small {
   grid-column: 1 / -1;
+  max-height: 2.7em;
+  overflow: hidden;
   padding: 0 4px;
   color: var(--muted);
   font-size: 0.68rem;
@@ -753,7 +765,7 @@ p {
   border: 1px solid var(--line);
   border-radius: 8px;
   margin-bottom: 12px;
-  padding: 13px 14px;
+  padding: 12px 13px;
   background: var(--white);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.035);
 }
@@ -806,6 +818,7 @@ p {
 }
 
 .process-card p {
+  margin-bottom: 10px;
   color: #515c56;
   line-height: 1.42;
   font-size: 0.82rem;
@@ -1054,25 +1067,31 @@ p {
   font-size: 0.94rem;
 }
 
-.daemon-controls {
+.daemon-readonly {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 5px;
+  border: 1px solid rgba(0, 106, 159, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f5fafc;
 }
 
-.daemon-controls button {
-  min-height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--ink);
-  color: var(--white);
+.daemon-readonly span {
+  color: var(--blue);
+  font-size: 0.72rem;
   font-weight: 900;
-  cursor: pointer;
 }
 
-.daemon-controls button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
+.daemon-readonly strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.daemon-readonly p {
+  margin: 0;
+  color: #515c56;
+  line-height: 1.45;
+  font-size: 0.8rem;
 }
 
 .daemon-section {
@@ -1122,14 +1141,15 @@ p {
 
 .chat-status-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .chat-status-row div {
   display: grid;
   gap: 4px;
-  padding: 9px;
+  min-width: 0;
+  padding: 8px;
 }
 
 .chat-status-row span {
@@ -1138,7 +1158,9 @@ p {
 }
 
 .chat-status-row strong {
-  font-size: 1rem;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  line-height: 1.18;
 }
 
 .chat-scroll {

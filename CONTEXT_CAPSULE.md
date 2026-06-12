@@ -18,6 +18,10 @@ a local-web-to-local-FastAPI companion connection and clarifies that
 sample. Production UI now works as a fallback demo/lab viewer; real PC
 measurement and real cumulative learning should use local web + local FastAPI
 unless an HTTPS local companion is configured.
+Current UI follow-up makes `실험실` the first/default workspace, turns
+`누적학습` into a read-only local/API viewer, collapses the lab flow to
+`수집 / 학습 / 출력`, and fixes misleading graph growth jumps/detached visual
+clusters.
 
 ## Current Branch
 
@@ -126,6 +130,19 @@ Latest local commit before this update: Clarify live learning limits and safety 
   checkpoint endpoints.
 - Split BakeBoard into `누적학습` and `실험실` workspaces. The deployed app
   treats `누적학습` as a lab viewer only; real daemon controls are local.
+- Reordered the split so `실험실` is first/left and `누적학습` is a secondary
+  read-only viewer; the deployed cumulative view no longer exposes direct
+  start/stop/checkpoint controls.
+- Simplified the visible lab process into `수집`, `학습`, and `출력`.
+- Added `?workspace=daemon` / `?view=cumulative` routing for direct local
+  cumulative-view links.
+- Fixed two graph validity/UX issues:
+  - Build Start frames no longer jump from `9` nodes to about `72%` of the
+    sample on the third expansion; both FastAPI and Next fallback now use
+    smoother sample progression.
+  - live-synapse placement no longer drifts by an unbounded ring offset and the
+    3D renderer preserves source-anchor coordinates more strongly, reducing
+    detached side clusters and misleading long relation lines.
 - Added the Codex Desktop long-run research goal prompt document.
 - Real local benchmark hardware is passed into stability recalculation.
 - Infinite learning preflight/auto-stop now checks real telemetry for RAM,
@@ -158,6 +175,9 @@ Latest local commit before this update: Clarify live learning limits and safety 
 ## Test Results
 
 - 60 Python tests passed with explicit package `PYTHONPATH`.
+- Latest targeted verification: `npm --workspace apps/web run build` passed and
+  `PYTHONPATH=... python -m pytest apps/api packages/knowledge_bakery
+  packages/rag_engine -q` passed with 23 tests.
 - Python compile passed.
 - Frontend build passed.
 - Local browser verification passed, including Neuro-Efficiency Rebalance and

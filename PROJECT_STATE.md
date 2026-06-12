@@ -68,10 +68,14 @@ Deployment:
     - `POST /api/learning/daemon/checkpoint`
     - `POST /api/learning/daemon/stop`
 - BakeBoard workspace split:
+  - `실험실` is now the left/first workspace and the deployed default view
   - `누적학습` shows the long-running local learner, runtime, checkpoints,
     resource snapshot, reboot recovery state, and Codex research goal prompt
-  - deployment fallback renders this area as a lab-viewer-only space
-  - `실험실` keeps the existing Build Start / GraphRAG / Guardrail workbench
+  - deployment fallback renders `누적학습` as a read-only local/API viewer with
+    no start/stop/checkpoint controls
+  - `실험실` is simplified to the three intended stages:
+    수집(문장 분해 및 GraphRAG 구축), 학습(온톨로지 생성 및 관계 계산),
+    출력(자연어 입력/답변)
 - Added `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` with the paste-ready Codex
   Desktop goal prompt and reboot protocol.
 - Neuro-Efficiency Layer for event sparsity, modular routing, continual
@@ -112,6 +116,15 @@ Deployment:
   - infinite runs now use `target_nodes: null` / `unbounded_continuous_goal`;
     the UI shows `∞` instead of a hidden 500,000-node cap and keeps new
     live-synapse nodes visible as they are added
+  - graph frame growth now uses smoother 12/25/50/75/100% style progression
+    instead of jumping from 9 nodes to about 72% of the sample on the third
+    expansion
+  - live-synapse placement now grows around existing source anchors instead of
+    drifting by an unbounded ring offset, reducing detached side clusters and
+    long misleading relation lines
+  - local verification screenshots:
+    - `docs/screenshots/132-lab-first-three-stage-anchor-growth-local.png`
+    - `docs/screenshots/133-daemon-readonly-local-api-viewer.png`
   - local browser verification screenshot:
     `docs/screenshots/121-500k-max-render-cap-local.png`
 - Sentence-element ontology extraction:
@@ -175,6 +188,21 @@ Deployment:
 
 ## Verification
 
+- Latest UI cleanup/local viewer verification:
+  - `npm --workspace apps/web run build` passed.
+  - `PYTHONPATH=... python -m pytest apps/api packages/knowledge_bakery packages/rag_engine -q`
+    passed: 23 tests.
+  - local FastAPI on `http://127.0.0.1:8042` and Next production server on
+    `http://127.0.0.1:3043` verified:
+    `실험실` first/default, `단계 3`, process cards `수집/학습/출력`,
+    `?workspace=daemon&api=http://127.0.0.1:8042` opens the read-only
+    cumulative viewer, no daemon controls are exposed, `관계 계산` succeeds,
+    and `질문 보내기` switches to RAG chat without an error banner.
+  - production deploy succeeded:
+    `https://web-lvgtobjb6-anthony-kims-projects-bc874109.vercel.app`
+  - `https://homage-alpha.vercel.app` now points to that deployment and was
+    browser-verified for lab default, three process cards, and read-only
+    cumulative viewer.
 - Python editable package install passed for all Alpha packages including
   `packages/neuro_efficiency`.
 - `pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q` passed: 49 tests.

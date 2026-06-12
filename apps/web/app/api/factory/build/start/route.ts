@@ -274,17 +274,23 @@ export async function POST(request: Request) {
   const trainingUnits = makeTrainingUnits(docs, learningPreset);
   const generatedAt = new Date().toISOString();
   const { nodes, edges, traversal_path: traversalPath } = makeGraphForPreset(learningPreset);
-  const frameCounts = [2, 5, 9, Math.ceil(nodes.length * 0.72), nodes.length].filter((count, index, all) => index === 0 || count > all[index - 1]);
+  const frameCounts = [
+    Math.min(12, nodes.length),
+    Math.ceil(nodes.length * 0.25),
+    Math.ceil(nodes.length * 0.5),
+    Math.ceil(nodes.length * 0.75),
+    nodes.length,
+  ].filter((count, index, all) => count > 0 && (index === 0 || count > all[index - 1]));
   const graphFrames = frameCounts.map((count, index) => ({
     tick: index + 1,
     node_count: count,
     edge_count: Math.max(1, count - 1),
     message: [
-      "Harvest accepted web references",
-      "Ontology dedupe merged concepts",
-      "GraphRAG traversal found anchor path",
-      "Compressed memory samples were projected",
-      "Training gate reached selected text budget",
+      "Collection seeded sentence chunks and graph anchors",
+      "Sentence elements were decomposed into candidate nodes",
+      "Ontology relations were calculated",
+      "GraphRAG neighborhood projection expanded",
+      "Output gate reached selected text budget",
     ][index] ?? "Graph memory keeps expanding",
   }));
   const trainingGate = {

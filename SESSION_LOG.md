@@ -634,3 +634,42 @@
   no longer exposes `CONTROL_INTENT`.
 - Screenshot:
   - `docs/screenshots/131-lab-growth-no-hidden-greeting-fixed.png`
+
+## 2026-06-12 - Lab-first UI cleanup and graph growth validity fix
+
+- Reordered the workspace switcher so `실험실` is first/left and remains the
+  deployed default, with `누적학습` as the secondary observer view.
+- Converted the `누적학습` workspace into a read-only local/API viewer:
+  top-level Build Start and learning-volume controls are hidden there, and the
+  old start/resume/checkpoint/stop button row is replaced by an observation
+  notice.
+- Simplified the lab process panel to the intended three-stage structure:
+  `수집`, `학습`, `출력`.
+- Added URL workspace selection so `?workspace=daemon` opens the cumulative
+  learning viewer directly.
+- Investigated the detached graph-cluster issue:
+  - live growth previously used an unbounded `0.3 * ring` x-offset, so new
+    batches slowly drifted away from the core while still drawing relation
+    lines back to anchor nodes
+  - large graph rendering also over-weighted a generic spherical spread, which
+    could visually separate connected nodes
+- Fixed live-synapse placement to grow around existing source anchors and
+  adjusted 3D spread weighting so original anchor coordinates are preserved
+  more strongly in dense graphs.
+- Investigated the suspicious third expansion:
+  - the old graph frame sequence was `2 -> 5 -> 9 -> ~72% -> 100%`, so the
+    third visible expansion was a display-sample jump, not a valid burst of
+    learned structure
+  - Build Start frame generation now progresses through smoother
+    `12/25/50/75/100%` sample frames in both local FastAPI and deployed
+    Next.js fallback.
+- Verification:
+  - `npm --workspace apps/web run build`
+  - `PYTHONPATH=... python -m pytest apps/api packages/knowledge_bakery packages/rag_engine -q`
+  - local browser on `http://127.0.0.1:3043` with FastAPI
+    `http://127.0.0.1:8042`
+  - deployed `https://homage-alpha.vercel.app` verified:
+    default `실험실`, three process cards, and read-only `누적학습` viewer
+  - screenshots:
+    - `docs/screenshots/132-lab-first-three-stage-anchor-growth-local.png`
+    - `docs/screenshots/133-daemon-readonly-local-api-viewer.png`

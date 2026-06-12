@@ -164,14 +164,22 @@ function initialSpreadPosition(node: Rag3DNode, index: number, total: number) {
     y * shell * 0.82,
     Math.sin(angle) * radial * shell,
   );
-  const sourceWeight = total > 90 ? 0.18 : total > 40 ? 0.28 : 0.42;
+  const sourceWeight = node.id.startsWith("live-synapse")
+    ? 0.74
+    : total > 300
+      ? 0.5
+      : total > 90
+        ? 0.42
+        : total > 40
+          ? 0.36
+          : 0.42;
   return source.multiplyScalar(sourceWeight).add(target.multiplyScalar(1 - sourceWeight));
 }
 
 function spreadPositions(nodes: Rag3DNode[]) {
   const positions = nodes.map((node, index) => initialSpreadPosition(node, index, nodes.length));
   if (nodes.length <= 1) return positions;
-  if (nodes.length > 600) return positions;
+  if (nodes.length > 1_200) return positions;
   const minDistance = nodes.length > 140 ? 0.38 : nodes.length > 80 ? 0.48 : nodes.length > 40 ? 0.58 : 0.74;
   const iterations = nodes.length > 140 ? 4 : nodes.length > 80 ? 5 : 7;
   for (let pass = 0; pass < iterations; pass += 1) {

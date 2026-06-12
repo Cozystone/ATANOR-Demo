@@ -37,6 +37,12 @@
       APIs with reboot-safe state and checkpoints.
 - [x] Keep deployed build as a lab viewer/demo for the daemon area.
 - [x] Add Codex Desktop long-run research goal prompt document.
+- [x] Make `실험실` the first/default workspace and reduce the lab process UI to
+      `수집 / 학습 / 출력`.
+- [x] Convert `누적학습` into a read-only local/API viewer with no direct daemon
+      controls in the deployed UI.
+- [x] Smooth graph-frame growth and anchor live-synapse placement to avoid
+      misleading third-step bursts and detached visual clusters.
 
 ## Next
 
@@ -48,6 +54,8 @@
 - [ ] Replace allowlisted reference fetch with governed Harvest connectors.
 - [ ] Add document-level metadata browsing.
 - [ ] Add graph mutation timeline and replay.
+- [ ] Replace the temporary lab live-synapse visualization with durable
+      append-only graph event replay from the local daemon.
 - [ ] Add tokenizer trainer MVP.
 - [ ] Persist and evaluate real DataGate/GraphRAG traces.
 - [ ] Implement Knowledge Bakery vector index and evidence store.
