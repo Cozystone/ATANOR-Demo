@@ -65,6 +65,23 @@
       graph signal.
 - [x] Keep the cumulative-learning graph blank until local FastAPI and the
       actual daemon worker are alive.
+- [x] Rework max-profile factory graph generation into bounded volumetric
+      anchor clusters so the `500,000` long-run target renders as a stable
+      `1,720`-node representative 3D sample instead of a flat/spiky burst.
+- [x] Replay Build Start graph frames progressively and tune camera fit so max
+      Collect grows `12 -> 860 -> 1,720` without snapping back to the initial
+      view or zooming too far out.
+- [x] Keep the collected representative graph visible during `학습` when the
+      persistent memory graph is smaller, and activate only confirmed
+      representative relation edges after the learning API completes.
+- [x] Split the learning card metrics into representative graph counts and
+      stored-memory counts.
+- [x] Refresh local benchmark/stability state from FastAPI in the same cycle so
+      RAM/VRAM watermarks reflect the viewer's actual PC instead of stale
+      fallback values.
+- [x] Route all chat questions through `/api/graphrag/query`; conversation
+      queries skip web evidence, fresh/news queries use `news-rss`, and person
+      lookup queries use `wikipedia` when web search is needed.
 
 ## Next
 

@@ -38,11 +38,9 @@ export async function POST(request: Request) {
   } catch {
     // Fall through to deterministic demo with the default query.
   }
-  webSearch = webSearch || isFreshSearchQuery(query) || isKnowledgeLookupQuery(query);
-
-  if (isConversationalQuery(query) || isLegendQuery(query) || isNodeInventoryQuery(query)) {
-    return NextResponse.json(demoGraphRAGQuery(query));
-  }
+  const conversationQuery = isConversationalQuery(query);
+  const controlQuery = conversationQuery || isLegendQuery(query) || isNodeInventoryQuery(query);
+  webSearch = !conversationQuery && (webSearch || isFreshSearchQuery(query) || isKnowledgeLookupQuery(query));
 
   try {
     const proxied = await proxyJson("/api/graphrag/query", {
@@ -55,6 +53,9 @@ export async function POST(request: Request) {
     }
   } catch {
     // Fall through to deterministic demo.
+  }
+  if (controlQuery) {
+    return NextResponse.json(demoGraphRAGQuery(query));
   }
   if (webSearch) {
     const webSearchPayload = await searchWeb(query, 5, webSearchProvider);

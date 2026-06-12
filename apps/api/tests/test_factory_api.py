@@ -61,6 +61,23 @@ def test_factory_max_accepts_500k_long_run_budget() -> None:
     assert gate["representative_node_count"] == 1_720
     assert gate["target_realized"] is False
     assert gate["chunk_count"] == 4_096
+    nodes = body["graph_3d"]["nodes"]
+    edges = body["graph_3d"]["edges"]
+    node_map = {node["id"]: node for node in nodes}
+    max_radius = max((node["x"] ** 2 + node["y"] ** 2 + node["z"] ** 2) ** 0.5 for node in nodes)
+    z_span = max(node["z"] for node in nodes) - min(node["z"] for node in nodes)
+    max_edge_length = max(
+        (
+            (node_map[edge["source"]]["x"] - node_map[edge["target"]]["x"]) ** 2
+            + (node_map[edge["source"]]["y"] - node_map[edge["target"]]["y"]) ** 2
+            + (node_map[edge["source"]]["z"] - node_map[edge["target"]]["z"]) ** 2
+        )
+        ** 0.5
+        for edge in edges
+    )
+    assert max_radius < 13
+    assert z_span > 6
+    assert max_edge_length < 11.5
 
 
 def test_harvest_web_search_static_contract() -> None:

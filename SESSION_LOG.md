@@ -782,9 +782,64 @@
   - production cumulative viewer verification: graph host absent, no `수집 시작`
     button, and the screen says local API is not connected so the graph remains
     blank
-- Captured screenshots:
+  - Captured screenshots:
   - `docs/screenshots/139-stable-volume-sequential-no-live.png`
   - `docs/screenshots/140-greeting-no-web-search.png`
   - `docs/screenshots/141-daemon-blank-until-local-worker.png`
   - `docs/screenshots/142-production-lab-stage-default.png`
   - `docs/screenshots/143-production-daemon-blank-viewer.png`
+
+## 2026-06-12 - Max representative graph volume and adaptive query routing
+
+- Reworked max-profile graph generation in both FastAPI and Next fallback:
+  bounded anchor-local volume offsets replaced unbounded ring expansion, and
+  same-anchor relation chaining reduced detached side clusters and long
+  misleading relation lines.
+- Tuned the Three.js 3D renderer:
+  - id-stable volumetric placement with normalized source coordinates
+  - closer bounds-aware camera fit
+  - reset respects the last fit distance
+  - oversized camera distances shrink back when the graph bounds permit it
+- Fixed local benchmark/stability refresh ordering so local FastAPI hardware
+  readings overwrite stale fallback state. Browser verification now shows RAM
+  soft `22.4GB` for the local RTX 5080 / 31.1GB RAM machine.
+- Changed `관계 계산` so it does not collapse the visible collected
+  representative graph back to the smaller persistent memory graph. When memory
+  storage is smaller, the lab keeps the `graph_3d` representative sample and
+  activates confirmed representative relation edges only after the learning API
+  completes.
+- Updated the learning card to separate representative graph counts from stored
+  memory counts.
+- Verification:
+  - `npm --workspace apps/web run build` passed.
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 69 tests.
+  - `git diff --check` passed.
+  - local FastAPI ran on `http://127.0.0.1:8044`.
+  - local Next production ran on `http://127.0.0.1:3056`.
+  - browser-tested lab link:
+    `http://127.0.0.1:3056/?workspace=lab&api=http://127.0.0.1:8044`.
+  - Collect replay sampled `12 -> 860 -> 1,720` nodes; final graph was
+    `1,720` nodes / `3,421` relations with cameraZ `61.2`.
+  - API graph geometry for max target measured radius max `9.804`, z span
+    `11.089`, and edge max `8.6`.
+  - Learning stayed on `1,720` nodes and showed
+    `학습 관계 확인: 대표 그래프 관계 18개를 활성화했습니다.`
+  - The learning card showed `1,720 대표 노드`, `3,421 대표 관계`,
+    `152 저장 노드`, and `540 저장 관계`.
+  - Query API verification through the same Next/FastAPI route used by chat:
+    `안녕` -> conversation router / no web provider / 0 docs;
+    `오늘 뉴스 알려줘` -> `news-rss` / 5 docs;
+    `유재석이 누구야` -> `wikipedia` / 5 docs.
+  - The max-profile safety warning is valid on this machine because free disk
+    is about `162GB`, below the computed `186.1GB` reserve.
+- Production deployment:
+  - deployed `https://web-1bwyui7xe-anthony-kims-projects-bc874109.vercel.app`
+  - re-aliased `https://homage-alpha.vercel.app` to that deployment
+  - production browser verification passed for lab-first default view, fallback
+    process cards, visible `수집 시작`, and nonblank 3D graph
+  - production API max Build Start returned `500,000` target, `2,000` visual
+    budget, and `1,720` nodes / `3,421` relations
+- Captured screenshots:
+  - `docs/screenshots/145-lab-volumetric-fit-1720.png`
+  - `docs/screenshots/146-learning-keeps-1720-graph.png`
+  - `docs/screenshots/147-production-lab-volumetric-default.png`

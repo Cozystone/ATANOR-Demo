@@ -852,6 +852,7 @@ export default function BakeBoardPage() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const signalTimerRef = useRef<number | null>(null);
   const progressTimerRef = useRef<number | null>(null);
+  const buildFrameTimerRef = useRef<number | null>(null);
   const benchmarkAppliedRef = useRef(false);
   const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -937,9 +938,24 @@ export default function BakeBoardPage() {
       setLocalBackendMessage("로컬 FastAPI 연결됨");
       window.localStorage.setItem("homage.localFastApiUrl", url);
       const recommended = benchmarkStatus?.recommended_learning_volume as LearningVolume | undefined;
+      let nextVolume = learningVolume;
+      let nextTargetNodeCount = targetNodeCount;
       if (benchmarkStatus?.can_read_local_hardware && recommended && learningVolumePresets[recommended]) {
+        nextVolume = recommended;
+        nextTargetNodeCount = defaultTargetNodesForVolume(recommended);
         setLearningVolume(recommended);
-        setTargetNodeCount(defaultTargetNodesForVolume(recommended));
+        setTargetNodeCount(nextTargetNodeCount);
+      }
+      if (benchmarkStatus?.can_read_local_hardware) {
+        const stabilityStatus = await directBackendJson<AnyRecord>(url, "/api/neuro/stability", {
+          method: "POST",
+          body: JSON.stringify(stabilityPayloadForVolume(
+            nextVolume,
+            nextTargetNodeCount,
+            benchmarkStatus.hardware_profile,
+          )),
+        });
+        setStability(stabilityStatus);
       }
     } catch (caught) {
       setLocalBackendStatus("failed");
@@ -955,6 +971,12 @@ export default function BakeBoardPage() {
 
   async function refreshAll() {
     const localStrict = localBackendConnected ? { localOnly: true } : {};
+    const benchmarkForRefresh = localBackendConnected
+      ? await apiJson<AnyRecord>("/api/neuro/benchmark", {
+        method: "POST",
+        body: JSON.stringify({ run_probes: true }),
+      }, { localOnly: true }).catch(() => benchmark)
+      : benchmark;
     const [
       pipelineStatus,
       datagateStatus,
@@ -991,7 +1013,7 @@ export default function BakeBoardPage() {
         body: JSON.stringify(stabilityPayloadForVolume(
           learningVolume,
           targetNodeCount,
-          benchmark?.can_read_local_hardware ? benchmark.hardware_profile : null,
+          benchmarkForRefresh?.can_read_local_hardware ? benchmarkForRefresh.hardware_profile : null,
         )),
       }),
     ]);
@@ -1006,6 +1028,7 @@ export default function BakeBoardPage() {
     setGuard(guardStatus);
     setGpu(gpuStatus);
     setSystem(systemStatus);
+    if (benchmarkForRefresh) setBenchmark(benchmarkForRefresh);
     setOven(ovenStatus);
     setNeuro(neuroStatus);
     setStability(stabilityStatus);
@@ -1042,6 +1065,7 @@ export default function BakeBoardPage() {
 
   useEffect(() => () => {
     if (signalTimerRef.current !== null) window.clearTimeout(signalTimerRef.current);
+    if (buildFrameTimerRef.current !== null) window.clearInterval(buildFrameTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -1147,6 +1171,22 @@ export default function BakeBoardPage() {
 
   async function runMemoryBuildStep() {
     const localStrict = localBackendConnected ? { localOnly: true } : {};
+    const buildGraphCandidate = buildRun?.graph_3d?.nodes?.length
+      ? {
+        nodes: buildRun.graph_3d.nodes.map((node) => ({
+          id: node.id,
+          label: node.label,
+          type: node.type,
+          confidence: node.confidence ?? 0.75,
+        })),
+        edges: buildRun.graph_3d.edges.map((edge) => ({
+          source: edge.source,
+          target: edge.target,
+          relation: edge.relation,
+          confidence: edge.weight ?? 0.72,
+        })),
+      }
+      : null;
     const previousEdgeKeys = new Set(
       ((graph?.edges ?? []) as AnyRecord[])
         .map((edge) => edgeKeyFromParts(edge.source, edge.target))
@@ -1160,20 +1200,30 @@ export default function BakeBoardPage() {
     setMemoryStatus(result);
     setMemoryDrift(driftResult);
     if (graphResult?.nodes?.length) {
-      setGraph(graphResult);
-      setGraphSourceMode("memory");
-      const learnedEdges = ((graphResult.edges ?? []) as AnyRecord[])
+      const shouldKeepBuildGraph = Boolean(
+        buildGraphCandidate && buildGraphCandidate.nodes.length >= graphResult.nodes.length,
+      );
+      const learnedGraph = shouldKeepBuildGraph ? buildGraphCandidate! : graphResult;
+      setGraph(learnedGraph);
+      setGraphSourceMode(shouldKeepBuildGraph ? "build" : "memory");
+      const freshEdges = ((learnedGraph.edges ?? []) as AnyRecord[])
         .filter((edge) => {
           const key = edgeKeyFromParts(edge.source, edge.target);
           return key && !previousEdgeKeys.has(key);
-        })
-        .slice(0, 18);
+        });
+      const learnedEdges = shouldKeepBuildGraph && freshEdges.length === 0
+        ? ((learnedGraph.edges ?? []) as AnyRecord[])
+          .filter((edge) => Number(edge.confidence ?? 0) >= 0.68)
+          .slice(0, 18)
+        : freshEdges.slice(0, 18);
       const nextEdgeCount = Number(result?.edge_count ?? graphResult.edges?.length ?? 0);
-      if (nextEdgeCount > previousEdgeCount && learnedEdges.length > 0) {
+      if ((nextEdgeCount > previousEdgeCount || shouldKeepBuildGraph) && learnedEdges.length > 0) {
         const learnedTrace = {
           edgeKeys: learnedEdges.map((edge) => edgeKeyFromParts(edge.source, edge.target)).filter(Boolean),
           nodeIds: Array.from(new Set(learnedEdges.flatMap((edge) => [String(edge.source), String(edge.target)]))).slice(0, 16),
-          text: `학습 연결 확정: 새 관계 ${learnedEdges.length}개가 메모리에 저장됨`,
+          text: shouldKeepBuildGraph
+            ? `학습 관계 확인: 대표 그래프 관계 ${learnedEdges.length}개를 활성화했습니다.`
+            : `학습 관계 확정: 새 관계 ${learnedEdges.length}개가 메모리에 저장됐습니다.`,
         };
         window.setTimeout(() => activateSignal(learnedTrace, 12000), 80);
       } else {
@@ -1261,17 +1311,32 @@ export default function BakeBoardPage() {
     setSignalTraceText("활성 신호 대기");
   }
 
+  function replayBuildFrames(run: BuildRun) {
+    if (buildFrameTimerRef.current !== null) {
+      window.clearInterval(buildFrameTimerRef.current);
+      buildFrameTimerRef.current = null;
+    }
+    const frameCount = Math.max(1, run.graph_frames?.length ?? 1);
+    setBuildTick(0);
+    if (frameCount <= 1) return;
+    let frameIndex = 0;
+    buildFrameTimerRef.current = window.setInterval(() => {
+      frameIndex += 1;
+      setBuildTick(Math.min(frameIndex, frameCount - 1));
+      if (frameIndex >= frameCount - 1 && buildFrameTimerRef.current !== null) {
+        window.clearInterval(buildFrameTimerRef.current);
+        buildFrameTimerRef.current = null;
+      }
+    }, 620);
+  }
+
   async function sendChat() {
     const question = chatInput.trim();
     if (!question || isGeneratingAnswer) return;
     setError(null);
     setIsGeneratingAnswer(true);
     if (learnComplete) setStageProgress("output", Math.max(8, labStageProgress.output));
-    if (isConversationalQuestion(question)) {
-      clearActiveSignal();
-    } else {
-      activateSignal(signalTraceForQuery(question, displayGraph3D), 15000);
-    }
+    activateSignal(signalTraceForQuery(question, displayGraph3D), 15000);
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
     if (isNodeInventoryQuestion(question) || isLegendQuestion(question)) {
       const localResult = isLegendQuestion(question)
@@ -1292,7 +1357,7 @@ export default function BakeBoardPage() {
       return;
     }
     try {
-      const shouldUseWebSearch = webSearchEnabled && !isConversationalQuestion(question);
+      const shouldUseWebSearch = webSearchEnabled;
       const result = await apiJson<AnyRecord>("/api/graphrag/query", {
         method: "POST",
         body: JSON.stringify({ query: question, web_search: shouldUseWebSearch }),
@@ -1468,7 +1533,7 @@ export default function BakeBoardPage() {
       const isInfiniteRun = run.learning_profile?.id === "infinite";
       setContinuousLearningActive(isInfiniteRun);
       setBuildRun(run);
-      setBuildTick(Math.max(0, (run.graph_frames?.length ?? 1) - 1));
+      replayBuildFrames(run);
       setGraphSourceMode("build");
       setGraph({
         nodes: run.graph_3d.nodes.map((node) => ({
@@ -1600,7 +1665,7 @@ export default function BakeBoardPage() {
   const graphOverlayMessage = graphSourceMode === "build"
     ? buildFrameMessageText(activeBuildFrame?.message)
     : buildRun
-      ? "학습 단계가 메모리 그래프를 다시 읽었습니다."
+      ? "학습 단계가 대표 그래프의 관계를 확인했습니다."
       : "빌드 시작을 누르면 노드가 파생됩니다.";
   const daemonCanOperate = learningDaemon?.mode === "local-daemon";
   const daemonGraphReady = workspaceMode !== "daemon" || (localBackendConnected && daemonCanOperate && Boolean(learningDaemon?.worker_alive));
@@ -1849,12 +1914,19 @@ export default function BakeBoardPage() {
       description: "분해된 문장 요소를 온톨로지 노드로 누적하고, 공출현/전후/행위 관계를 계산해 그래프 메모리로 굽습니다.",
       progress: labStageProgress.learn,
       available: collectComplete,
-      metrics: [
-        `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} 노드`,
-        `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} 관계`,
-        `${memoryStatus?.transition_count ?? 0} 전이`,
-        `drift ${memoryDrift?.state ?? "waiting"}`,
-      ],
+      metrics: buildRun
+        ? [
+          `${displayGraph3D.nodes.length.toLocaleString()} 대표 노드`,
+          `${displayGraph3D.edges.length.toLocaleString()} 대표 관계`,
+          `${memoryStatus?.node_count ?? 0} 저장 노드`,
+          `${memoryStatus?.edge_count ?? 0} 저장 관계`,
+        ]
+        : [
+          `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} 노드`,
+          `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} 관계`,
+          `${memoryStatus?.transition_count ?? 0} 전이`,
+          `drift ${memoryDrift?.state ?? "waiting"}`,
+        ],
       action: () => runProcessAction("learn", runLearningStage),
       actionLabel: activeAction === "learn" ? "학습 중" : "관계 계산",
       blockedText: "수집 100% 완료 후 학습할 수 있습니다.",
@@ -2483,7 +2555,7 @@ export default function BakeBoardPage() {
                             장기 목표 {buildTargetNodeLabel}{buildIsInfinite ? "" : "개"}는 저장/학습 예산이고, API graph_3d는 대표 앵커 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}개를 보냅니다.
                           </small>
                           <small>
-                            현재 화면은 {displayGraph3D.nodes.length}개 노드를 렌더링 중입니다. 수집 단계에서는 API가 보낸 대표 앵커를 표시하고, 학습 단계에서는 저장된 메모리 그래프를 다시 읽습니다.
+                            현재 화면은 {displayGraph3D.nodes.length}개 노드를 렌더링 중입니다. 수집 단계에서는 API가 보낸 대표 앵커를 표시하고, 학습 단계에서는 그 대표 그래프의 관계를 확인합니다.
                           </small>
                           <small>
                             {buildIsInfinite ? "API 대표 앵커는 무제한 학습의 현재 샘플입니다." : `API 대표 앵커만 보면 장기 목표의 약 ${representativeTargetPercent}%입니다.`} 장기 목표 전체를 실제 저장하려면 append-only 온톨로지 이벤트 로그와 SQLite hot index가 계속 누적되어야 합니다.

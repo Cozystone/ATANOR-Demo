@@ -26,6 +26,12 @@ edge pulses are shown only when `POST /api/memory/build` actually adds visible
 relations, Guardrail is folded into the output stage automatically, the right
 status/settings area is collapsed by default, and the cumulative viewer reports
 the real local daemon worker state.
+Latest follow-up stabilizes the max-profile lab graph and learning handoff:
+`500,000` remains a long-run budget while the UI renders a bounded `1,720` node
+/ `3,421` relation representative sample; the sample now grows by replayed
+frames, uses volumetric anchor-local placement, keeps the collected graph
+visible during learning, and routes all chat questions through
+`/api/graphrag/query` with web search selected only when the query needs it.
 
 ## Current Branch
 
@@ -38,12 +44,18 @@ Latest local commit before this update: Clarify live learning limits and safety 
 ## Deployment
 
 - https://homage-alpha.vercel.app
+- Current production deployment:
+  https://web-1bwyui7xe-anthony-kims-projects-bc874109.vercel.app
 
 ## Relevant Files
 
 - `apps/api/app/main.py`
 - `apps/api/app/services/alpha_services.py`
 - `apps/web/app/page.tsx`
+- `apps/web/app/Rag3DScene.tsx`
+- `apps/api/app/routers/factory.py`
+- `apps/web/app/api/factory/build/start/route.ts`
+- `apps/web/app/api/graphrag/query/route.ts`
 - `apps/web/app/api/_alphaDemo.ts`
 - `apps/api/app/routers/neuro.py`
 - `apps/web/app/api/neuro/plan/route.ts`
@@ -158,6 +170,33 @@ Latest local commit before this update: Clarify live learning limits and safety 
     back to 152/540
 - Folded Guardrail into the output flow:
   - RAG chat automatically calls `/api/guard/check` after `/api/graphrag/query`
+  - the latest query routing keeps every user question on the same
+    `/api/graphrag/query` path; conversation queries skip web evidence, fresh
+    news queries select `news-rss`, and person lookup queries select
+    `wikipedia`
+- Max-target graph/learning follow-up:
+  - FastAPI and Next Build Start graph generation now use bounded volumetric
+    anchor clusters instead of unbounded rings
+  - the 3D renderer normalizes source coordinates, grows into a thicker
+    id-stable volume, and uses closer bounds-aware camera fitting
+  - browser verification showed max Collect replay from `12` to `860` to
+    `1,720` visible nodes, final cameraZ `61.2`, and `1,720` nodes /
+    `3,421` relations
+  - API geometry verification measured radius max `9.804`, z span `11.089`,
+    and edge max `8.6`
+  - `관계 계산` keeps the collected representative graph visible when the
+    persistent memory graph is smaller and activates confirmed representative
+    relation edges after the learning API completes
+  - the learning card now separates representative graph counts from stored
+    memory counts
+  - local benchmark/stability refresh now uses the FastAPI benchmark in the
+    same refresh cycle, showing RAM soft `22.4GB` on the local RTX 5080 /
+    31.1GB RAM machine
+  - production deploy succeeded and `https://homage-alpha.vercel.app` now
+    points to
+    `https://web-1bwyui7xe-anthony-kims-projects-bc874109.vercel.app`
+  - production API max Build Start returns `1,720` nodes / `3,421` relations
+    for the `500,000` long-run target
   - the manual Guardrail checker is hidden
   - collapsed chat status shows RAG confidence, evidence count, and Guard score
 - Raised the local memory graph display from a demo cap to 900 nodes and 1,800

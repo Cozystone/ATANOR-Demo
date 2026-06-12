@@ -189,6 +189,27 @@ function makeTrainingUnits(docs: HarvestDoc[], preset: LearningPreset) {
   return units;
 }
 
+function hash01(value: string, salt: number) {
+  let hash = 2166136261 ^ salt;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
+function volumeOffset(id: string, index: number) {
+  const u = hash01(id, 13) * 2 - 1;
+  const theta = hash01(id, 29) * Math.PI * 2;
+  const radial = Math.sqrt(Math.max(0.0001, 1 - u * u));
+  const radius = Math.min(4.8, 0.92 + Math.cbrt(index + 1) * 0.27 + (index % 17) * 0.025);
+  return {
+    x: Math.cos(theta) * radial * radius,
+    y: u * radius * 0.96,
+    z: Math.sin(theta) * radial * radius,
+  };
+}
+
 function makeGraphForPreset(preset: LearningPreset) {
   const baseNodes = [
     { id: "harvest", label: "Web Harvest", type: "source", x: -5, y: 1.4, z: -1.2, confidence: 0.86 },
@@ -206,16 +227,16 @@ function makeGraphForPreset(preset: LearningPreset) {
   const extraNodes = Array.from({ length: extraCount }, (_, index) => {
     const topic = memoryTopics[index % memoryTopics.length];
     const wave = Math.floor(index / memoryTopics.length);
-    const ring = Math.floor(index / 8);
-    const angle = index * 0.82;
-    const radius = 4.2 + ring * 0.55;
+    const anchorNode = baseNodes[index % baseNodes.length];
+    const offset = volumeOffset(`${topic[0]}-${wave}-${index}`, index);
+    const centerPull = 0.1 + (index % 5) * 0.015;
     return {
       id: wave > 0 ? `${topic[0]}-${wave + 1}` : topic[0],
       label: wave > 0 ? `${topic[1]} ${wave + 1}` : topic[1],
       type: topic[2],
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius * 0.72,
-      z: ((index % 7) - 3) * 0.56,
+      x: anchorNode.x * (1 - centerPull) + offset.x,
+      y: anchorNode.y * (1 - centerPull) + offset.y,
+      z: anchorNode.z * (1 - centerPull) + offset.z,
       confidence: 0.68 + (index % 8) * 0.025,
     };
   });
@@ -231,9 +252,10 @@ function makeGraphForPreset(preset: LearningPreset) {
     { source: "guard", target: "oven", relation: "approves_training", weight: 0.71 },
   ];
   const extraEdges = extraNodes.flatMap((node, index) => {
-    const anchor = index % 4 === 0 ? "anchor" : index % 4 === 1 ? "mutable-kg" : index % 4 === 2 ? "guard" : "oven";
+    const anchor = baseNodes[index % baseNodes.length].id;
     const edges = [{ source: anchor, target: node.id, relation: "compresses_chunk", weight: 0.62 + (index % 5) * 0.04 }];
-    if (index > 0) edges.push({ source: extraNodes[index - 1].id, target: node.id, relation: "associates", weight: 0.52 });
+    const previousSameAnchor = index - baseNodes.length;
+    if (previousSameAnchor >= 0) edges.push({ source: extraNodes[previousSameAnchor].id, target: node.id, relation: "associates", weight: 0.52 });
     return edges;
   });
   return {

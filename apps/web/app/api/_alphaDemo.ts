@@ -859,11 +859,14 @@ export function demoOntologyRun() {
 
 export function demoGraphRAGQuery(query: string, webEvidenceDocs: any[] = [], webSearchPayload: any = null) {
   const result: any = makeEvidence(query || "GraphRAG evidence", webEvidenceDocs, webSearchPayload);
-  result.memory_activation = demoMemoryActivate(result.query);
-  result.answer_engine = {
-    ...(result.answer_engine ?? {}),
-    memory_activation: "knowledge_bakery_spread_activation_v1",
-  };
+  const isConversationResult = result.method === "homage-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(result.answer_kind);
+  if (!isConversationResult) {
+    result.memory_activation = demoMemoryActivate(result.query);
+    result.answer_engine = {
+      ...(result.answer_engine ?? {}),
+      memory_activation: "knowledge_bakery_spread_activation_v1",
+    };
+  }
   demoState.graphrag = { ...demoState.graphrag, state: "completed", started_at: now(), finished_at: now(), last_query: result.query, confidence: result.confidence, result };
   return demoState.graphrag;
 }

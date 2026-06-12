@@ -11,12 +11,53 @@ Deployment:
 
 - https://homage-alpha.vercel.app
 - Current production deployment:
-  https://web-5gu3ndmzg-anthony-kims-projects-bc874109.vercel.app
+  https://web-1bwyui7xe-anthony-kims-projects-bc874109.vercel.app
 
 Latest local verification links:
 
-- Lab: http://127.0.0.1:3055/?workspace=lab&api=http://127.0.0.1:8043
-- Cumulative viewer: http://127.0.0.1:3055/?workspace=daemon&api=http://127.0.0.1:8043
+- Lab: http://127.0.0.1:3056/?workspace=lab&api=http://127.0.0.1:8044
+- Cumulative viewer: http://127.0.0.1:3056/?workspace=daemon&api=http://127.0.0.1:8044
+
+Latest 2026-06-12 follow-up:
+
+- Max-target Collect still treats `500,000` as a long-run storage/training
+  budget, not a browser render count. The browser now receives and replays a
+  bounded representative graph of `1,720` nodes / `3,421` relations.
+- The factory graph generator was changed from unbounded ring placement to
+  bounded anchor-local volumetric placement. Local API geometry verification for
+  max runs measured radius max `9.804`, z span `11.089`, and edge max `8.6`, so
+  the sample is no longer flat or spike-driven.
+- The Three.js renderer now uses id-stable volume points, normalized source
+  coordinates, bounds-aware camera fit, and a closer reset distance. Browser
+  verification showed the final `1,720` graph at cameraZ `61.2` instead of the
+  earlier too-distant `109.0`.
+- Collect no longer appears as a sudden full graph jump: local browser sampling
+  observed staged replay from `12` to `860` to `1,720` visible nodes.
+- Local hardware benchmark refresh now wins over stale fallback state after
+  FastAPI connects. The lab status shows RAM soft `22.4GB` for this
+  31.1GB-RAM / RTX 5080 machine.
+- `관계 계산` no longer collapses the visible graph back to the smaller stored
+  memory graph. If the stored memory graph is smaller than the collected
+  representative graph, the lab keeps the representative graph and lights only
+  confirmed representative relations.
+- The learning card now separates representative graph counts from persistent
+  memory counts: browser verification showed `1,720 대표 노드`,
+  `3,421 대표 관계`, `152 저장 노드`, and `540 저장 관계`.
+- Query routing was verified through the same Next/FastAPI API path used by the
+  UI:
+  - `안녕`: `homage-conversation-router-v1`, provider `null`, evidence docs `0`.
+  - `오늘 뉴스 알려줘`: `homage-graph-token-web-rag-v1`, provider `news-rss`,
+    evidence docs `5`.
+  - `유재석이 누구야`: `homage-graph-token-web-rag-v1`, provider `wikipedia`,
+    evidence docs `5`.
+- Current disk free space is below the max-profile storage reserve, so the lab
+  correctly shows a safety warning for `500,000` long-run work rather than
+  pretending the workstation can run that target indefinitely without freeing
+  storage.
+- Browser screenshots:
+  - `docs/screenshots/145-lab-volumetric-fit-1720.png`
+  - `docs/screenshots/146-learning-keeps-1720-graph.png`
+  - `docs/screenshots/147-production-lab-volumetric-default.png`
 
 Latest 2026-06-12 update:
 
@@ -245,6 +286,40 @@ Latest 2026-06-12 update:
 
 ## Verification
 
+- Latest volumetric graph / staged learning / adaptive web routing verification:
+  - `npm --workspace apps/web run build` passed.
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 69 tests.
+  - local FastAPI `http://127.0.0.1:8044` and local Next production server
+    `http://127.0.0.1:3056` returned HTTP 200 and were browser-tested.
+  - max Collect replay showed `12 -> 860 -> 1,720` visible nodes; final graph
+    was `1,720` nodes / `3,421` relations, cameraZ `61.2`, maxZoom `733.8`.
+  - local API geometry check for max representative graph: radius max `9.804`,
+    z span `11.089`, edge max `8.6`.
+  - local benchmark/stability refresh showed RTX 5080, 31.1GB RAM, 32 CPU
+    threads, `max` recommendation, and RAM soft `22.4GB`.
+  - max run safety warning is expected on this machine because free disk
+    `~162GB` is below the max-profile reserve `186.1GB`.
+  - learning stage kept the `1,720` representative graph visible and activated
+    `18` confirmed representative relation edges instead of collapsing to the
+    smaller `152`-node stored memory graph.
+  - learning card now displays both representative graph and stored-memory
+    counts: `1,720 대표 노드`, `3,421 대표 관계`, `152 저장 노드`,
+    `540 저장 관계`.
+  - query API verification:
+    - `안녕`: conversation router, no web provider, `0` evidence docs.
+    - `오늘 뉴스 알려줘`: web graph-token predictor, `news-rss`, `5` evidence docs.
+    - `유재석이 누구야`: web graph-token predictor, `wikipedia`, `5` evidence docs.
+  - production deploy succeeded:
+    `https://web-1bwyui7xe-anthony-kims-projects-bc874109.vercel.app`
+  - `https://homage-alpha.vercel.app` now points to that deployment.
+  - production browser verification passed for lab-first default view, fallback
+    process cards, visible `수집 시작`, and nonblank 3D graph.
+  - production API verification for max Build Start returned `500,000` target,
+    `2,000` visual budget, and `1,720` nodes / `3,421` relations.
+  - screenshots:
+    - `docs/screenshots/145-lab-volumetric-fit-1720.png`
+    - `docs/screenshots/146-learning-keeps-1720-graph.png`
+    - `docs/screenshots/147-production-lab-volumetric-default.png`
 - Latest truthful learning-signal / compact UI verification:
   - `npm --workspace apps/web run build` passed.
   - full Alpha Python suite passed with explicit `PYTHONPATH`: 69 tests.

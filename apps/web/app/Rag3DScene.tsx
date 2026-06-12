@@ -148,20 +148,27 @@ function hashUnit(value: string, salt: number) {
   return ((hash >>> 0) / 4294967295) * 2 - 1;
 }
 
-function stableShellPoint(id: string, index: number) {
+function hash01(value: string, salt: number) {
+  return (hashUnit(value, salt) + 1) / 2;
+}
+
+function stableVolumePoint(id: string, index: number, total: number) {
   const u = hashUnit(id, 13);
   const theta = (hashUnit(id, 29) + 1) * Math.PI;
   const radial = Math.sqrt(Math.max(0.0001, 1 - u * u));
-  const shell = 3.1 + Math.cbrt(index + 1) * 1.05;
+  const volumeRadius = Math.min(20, 4.6 + Math.cbrt(Math.max(1, total)) * 0.9);
+  const internalDepth = 0.28 + Math.cbrt(hash01(id, 47)) * 0.72;
+  const localJitter = ((index % 19) / 19) * 0.22;
+  const radius = volumeRadius * Math.min(1, internalDepth + localJitter);
   return new THREE.Vector3(
-    Math.cos(theta) * radial * shell,
-    u * shell * 0.92,
-    Math.sin(theta) * radial * shell,
+    Math.cos(theta) * radial * radius,
+    u * radius * 0.96,
+    Math.sin(theta) * radial * radius,
   );
 }
 
 function cameraDistanceForNodeCount(total: number) {
-  return Math.min(260, 12 + Math.cbrt(Math.max(1, total)) * 5.6 + Math.sqrt(Math.max(1, total)) * 0.72);
+  return Math.min(210, 10 + Math.cbrt(Math.max(1, total)) * 3.3 + Math.sqrt(Math.max(1, total)) * 0.28);
 }
 
 function maxZoomDistanceForNodeCount(total: number) {
@@ -173,16 +180,30 @@ function clampCameraZ(camera: THREE.PerspectiveCamera, total: number) {
   camera.position.z = Math.max(4.8, Math.min(maxZoomDistanceForNodeCount(total), camera.position.z));
 }
 
-function initialSpreadPosition(node: Rag3DNode, index: number, total: number) {
-  const source = new THREE.Vector3(node.x, node.y, node.z);
+function normalizedSourcePositions(nodes: Rag3DNode[]) {
+  const center = new THREE.Vector3();
+  const rawPositions = nodes.map((node) => new THREE.Vector3(node.x, node.y, node.z));
+  rawPositions.forEach((position) => center.add(position));
+  if (rawPositions.length) center.divideScalar(rawPositions.length);
+  let radius = 1;
+  rawPositions.forEach((position) => {
+    radius = Math.max(radius, position.distanceTo(center));
+  });
+  const sourceLimit = Math.min(17, 4.2 + Math.cbrt(Math.max(1, nodes.length)) * 0.78);
+  const scale = radius > sourceLimit ? sourceLimit / radius : 1;
+  return rawPositions.map((position) => position.sub(center).multiplyScalar(scale));
+}
+
+function initialSpreadPosition(node: Rag3DNode, source: THREE.Vector3, index: number, total: number) {
   if (total <= 14) return source;
-  const target = stableShellPoint(node.id, index);
-  const sourceWeight = node.id.startsWith("live-synapse") ? 0.58 : 0.28;
+  const target = stableVolumePoint(node.id, index, total);
+  const sourceWeight = node.id.startsWith("live-synapse") ? 0.55 : total > 800 ? 0.5 : 0.52;
   return source.multiplyScalar(sourceWeight).add(target.multiplyScalar(1 - sourceWeight));
 }
 
 function spreadPositions(nodes: Rag3DNode[]) {
-  const positions = nodes.map((node, index) => initialSpreadPosition(node, index, nodes.length));
+  const sources = normalizedSourcePositions(nodes);
+  const positions = nodes.map((node, index) => initialSpreadPosition(node, sources[index].clone(), index, nodes.length));
   if (nodes.length <= 1) return positions;
   if (nodes.length > 1_400) return positions;
   const minDistance = nodes.length > 700 ? 0.64 : nodes.length > 300 ? 0.72 : nodes.length > 140 ? 0.78 : nodes.length > 80 ? 0.66 : 0.74;
@@ -222,7 +243,7 @@ function fitDistanceForPositions(positions: THREE.Vector3[], camera: THREE.Persp
   });
   const fovRadians = THREE.MathUtils.degToRad(camera.fov);
   const aspectCompensation = camera.aspect < 1 ? 1 / Math.max(0.62, camera.aspect) : 1;
-  return Math.min(2200, Math.max(cameraDistanceForNodeCount(positions.length), (radius * 1.65 * aspectCompensation) / Math.tan(fovRadians / 2)));
+  return Math.min(2200, Math.max(cameraDistanceForNodeCount(positions.length), (radius * 1.45 * aspectCompensation) / Math.tan(fovRadians / 2)));
 }
 
 function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: Set<string>, activeEdgeKeys: Set<string>) {
@@ -237,6 +258,9 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   const fitDistance = fitDistanceForPositions(positions, state.camera);
   if (fitDistance > state.lastFitDistance || fitDistance > state.camera.position.z) {
     state.camera.position.z = Math.max(state.camera.position.z, fitDistance);
+    state.lastFitDistance = fitDistance;
+  } else if (state.camera.position.z > fitDistance * 1.32) {
+    state.camera.position.z = fitDistance * 1.12;
     state.lastFitDistance = fitDistance;
   }
   clampCameraZ(state.camera, graph.nodes.length);
@@ -381,7 +405,7 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
     if (control.action === "up") group.rotation.x -= 0.18;
     if (control.action === "down") group.rotation.x += 0.18;
     if (control.action === "reset") {
-      camera.position.set(0, 0, cameraDistanceForNodeCount(totalNodes));
+      camera.position.set(0, 0, Math.max(cameraDistanceForNodeCount(totalNodes), state.lastFitDistance));
       group.rotation.set(0, 0, 0);
     }
   }, [control]);

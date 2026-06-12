@@ -222,6 +222,26 @@ def _training_units(docs: list[dict[str, Any]], preset: dict[str, Any]) -> list[
     return units
 
 
+def _hash01(value: str, salt: int) -> float:
+    hash_value = 2166136261 ^ salt
+    for char in value:
+        hash_value ^= ord(char)
+        hash_value = (hash_value * 16777619) & 0xFFFFFFFF
+    return hash_value / 0xFFFFFFFF
+
+
+def _volume_offset(node_id: str, index: int) -> tuple[float, float, float]:
+    u = _hash01(node_id, 13) * 2 - 1
+    theta = _hash01(node_id, 29) * math.tau
+    radial = math.sqrt(max(0.0001, 1 - u * u))
+    radius = min(4.8, 0.92 + math.pow(index + 1, 1 / 3) * 0.27 + (index % 17) * 0.025)
+    return (
+        math.cos(theta) * radial * radius,
+        u * radius * 0.96,
+        math.sin(theta) * radial * radius,
+    )
+
+
 def _graph_for_preset(preset: dict[str, Any]) -> dict[str, Any]:
     base_nodes = [
         {"id": "harvest", "label": "Web Harvest", "type": "source", "x": -5, "y": 1.4, "z": -1.2, "confidence": 0.86},
@@ -240,17 +260,17 @@ def _graph_for_preset(preset: dict[str, Any]) -> dict[str, Any]:
     for index in range(extra_count):
         topic = MEMORY_TOPICS[index % len(MEMORY_TOPICS)]
         wave = index // len(MEMORY_TOPICS)
-        ring = index // 8
-        angle = index * 0.82
-        radius = 4.2 + ring * 0.55
+        anchor_node = base_nodes[index % len(base_nodes)]
+        offset_x, offset_y, offset_z = _volume_offset(f"{topic[0]}-{wave}-{index}", index)
+        center_pull = 0.1 + (index % 5) * 0.015
         extra_nodes.append(
             {
                 "id": f"{topic[0]}-{wave + 1}" if wave else topic[0],
                 "label": f"{topic[1]} {wave + 1}" if wave else topic[1],
                 "type": topic[2],
-                "x": math.cos(angle) * radius,
-                "y": math.sin(angle) * radius * 0.72,
-                "z": ((index % 7) - 3) * 0.56,
+                "x": anchor_node["x"] * (1 - center_pull) + offset_x,
+                "y": anchor_node["y"] * (1 - center_pull) + offset_y,
+                "z": anchor_node["z"] * (1 - center_pull) + offset_z,
                 "confidence": 0.68 + (index % 8) * 0.025,
             }
         )
@@ -267,10 +287,11 @@ def _graph_for_preset(preset: dict[str, Any]) -> dict[str, Any]:
     ]
     extra_edges = []
     for index, node in enumerate(extra_nodes):
-        anchor = ["anchor", "mutable-kg", "guard", "oven"][index % 4]
+        anchor = base_nodes[index % len(base_nodes)]["id"]
         extra_edges.append({"source": anchor, "target": node["id"], "relation": "compresses_chunk", "weight": 0.62 + (index % 5) * 0.04})
-        if index > 0:
-            extra_edges.append({"source": extra_nodes[index - 1]["id"], "target": node["id"], "relation": "associates", "weight": 0.52})
+        previous_same_anchor = index - len(base_nodes)
+        if previous_same_anchor >= 0:
+            extra_edges.append({"source": extra_nodes[previous_same_anchor]["id"], "target": node["id"], "relation": "associates", "weight": 0.52})
     return {
         "nodes": nodes,
         "edges": [*base_edges, *extra_edges],
