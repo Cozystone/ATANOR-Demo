@@ -29,6 +29,25 @@ Latest GitHub / Desktop packaging update:
   Control Policy (`os error 4551`), so the trusted GitHub hosted runner is the
   current packaging proof.
 
+Latest Cloud-Edge network architecture update:
+
+- Refactored the hybrid network layer into explicit `NetworkConfig`,
+  metadata-only signaling providers, and payload transports.
+- Server signaling is now optional. If Supabase/AWS-style metadata discovery is
+  down, local peer-directory discovery and edge payload transports can still
+  run.
+- Added `LocalPeerDirectorySignal` so peer discovery can work from
+  `data/network/peers.json` without a central server.
+- Added a payload transport contract. P2P/libp2p, WebRTC, HTTP signed-fragment
+  fallback, or future Rust/Tauri transport can be swapped without changing
+  resolver logic.
+- Added `EdgeComputeBroker` with `/api/network/edge/status` and
+  `/api/network/edge/advertise`. It reports idle edge capacity as metadata only
+  and returns `local_only` when server signaling is disabled.
+- `/api/network/status` now exposes the Local-First / Cloud-Assisted transition
+  state while preserving the legacy `two_track_hybrid_network` field for API
+  compatibility.
+
 Latest local verification links:
 
 - Lab: http://127.0.0.1:3056/?workspace=lab&api=http://127.0.0.1:8044

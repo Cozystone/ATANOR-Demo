@@ -119,6 +119,49 @@ Cloud Brain does not replace web search. It is a public graph cache that reduces
 repeated web crawling and gives the lab a structured fallback when raw search
 results are too noisy or unavailable.
 
+## Cloud-Edge Hybrid Roadmap
+
+Homage is evolving toward a local-first, cloud-assisted network. The important
+rule is that server coordination and edge payload movement are separate.
+
+### Phase 1: Local-First Core
+
+- Heavy work runs on `127.0.0.1`: RAG, memory, graph traversal, extraction, and
+  local answer attempts.
+- Supabase/AWS-style services are optional metadata signaling only.
+- If no server is configured, the backend still runs as a standalone local
+  engine.
+
+### Phase 2: Hybrid Scaling
+
+- Idle Tier 1 / Tier 2 machines can announce capacity through an
+  `EdgeComputeBroker`.
+- The server may route metadata and batch-job intent, but heavy graph indexing
+  and ontology payloads are transferred through edge transports.
+- Failed P2P transfer falls back to a signed HTTP fragment endpoint when the
+  peer exposes one.
+
+### Phase 3: Autonomous Federated Network
+
+- AWS/Supabase becomes a convenience layer rather than a requirement.
+- Local peer discovery can replace server discovery through a peer directory or
+  future LAN/DHT discovery.
+- Switching from server-assisted to P2P-dominant mode should be a config change,
+  not a rewrite.
+
+Current implementation points:
+
+- `apps/api/app/services/network_config.py` centralizes all network mode,
+  timeout, signing, limit, and endpoint settings.
+- `apps/api/app/services/hybrid_network_manager.py` separates
+  `SignalingProvider` from `PayloadTransport`.
+- `LocalPeerDirectorySignal` reads local peer hints without a server.
+- `SupabaseSignalIndex` sends only vector footprints and peer metadata.
+- `Libp2pTransport` and `HttpFallbackTransport` both implement payload
+  movement, so graph fragments are not tied to server availability.
+- `apps/api/app/services/edge_compute_broker.py` exposes idle capacity as safe
+  metadata for future batch orchestration.
+
 ## Synaptic Lifecycle
 
 ### 1. Virtual Edge

@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+
+NetworkMode = Literal["local_first", "server_assisted", "p2p_dominant"]
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+@dataclass(frozen=True)
+class NetworkConfig:
+    """Central config for local-first, cloud-assisted networking.
+
+    No URL, API key, or server dependency is baked into the networking core.
+    A default instance runs fully offline on localhost and simply returns no
+    remote peers until the user supplies signaling or local peer-directory
+    configuration.
+    """
+
+    mode: NetworkMode = "local_first"
+    local_peer_id: str = "homage-local-peer"
+    local_payload_endpoint: str | None = "http://127.0.0.1:8000"
+    peer_directory_path: Path = Path("data/network/peers.json")
+    enable_server_signaling: bool = False
+    enable_local_peer_directory: bool = True
+    enable_p2p_payload: bool = True
+    enable_http_payload_fallback: bool = True
+    fallback_to_server_payload: bool = True
+    supabase_url: str | None = None
+    supabase_key: str | None = None
+    supabase_peer_table: str = "homage_peer_index"
+    timeout_seconds: float = 2.5
+    max_fragment_bytes: int = 2_000_000
+    max_nodes: int = 2_048
+    max_edges: int = 8_192
+    signing_key: str | None = None
+
+    @classmethod
+    def from_env(cls) -> "NetworkConfig":
+        raw_mode = os.getenv("HOMAGE_NETWORK_MODE", "local_first").strip().lower()
+        mode: NetworkMode = raw_mode if raw_mode in {"local_first", "server_assisted", "p2p_dominant"} else "local_first"  # type: ignore[assignment]
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        server_signaling_default = mode == "server_assisted" and bool(supabase_url and supabase_key)
+        return cls(
+            mode=mode,
+            local_peer_id=os.getenv("HOMAGE_LOCAL_PEER_ID", "homage-local-peer"),
+            local_payload_endpoint=os.getenv("HOMAGE_LOCAL_PAYLOAD_ENDPOINT", "http://127.0.0.1:8000"),
+            peer_directory_path=Path(os.getenv("HOMAGE_PEER_DIRECTORY", "data/network/peers.json")),
+            enable_server_signaling=_env_bool("HOMAGE_ENABLE_SERVER_SIGNALING", server_signaling_default),
+            enable_local_peer_directory=_env_bool("HOMAGE_ENABLE_LOCAL_PEER_DIRECTORY", True),
+            enable_p2p_payload=_env_bool("HOMAGE_ENABLE_P2P_PAYLOAD", True),
+            enable_http_payload_fallback=_env_bool("HOMAGE_ENABLE_HTTP_PAYLOAD_FALLBACK", True),
+            fallback_to_server_payload=_env_bool("HOMAGE_FALLBACK_TO_SERVER_PAYLOAD", True),
+            supabase_url=supabase_url,
+            supabase_key=supabase_key,
+            supabase_peer_table=os.getenv("HOMAGE_SUPABASE_PEER_TABLE", "homage_peer_index"),
+            timeout_seconds=_env_float("HOMAGE_NETWORK_TIMEOUT_SECONDS", 2.5),
+            max_fragment_bytes=_env_int("HOMAGE_MAX_FRAGMENT_BYTES", 2_000_000),
+            max_nodes=_env_int("HOMAGE_MAX_FRAGMENT_NODES", 2_048),
+            max_edges=_env_int("HOMAGE_MAX_FRAGMENT_EDGES", 8_192),
+            signing_key=os.getenv("HOMAGE_FRAGMENT_SIGNING_KEY"),
+        )
+
+    @property
+    def server_configured(self) -> bool:
+        return bool(self.supabase_url and self.supabase_key)
+
+    @property
+    def standalone_localhost_ready(self) -> bool:
+        return bool(self.local_payload_endpoint and self.local_payload_endpoint.startswith("http://127.0.0.1"))
+
+    def public_status(self) -> dict[str, object]:
+        return {
+            "mode": self.mode,
+            "local_peer_id": self.local_peer_id,
+            "standalone_localhost_ready": self.standalone_localhost_ready,
+            "server_signaling_enabled": self.enable_server_signaling,
+            "server_configured": self.server_configured,
+            "local_peer_directory_enabled": self.enable_local_peer_directory,
+            "p2p_payload_enabled": self.enable_p2p_payload,
+            "http_payload_fallback_enabled": self.enable_http_payload_fallback,
+            "fallback_to_server_payload": self.fallback_to_server_payload,
+            "max_fragment_bytes": self.max_fragment_bytes,
+            "max_nodes": self.max_nodes,
+            "max_edges": self.max_edges,
+        }

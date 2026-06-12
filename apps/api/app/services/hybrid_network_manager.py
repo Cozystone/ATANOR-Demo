@@ -5,13 +5,14 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
+
+from app.services.network_config import NetworkConfig
 
 
 DEFAULT_TIMEOUT_SECONDS = 2.5
@@ -46,6 +47,38 @@ def query_text_footprint(query: str) -> str:
 
 
 @dataclass(frozen=True)
+class QueryIntent:
+    """Metadata-safe query signal.
+
+    The raw user query is converted into coarse footprints before it reaches
+    any server-side signaling provider.
+    """
+
+    text_footprint: str
+    vector_footprint: str
+    query_vector: list[float]
+    created_at: int = field(default_factory=_utc_seconds)
+
+    @classmethod
+    def from_query(cls, query: str) -> "QueryIntent":
+        query_vector = query_to_vector(query)
+        return cls(
+            text_footprint=query_text_footprint(query),
+            vector_footprint=query_vector_footprint(query_vector),
+            query_vector=query_vector,
+        )
+
+    @classmethod
+    def from_vector(cls, query_vector: list[float]) -> "QueryIntent":
+        vector_footprint = query_vector_footprint(query_vector)
+        return cls(
+            text_footprint=sha256_hex(canonical_json_bytes({"kind": "vector-only", "vector": vector_footprint})),
+            vector_footprint=vector_footprint,
+            query_vector=list(query_vector),
+        )
+
+
+@dataclass(frozen=True)
 class PeerHint:
     peer_id: str
     concept_id: str
@@ -53,16 +86,23 @@ class PeerHint:
     score: float = 0.0
     transport: str = "p2p"
     expires_at: int | None = None
+    vector_footprint: str | None = None
+    source: str = "unknown"
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> "PeerHint":
+        concept_id = value.get("concept_id")
+        if concept_id is None and isinstance(value.get("concept_ids"), list) and value["concept_ids"]:
+            concept_id = value["concept_ids"][0]
         return cls(
             peer_id=str(value.get("peer_id") or ""),
-            concept_id=str(value.get("concept_id") or value.get("concept_ids") or ""),
+            concept_id=str(concept_id or ""),
             endpoint=str(value["endpoint"]) if value.get("endpoint") else None,
             score=float(value.get("score") or value.get("confidence") or 0.0),
             transport=str(value.get("transport") or "p2p"),
             expires_at=int(value["expires_at"]) if value.get("expires_at") else None,
+            vector_footprint=str(value["vector_footprint"]) if value.get("vector_footprint") else None,
+            source=str(value.get("source") or "unknown"),
         )
 
     def is_fresh(self) -> bool:
@@ -183,6 +223,13 @@ def sign_payload(payload_sha256: str, signing_key: str | None) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
+class SignalingProvider(Protocol):
+    name: str
+
+    async def discover_peers(self, intent: QueryIntent) -> list[PeerHint]:
+        ...
+
+
 class SignalIndex(Protocol):
     async def broadcast_query_intent(self, query_vector: list[float]) -> list[PeerHint]:
         ...
@@ -196,16 +243,20 @@ class SupabaseSignalIndex:
     signaling/index server.
     """
 
+    name = "supabase_metadata_signal"
+
     def __init__(
         self,
         *,
+        config: NetworkConfig | None = None,
         url: str | None = None,
         key: str | None = None,
-        table: str = "homage_peer_index",
+        table: str | None = None,
     ) -> None:
-        self.url = url or os.getenv("SUPABASE_URL")
-        self.key = key or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-        self.table = os.getenv("HOMAGE_SUPABASE_PEER_TABLE", table)
+        self.config = config or NetworkConfig.from_env()
+        self.url = url or self.config.supabase_url
+        self.key = key or self.config.supabase_key
+        self.table = table or self.config.supabase_peer_table
         self._client: Any | None = None
 
     @property
@@ -225,8 +276,7 @@ class SupabaseSignalIndex:
         except Exception:
             return None
 
-    async def broadcast_query_intent(self, query_vector: list[float]) -> list[PeerHint]:
-        footprint = query_vector_footprint(query_vector)
+    async def discover_peers(self, intent: QueryIntent) -> list[PeerHint]:
         client = self._client_or_none()
         if client is None:
             return []
@@ -234,8 +284,8 @@ class SupabaseSignalIndex:
         def _query() -> list[dict[str, Any]]:
             response = (
                 client.table(self.table)
-                .select("peer_id,concept_id,endpoint,score,transport,expires_at")
-                .eq("vector_footprint", footprint)
+                .select("peer_id,concept_id,endpoint,score,transport,expires_at,vector_footprint")
+                .eq("vector_footprint", intent.vector_footprint)
                 .order("score", desc=True)
                 .limit(8)
                 .execute()
@@ -243,7 +293,77 @@ class SupabaseSignalIndex:
             return list(getattr(response, "data", None) or [])
 
         rows = await asyncio.to_thread(_query)
-        return [hint for hint in (PeerHint.from_mapping(row) for row in rows) if hint.peer_id and hint.concept_id and hint.is_fresh()]
+        hints = []
+        for row in rows:
+            row["source"] = self.name
+            hint = PeerHint.from_mapping(row)
+            if hint.peer_id and hint.concept_id and hint.is_fresh():
+                hints.append(hint)
+        return hints
+
+    async def broadcast_query_intent(self, query_vector: list[float]) -> list[PeerHint]:
+        return await self.discover_peers(QueryIntent.from_vector(query_vector))
+
+
+class LocalPeerDirectorySignal:
+    """Local peer discovery that keeps edge payloads independent from servers."""
+
+    name = "local_peer_directory"
+
+    def __init__(self, config: NetworkConfig | None = None) -> None:
+        self.config = config or NetworkConfig.from_env()
+
+    async def discover_peers(self, intent: QueryIntent) -> list[PeerHint]:
+        path = self.config.peer_directory_path
+        if not path.exists():
+            return []
+
+        def _read() -> Any:
+            return json.loads(path.read_text(encoding="utf-8"))
+
+        try:
+            payload = await asyncio.to_thread(_read)
+        except (OSError, json.JSONDecodeError):
+            return []
+        rows = payload.get("peers", payload) if isinstance(payload, dict) else payload
+        if not isinstance(rows, list):
+            return []
+
+        hints: list[PeerHint] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row = {**row, "source": self.name}
+            hint = PeerHint.from_mapping(row)
+            if not hint.peer_id or not hint.concept_id or not hint.is_fresh():
+                continue
+            if hint.vector_footprint and hint.vector_footprint != intent.vector_footprint:
+                continue
+            hints.append(hint)
+        return sorted(hints, key=lambda hint: hint.score, reverse=True)[:16]
+
+
+class StaticSignalIndex:
+    name = "static_signal"
+
+    def __init__(self, hints: list[PeerHint] | None = None) -> None:
+        self.hints = hints or []
+
+    async def discover_peers(self, intent: QueryIntent) -> list[PeerHint]:
+        return [hint for hint in self.hints if hint.is_fresh() and (not hint.vector_footprint or hint.vector_footprint == intent.vector_footprint)]
+
+    async def broadcast_query_intent(self, query_vector: list[float]) -> list[PeerHint]:
+        return await self.discover_peers(QueryIntent.from_vector(query_vector))
+
+
+class PayloadTransport(Protocol):
+    name: str
+
+    def can_handle(self, hint: PeerHint) -> bool:
+        ...
+
+    async def fetch_fragment(self, hint: PeerHint) -> GraphFragmentEnvelope:
+        ...
 
 
 class P2PTransport(Protocol):
@@ -252,12 +372,23 @@ class P2PTransport(Protocol):
 
 
 class Libp2pTransport:
-    """P2P-ready transport facade.
+    """P2P-ready payload transport facade.
 
     The Python libp2p package is optional and not stable enough to make the
     process depend on it at import time. A future Tauri/Rust sidecar can
-    implement the same method over rust-libp2p without changing the resolver.
+    implement the same PayloadTransport contract without changing the resolver.
     """
+
+    name = "p2p_payload"
+
+    def __init__(self, config: NetworkConfig | None = None) -> None:
+        self.config = config or NetworkConfig.from_env()
+
+    def can_handle(self, hint: PeerHint) -> bool:
+        return self.config.enable_p2p_payload and hint.transport in {"p2p", "libp2p", "edge", "webrtc"}
+
+    async def fetch_fragment(self, hint: PeerHint) -> GraphFragmentEnvelope:
+        return await self.fetch_p2p_subgraph(hint.peer_id, hint.concept_id)
 
     async def fetch_p2p_subgraph(self, peer_id: str, concept_id: str) -> GraphFragmentEnvelope:
         try:
@@ -268,14 +399,30 @@ class Libp2pTransport:
 
 
 class HttpFallbackTransport:
+    """Signed graph-fragment payload transport over peer/server HTTP endpoints."""
+
+    name = "http_fragment_payload"
+
     def __init__(
         self,
         *,
-        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        config: NetworkConfig | None = None,
+        timeout_seconds: float | None = None,
         signing_key: str | None = None,
     ) -> None:
-        self.timeout_seconds = timeout_seconds
-        self.signing_key = signing_key or os.getenv("HOMAGE_FRAGMENT_SIGNING_KEY")
+        self.config = config or NetworkConfig.from_env()
+        self.timeout_seconds = timeout_seconds if timeout_seconds is not None else self.config.timeout_seconds
+        self.signing_key = signing_key if signing_key is not None else self.config.signing_key
+
+    def can_handle(self, hint: PeerHint) -> bool:
+        if not self.config.enable_http_payload_fallback or not hint.endpoint:
+            return False
+        if hint.transport == "server" and not self.config.fallback_to_server_payload:
+            return False
+        return True
+
+    async def fetch_fragment(self, hint: PeerHint) -> GraphFragmentEnvelope:
+        return await self.fetch_from_endpoint(str(hint.endpoint), hint.peer_id, hint.concept_id)
 
     async def fetch_from_endpoint(self, endpoint: str, peer_id: str, concept_id: str) -> GraphFragmentEnvelope:
         url = self._build_url(endpoint, peer_id, concept_id)
@@ -283,8 +430,8 @@ class HttpFallbackTransport:
         def _fetch() -> dict[str, Any]:
             request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "Homage/0.1"})
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                data = response.read(DEFAULT_MAX_FRAGMENT_BYTES + 1)
-            if len(data) > DEFAULT_MAX_FRAGMENT_BYTES:
+                data = response.read(self.config.max_fragment_bytes + 1)
+            if len(data) > self.config.max_fragment_bytes:
                 raise ValueError("fallback fragment response exceeded byte limit")
             return json.loads(data.decode("utf-8"))
 
@@ -293,7 +440,12 @@ class HttpFallbackTransport:
         except (asyncio.TimeoutError, urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
             raise ConnectionError(f"http fallback failed for peer {peer_id}") from exc
         envelope = GraphFragmentEnvelope.from_mapping(payload)
-        envelope.validate(signing_key=self.signing_key)
+        envelope.validate(
+            signing_key=self.signing_key,
+            max_bytes=self.config.max_fragment_bytes,
+            max_nodes=self.config.max_nodes,
+            max_edges=self.config.max_edges,
+        )
         return envelope
 
     @staticmethod
@@ -303,89 +455,208 @@ class HttpFallbackTransport:
         return f"{base}/api/cloud-brain/fragment?{query}"
 
 
-class StaticSignalIndex:
-    def __init__(self, hints: list[PeerHint] | None = None) -> None:
-        self.hints = hints or []
+class LegacyP2PPayloadTransport:
+    name = "legacy_p2p_payload"
 
-    async def broadcast_query_intent(self, query_vector: list[float]) -> list[PeerHint]:
-        return [hint for hint in self.hints if hint.is_fresh()]
+    def __init__(self, transport: P2PTransport) -> None:
+        self.transport = transport
+
+    def can_handle(self, hint: PeerHint) -> bool:
+        return hint.transport in {"p2p", "libp2p", "edge", "webrtc"}
+
+    async def fetch_fragment(self, hint: PeerHint) -> GraphFragmentEnvelope:
+        return await self.transport.fetch_p2p_subgraph(hint.peer_id, hint.concept_id)
 
 
 class HybridNetworkManager:
     def __init__(
         self,
         *,
-        signal_index: SignalIndex | None = None,
+        config: NetworkConfig | None = None,
+        signal_index: SignalIndex | SignalingProvider | None = None,
+        signal_providers: list[SignalingProvider] | None = None,
         p2p_transport: P2PTransport | None = None,
+        payload_transports: list[PayloadTransport] | None = None,
         fallback_transport: HttpFallbackTransport | None = None,
         signing_key: str | None = None,
-        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        timeout_seconds: float | None = None,
     ) -> None:
-        self.signal_index = signal_index or SupabaseSignalIndex()
-        self.p2p_transport = p2p_transport or Libp2pTransport()
-        self.fallback_transport = fallback_transport or HttpFallbackTransport(signing_key=signing_key, timeout_seconds=timeout_seconds)
-        self.signing_key = signing_key or os.getenv("HOMAGE_FRAGMENT_SIGNING_KEY")
-        self.timeout_seconds = timeout_seconds
+        base_config = config or NetworkConfig.from_env()
+        if signing_key is not None or timeout_seconds is not None:
+            base_config = NetworkConfig(
+                **{
+                    **base_config.__dict__,
+                    "signing_key": signing_key if signing_key is not None else base_config.signing_key,
+                    "timeout_seconds": timeout_seconds if timeout_seconds is not None else base_config.timeout_seconds,
+                }
+            )
+        self.config = base_config
+        self.signing_key = self.config.signing_key
+        self.timeout_seconds = self.config.timeout_seconds
+
+        providers: list[SignalingProvider] = []
+        if signal_providers is not None:
+            providers.extend(signal_providers)
+        elif signal_index is not None:
+            providers.append(signal_index)  # type: ignore[arg-type]
+        else:
+            if self.config.enable_local_peer_directory:
+                providers.append(LocalPeerDirectorySignal(self.config))
+            if self.config.enable_server_signaling:
+                providers.append(SupabaseSignalIndex(config=self.config))
+        self.signal_providers = providers
+
+        transports: list[PayloadTransport] = []
+        if payload_transports is not None:
+            transports.extend(payload_transports)
+        else:
+            if p2p_transport is not None:
+                transports.append(LegacyP2PPayloadTransport(p2p_transport))
+            elif self.config.enable_p2p_payload:
+                transports.append(Libp2pTransport(self.config))
+            if fallback_transport is not None:
+                transports.append(fallback_transport)
+            elif self.config.enable_http_payload_fallback:
+                transports.append(HttpFallbackTransport(config=self.config))
+        self.payload_transports = transports
 
     async def broadcast_query_intent(self, query_vector: list[float]) -> list[PeerHint]:
-        return await self.signal_index.broadcast_query_intent(query_vector)
+        hints, _failures = await self.discover_peer_hints(QueryIntent.from_vector(query_vector))
+        return hints
+
+    async def discover_peer_hints(self, intent: QueryIntent) -> tuple[list[PeerHint], list[dict[str, str]]]:
+        failures: list[dict[str, str]] = []
+        discovered: list[PeerHint] = []
+        for provider in self.signal_providers:
+            provider_name = getattr(provider, "name", provider.__class__.__name__)
+            try:
+                hints = await provider.discover_peers(intent)  # type: ignore[attr-defined]
+            except AttributeError:
+                hints = await provider.broadcast_query_intent(intent.query_vector)  # type: ignore[attr-defined]
+            except Exception as exc:
+                failures.append({"provider": provider_name, "error": str(exc)})
+                continue
+            for hint in hints:
+                if hint.peer_id and hint.concept_id and hint.is_fresh():
+                    discovered.append(hint)
+        return self._dedupe_hints(discovered), failures
 
     async def fetch_p2p_subgraph(self, peer_id: str, concept_id: str) -> GraphFragmentEnvelope:
-        envelope = await asyncio.wait_for(
-            self.p2p_transport.fetch_p2p_subgraph(peer_id, concept_id),
-            timeout=self.timeout_seconds,
-        )
-        envelope.validate(signing_key=self.signing_key)
-        return envelope
+        hint = PeerHint(peer_id=peer_id, concept_id=concept_id, transport="p2p")
+        for transport in self.payload_transports:
+            if transport.name.startswith("http") or not transport.can_handle(hint):
+                continue
+            envelope = await asyncio.wait_for(transport.fetch_fragment(hint), timeout=self.timeout_seconds)
+            self._validate_envelope(envelope)
+            return envelope
+        raise ConnectionError("no p2p payload transport is configured")
 
     async def resolve_cloud_knowledge(self, query: str) -> dict[str, Any]:
-        query_vector = self._query_to_vector(query)
-        hints = await self.broadcast_query_intent(query_vector)
+        intent = QueryIntent.from_query(query)
+        hints, signaling_failures = await self.discover_peer_hints(intent)
         attempts: list[dict[str, Any]] = []
         fragments: list[dict[str, Any]] = []
 
         for hint in hints[:8]:
-            attempt = {"peer_id": hint.peer_id, "concept_id": hint.concept_id, "transport": hint.transport, "state": "pending"}
-            try:
-                envelope = await self.fetch_p2p_subgraph(hint.peer_id, hint.concept_id)
-                attempt["state"] = "p2p_completed"
-                fragments.append(envelope.to_dict())
-                attempts.append(attempt)
-                continue
-            except Exception as exc:
-                attempt["p2p_error"] = str(exc)
-
-            if hint.endpoint:
+            attempt = {
+                "peer_id": hint.peer_id,
+                "concept_id": hint.concept_id,
+                "hint_transport": hint.transport,
+                "hint_source": hint.source,
+                "state": "pending",
+                "transport_attempts": [],
+            }
+            for transport in self._ordered_transports(hint):
+                transport_attempt = {"transport": transport.name, "state": "pending"}
                 try:
-                    envelope = await self.fallback_transport.fetch_from_endpoint(hint.endpoint, hint.peer_id, hint.concept_id)
-                    attempt["state"] = "http_fallback_completed"
+                    envelope = await asyncio.wait_for(transport.fetch_fragment(hint), timeout=self.timeout_seconds + 0.75)
+                    self._validate_envelope(envelope)
+                    transport_attempt["state"] = "completed"
+                    attempt["state"] = f"{transport.name}_completed"
                     fragments.append(envelope.to_dict())
+                    attempt["transport_attempts"].append(transport_attempt)
+                    break
                 except Exception as exc:
-                    attempt["state"] = "failed"
-                    attempt["fallback_error"] = str(exc)
+                    transport_attempt["state"] = "failed"
+                    transport_attempt["error"] = str(exc)
+                    attempt["transport_attempts"].append(transport_attempt)
             else:
                 attempt["state"] = "failed"
             attempts.append(attempt)
 
         return {
             "state": "completed" if fragments else "degraded",
-            "query_footprint": query_text_footprint(query),
+            "query_footprint": intent.text_footprint,
+            "vector_footprint": intent.vector_footprint,
+            "network_mode": self.config.mode,
+            "standalone_localhost_ready": self.config.standalone_localhost_ready,
+            "server_dependency": False,
             "metadata_only_signal": True,
             "hint_count": len(hints),
             "fragment_count": len(fragments),
             "fragments": fragments,
             "attempts": attempts,
-            "fallback_policy": "p2p_first_then_http_fragment_endpoint",
+            "signaling": {
+                "providers": [getattr(provider, "name", provider.__class__.__name__) for provider in self.signal_providers],
+                "failures": signaling_failures,
+                "server_signaling_enabled": self.config.enable_server_signaling,
+            },
+            "payload": {
+                "transports": [transport.name for transport in self.payload_transports],
+                "fallback_policy": "try_available_payload_transports_without_requiring_server_signal",
+            },
         }
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "architecture": "two_track_hybrid_network",
+            "evolutionary_architecture": "local_first_cloud_assisted_network",
+            "phase": "phase_1_to_phase_2_transition",
+            "config": self.config.public_status(),
+            "signaling_providers": [getattr(provider, "name", provider.__class__.__name__) for provider in self.signal_providers],
+            "payload_transports": [transport.name for transport in self.payload_transports],
+            "separation": {
+                "metadata_signaling": "server_optional",
+                "payload_transfer": "edge_p2p_or_signed_fragment",
+                "server_dependency_for_edge_payload": False,
+            },
+        }
+
+    def _ordered_transports(self, hint: PeerHint) -> list[PayloadTransport]:
+        usable = [transport for transport in self.payload_transports if transport.can_handle(hint)]
+        if hint.transport in {"http", "server"}:
+            return sorted(usable, key=lambda transport: 0 if transport.name.startswith("http") else 1)
+        return sorted(usable, key=lambda transport: 1 if transport.name.startswith("http") else 0)
+
+    def _validate_envelope(self, envelope: GraphFragmentEnvelope) -> None:
+        envelope.validate(
+            signing_key=self.signing_key,
+            max_bytes=self.config.max_fragment_bytes,
+            max_nodes=self.config.max_nodes,
+            max_edges=self.config.max_edges,
+        )
+
+    @staticmethod
+    def _dedupe_hints(hints: list[PeerHint]) -> list[PeerHint]:
+        best: dict[tuple[str, str], PeerHint] = {}
+        for hint in hints:
+            key = (hint.peer_id, hint.concept_id)
+            if key not in best or hint.score > best[key].score:
+                best[key] = hint
+        return sorted(best.values(), key=lambda hint: hint.score, reverse=True)
 
     @staticmethod
     def _query_to_vector(query: str) -> list[float]:
-        footprint = query_text_footprint(query)
-        values: list[float] = []
-        for index in range(0, min(len(footprint), 64), 2):
-            byte = int(footprint[index : index + 2], 16)
-            values.append((byte / 127.5) - 1.0)
-        return values
+        return query_to_vector(query)
+
+
+def query_to_vector(query: str) -> list[float]:
+    footprint = query_text_footprint(query)
+    values: list[float] = []
+    for index in range(0, min(len(footprint), 64), 2):
+        byte = int(footprint[index : index + 2], 16)
+        values.append((byte / 127.5) - 1.0)
+    return values
 
 
 default_hybrid_network_manager = HybridNetworkManager()
