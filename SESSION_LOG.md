@@ -726,8 +726,65 @@
   - `https://homage-alpha.vercel.app` alias updated successfully
   - production browser verification passed for lab three-stage cards, collapsed
     status, hidden manual Guardrail checker, and read-only cumulative viewer
-- Captured screenshots:
+  - Captured screenshots:
   - `docs/screenshots/134-learning-edge-pulse-actual.png`
   - `docs/screenshots/135-chat-collapsed-auto-guard.png`
   - `docs/screenshots/136-daemon-readonly-viewer.png`
   - `docs/screenshots/137-final-lab-local-3050.png`
+
+## 2026-06-12 - Stable volumetric 3D graph and step-gated lab flow
+
+- Reworked the 3D GraphRAG scene so dense graphs expand in a stable volume:
+  node placement now uses id-stable shell coordinates, the camera fits to
+  rendered graph bounds, zoom-out limits scale much farther, and graph updates
+  no longer snap the camera back toward the initial view.
+- Changed the lab flow from one Build Start action into explicit
+  `수집 -> 학습 -> 출력` stages:
+  - `수집` shows progress to 100% and then unlocks `학습`
+  - `학습` shows progress to 100% and then unlocks `출력`
+  - `출력` is the RAG/Guardrail path after learning is complete
+- Finite `수집` now stops at the actual representative graph returned by the
+  API. It no longer starts client-side live-synapse growth after completion, so
+  the graph does not pretend to keep learning in the demo flow.
+- Fixed greeting/conversation behavior:
+  - `안녕` skips web search even when the web-search toggle is on
+  - the FastAPI service skips memory activation for conversation-router results
+  - the frontend clears stale active-node signals for greeting/conversation
+    responses
+- Updated the cumulative-learning workspace so it remains a blank read-only
+  viewer until local FastAPI and the actual daemon worker are alive.
+- Updated `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` to reflect the current
+  research loop: local daemon for real cumulative learning, lab as a gated
+  experiment surface, no fake visual activity, and direct DB/event-log
+  verification.
+- Verification:
+  - `npm --workspace apps/web run build` passed.
+  - targeted API/RAG tests passed: 7 tests.
+  - local FastAPI ran on `http://127.0.0.1:8043`.
+  - local Next production ran on `http://127.0.0.1:3055`.
+  - browser-tested lab link:
+    `http://127.0.0.1:3055/?workspace=lab&api=http://127.0.0.1:8043`.
+  - browser-tested cumulative viewer link:
+    `http://127.0.0.1:3055/?workspace=daemon&api=http://127.0.0.1:8043`.
+  - `수집` verification: 653 nodes / 1,295 relations rendered, cameraZ 79.0,
+    maxZoom 947.8, active edges 0, pulses 0, no `live-synapse`, no `새 노드 0`.
+  - `학습` verification: output stage unlocked after learning completed; no
+    relation-change pulse was drawn when no new visible stored relation existed.
+  - `안녕` chat verification: clean Korean greeting, no `web-static`,
+    Microsoft/Bing evidence, or stale graph signal.
+  - daemon viewer verification: graph host absent and waiting text shown because
+    local API was connected but `worker not alive`.
+- Production deployment:
+  - deployed `https://web-5gu3ndmzg-anthony-kims-projects-bc874109.vercel.app`
+  - re-aliased `https://homage-alpha.vercel.app` to that deployment
+  - production lab verification: first screen is `학습 과정`, shows the three
+    process cards, and exposes `수집 시작`
+  - production cumulative viewer verification: graph host absent, no `수집 시작`
+    button, and the screen says local API is not connected so the graph remains
+    blank
+- Captured screenshots:
+  - `docs/screenshots/139-stable-volume-sequential-no-live.png`
+  - `docs/screenshots/140-greeting-no-web-search.png`
+  - `docs/screenshots/141-daemon-blank-until-local-worker.png`
+  - `docs/screenshots/142-production-lab-stage-default.png`
+  - `docs/screenshots/143-production-daemon-blank-viewer.png`

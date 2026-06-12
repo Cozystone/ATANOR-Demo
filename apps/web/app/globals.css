@@ -421,6 +421,39 @@ p {
   height: 100% !important;
 }
 
+.memory-empty-state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  height: 100%;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.memory-empty-state strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.memory-empty-state p {
+  max-width: 420px;
+  margin: 0;
+  color: #58625d;
+  line-height: 1.5;
+  font-size: 0.84rem;
+}
+
+.memory-empty-state span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--white);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
 .rag3d-overlay {
   position: absolute;
   left: 18px;
@@ -475,6 +508,10 @@ p {
 .memory-edge {
   stroke: rgba(120, 128, 123, 0.45);
   stroke-width: 0.45;
+}
+
+.memory-legend:empty {
+  display: none;
 }
 
 .memory-edge-label {
@@ -823,6 +860,10 @@ p {
   border-color: rgba(255, 107, 53, 0.5);
 }
 
+.process-card[data-state="ready"] {
+  border-color: rgba(0, 106, 159, 0.28);
+}
+
 .process-card[data-state="completed"],
 .process-card[data-state="complete"] {
   border-color: rgba(26, 147, 111, 0.35);
@@ -896,6 +937,43 @@ p {
 
 .inline-action {
   margin-bottom: 10px;
+}
+
+.process-progress {
+  position: relative;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  margin: 0 0 9px;
+  background: #f3f5f3;
+}
+
+.process-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(26, 147, 111, 0.88), rgba(255, 107, 53, 0.72));
+  transition: width 0.28s ease;
+}
+
+.process-progress em {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.stage-gate-note {
+  display: block;
+  margin: -2px 0 9px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .build-run-detail {

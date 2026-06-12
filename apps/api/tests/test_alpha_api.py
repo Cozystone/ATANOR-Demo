@@ -109,6 +109,15 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert greeting_result["method"] == "homage-conversation-router-v1"
     assert greeting_result["evidence_docs"] == []
     assert greeting_result["matched_nodes"] == []
+    assert "web_search" not in greeting_result
+    assert "memory_activation" not in greeting_result
+
+    greeting_with_search_toggle = client.post("/api/graphrag/query", json={"query": "안녕", "web_search": True})
+    assert greeting_with_search_toggle.status_code == 200
+    greeting_with_search_result = greeting_with_search_toggle.json()["result"]
+    assert greeting_with_search_result["method"] == "homage-conversation-router-v1"
+    assert "web_search" not in greeting_with_search_result
+    assert "memory_activation" not in greeting_with_search_result
 
     inventory = client.post("/api/graphrag/query", json={"query": "너한테 있는 노드 다 말해봐"})
     assert inventory.status_code == 200

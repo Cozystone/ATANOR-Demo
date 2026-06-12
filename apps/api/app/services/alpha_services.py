@@ -125,10 +125,11 @@ class AlphaService:
             self.graphrag = self.graphrag | {"state": "running", "started_at": utc_now_iso(), "finished_at": None, "error": None, "last_query": query}
         try:
             result = query_graphrag(query)
+            is_conversation = _is_conversation_result(result)
             memory_activation: dict[str, Any] | None = None
-            if memory_status().get("state") == "completed":
+            if not is_conversation and memory_status().get("state") == "completed":
                 memory_activation = activate_memory(query)
-            should_search = web_search or is_fresh_search_query(query) or is_knowledge_lookup_query(query)
+            should_search = not is_conversation and (web_search or is_fresh_search_query(query) or is_knowledge_lookup_query(query))
             if should_search and (web_search or _should_web_search(result) or is_fresh_search_query(query) or is_knowledge_lookup_query(query)):
                 search_payload = await search_web(query, 5, web_search_provider)
                 result = _merge_web_search_result(query, result, search_payload)
@@ -299,6 +300,10 @@ def telemetry_system() -> dict[str, Any]:
 
 
 alpha_service = AlphaService()
+
+
+def _is_conversation_result(result: dict[str, Any]) -> bool:
+    return result.get("method") == "homage-conversation-router-v1" or result.get("answer_kind") in {"greeting", "thanks", "conversation"}
 
 
 def _should_web_search(result: dict[str, Any]) -> bool:

@@ -46,6 +46,7 @@ type SceneState = {
   frame: number;
   group: THREE.Group;
   knownNodeIds: Set<string>;
+  lastFitDistance: number;
   raycastMeshes: THREE.Mesh[];
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -138,13 +139,34 @@ function edgeKey(source: string, target: string) {
   return `${source}:${target}`;
 }
 
+function hashUnit(value: string, salt: number) {
+  let hash = 2166136261 ^ salt;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) / 4294967295) * 2 - 1;
+}
+
+function stableShellPoint(id: string, index: number) {
+  const u = hashUnit(id, 13);
+  const theta = (hashUnit(id, 29) + 1) * Math.PI;
+  const radial = Math.sqrt(Math.max(0.0001, 1 - u * u));
+  const shell = 3.1 + Math.cbrt(index + 1) * 1.05;
+  return new THREE.Vector3(
+    Math.cos(theta) * radial * shell,
+    u * shell * 0.92,
+    Math.sin(theta) * radial * shell,
+  );
+}
+
 function cameraDistanceForNodeCount(total: number) {
-  return Math.min(44, 11 + Math.sqrt(Math.max(1, total)) * 0.82);
+  return Math.min(260, 12 + Math.cbrt(Math.max(1, total)) * 5.6 + Math.sqrt(Math.max(1, total)) * 0.72);
 }
 
 function maxZoomDistanceForNodeCount(total: number) {
   const fitDistance = cameraDistanceForNodeCount(total);
-  return Math.min(900, Math.max(80, fitDistance * 7.5, Math.sqrt(Math.max(1, total)) * 7.2));
+  return Math.min(2600, Math.max(140, fitDistance * 12, Math.sqrt(Math.max(1, total)) * 14));
 }
 
 function clampCameraZ(camera: THREE.PerspectiveCamera, total: number) {
@@ -154,35 +176,17 @@ function clampCameraZ(camera: THREE.PerspectiveCamera, total: number) {
 function initialSpreadPosition(node: Rag3DNode, index: number, total: number) {
   const source = new THREE.Vector3(node.x, node.y, node.z);
   if (total <= 14) return source;
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const offset = index + 0.5;
-  const y = 1 - (offset / total) * 2;
-  const radial = Math.sqrt(Math.max(0, 1 - y * y));
-  const shell = 3.6 + Math.sqrt(total) * 0.54;
-  const angle = index * goldenAngle;
-  const target = new THREE.Vector3(
-    Math.cos(angle) * radial * shell,
-    y * shell * 0.82,
-    Math.sin(angle) * radial * shell,
-  );
-  const sourceWeight = node.id.startsWith("live-synapse")
-    ? 0.74
-    : total > 300
-      ? 0.5
-      : total > 90
-        ? 0.42
-        : total > 40
-          ? 0.36
-          : 0.42;
+  const target = stableShellPoint(node.id, index);
+  const sourceWeight = node.id.startsWith("live-synapse") ? 0.58 : 0.28;
   return source.multiplyScalar(sourceWeight).add(target.multiplyScalar(1 - sourceWeight));
 }
 
 function spreadPositions(nodes: Rag3DNode[]) {
   const positions = nodes.map((node, index) => initialSpreadPosition(node, index, nodes.length));
   if (nodes.length <= 1) return positions;
-  if (nodes.length > 1_200) return positions;
-  const minDistance = nodes.length > 140 ? 0.38 : nodes.length > 80 ? 0.48 : nodes.length > 40 ? 0.58 : 0.74;
-  const iterations = nodes.length > 140 ? 4 : nodes.length > 80 ? 5 : 7;
+  if (nodes.length > 1_400) return positions;
+  const minDistance = nodes.length > 700 ? 0.64 : nodes.length > 300 ? 0.72 : nodes.length > 140 ? 0.78 : nodes.length > 80 ? 0.66 : 0.74;
+  const iterations = nodes.length > 700 ? 2 : nodes.length > 300 ? 3 : nodes.length > 140 ? 4 : nodes.length > 80 ? 5 : 7;
   for (let pass = 0; pass < iterations; pass += 1) {
     for (let left = 0; left < positions.length; left += 1) {
       for (let right = left + 1; right < positions.length; right += 1) {
@@ -207,6 +211,20 @@ function spreadPositions(nodes: Rag3DNode[]) {
   return positions;
 }
 
+function fitDistanceForPositions(positions: THREE.Vector3[], camera: THREE.PerspectiveCamera) {
+  if (!positions.length) return cameraDistanceForNodeCount(0);
+  const center = new THREE.Vector3();
+  positions.forEach((position) => center.add(position));
+  center.divideScalar(positions.length);
+  let radius = 1;
+  positions.forEach((position) => {
+    radius = Math.max(radius, position.distanceTo(center));
+  });
+  const fovRadians = THREE.MathUtils.degToRad(camera.fov);
+  const aspectCompensation = camera.aspect < 1 ? 1 / Math.max(0.62, camera.aspect) : 1;
+  return Math.min(2200, Math.max(cameraDistanceForNodeCount(positions.length), (radius * 1.65 * aspectCompensation) / Math.tan(fovRadians / 2)));
+}
+
 function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: Set<string>, activeEdgeKeys: Set<string>) {
   clearDynamicObjects(state);
   if (!graph?.nodes?.length) return;
@@ -216,7 +234,11 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   const nextKnownNodeIds = new Set<string>();
   const positions = spreadPositions(graph.nodes);
   const sphereSegments = graph.nodes.length > 1_200 ? 10 : graph.nodes.length > 600 ? 14 : 24;
-  state.camera.position.z = Math.max(state.camera.position.z, cameraDistanceForNodeCount(graph.nodes.length));
+  const fitDistance = fitDistanceForPositions(positions, state.camera);
+  if (fitDistance > state.lastFitDistance || fitDistance > state.camera.position.z) {
+    state.camera.position.z = Math.max(state.camera.position.z, fitDistance);
+    state.lastFitDistance = fitDistance;
+  }
   clampCameraZ(state.camera, graph.nodes.length);
 
   for (const [index, node] of graph.nodes.entries()) {
@@ -371,7 +393,7 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf8faf8);
-    const camera = new THREE.PerspectiveCamera(48, container.clientWidth / Math.max(1, container.clientHeight), 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(48, container.clientWidth / Math.max(1, container.clientHeight), 0.1, 5000);
     camera.position.set(0, 0, 13);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -398,6 +420,7 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
       frame: 0,
       group,
       knownNodeIds: new Set(),
+      lastFitDistance: 0,
       raycastMeshes: [],
       renderer,
       scene,

@@ -298,6 +298,41 @@ Latest local commit before this update: Clarify live learning limits and safety 
 
 - None.
 
+## Latest 2026-06-12 Update
+
+- Lab UI now runs as gated `수집 -> 학습 -> 출력`.
+  Downstream actions stay disabled until the previous stage reaches 100%.
+- The 3D GraphRAG scene now uses stable volumetric node placement and
+  bounds-based camera fitting. It expands the visible volume and only moves the
+  camera farther out when needed; graph updates no longer reset the camera to
+  the initial close view.
+- Finite Collect no longer starts client-side live-synapse growth after the API
+  graph is rendered. Latest browser verification showed 653 visible nodes /
+  1,295 relations, cameraZ 79.0, maxZoom 947.8, no hidden live-synapse history,
+  and no `새 노드 0`.
+- Greeting/conversation queries no longer route through web search or memory
+  activation. `안녕` returned a clean Korean greeting with no Microsoft/Bing
+  evidence and no stale active-node overlay.
+- The cumulative-learning workspace is now blank until both local FastAPI and
+  the actual local daemon worker are alive. With local API connected but worker
+  stopped, the viewer shows `worker not alive` and no graph host.
+- Current local verification links:
+  - Lab: http://127.0.0.1:3055/?workspace=lab&api=http://127.0.0.1:8043
+  - Cumulative viewer:
+    http://127.0.0.1:3055/?workspace=daemon&api=http://127.0.0.1:8043
+- Production alias now points to:
+  https://web-5gu3ndmzg-anthony-kims-projects-bc874109.vercel.app
+  through https://homage-alpha.vercel.app.
+- Production verification confirmed the default lab screen opens to the
+  step-gated `학습 과정` cards and the cumulative-learning screen remains blank
+  until a real local daemon is connected.
+- Latest screenshots:
+  - `docs/screenshots/139-stable-volume-sequential-no-live.png`
+  - `docs/screenshots/140-greeting-no-web-search.png`
+  - `docs/screenshots/141-daemon-blank-until-local-worker.png`
+  - `docs/screenshots/142-production-lab-stage-default.png`
+  - `docs/screenshots/143-production-daemon-blank-viewer.png`
+
 ## Constraints / Non-goals
 
 - No external paid APIs.

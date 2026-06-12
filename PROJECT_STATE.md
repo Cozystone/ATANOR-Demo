@@ -10,6 +10,38 @@ run locally through FastAPI and Knowledge Bakery.
 Deployment:
 
 - https://homage-alpha.vercel.app
+- Current production deployment:
+  https://web-5gu3ndmzg-anthony-kims-projects-bc874109.vercel.app
+
+Latest local verification links:
+
+- Lab: http://127.0.0.1:3055/?workspace=lab&api=http://127.0.0.1:8043
+- Cumulative viewer: http://127.0.0.1:3055/?workspace=daemon&api=http://127.0.0.1:8043
+
+Latest 2026-06-12 update:
+
+- The lab flow is now gated as three explicit stages: Collect, Learn, Output.
+  Collect runs to 100% before Learn is enabled; Learn runs to 100% before the
+  Output/RAG path is enabled.
+- The 3D graph layout uses stable id-based volumetric placement and bounds-based
+  camera fitting. New renders can zoom farther out as graph volume grows, and
+  the camera no longer zooms back toward the initial view when the graph source
+  changes.
+- Finite Collect no longer starts client-side live-synapse growth after the API
+  graph is rendered. The graph shows the actual representative anchors returned
+  by the build response, with no hidden replacement history.
+- Greeting/conversation queries skip web search even when the web-search toggle
+  is enabled. They also skip memory activation, so the graph does not pulse
+  stale nodes for simple greetings.
+- The cumulative-learning workspace is a read-only local daemon viewer. If
+  local FastAPI is connected but the daemon worker is not alive, the graph area
+  stays blank and shows a waiting state instead of reusing the lab demo graph.
+- Browser screenshots:
+  - `docs/screenshots/139-stable-volume-sequential-no-live.png`
+  - `docs/screenshots/140-greeting-no-web-search.png`
+  - `docs/screenshots/141-daemon-blank-until-local-worker.png`
+  - `docs/screenshots/142-production-lab-stage-default.png`
+  - `docs/screenshots/143-production-daemon-blank-viewer.png`
 
 ## Completed Alpha Scope
 

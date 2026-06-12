@@ -9,6 +9,7 @@ type LayoutMode = "graph" | "split" | "workbench";
 type WorkspaceMode = "daemon" | "lab";
 type LearningVolume = "lite" | "standard" | "deep" | "max" | "infinite";
 type RightMode = "process" | "chat";
+type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
 
 type PipelineStage = {
@@ -97,16 +98,39 @@ const maxTargetNodes = 500_000;
 const liveGrowthBatchSize = 12;
 const minLiveGrowthPulses = 8;
 
+function stableUnit(value: string, salt: number) {
+  let hash = 2166136261 ^ salt;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) / 4294967295) * 2 - 1;
+}
+
+function stableDirection(value: string) {
+  const y = stableUnit(value, 17);
+  const theta = (stableUnit(value, 41) + 1) * Math.PI;
+  const radial = Math.sqrt(Math.max(0.0001, 1 - y * y));
+  return {
+    x: Math.cos(theta) * radial,
+    y,
+    z: Math.sin(theta) * radial,
+  };
+}
+
 const codexResearchGoalPrompt = `Homage1.0을 장기 연구 목표로 계속 개선한다.
 
 목표: 외부 LLM과 로컬 양자화 LLM 없이, 로컬 워크스테이션에서 장시간 누적되는 온톨로지/그래프 메모리와 독자 생성기를 연구해 중형 LLM에 가까운 답변 품질을 실험적으로 달성한다.
 
 반복 루프:
 1. 로컬 FastAPI와 Next BakeBoard를 실행하고 브라우저로 직접 조작한다.
-2. 누적학습 daemon 상태, Knowledge Bakery SQLite/JSONL 이벤트, 노드/관계/활성 신호를 조회한다.
-3. 생성 결과가 깨지면 그대로 관찰하고, 규칙 기반 포장으로 숨기지 않는다.
-4. 병목이나 자원 경고가 뜨면 실패 실험으로 기록하고 학술/전문 자료를 찾아 새 구조안을 반영한다.
-5. 구현, 테스트, 브라우저 스크린샷, 문서 업데이트, 커밋을 반복한다.
+2. 실험실은 수집 -> 학습 -> 출력 순서로만 진행한다. 수집 100% 전에는 학습하지 않고, 학습 100% 전에는 출력 품질을 평가하지 않는다.
+3. 3D 그래프는 실제 새 노드/관계가 생길 때만 확장/활성 신호를 보여준다. 보여주기식 펄스, 가짜 진행률, fake running 상태를 만들지 않는다.
+4. 누적학습 뷰는 로컬 FastAPI와 local daemon이 실제로 실행될 때만 그래프를 보여준다. 연결 전이나 worker stopped 상태에서는 빈 관측 화면을 유지한다.
+5. Knowledge Bakery SQLite/JSONL 이벤트, daemon 상태, 체크포인트, 노드/관계/활성 신호를 직접 조회해 UI와 실제 저장 상태가 일치하는지 검증한다.
+6. 생성 결과가 깨지면 그대로 관찰하고, 규칙 기반 포장으로 숨기지 않는다.
+7. 병목이나 자원 경고가 뜨면 실패 실험으로 기록하고 학술/전문 자료를 찾아 새 구조안을 반영한다.
+8. 구현, 테스트, 브라우저 스크린샷, 문서 업데이트, 커밋을 반복한다.
 
 제약: 답변 엔진에는 외부 LLM, sLLM, 사전학습 생성 가중치를 쓰지 않는다. 웹 검색과 논문 조사는 연구/수집 입력으로만 사용하고, 엔진이 실제로 학습하지 않은 능력을 가진 것처럼 표시하지 않는다.`;
 
@@ -127,6 +151,28 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
   const liveEdges: Rag3DEdge[] = [];
   const baseIds = new Set(base.nodes.map((node) => node.id));
   const baseNodeMap = new Map(base.nodes.map((node) => [node.id, node]));
+  const baseCenter = base.nodes.reduce(
+    (center, node) => ({
+      x: center.x + (node.x ?? 0),
+      y: center.y + (node.y ?? 0),
+      z: center.z + (node.z ?? 0),
+    }),
+    { x: 0, y: 0, z: 0 },
+  );
+  if (base.nodes.length) {
+    baseCenter.x /= base.nodes.length;
+    baseCenter.y /= base.nodes.length;
+    baseCenter.z /= base.nodes.length;
+  }
+  const baseRadius = Math.max(
+    3.4,
+    ...base.nodes.map((node) => {
+      const dx = (node.x ?? 0) - baseCenter.x;
+      const dy = (node.y ?? 0) - baseCenter.y;
+      const dz = (node.z ?? 0) - baseCenter.z;
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }),
+  );
   const totalLiveNodeCount = Math.max(0, Math.floor(pulseCount)) * liveGrowthBatchSize;
   const maxRenderedNodes = Number.isFinite(maxTotalNodes) ? Math.max(base.nodes.length, Math.floor(maxTotalNodes)) : Number.POSITIVE_INFINITY;
   const renderSlots = Math.max(0, Math.floor(maxRenderedNodes - base.nodes.length));
@@ -145,16 +191,21 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
     const sourceAnchor = baseIds.has(template.source) ? template.source : batchAnchor;
     const anchorNode = baseNodeMap.get(sourceAnchor ?? "") ?? base.nodes[batchIndex % Math.max(1, base.nodes.length)];
     const batchOffset = index - batchStart;
-    const angle = batchOffset * 1.28 + batchIndex * 0.49;
-    const radius = 0.62 + (batchOffset % 4) * 0.16 + (batchIndex % 5) * 0.045;
-    const shellLift = ((batchOffset % 5) - 2) * 0.16 + ((batchIndex % 3) - 1) * 0.08;
+    const direction = stableDirection(id);
+    const shell = baseRadius + 0.8 + Math.cbrt(index + 1) * 0.86 + Math.floor(index / liveGrowthBatchSize) * 0.055;
+    const anchorBlend = Math.max(0.18, 0.42 - Math.min(0.22, batchIndex * 0.01));
+    const shellPoint = {
+      x: baseCenter.x + direction.x * shell,
+      y: baseCenter.y + direction.y * shell * 0.9,
+      z: baseCenter.z + direction.z * shell,
+    };
     liveNodes.push({
       id,
       label: `${template.label} ${index + 1}`,
       type: template.type,
-      x: (anchorNode?.x ?? 0) + Math.cos(angle) * radius,
-      y: (anchorNode?.y ?? 0) + Math.sin(angle) * radius * 0.78,
-      z: (anchorNode?.z ?? 0) + shellLift,
+      x: shellPoint.x * (1 - anchorBlend) + (anchorNode?.x ?? baseCenter.x) * anchorBlend,
+      y: shellPoint.y * (1 - anchorBlend) + (anchorNode?.y ?? baseCenter.y) * anchorBlend,
+      z: shellPoint.z * (1 - anchorBlend) + (anchorNode?.z ?? baseCenter.z) * anchorBlend,
       confidence: 0.62 + ((index % 9) * 0.026),
     });
     if (source) {
@@ -422,6 +473,13 @@ function evidenceSignalText(doc: AnyRecord) {
   return ` / 어휘 ${lexical} / 그래프 ${graphBoost}`;
 }
 
+function buildFrameMessageText(message?: string | null) {
+  if (!message) return "수집 그래프를 구성하고 있습니다.";
+  if (/output gate/i.test(message)) return "수집 대표 그래프 구성 완료";
+  if (/harvest/i.test(message)) return "자료 수집 그래프 구성 중";
+  return message;
+}
+
 function isNodeInventoryQuestion(query: string) {
   const normalized = query.trim().toLowerCase();
   return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
@@ -433,6 +491,11 @@ function isLegendQuestion(query: string) {
   const asksMeaning = /(의미|뜻|뭐|설명|구분|차이|meaning|mean|label)/i.test(normalized);
   const graphContext = /(노드|그래프|rag|온톨로지|메모리|신호|뉴런|node|graph)/i.test(normalized);
   return asksColor && (asksMeaning || graphContext);
+}
+
+function isConversationalQuestion(query: string) {
+  const normalized = query.trim().toLowerCase();
+  return /^(안녕|안녕하세요|하이|헬로|반가워|고마워|감사|감사합니다|hi|hello|hey|yo|thanks|thank you)[\s!.?。！？]*$/i.test(normalized);
 }
 
 function graphInventoryStatus(query: string, graph: Rag3DGraph) {
@@ -782,11 +845,13 @@ export default function BakeBoardPage() {
   const [learningElapsedMs, setLearningElapsedMs] = useState(0);
   const [clockNow, setClockNow] = useState<Date | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [labStageProgress, setLabStageProgress] = useState<Record<LabStageKey, number>>({ collect: 0, learn: 0, output: 0 });
   const [graphMode] = useState<"2d" | "3d">("3d");
   const [rag3dControl, setRag3dControl] = useState<Rag3DControl>({ serial: 0, action: "reset" });
   const graphRef = useRef<SVGSVGElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const signalTimerRef = useRef<number | null>(null);
+  const progressTimerRef = useRef<number | null>(null);
   const benchmarkAppliedRef = useRef(false);
   const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -968,13 +1033,6 @@ export default function BakeBoardPage() {
   }, []);
 
   useEffect(() => {
-    if (!autoChatOpened && oven?.state === "completed") {
-      setRightMode("chat");
-      setAutoChatOpened(true);
-    }
-  }, [autoChatOpened, oven?.state]);
-
-  useEffect(() => {
     if (rightMode !== "chat") return;
     window.requestAnimationFrame(() => {
       const chat = chatScrollRef.current;
@@ -987,19 +1045,11 @@ export default function BakeBoardPage() {
   }, []);
 
   useEffect(() => {
-    if (!buildRun) return;
+    if (!buildRun || !continuousLearningActive || layoutMode === "workbench") return;
     const timer = window.setInterval(() => {
       setBuildTick((tick) => {
         const isInfiniteRun = buildRun.learning_profile?.id === "infinite";
-        const rawPulse = Math.max(0, tick - buildRun.graph_frames.length + 1);
-        if (isInfiniteRun) return continuousLearningActive ? tick + 1 : tick;
-        const targetNodes = Number(buildRun.training_gate?.target_nodes ?? buildRun.learning_profile?.target_nodes ?? 0);
-        const baseNodes = buildRun.graph_3d?.nodes?.length ?? 0;
-        const targetPulseLimit = targetNodes > baseNodes
-          ? Math.ceil((targetNodes - baseNodes) / liveGrowthBatchSize)
-          : minLiveGrowthPulses;
-        if (rawPulse >= Math.max(minLiveGrowthPulses, targetPulseLimit)) return tick;
-        return tick + 1;
+        return isInfiniteRun ? tick + 1 : tick;
       });
     }, 1200);
     return () => window.clearInterval(timer);
@@ -1014,6 +1064,10 @@ export default function BakeBoardPage() {
     return () => window.clearInterval(timer);
   }, [continuousLearningActive, learningStartedAt]);
 
+  useEffect(() => () => {
+    if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
+  }, []);
+
   async function runAction(action: () => Promise<unknown>) {
     setError(null);
     try {
@@ -1024,15 +1078,42 @@ export default function BakeBoardPage() {
     }
   }
 
+  function isLabStageKey(step: string): step is LabStageKey {
+    return step === "collect" || step === "learn" || step === "output";
+  }
+
+  function setStageProgress(step: LabStageKey, progress: number) {
+    setLabStageProgress((current) => ({ ...current, [step]: clamp(Math.round(progress), 0, 100) }));
+  }
+
   async function runProcessAction(step: string, action: () => Promise<unknown>) {
     if (activeAction) return;
+    const labStep = isLabStageKey(step) ? step : null;
+    if (progressTimerRef.current !== null) {
+      window.clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+    if (labStep) {
+      setStageProgress(labStep, 6);
+      progressTimerRef.current = window.setInterval(() => {
+        setLabStageProgress((current) => ({
+          ...current,
+          [labStep]: Math.min(92, current[labStep] + 7),
+        }));
+      }, 260);
+    }
     setActiveAction(step);
     setError(null);
     try {
       await action();
+      if (labStep) setStageProgress(labStep, 100);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "학습 과정 실행에 실패했습니다.");
     } finally {
+      if (progressTimerRef.current !== null) {
+        window.clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
       setActiveAction(null);
     }
   }
@@ -1102,6 +1183,7 @@ export default function BakeBoardPage() {
   }
 
   async function runLearningStage() {
+    setLabStageProgress((current) => ({ ...current, output: 0 }));
     await runOntologyStep();
     await runMemoryBuildStep();
     await refreshStabilityPlan();
@@ -1169,12 +1251,27 @@ export default function BakeBoardPage() {
     }, holdMs);
   }
 
+  function clearActiveSignal() {
+    if (signalTimerRef.current !== null) {
+      window.clearTimeout(signalTimerRef.current);
+      signalTimerRef.current = null;
+    }
+    setActiveSignalEdgeKeys([]);
+    setActiveSignalNodeIds([]);
+    setSignalTraceText("활성 신호 대기");
+  }
+
   async function sendChat() {
     const question = chatInput.trim();
     if (!question || isGeneratingAnswer) return;
     setError(null);
     setIsGeneratingAnswer(true);
-    activateSignal(signalTraceForQuery(question, displayGraph3D), 15000);
+    if (learnComplete) setStageProgress("output", Math.max(8, labStageProgress.output));
+    if (isConversationalQuestion(question)) {
+      clearActiveSignal();
+    } else {
+      activateSignal(signalTraceForQuery(question, displayGraph3D), 15000);
+    }
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
     if (isNodeInventoryQuestion(question) || isLegendQuestion(question)) {
       const localResult = isLegendQuestion(question)
@@ -1190,16 +1287,26 @@ export default function BakeBoardPage() {
           evidence: [],
         },
       ]);
+      if (learnComplete) setStageProgress("output", 100);
       setIsGeneratingAnswer(false);
       return;
     }
     try {
+      const shouldUseWebSearch = webSearchEnabled && !isConversationalQuestion(question);
       const result = await apiJson<AnyRecord>("/api/graphrag/query", {
         method: "POST",
-        body: JSON.stringify({ query: question, web_search: webSearchEnabled }),
+        body: JSON.stringify({ query: question, web_search: shouldUseWebSearch }),
       });
       setGraphRag(result);
-      activateSignal(signalTraceForQuery(question, displayGraph3D, result?.result), 15000);
+      const apiResult = result?.result;
+      const answerKind = String(apiResult?.answer_kind ?? "");
+      const isConversationResult =
+        apiResult?.method === "homage-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(answerKind);
+      if (isConversationResult) {
+        clearActiveSignal();
+      } else {
+        activateSignal(signalTraceForQuery(question, displayGraph3D, apiResult), 15000);
+      }
       const evidence = result?.result?.evidence_docs ?? [];
       const nodes = result?.result?.matched_nodes ?? [];
       const answer = result?.result?.answer;
@@ -1224,6 +1331,7 @@ export default function BakeBoardPage() {
           evidence,
         },
       ]);
+      if (learnComplete) setStageProgress("output", 100);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "RAG 채팅에 실패했습니다.");
     } finally {
@@ -1345,6 +1453,7 @@ export default function BakeBoardPage() {
     setLearningElapsedMs(0);
     setContinuousLearningActive(false);
     setBuildTick(0);
+    setLabStageProgress((current) => ({ ...current, collect: Math.max(current.collect, 6), learn: 0, output: 0 }));
     setLayoutMode("split");
     setRightMode("process");
     try {
@@ -1359,6 +1468,7 @@ export default function BakeBoardPage() {
       const isInfiniteRun = run.learning_profile?.id === "infinite";
       setContinuousLearningActive(isInfiniteRun);
       setBuildRun(run);
+      setBuildTick(Math.max(0, (run.graph_frames?.length ?? 1) - 1));
       setGraphSourceMode("build");
       setGraph({
         nodes: run.graph_3d.nodes.map((node) => ({
@@ -1374,22 +1484,15 @@ export default function BakeBoardPage() {
           confidence: edge.weight ?? 0.72,
         })),
       });
-      setChatMessages((messages) => [
-        ...messages,
-        {
-          role: "assistant",
-          text: isInfiniteRun
-            ? `∞ 지속 학습이 시작됐습니다. 중지 버튼을 누르기 전까지 수집 라운드와 온톨로지 성장 이벤트를 계속 누적하고, 화면에는 최근/대표 노드를 최대 ${run.training_gate.visual_node_budget ?? run.graph_3d.nodes.length}개까지 안정적으로 표시합니다.`
-            : `빌드 ${run.run_id}가 시작됐습니다. ${run.learning_profile?.label ?? currentLearningPreset.label} 모드로 텍스트 예산 ${run.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}, 학습 청크 ${run.training_gate.chunk_count ?? run.training_units?.length ?? currentLearningPreset.chunkBudget}개를 예약했고, 화면에는 대표 노드를 최대 ${run.training_gate.visual_node_budget ?? run.graph_3d.nodes.length}개까지만 안정적으로 표시합니다. 학습 게이트는 ${run.training_gate.ready ? "준비 완료" : "대기"} 상태입니다.`,
-          evidence: run.harvest_docs.map((doc) => ({
-            chunk_id: doc.id,
-            doc_id: doc.id,
-            score: doc.status === "fetched" ? 1 : 0.72,
-            snippet: `${doc.title}: ${doc.snippet}`,
-            retrieval_signals: { lexical: 0.7, graph_boost: 0.8 },
-          })),
-        },
-      ]);
+      if (isInfiniteRun) {
+        setChatMessages((messages) => [
+          ...messages,
+          {
+            role: "assistant",
+            text: `∞ 지속 학습이 시작됐습니다. 중지 버튼을 누르기 전까지 수집 라운드와 온톨로지 성장 이벤트를 계속 누적하고, 화면에는 최근/대표 노드를 최대 ${run.training_gate.visual_node_budget ?? run.graph_3d.nodes.length}개까지 안정적으로 표시합니다.`,
+          },
+        ]);
+      }
     } catch (caught) {
       setContinuousLearningActive(false);
       setError(caught instanceof Error ? caught.message : "빌드 시작에 실패했습니다.");
@@ -1486,6 +1589,7 @@ export default function BakeBoardPage() {
   }, [activeBuildFrame?.node_count, buildIsInfinite, buildRun, buildTargetNodes, growthPulseCount, visualNodeCap]);
 
   const displayGraph3D = graphSourceMode === "memory" ? memoryGraph3D : activeGraph3D ?? memoryGraph3D;
+  const collectionDisplayNodeCount = buildRun ? activeGraph3D?.nodes.length ?? buildRun.graph_3d.nodes.length : displayGraph3D.nodes.length;
   const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
   const visibleLiveNodeCount = displayGraph3D.nodes.filter((node) => node.id.startsWith("live-synapse")).length;
   const preservedAnchorNodeCount = buildRun?.graph_3d?.nodes.length ?? displayGraph3D.nodes.length;
@@ -1493,6 +1597,14 @@ export default function BakeBoardPage() {
   const representativeCapReached = Boolean(buildRun && displayGraph3D.nodes.length >= visualNodeCap);
   const representativeTargetPercent = buildRun && !buildIsInfinite ? percent(representativeNodeCount, buildTargetNodes) : 0;
   const renderedTargetPercent = buildRun && !buildIsInfinite ? percent(displayGraph3D.nodes.length, buildTargetNodes) : 0;
+  const graphOverlayMessage = graphSourceMode === "build"
+    ? buildFrameMessageText(activeBuildFrame?.message)
+    : buildRun
+      ? "학습 단계가 메모리 그래프를 다시 읽었습니다."
+      : "빌드 시작을 누르면 노드가 파생됩니다.";
+  const daemonCanOperate = learningDaemon?.mode === "local-daemon";
+  const daemonGraphReady = workspaceMode !== "daemon" || (localBackendConnected && daemonCanOperate && Boolean(learningDaemon?.worker_alive));
+  const visibleGraph3D = daemonGraphReady ? displayGraph3D : { nodes: [], edges: [], traversal_path: [] };
 
   useEffect(() => {
     if (!activeSignalNodeIds.length) return;
@@ -1524,8 +1636,8 @@ export default function BakeBoardPage() {
     });
   }, [activeGraph3D, buildRun, graphSourceMode]);
 
-  const displayMemoryNodeCount = displayGraph3D.nodes.length;
-  const displayMemoryEdgeCount = displayGraph3D.edges.length;
+  const displayMemoryNodeCount = visibleGraph3D.nodes.length;
+  const displayMemoryEdgeCount = visibleGraph3D.edges.length;
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const ramSoftGb = stability?.runtime_envelope?.ram_soft_gb ?? 23;
@@ -1537,7 +1649,6 @@ export default function BakeBoardPage() {
   const diskFreeGb = numeric(system?.disk_free_gb);
   const ramUsedGb = numeric(system?.ram_used_gb);
   const vramUsedGb = numeric(gpu?.vram_used) === null ? null : (numeric(gpu?.vram_used) ?? 0) / 1024;
-  const daemonCanOperate = learningDaemon?.mode === "local-daemon";
   const daemonViewerOnly = !daemonCanOperate;
   const daemonRuntimeText = formatDuration(Number(learningDaemon?.total_runtime_seconds ?? 0) * 1000);
   const daemonStateText = learningDaemon?.state === "resume_needed" ? "재개 필요" : learningDaemon?.state === "demo" ? "실험실 뷰어" : statusText(learningDaemon?.state);
@@ -1573,6 +1684,9 @@ export default function BakeBoardPage() {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
     return Math.round((complete / Math.max(1, pipeline?.stages.length ?? 8)) * 100);
   }, [pipeline]);
+  const collectComplete = labStageProgress.collect >= 100;
+  const learnComplete = labStageProgress.learn >= 100;
+  const outputComplete = labStageProgress.output >= 100;
 
   useEffect(() => {
     if (!continuousLearningActive || !resourceStopReason) return;
@@ -1713,23 +1827,28 @@ export default function BakeBoardPage() {
       number: "01",
       title: "수집",
       api: "POST /api/factory/build/start + DataGate",
-      state: isBuilding || continuousLearningActive || activeAction === "collect" ? "running" : buildRun ? "completed" : datagate?.state ?? "idle",
+      state: isBuilding || continuousLearningActive || activeAction === "collect" ? "running" : collectComplete ? "completed" : "idle",
       description: "웹/문서 입력을 가져와 문장 단위로 쪼개고, GraphRAG가 읽을 수 있는 후보 청크와 초기 앵커 그래프를 만듭니다.",
+      progress: labStageProgress.collect,
+      available: true,
       metrics: [
         `${buildRun?.harvest_docs?.length ?? datagate?.total ?? 0} 자료`,
         `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 청크`,
-        `${displayGraph3D.nodes.length.toLocaleString()} 표시 노드`,
+        `${collectionDisplayNodeCount.toLocaleString()} 표시 노드`,
         buildIsInfinite ? `∞ ${learningElapsedText}` : `${selectedTargetNodeLabel} 목표`,
       ],
       action: () => continuousLearningActive ? stopContinuousLearning() : runProcessAction("collect", startFactoryBuild),
       actionLabel: continuousLearningActive ? "수집 중지" : isBuilding || activeAction === "collect" ? "수집 중" : "수집 시작",
+      blockedText: "",
     },
     {
       number: "02",
       title: "학습",
       api: "POST /api/ontology/run + /api/memory/build",
-      state: activeAction === "learn" ? "running" : memoryStatus?.state === "completed" || memoryStatus?.state === "complete" ? "completed" : ontology?.state ?? "idle",
+      state: activeAction === "learn" ? "running" : learnComplete ? "completed" : collectComplete ? "ready" : "idle",
       description: "분해된 문장 요소를 온톨로지 노드로 누적하고, 공출현/전후/행위 관계를 계산해 그래프 메모리로 굽습니다.",
+      progress: labStageProgress.learn,
+      available: collectComplete,
       metrics: [
         `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} 노드`,
         `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} 관계`,
@@ -1738,13 +1857,16 @@ export default function BakeBoardPage() {
       ],
       action: () => runProcessAction("learn", runLearningStage),
       actionLabel: activeAction === "learn" ? "학습 중" : "관계 계산",
+      blockedText: "수집 100% 완료 후 학습할 수 있습니다.",
     },
     {
       number: "03",
       title: "출력",
       api: "POST /api/graphrag/query + /api/guard/check",
-      state: activeAction === "output" || isGeneratingAnswer ? "running" : graphrag?.state ?? "idle",
+      state: activeAction === "output" || isGeneratingAnswer ? "running" : outputComplete ? "completed" : learnComplete ? "ready" : "idle",
       description: "질문을 자연어로 넣으면 활성 노드와 그래프 전이를 읽어 답변을 만들고, 같은 근거 묶음으로 Guardrail을 자동 검증합니다.",
+      progress: labStageProgress.output,
+      available: learnComplete,
       metrics: [
         `신뢰도 ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
         `${graphResult?.evidence_docs?.length ?? 0} 근거`,
@@ -1756,6 +1878,7 @@ export default function BakeBoardPage() {
         await sendChat();
       }),
       actionLabel: activeAction === "output" || isGeneratingAnswer ? "생성 중" : "질문 보내기",
+      blockedText: "학습 100% 완료 후 출력 단계로 넘어갑니다.",
     },
   ];
 
@@ -1772,6 +1895,37 @@ export default function BakeBoardPage() {
     { time: logTime, message: `효율 계획: 추정 연산 절감 ${energyReduction}%` },
     { time: logTime, message: `지속 운전: RAM soft ${ramSoftGb}GB / VRAM soft ${vramSoftGb}GB / hot window ${hotWindowNodes} 노드` },
   ];
+
+  const headerBuildLabel = continuousLearningActive
+    ? "학습 중지"
+    : isBuilding || activeAction === "collect"
+      ? "수집 중"
+      : activeAction === "learn"
+        ? "학습 중"
+        : activeAction === "output" || isGeneratingAnswer
+          ? "출력 중"
+          : !collectComplete
+            ? "빌드 시작"
+            : !learnComplete
+              ? "다음: 학습"
+              : "RAG 채팅";
+
+  async function runNextLabStage() {
+    if (continuousLearningActive) {
+      stopContinuousLearning();
+      return;
+    }
+    if (!collectComplete) {
+      await runProcessAction("collect", startFactoryBuild);
+      return;
+    }
+    if (!learnComplete) {
+      await runProcessAction("learn", runLearningStage);
+      return;
+    }
+    setRightMode("chat");
+    setLabStageProgress((current) => ({ ...current, output: Math.max(current.output, 6) }));
+  }
 
   function changeLayoutMode(mode: LayoutMode) {
     setLayoutMode(mode);
@@ -1924,10 +2078,10 @@ export default function BakeBoardPage() {
           {workspaceMode === "lab" ? (
             <button
               className="build-button"
-              onClick={continuousLearningActive ? () => stopContinuousLearning() : startFactoryBuild}
+              onClick={runNextLabStage}
               disabled={isBuilding || (Boolean(activeAction) && !continuousLearningActive)}
             >
-              {continuousLearningActive ? "학습 중지" : isBuilding ? "빌드 중" : "빌드 시작"}
+              {headerBuildLabel}
             </button>
           ) : (
             <span className="viewer-pill">읽기 전용</span>
@@ -1980,28 +2134,37 @@ export default function BakeBoardPage() {
               <span className="zoom-readout">{Math.round(graphView.scale * 100)}%</span>
             </div>
             <div className="memory-canvas" data-dragging={dragState ? "true" : "false"}>
-              {graphMode === "3d" && displayGraph3D.nodes.length ? (
+              {graphMode === "3d" && visibleGraph3D.nodes.length ? (
                 <>
                   <Rag3DScene
                     activeEdgeKeys={activeSignalEdgeKeys}
                     activeNodeIds={activeSignalNodeIds}
-                    graph={displayGraph3D}
+                    graph={visibleGraph3D}
                     control={rag3dControl}
                     onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
                   />
                   <div className="rag3d-overlay">
                     <strong>3D GraphRAG 탐색</strong>
-                    <span>{displayGraph3D.nodes.length} 노드 / {displayGraph3D.edges.length} 관계</span>
-                    <span>{activeBuildFrame?.message ?? "빌드 시작을 누르면 노드가 파생됩니다."}</span>
-                    {buildRun ? (
+                    <span>{visibleGraph3D.nodes.length} 노드 / {visibleGraph3D.edges.length} 관계</span>
+                    <span>{graphOverlayMessage}</span>
+                    {buildRun && graphSourceMode === "build" && visibleLiveNodeCount > 0 ? (
                       <span>
                         기존 앵커 {preservedAnchorNodeCount} 유지 / 새 노드 {visibleLiveNodeCount} 전체 누적 표시
                       </span>
                     ) : null}
-                    {newestLiveNodeId ? <span>최신 새 노드 {newestLiveNodeId} / 전체 live 노드 표시 중</span> : null}
+                    {buildRun && graphSourceMode === "build" && visibleLiveNodeCount === 0 ? (
+                      <span>대표 앵커 {preservedAnchorNodeCount}개 구성</span>
+                    ) : null}
+                    {newestLiveNodeId && graphSourceMode === "build" ? <span>최신 새 노드 {newestLiveNodeId} / 전체 live 노드 표시 중</span> : null}
                     <span className="signal-trace" data-active={activeSignalNodeIds.length > 0 || isGeneratingAnswer}>{signalTraceText}</span>
                   </div>
                 </>
+              ) : workspaceMode === "daemon" && !daemonGraphReady ? (
+                <div className="memory-empty-state">
+                  <strong>누적학습 그래프 대기</strong>
+                  <p>로컬 FastAPI와 상시학습 daemon이 실제로 실행되면 이 영역에 누적 메모리 그래프가 나타납니다.</p>
+                  <span>{localBackendConnected ? "로컬 API 연결됨 · worker not alive" : "로컬 API 연결 전 · 빈 화면 유지"}</span>
+                </div>
               ) : (
               <svg
                 ref={graphRef}
@@ -2049,9 +2212,9 @@ export default function BakeBoardPage() {
               </svg>
               )}
               <div className="memory-legend">
-                {memoryLegendItems.slice(0, 12).map((node) => (
+                {visibleGraph3D.nodes.length ? memoryLegendItems.slice(0, 12).map((node) => (
                   <span key={node.type}><i style={{ background: node.color }} />{memoryTypeText(node.type)}</span>
-                ))}
+                )) : null}
               </div>
               {selectedMemory ? (
                 <div className="memory-detail">
@@ -2267,10 +2430,15 @@ export default function BakeBoardPage() {
                     <div className="process-metrics">
                       {step.metrics.map((metric, metricIndex) => <span key={`${step.number}-${metricIndex}-${metric}`}>{metric}</span>)}
                     </div>
+                    <div className="process-progress" aria-label={`${step.title} 진행도 ${step.progress}%`}>
+                      <span style={{ width: `${step.progress}%` }} />
+                      <em>{step.progress}%</em>
+                    </div>
+                    {!step.available ? <small className="stage-gate-note">{step.blockedText}</small> : null}
                     <button
                       className="inline-action"
                       onClick={step.action}
-                      disabled={step.number === "01" && continuousLearningActive ? false : Boolean(activeAction) || isBuilding}
+                      disabled={step.number === "01" && continuousLearningActive ? false : !step.available || Boolean(activeAction) || isBuilding}
                     >
                       {step.actionLabel}
                     </button>
@@ -2315,10 +2483,10 @@ export default function BakeBoardPage() {
                             장기 목표 {buildTargetNodeLabel}{buildIsInfinite ? "" : "개"}는 저장/학습 예산이고, API graph_3d는 대표 앵커 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}개를 보냅니다.
                           </small>
                           <small>
-                            현재 화면은 live 이벤트를 합쳐 {displayGraph3D.nodes.length}개를 렌더링 중이며 {buildIsInfinite ? "목표 상한 없이 계속 누적 중" : `장기 목표의 약 ${renderedTargetPercent}%`}입니다. 실험실에서는 새 노드를 그래프에 그대로 이어 붙입니다.
+                            현재 화면은 {displayGraph3D.nodes.length}개 노드를 렌더링 중입니다. 수집 단계에서는 API가 보낸 대표 앵커를 표시하고, 학습 단계에서는 저장된 메모리 그래프를 다시 읽습니다.
                           </small>
                           <small>
-                            {buildIsInfinite ? "API 대표 앵커는 무제한 학습의 현재 샘플입니다." : `API 대표 앵커만 보면 장기 목표의 약 ${representativeTargetPercent}%입니다.`} 전체 목표를 실제 저장하려면 다음 단계인 append-only 온톨로지 이벤트 로그와 SQLite hot index가 필요합니다.
+                            {buildIsInfinite ? "API 대표 앵커는 무제한 학습의 현재 샘플입니다." : `API 대표 앵커만 보면 장기 목표의 약 ${representativeTargetPercent}%입니다.`} 장기 목표 전체를 실제 저장하려면 append-only 온톨로지 이벤트 로그와 SQLite hot index가 계속 누적되어야 합니다.
                           </small>
                           {buildIsInfinite ? (
                             <small>Alpha 경계: 수집 문서와 앵커 그래프는 API 결과, live-synapse는 저장 전 지속 성장 이벤트입니다.</small>

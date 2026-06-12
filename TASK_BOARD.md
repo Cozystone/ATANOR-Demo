@@ -52,6 +52,20 @@
 - [x] Make `누적학습` status truthful: read-only viewer, no daemon controls, and
       no fake running state when the local worker is stopped.
 
+- [x] Gate the lab workflow into explicit `수집 -> 학습 -> 출력` stages with
+      per-stage progress and disabled downstream actions until the previous
+      stage reaches 100%.
+- [x] Rework the 3D GraphRAG placement/camera logic so dense graphs expand in a
+      stable volume, auto-fit by bounds, and do not snap back to the initial
+      camera distance after graph updates.
+- [x] Stop finite lab builds from pretending to keep learning through
+      client-side live-synapse growth after Collect completes.
+- [x] Keep greeting/conversation answers out of web search and memory
+      activation so simple greetings produce a clean native reply and no stale
+      graph signal.
+- [x] Keep the cumulative-learning graph blank until local FastAPI and the
+      actual daemon worker are alive.
+
 ## Next
 
 - [ ] Persist run history.

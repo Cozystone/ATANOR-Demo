@@ -36,22 +36,30 @@ Core loop:
    directly.
 2. Use the cumulative-learning space to monitor daemon status, checkpoints,
    node/edge/event counts, runtime, resource pressure, and resume-needed state.
-3. Use the lab space to test new learning runs, query the RAG/native generator,
-   inspect the 3D graph, and watch active nodes flash during generation.
-4. Query the Knowledge Bakery SQLite store and JSONL events directly when UI
+   Before the local API and daemon are actually running, the cumulative graph
+   must stay empty instead of showing demo memory.
+3. Use the lab space strictly as a three-stage experiment:
+   collect -> learn -> output. Do not let Build Start make the UI look as if all
+   stages completed at once. Collection must reach 100% before learning is
+   enabled; learning must reach 100% before output is evaluated.
+4. Inspect the 3D graph as a truthful visualization. New volume, moving edge
+   pulses, and active nodes must correspond to actual new graph nodes/relations
+   or real query activation. Do not add fake activity just to make the graph
+   look alive.
+5. Query the Knowledge Bakery SQLite store and JSONL events directly when UI
    behavior is unclear. Verify whether new nodes are really persisted, whether
    edges are retained, and whether active signals still map to visible nodes
    after the graph grows.
-5. When output is broken, do not cover it with templates or fake confidence.
+6. When output is broken, do not cover it with templates or fake confidence.
    Let the broken output be visible, diagnose why the native graph-memory
    decoder failed, then improve the architecture.
-6. If RAM, VRAM, disk, queue lag, graph writer lag, or browser rendering limits
+7. If RAM, VRAM, disk, queue lag, graph writer lag, or browser rendering limits
    trigger a warning, treat the experiment as failed for that configuration.
    Document the failure, search academic/professional sources for a better
    approach, and implement a safer architecture.
-7. After every meaningful improvement, run tests, build the frontend, verify in
+8. After every meaningful improvement, run tests, build the frontend, verify in
    the browser with screenshots, update docs/PROJECT_STATE.md, and commit.
-8. Continue this observe -> hypothesize -> implement -> verify -> document loop
+9. Continue this observe -> hypothesize -> implement -> verify -> document loop
    until the user stops the goal or the work is genuinely blocked.
 
 Architectural constraints:
@@ -64,6 +72,8 @@ Architectural constraints:
   sparse activation, checkpointable state, and browser-verifiable UI behavior.
 - Keep deployment honest: demo/lab viewer only; real cumulative learning is
   local.
+- Greeting/control utterances such as "안녕" must not be routed through web
+  search just because the web-search toggle is enabled.
 
 Research target:
 Improve Homage toward an independent workstation-scale system that learns from
@@ -87,7 +97,10 @@ If the PC reboots:
 1. Start the FastAPI backend again.
 2. Open BakeBoard locally.
 3. Go to `누적학습`.
-4. If the state is `재개 필요`, press `재개`.
+4. If the state is `재개 필요`, resume the local daemon through the local
+   FastAPI management API or the backend startup policy. The BakeBoard
+   cumulative-learning screen is a viewer and should not pretend to operate the
+   daemon when it is not actually running.
 
 For automatic daemon resume after backend startup, start FastAPI with:
 
