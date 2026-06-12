@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.routers.cloud_brain import router as cloud_brain_router
 from app.routers.datagate import router as datagate_router
 from app.routers.factory import router as factory_router
 from app.routers.graphrag import router as graphrag_router
@@ -69,6 +70,7 @@ async def allow_browser_local_companion(request, call_next):
 app.include_router(datagate_router)
 app.include_router(harvest_router)
 app.include_router(learning_router)
+app.include_router(cloud_brain_router)
 app.include_router(factory_router)
 app.include_router(ontology_router)
 app.include_router(graphrag_router)

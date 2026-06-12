@@ -126,7 +126,7 @@ const codexResearchGoalPrompt = `Homage1.0을 장기 연구 목표로 계속 개
 1. 로컬 FastAPI와 Next BakeBoard를 실행하고 브라우저로 직접 조작한다.
 2. 실험실은 수집 -> 학습 -> 출력 순서로만 진행한다. 수집 100% 전에는 학습하지 않고, 학습 100% 전에는 출력 품질을 평가하지 않는다.
 3. 3D 그래프는 실제 새 노드/관계가 생길 때만 확장/활성 신호를 보여준다. 보여주기식 펄스, 가짜 진행률, fake running 상태를 만들지 않는다.
-4. 누적학습 뷰는 로컬 FastAPI와 local daemon이 실제로 실행될 때만 그래프를 보여준다. 연결 전이나 worker stopped 상태에서는 빈 관측 화면을 유지한다.
+4. 클라우드 브레인 뷰는 로컬 FastAPI와 local daemon이 실제로 실행될 때만 그래프를 보여준다. 연결 전이나 worker stopped 상태에서는 빈 관측 화면을 유지한다.
 5. Knowledge Bakery SQLite/JSONL 이벤트, daemon 상태, 체크포인트, 노드/관계/활성 신호를 직접 조회해 UI와 실제 저장 상태가 일치하는지 검증한다.
 6. 생성 결과가 깨지면 그대로 관찰하고, 규칙 기반 포장으로 숨기지 않는다.
 7. 병목이나 자원 경고가 뜨면 실패 실험으로 기록하고 학술/전문 자료를 찾아 새 구조안을 반영한다.
@@ -882,7 +882,7 @@ export default function BakeBoardPage() {
     const params = new URLSearchParams(window.location.search);
     const requestedWorkspace = params.get("workspace") ?? params.get("view");
     const requestedApi = params.get("api") ?? params.get("backend");
-    if (requestedWorkspace === "daemon" || requestedWorkspace === "cumulative") {
+    if (["daemon", "cumulative", "cloud", "cloud-brain", "cloudbrain"].includes(requestedWorkspace ?? "")) {
       setWorkspaceMode("daemon");
     } else if (requestedWorkspace === "lab") {
       setWorkspaceMode("lab");
@@ -1717,7 +1717,7 @@ export default function BakeBoardPage() {
   const daemonViewerOnly = !daemonCanOperate;
   const daemonRuntimeText = formatDuration(Number(learningDaemon?.total_runtime_seconds ?? 0) * 1000);
   const daemonStateText = learningDaemon?.state === "resume_needed" ? "재개 필요" : learningDaemon?.state === "demo" ? "실험실 뷰어" : statusText(learningDaemon?.state);
-  const daemonModeText = daemonCanOperate ? "로컬 상시학습" : "배포 실험실 뷰어";
+  const daemonModeText = daemonCanOperate ? "로컬 클라우드 브레인 워커" : "배포 클라우드 브레인 뷰어";
   const daemonCheckpointText = learningDaemon?.last_checkpoint_at
     ? new Date(learningDaemon.last_checkpoint_at).toLocaleString("ko-KR")
     : "아직 없음";
@@ -1959,7 +1959,7 @@ export default function BakeBoardPage() {
   const logTime = clockNow ? fmtClock(clockNow) : "--:--:--";
   const logs = [
     ...(buildRun ? [{ time: logTime, message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}${buildIsInfinite ? ` / 누적 ${learningElapsedText}` : ""}` }] : []),
-    { time: logTime, message: `학습 공간: ${daemonModeText} / 상태 ${daemonStateText} / 누적 ${daemonRuntimeText}` },
+    { time: logTime, message: `브레인 공간: ${daemonModeText} / 상태 ${daemonStateText} / 누적 ${daemonRuntimeText}` },
     { time: logTime, message: `벤치마크: ${benchmark?.profile_name ?? "대기"} / 추천 ${benchmarkVolumeLabel} / ${benchmarkSourceLabel}` },
     { time: logTime, message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
     { time: logTime, message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
@@ -2133,7 +2133,7 @@ export default function BakeBoardPage() {
         </div>
         <div className="workspace-switcher" aria-label="작업 공간 전환">
           <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>실험실</button>
-          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>누적학습</button>
+          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>클라우드 브레인</button>
         </div>
         <div className="layout-switcher" aria-label="레이아웃 전환">
           {[
@@ -2158,8 +2158,8 @@ export default function BakeBoardPage() {
           ) : (
             <span className="viewer-pill">읽기 전용</span>
           )}
-          <span>{workspaceMode === "lab" ? `단계 ${processSteps.length}` : "로컬 뷰어"}</span>
-          <strong>{workspaceMode === "daemon" ? "누적학습 상태" : rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
+          <span>{workspaceMode === "lab" ? `단계 ${processSteps.length}` : "브레인 뷰어"}</span>
+          <strong>{workspaceMode === "daemon" ? "클라우드 브레인 상태" : rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
           <StatusDot state={headerStatusState} />
         </div>
       </header>
@@ -2233,8 +2233,8 @@ export default function BakeBoardPage() {
                 </>
               ) : workspaceMode === "daemon" && !daemonGraphReady ? (
                 <div className="memory-empty-state">
-                  <strong>누적학습 그래프 대기</strong>
-                  <p>로컬 FastAPI와 상시학습 daemon이 실제로 실행되면 이 영역에 누적 메모리 그래프가 나타납니다.</p>
+                  <strong>클라우드 브레인 그래프 대기</strong>
+                  <p>로컬 FastAPI와 브레인 워커가 실제로 실행되면 이 영역에 공유 온톨로지 후보 그래프가 나타납니다.</p>
                   <span>{localBackendConnected ? "로컬 API 연결됨 · worker not alive" : "로컬 API 연결 전 · 빈 화면 유지"}</span>
                 </div>
               ) : (
@@ -2309,7 +2309,7 @@ export default function BakeBoardPage() {
                   <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 채팅</button>
                 </div>
               ) : (
-                <span className="toolbar-title">누적학습 뷰어</span>
+                <span className="toolbar-title">클라우드 브레인 뷰어</span>
               )}
               <button className="toolbar-toggle" onClick={() => setWorkbenchInfoOpen((open) => !open)}>
                 {workbenchInfoOpen ? "정보 접기" : "설정/상태"}
@@ -2413,10 +2413,10 @@ export default function BakeBoardPage() {
                 <section className="daemon-hero" data-viewer-only={daemonViewerOnly}>
                   <div>
                     <span>{daemonModeText}</span>
-                    <h2>누적학습 모델 공간</h2>
+                    <h2>클라우드 브레인 공유 온톨로지</h2>
                     <p>
-                      장시간 켜두는 로컬 학습 구역입니다. 배포본에서는 실험실 뷰어처럼 구조와 상태만 보여주고,
-                      실제 상시학습은 로컬 FastAPI와 `data/memory` 저장소에서만 실행합니다.
+                      장시간 웹 기반 학습을 돌려 공용 온톨로지 후보를 키우는 브레인 공간입니다. 배포본에서는
+                      구조와 상태만 보여주고, 실제 상시 수집과 고정/가지치기는 로컬 FastAPI와 저장소에서 실행합니다.
                     </p>
                   </div>
                   <strong>{daemonStateText}</strong>
@@ -2424,7 +2424,7 @@ export default function BakeBoardPage() {
 
                 {daemonViewerOnly ? (
                   <div className="viewer-notice">
-                    배포본은 작은 데모/뷰어입니다. 실제 장기 운전, 체크포인트, 재부팅 복구는 로컬에서
+                    배포본은 작은 클라우드 브레인 뷰어입니다. 실제 장기 운전, 체크포인트, 재부팅 복구는 로컬에서
                     FastAPI를 실행한 뒤 이 화면을 로컬 앱으로 열었을 때 활성화됩니다.
                   </div>
                 ) : null}
@@ -2442,18 +2442,18 @@ export default function BakeBoardPage() {
                   <span>읽기 전용 관측</span>
                   <strong>{localBackendConnected ? "로컬 API 연결됨" : "로컬 API 연결 대기"}</strong>
                   <p>
-                    이 화면은 누적학습 데몬을 직접 조작하지 않습니다. 로컬 FastAPI가 연결되면 데몬 상태,
-                    체크포인트, 자원 스냅샷, 그래프 누적량만 받아서 보여줍니다.
+                    이 화면은 클라우드 브레인 워커를 직접 조작하지 않습니다. 로컬 FastAPI가 연결되면 워커 상태,
+                    체크포인트, 자원 스냅샷, 공용 후보 그래프 누적량만 받아서 보여줍니다.
                   </p>
                 </div>
 
                 <section className="daemon-section">
                   <div>
-                    <h3>재부팅 대비</h3>
+                    <h3>로컬 브레인 복구</h3>
                     <p>
                       상태 파일은 {learningDaemon?.reboot_resilience?.state_file ?? "data/memory/daemon_state.json"}에 저장됩니다.
                       마지막 체크포인트는 {daemonCheckpointText}입니다. PC 재부팅 후 로컬 FastAPI를 다시 켜면
-                      상태가 `resume_needed`로 뜹니다. 재개는 로컬 데몬 명령 또는 FastAPI 관리 API에서 수행하고,
+                      상태가 `resume_needed`로 뜹니다. 재개는 로컬 브레인 워커 명령 또는 FastAPI 관리 API에서 수행하고,
                       이 화면은 이어진 상태를 관측합니다.
                     </p>
                   </div>
@@ -2478,10 +2478,11 @@ export default function BakeBoardPage() {
 
                 <section className="daemon-section">
                   <div>
-                    <h3>실험실 뷰어 경계</h3>
+                    <h3>실험실 연동 경계</h3>
                     <p>
-                      이 배포 화면은 노드/관계/활성 신호를 이해하기 위한 뷰어입니다. 장기 수집과 학습은 사용자의
-                      로컬 워크스테이션에서 천천히 누적하고, 배포본은 그 구조를 작게 보여주는 창으로 유지합니다.
+                      실험실이 웹검색 한계나 근거 부족에 막히면, 클라우드 브레인은 검증된 공용 노드 조각만
+                      임시 컨텍스트로 빌려줍니다. 로컬 개인 그래프에 영구 고정하려면 출처, 반복 빈도, Guardrail
+                      통과, 자원 여유 조건을 모두 만족해야 합니다.
                     </p>
                   </div>
                 </section>

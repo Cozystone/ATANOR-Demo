@@ -34,9 +34,9 @@ Operating split:
 Core loop:
 1. Start local FastAPI and Next.js. Open the app in the browser and operate it
    directly.
-2. Use the cumulative-learning space to monitor daemon status, checkpoints,
+2. Use the Cloud Brain space to monitor worker status, checkpoints,
    node/edge/event counts, runtime, resource pressure, and resume-needed state.
-   Before the local API and daemon are actually running, the cumulative graph
+   Before the local API and worker are actually running, the Cloud Brain graph
    must stay empty instead of showing demo memory.
 3. Use the lab space strictly as a three-stage experiment:
    collect -> learn -> output. Do not let Build Start make the UI look as if all
@@ -96,11 +96,11 @@ If the PC reboots:
 
 1. Start the FastAPI backend again.
 2. Open BakeBoard locally.
-3. Go to `누적학습`.
+3. Go to `클라우드 브레인`.
 4. If the state is `재개 필요`, resume the local daemon through the local
    FastAPI management API or the backend startup policy. The BakeBoard
-   cumulative-learning screen is a viewer and should not pretend to operate the
-   daemon when it is not actually running.
+   Cloud Brain screen is a viewer and should not pretend to operate the worker
+   when it is not actually running.
 
 For automatic daemon resume after backend startup, start FastAPI with:
 

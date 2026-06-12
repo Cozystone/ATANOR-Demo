@@ -55,10 +55,11 @@ Production demo:
 
 - https://homage-alpha.vercel.app
 
-The production deployment is intentionally a small lab viewer/demo. It shows
-the graph, pipeline, activation behavior, and research controls, but it does
-not run the long-lived cumulative learner on Vercel. Real cumulative learning
-is a local FastAPI + Knowledge Bakery process on the user's own workstation.
+The production deployment is intentionally a small lab and Cloud Brain
+viewer/demo. It shows the graph, pipeline, activation behavior, and research
+controls, but it does not run a long-lived public worker on Vercel. Real
+Cloud Brain learning is a local FastAPI + Knowledge Bakery process today, with
+the architecture prepared for a future shared public ontology layer.
 
 ## Repository Layout
 
@@ -135,15 +136,19 @@ block `https://homage-alpha.vercel.app` from calling an `http://localhost` API.
 Use the local frontend for real hardware measurement unless you have an HTTPS
 local companion configured.
 
-## Local Cumulative Learning
+## Cloud Brain
 
 BakeBoard now has two workspaces:
 
-- `누적학습`: the long-running local learner space. On Vercel it behaves as a
-  read-only lab viewer; on local FastAPI it can start, resume, checkpoint, and
-  stop the learner.
+- `클라우드 브레인`: the shared/public ontology viewer and long-running local
+  brain-worker space. On Vercel it behaves as a read-only viewer; on local
+  FastAPI it can observe the worker state, checkpoints, resources, and graph
+  growth. `/api/cloud-brain/*` now exists as an Alpha facade over the local
+  worker; the governed public graph backend is still a future milestone.
 - `실험실`: the current demo/workbench space for Build Start, graph inspection,
-  GraphRAG/native-generation tests, Guardrail checks, and structure demos.
+  GraphRAG/native-generation tests, Guardrail checks, and structure demos. If
+  local memory and web search are weak, the intended architecture is to borrow
+  small verified Cloud Brain graph fragments as temporary working memory.
 
 The learner persists reboot-safe state in:
 
@@ -152,8 +157,21 @@ The learner persists reboot-safe state in:
 - `data/memory/daemon_state.json`
 - `data/memory/daemon_checkpoints/*.json`
 
-If the PC reboots, start the backend and frontend again, open `누적학습`, and
-press `재개` if the daemon reports `재개 필요`.
+If the PC reboots, start the backend and frontend again, open
+`클라우드 브레인`, and press `재개` from the local management surface if the
+worker reports `재개 필요`.
+
+See `docs/CLOUD_BRAIN_ARCHITECTURE.md` for the Cloud Brain design:
+virtual edges, potentiation, consolidation, decay, pruning, lazy loading, and
+lab fallback behavior.
+
+Alpha Cloud Brain API:
+
+- `GET /api/cloud-brain/status`
+- `POST /api/cloud-brain/query`
+- `POST /api/cloud-brain/ingest`
+- `POST /api/cloud-brain/consolidate`
+- `POST /api/cloud-brain/prune`
 
 Optional autostart after FastAPI startup:
 

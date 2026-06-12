@@ -839,7 +839,42 @@
     process cards, visible `수집 시작`, and nonblank 3D graph
   - production API max Build Start returned `500,000` target, `2,000` visual
     budget, and `1,720` nodes / `3,421` relations
-- Captured screenshots:
+  - Captured screenshots:
   - `docs/screenshots/145-lab-volumetric-fit-1720.png`
   - `docs/screenshots/146-learning-keeps-1720-graph.png`
   - `docs/screenshots/147-production-lab-volumetric-default.png`
+
+## 2026-06-12 - Cloud Brain shared ontology design
+
+- Renamed the user-facing `누적학습` workspace to `클라우드 브레인`.
+  Internal `/api/learning/daemon/*` endpoints remain compatible for the current
+  Alpha worker/state files.
+- Added `?workspace=cloud`, `?workspace=cloud-brain`, and `?workspace=cloudbrain`
+  as aliases for the Cloud Brain viewer.
+- Updated the deployed fallback state copy so Vercel is described as a small
+  Cloud Brain viewer, not a long-running worker.
+- Added `docs/CLOUD_BRAIN_ARCHITECTURE.md` with the shared/public ontology
+  design:
+  - local private brain vs Cloud Brain vs lab working memory
+  - virtual edge creation from web/Cloud Brain evidence
+  - potentiation, consolidation, decay, and pruning lifecycle
+  - lazy loading / mmap / hot-window resource strategy
+  - lab fallback order: local memory -> fresh web -> Cloud Brain fragments
+  - `/api/cloud-brain/*` facade contract
+- Added Alpha Cloud Brain API facades in FastAPI and Next.js:
+  - `GET /api/cloud-brain/status`
+  - `POST /api/cloud-brain/query`
+  - `POST /api/cloud-brain/ingest`
+  - `POST /api/cloud-brain/consolidate`
+  - `POST /api/cloud-brain/prune`
+- The facade is intentionally honest: status/query/consolidate use the current
+  local daemon and memory activation path, while public ingest/prune return
+  dry-run/planned metadata until a real shared graph backend exists.
+- Verified FastAPI on `http://127.0.0.1:8045/api/cloud-brain/status` and
+  `/api/cloud-brain/query`; an empty local worker returns `0` counts and
+  `no_memory` fragments instead of fake graph data.
+- Verified the Cloud Brain UI in the in-app browser at
+  `http://127.0.0.1:3057/?workspace=cloud-brain&api=http://127.0.0.1:8045`;
+  saved `docs/screenshots/149-cloud-brain-local-verified.png`.
+- Updated README, Project State, Task Board, Context Capsule, and Codex research
+  prompt references to use Cloud Brain terminology.

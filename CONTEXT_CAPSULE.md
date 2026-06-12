@@ -19,7 +19,7 @@ sample. Production UI now works as a fallback demo/lab viewer; real PC
 measurement and real cumulative learning should use local web + local FastAPI
 unless an HTTPS local companion is configured.
 Current UI follow-up makes `실험실` the first/default workspace, turns
-`누적학습` into a read-only local/API viewer, collapses the lab flow to
+the old `누적학습` space into a read-only local/API viewer, collapses the lab flow to
 `수집 / 학습 / 출력`, and fixes misleading graph growth jumps/detached visual
 clusters. Latest follow-up makes the learning signal truthful: moving orange
 edge pulses are shown only when `POST /api/memory/build` actually adds visible
@@ -32,6 +32,10 @@ Latest follow-up stabilizes the max-profile lab graph and learning handoff:
 frames, uses volumetric anchor-local placement, keeps the collected graph
 visible during learning, and routes all chat questions through
 `/api/graphrag/query` with web search selected only when the query needs it.
+Current design follow-up renames the user-facing cumulative space to
+`클라우드 브레인` and defines it as the future shared/public ontology layer:
+local private brain first, fresh web second, Cloud Brain graph fragments as
+structured fallback when search is weak or unavailable.
 
 ## Current Branch
 
@@ -68,6 +72,7 @@ Latest local commit before this update: Clarify live learning limits and safety 
 - `docs/LONG_RUN_STABILITY_PLAN.md`
 - `docs/HARDWARE_BENCHMARK_ADAPTATION.md`
 - `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md`
+- `docs/CLOUD_BRAIN_ARCHITECTURE.md`
 - `packages/ontology_forge`
 - `packages/rag_engine`
 - `packages/guard`
@@ -144,9 +149,9 @@ Latest local commit before this update: Clarify live learning limits and safety 
   `daemon_state.json`, writes checkpoint snapshots, reports `resume_needed`
   after process/PC restart, and exposes FastAPI status/start/resume/stop/
   checkpoint endpoints.
-- Split BakeBoard into `누적학습` and `실험실` workspaces. The deployed app
-  treats `누적학습` as a lab viewer only; real daemon controls are local.
-- Reordered the split so `실험실` is first/left and `누적학습` is a secondary
+- Split BakeBoard into `클라우드 브레인` and `실험실` workspaces. The deployed app
+  treats `클라우드 브레인` as a lab viewer only; real daemon controls are local.
+- Reordered the split so `실험실` is first/left and `클라우드 브레인` is a secondary
   read-only viewer; the deployed cumulative view no longer exposes direct
   start/stop/checkpoint controls.
 - Simplified the visible lab process into `수집`, `학습`, and `출력`.
@@ -197,6 +202,14 @@ Latest local commit before this update: Clarify live learning limits and safety 
     `https://web-1bwyui7xe-anthony-kims-projects-bc874109.vercel.app`
   - production API max Build Start returns `1,720` nodes / `3,421` relations
     for the `500,000` long-run target
+- Cloud Brain architecture added:
+  - public/shared ontology graph fragments, not external LLM answers
+  - virtual edges with frequency/evidence counters
+  - potentiation, consolidation, decay, and pruning
+  - lab fallback order: local graph -> fresh web -> Cloud Brain fragments
+  - Alpha endpoint facade implemented: `/api/cloud-brain/status`, `/query`,
+    `/ingest`, `/consolidate`, `/prune`
+  - public cloud storage is still future; current facade is local-daemon-backed
   - the manual Guardrail checker is hidden
   - collapsed chat status shows RAG confidence, evidence count, and Guard score
 - Raised the local memory graph display from a demo cap to 900 nodes and 1,800

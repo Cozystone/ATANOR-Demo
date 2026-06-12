@@ -135,9 +135,9 @@ export function demoLearningDaemonStatus() {
     latest_edge_count: demoMemoryStatus().edge_count,
     checkpoint_count: demoState.learningDaemon.last_checkpoint_at ? 1 : 0,
     local_required: true,
-    deployment_policy: "Vercel 배포본은 작은 데모입니다. 실제 누적학습은 사용자의 로컬 FastAPI와 data/memory 저장소에서만 실행됩니다.",
+    deployment_policy: "Vercel 배포본은 작은 클라우드 브레인 뷰어입니다. 실제 상시 수집/고정/가지치기는 사용자의 로컬 FastAPI와 data/memory 저장소에서만 실행됩니다.",
     last_round_action: "deployment_demo_boundary",
-    last_round_message: "배포본에서는 장기 worker를 유지하지 않습니다. 로컬 FastAPI를 연결하면 실제 daemon 상태를 읽습니다.",
+    last_round_message: "배포본에서는 장기 Cloud Brain worker를 유지하지 않습니다. 로컬 FastAPI를 연결하면 실제 worker 상태를 읽습니다.",
     resource_snapshot: {
       disk_free_gb: null,
       disk_total_gb: null,
@@ -149,7 +149,7 @@ export function demoLearningDaemonStatus() {
       checkpoint_dir: "data/memory/daemon_checkpoints",
       heartbeat_interval_seconds: 30,
       checkpoint_interval_seconds: 300,
-      resume_contract: "PC 재부팅 후 로컬 FastAPI를 다시 켜고 재개 버튼을 누르면 daemon_state.json과 SQLite WAL에서 이어갑니다.",
+      resume_contract: "PC 재부팅 후 로컬 FastAPI를 다시 켜고 재개 버튼을 누르면 daemon_state.json과 SQLite WAL에서 Cloud Brain worker가 이어갑니다.",
     },
     llm_policy: {
       external_llm: false,
@@ -201,6 +201,103 @@ export function demoLearningDaemonCheckpoint() {
     last_checkpoint_at: now(),
   };
   return demoLearningDaemonStatus();
+}
+
+function demoCloudBrainShell() {
+  const daemon = demoLearningDaemonStatus();
+  return {
+    name: "Cloud Brain",
+    mode: "shared-public-ontology-facade",
+    implementation: "deployment-viewer-alpha",
+    state: daemon.state,
+    viewer_only_on_deploy: true,
+    public_cloud_backend_enabled: false,
+    local_required: true,
+    counts: {
+      nodes: daemon.latest_node_count,
+      edges: daemon.latest_edge_count,
+      events: daemon.latest_event_count,
+      rounds: daemon.total_rounds,
+      learned_rounds: daemon.learned_rounds,
+    },
+    synaptic_lifecycle: ["virtual_edge", "potentiation", "consolidation", "decay", "pruning"],
+    lab_integration_order: [
+      "local_private_graph",
+      "governed_web_search",
+      "cloud_brain_candidate_fragments",
+      "working_memory_activation",
+      "native_graph_token_generation",
+      "guardrail_promotion_check",
+    ],
+    answer_policy: {
+      external_llm: false,
+      local_quantized_llm: false,
+      pretrained_generation_weights: false,
+      template_only_answers: false,
+    },
+    daemon,
+  };
+}
+
+export function demoCloudBrainStatus() {
+  return demoCloudBrainShell();
+}
+
+export function demoCloudBrainQuery(query: string) {
+  const activation = demoMemoryActivate(query);
+  return {
+    ...demoCloudBrainShell(),
+    query,
+    state: activation.state,
+    source: "deployment_cloud_brain_viewer",
+    public_cloud_backend_enabled: false,
+    fragments: {
+      active_nodes: activation.active_nodes,
+      active_edges: activation.active_edges,
+      semantic_skeleton: activation.semantic_skeleton,
+    },
+    promotion_policy: {
+      requires_repeated_signal: true,
+      requires_provenance: true,
+      requires_guardrail_pass: true,
+      writes_public_cloud: false,
+    },
+    drift_report: activation.drift_report,
+  };
+}
+
+export function demoCloudBrainIngest(input?: { source_url?: string; text?: string; dry_run?: boolean }) {
+  return {
+    ...demoCloudBrainShell(),
+    state: input?.dry_run === false ? "planned" : "dry_run",
+    accepted: false,
+    payload_seen: Boolean(input?.source_url || input?.text),
+    reason: "Deployment viewer has no public Cloud Brain ingestion backend yet.",
+  };
+}
+
+export function demoCloudBrainConsolidate() {
+  return {
+    ...demoCloudBrainShell(),
+    state: "viewer_only",
+    consolidated: false,
+    last_round_action: "deployment_viewer_no_mutation",
+    last_round_message: "Deployment viewer is read-only; persistent graph changes run only in the local worker.",
+  };
+}
+
+export function demoCloudBrainPrune(input?: { dry_run?: boolean; min_weight?: number; max_idle_days?: number }) {
+  return {
+    ...demoCloudBrainShell(),
+    state: input?.dry_run === false ? "planned" : "dry_run",
+    pruned: false,
+    policy: {
+      min_weight: input?.min_weight ?? 0.05,
+      max_idle_days: input?.max_idle_days ?? 30,
+      decay_factor: "planned",
+    },
+    reason: "Deployment viewer shows pruning plans only; it does not mutate the graph.",
+  };
 }
 
 export function demoNeuroPlan(input?: { text?: string; task_type?: string; target_device?: string; token_budget?: number; module_budget?: number }) {

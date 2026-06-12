@@ -4,8 +4,9 @@
 
 Homage1.0 Alpha is implemented and deployed as an interactive MVP with a
 MiroFish-inspired console UI and research-backed Neuro-Efficiency Layer. The
-deployment is treated as a small lab viewer/demo; real cumulative learning is
-run locally through FastAPI and Knowledge Bakery.
+deployment is treated as a small lab / Cloud Brain viewer; real Cloud Brain
+learning is run locally through FastAPI and Knowledge Bakery today, with a
+future path for governed shared public ontology fragments.
 
 Deployment:
 
@@ -16,7 +17,32 @@ Deployment:
 Latest local verification links:
 
 - Lab: http://127.0.0.1:3056/?workspace=lab&api=http://127.0.0.1:8044
-- Cumulative viewer: http://127.0.0.1:3056/?workspace=daemon&api=http://127.0.0.1:8044
+- Cloud Brain viewer: http://127.0.0.1:3056/?workspace=cloud-brain&api=http://127.0.0.1:8044
+
+Latest Cloud Brain design update:
+
+- User-facing `누적학습` terminology has been replaced with `클라우드 브레인`.
+  Internal daemon endpoints remain for compatibility, but the product concept
+  is now a shared/public ontology brain viewer and local worker surface.
+- Added `docs/CLOUD_BRAIN_ARCHITECTURE.md`.
+- Cloud Brain is specified as a governed public graph cache, not an external
+  LLM. It lends signed node/edge fragments to the lab when local memory and raw
+  web search are weak, unavailable, or too noisy.
+- The memory lifecycle is defined as virtual edge -> potentiation ->
+  consolidation -> decay -> pruning, with local promotion gated by evidence,
+  repeated use, Guardrail support, and resource safety.
+- Lab integration order is now: local private graph first, fresh web when
+  needed, Cloud Brain fragments only as structured fallback, then temporary
+  working graph and explicit source labels.
+- Added the Alpha `/api/cloud-brain/*` facade on both FastAPI and Next.js:
+  status/query/consolidate are wired to the current local worker or memory
+  activation path; ingest/prune are explicit dry-run/planned responses until a
+  real shared public graph backend exists.
+- Verified locally on `http://127.0.0.1:3057/?workspace=cloud-brain&api=http://127.0.0.1:8045`:
+  the Cloud Brain viewer opens as a blank observer when the worker is not
+  alive, shows `0 노드 / 0 관계`, and no longer shows the old `누적학습`
+  label.
+- Verification screenshot: `docs/screenshots/149-cloud-brain-local-verified.png`.
 
 Latest 2026-06-12 follow-up:
 
@@ -74,7 +100,7 @@ Latest 2026-06-12 update:
 - Greeting/conversation queries skip web search even when the web-search toggle
   is enabled. They also skip memory activation, so the graph does not pulse
   stale nodes for simple greetings.
-- The cumulative-learning workspace is a read-only local daemon viewer. If
+- The Cloud Brain workspace is a read-only local worker viewer. If
   local FastAPI is connected but the daemon worker is not alive, the graph area
   stays blank and shows a waiting state instead of reusing the lab demo graph.
 - Browser screenshots:
@@ -142,10 +168,11 @@ Latest 2026-06-12 update:
     - `POST /api/learning/daemon/stop`
 - BakeBoard workspace split:
   - `실험실` is now the left/first workspace and the deployed default view
-  - `누적학습` shows the long-running local learner, runtime, checkpoints,
-    resource snapshot, reboot recovery state, and Codex research goal prompt
-  - deployment fallback renders `누적학습` as a read-only local/API viewer with
-    no start/stop/checkpoint controls
+  - `클라우드 브레인` shows the long-running local brain worker, runtime,
+    checkpoints, resource snapshot, reboot recovery state, and Codex research
+    goal prompt
+  - deployment fallback renders `클라우드 브레인` as a read-only local/API
+    viewer with no start/stop/checkpoint controls
   - `실험실` is simplified to the three intended stages:
     수집(문장 분해 및 GraphRAG 구축), 학습(온톨로지 생성 및 관계 계산),
     출력(자연어 입력/답변)
@@ -155,7 +182,7 @@ Latest 2026-06-12 update:
   - the bottom dashboard is now a shorter Korean `시스템 로그`
   - lab header status shows `준비` unless a build/action/chat generation is
     actually running
-  - cumulative viewer status uses the real local daemon worker state instead of
+  - Cloud Brain viewer status uses the real local daemon worker state instead of
     the mock pipeline status
 - Truthful 3D learning-edge signal:
   - the `학습` action compares the previous memory graph with the graph returned
