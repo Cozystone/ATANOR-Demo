@@ -238,6 +238,8 @@ GitHub Actions workflow:
 - Add `TAURI_SIGNING_PRIVATE_KEY` and
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets before producing
   updater artifacts for public release.
+- If the signing key is missing, CI disables updater artifact generation for
+  that run and still attempts to produce ordinary desktop installers.
 - Built installers are uploaded as workflow artifacts under
   `src-tauri/target/release/bundle`.
 

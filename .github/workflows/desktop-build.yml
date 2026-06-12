@@ -47,6 +47,11 @@ jobs:
       - name: Build Python FastAPI sidecar
         run: python scripts/build_sidecar.py
 
+      - name: Prepare Tauri updater mode
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: python scripts/prepare_tauri_ci.py
+
       - name: Build Tauri desktop bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
