@@ -15,8 +15,14 @@ def main() -> None:
     if not has_signing_key:
         bundle = config.setdefault("bundle", {})
         bundle["createUpdaterArtifacts"] = False
+        plugins = config.get("plugins")
+        if isinstance(plugins, dict):
+            plugins.pop("updater", None)
         CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print("TAURI_SIGNING_PRIVATE_KEY is not set; disabled updater artifact generation for this CI build.")
+        print(
+            "TAURI_SIGNING_PRIVATE_KEY is not set; disabled updater artifact generation "
+            "and removed updater config for this ordinary installer CI build."
+        )
     else:
         print("TAURI_SIGNING_PRIVATE_KEY is set; updater artifact generation remains enabled.")
 
