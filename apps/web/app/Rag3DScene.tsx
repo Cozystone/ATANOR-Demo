@@ -67,6 +67,13 @@ const palette: Record<string, number> = {
   learning: 0x111715,
   efficiency: 0x006a9f,
   summary: 0x6d746f,
+  token: 0x4a8fdb,
+  predicate: 0xff6b35,
+  phrase: 0x8c3fa7,
+  compound: 0x1a936f,
+  quantity: 0xe89d2a,
+  relation: 0x73827a,
+  verb: 0xff6b35,
 };
 
 function labelSprite(text: string, scale = 1) {
@@ -209,12 +216,12 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     nodeMap.set(node.id, position);
     const isActive = activeNodeIds.has(node.id);
     const color = isActive ? 0xff6b35 : palette[node.type] ?? 0x68736d;
-    const radius = 0.17 + (node.confidence ?? 0.7) * 0.12;
+    const radius = (0.17 + (node.confidence ?? 0.7) * 0.12) * (isActive ? 1.18 : 1);
     const geometry = new THREE.SphereGeometry(radius, sphereSegments, sphereSegments);
     const material = new THREE.MeshStandardMaterial({
       color,
       emissive: isActive ? 0xff6b35 : 0x000000,
-      emissiveIntensity: isActive ? 0.72 : 0,
+      emissiveIntensity: isActive ? 1.35 : 0,
       roughness: 0.42,
       metalness: 0.18,
     });
@@ -228,11 +235,25 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
 
     if (graph.nodes.length <= 800 || isActive || node.type === "summary") {
       const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(radius * 1.7, sphereSegments, sphereSegments),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: isActive ? 0.26 : 0.08 }),
+        new THREE.SphereGeometry(radius * (isActive ? 2.25 : 1.7), sphereSegments, sphereSegments),
+        new THREE.MeshBasicMaterial({ color: isActive ? 0xff8a3d : color, transparent: true, opacity: isActive ? 0.38 : 0.08 }),
       );
       halo.position.copy(position);
+      halo.userData.activeHalo = isActive;
+      halo.userData.spawnFrame = mesh.userData.spawnFrame;
       addDynamicObject(state, halo);
+    }
+
+    if (isActive) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(radius * 2.55, Math.max(0.015, radius * 0.07), 8, 40),
+        new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.56 }),
+      );
+      ring.position.copy(position);
+      ring.rotation.x = Math.PI / 2;
+      ring.userData.activeHalo = true;
+      ring.userData.spawnFrame = mesh.userData.spawnFrame;
+      addDynamicObject(state, ring);
     }
 
     if (shouldShowLabel(node, graph.nodes.length, isActive)) {
@@ -421,6 +442,11 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
         const age = Math.min(1, (state.frame - (mesh.userData.spawnFrame ?? state.frame)) / 18);
         const activePulse = mesh.userData.active ? 1 + Math.sin(state.frame * 0.14 + mesh.position.x) * 0.18 : 1;
         mesh.scale.setScalar(age * activePulse * (1 + Math.sin(state.frame * 0.02 + mesh.position.x) * 0.025));
+      }
+      for (const object of state.dynamicObjects) {
+        if (!object.userData.activeHalo) continue;
+        const pulse = 1 + Math.sin(state.frame * 0.16 + object.position.y) * 0.2;
+        object.scale.setScalar(pulse);
       }
       const totalNodes = graphRef.current?.nodes?.length ?? 0;
       container.dataset.cameraZ = camera.position.z.toFixed(1);

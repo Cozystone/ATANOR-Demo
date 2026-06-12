@@ -10,6 +10,7 @@ data/cleaned/
 data/rejected/
 data/metadata/
 data/ontology/
+data/memory/
 checkpoints/
 *.log
 .env

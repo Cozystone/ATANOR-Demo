@@ -179,6 +179,11 @@ as inspection/control output, not model generation.
 - `POST /api/ontology/run`
 - `GET /api/ontology/status`
 - `GET /api/ontology/graph`
+- `POST /api/memory/build`
+- `GET /api/memory/status`
+- `GET /api/memory/graph`
+- `POST /api/memory/activate`
+- `GET /api/memory/drift-check`
 - `POST /api/graphrag/query`
 - `GET /api/graphrag/status`
 - `POST /api/guard/check`
@@ -193,8 +198,8 @@ as inspection/control output, not model generation.
 ## Verify
 
 ```bash
-.venv\Scripts\python.exe -m pytest packages\datagate packages\ontology_forge packages\rag_engine packages\guard packages\model packages\trainer packages\neuro_efficiency apps\api -q
-.venv\Scripts\python.exe -m compileall apps\api packages\datagate\datagate packages\ontology_forge\ontology_forge packages\rag_engine\rag_engine packages\guard\guard packages\model\model packages\trainer\trainer packages\neuro_efficiency\neuro_efficiency
+.venv\Scripts\python.exe -m pytest packages\datagate packages\ontology_forge packages\rag_engine packages\guard packages\model packages\trainer packages\neuro_efficiency packages\knowledge_bakery apps\api -q
+.venv\Scripts\python.exe -m compileall apps\api packages\datagate\datagate packages\ontology_forge\ontology_forge packages\rag_engine\rag_engine packages\guard\guard packages\model\model packages\trainer\trainer packages\neuro_efficiency\neuro_efficiency packages\knowledge_bakery\knowledge_bakery
 npm --workspace apps/web run build
 ```
 
@@ -218,6 +223,13 @@ npm --workspace apps/web run build
   MiroFish references used for the Alpha RAG/UI structure.
 - `docs/BUILD_FLOW_3D_RAG.md` records the Build Start, live harvest, typed
   ontology growth, 3D GraphRAG traversal, and training-gate design.
+- `docs/HOMAGE_INDEPENDENT_MODEL_REVISION_V1.md` records the revised target:
+  no external LLM, no local quantized LLM, persistent graph memory, local
+  relation learning, and a native Homage decoder.
+- `packages/knowledge_bakery` now persists `data/memory/homage.db` and
+  `data/memory/events.jsonl`, builds token transitions, phrase nodes,
+  co-occurrence windows, local 3D projections, and spread-activation traces
+  without external or local pretrained LLMs.
 - `docs/PRD_ENGINE_AUDIT.md` records what is implemented versus still missing
   against the original PRD.
 - The BakeBoard UI now follows a MiroFish-inspired console structure: left

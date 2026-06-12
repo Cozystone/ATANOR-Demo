@@ -77,7 +77,7 @@ def test_datagate_run_returns_409_when_already_running(monkeypatch) -> None:
     assert second.status_code == 409
 
 
-def test_pipeline_status_still_returns_seven_stages() -> None:
+def test_pipeline_status_returns_alpha_stages() -> None:
     datagate_service.reset_for_tests()
     client = TestClient(app)
 
@@ -85,13 +85,14 @@ def test_pipeline_status_still_returns_seven_stages() -> None:
 
     assert response.status_code == 200
     stages = response.json()["stages"]
-    assert len(stages) == 7
+    assert len(stages) == 8
     assert [stage["name"] for stage in stages] == [
         "Harvest",
         "DataGate",
         "Ontology Forge",
         "Homage Oven",
         "GraphRAG",
+        "Knowledge Bakery",
         "Guardrail",
         "GPU Monitor",
     ]

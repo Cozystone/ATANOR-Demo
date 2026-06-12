@@ -27,6 +27,29 @@ Deployment:
   - metadata exposes PMV, active concepts, `answer_kind`,
     `answer_engine.diagnostics`, and `external_llm: false`
   - no external or pretrained LLM calls
+- Knowledge Bakery persistent memory Alpha:
+  - `packages/knowledge_bakery` writes `data/memory/homage.db` with SQLite WAL
+    and `data/memory/events.jsonl` as an append-only memory event log
+  - stores documents, chunks, nodes, edges, relation stats, token transitions,
+    co-occurrence windows, activation events, local 3D projection rows, and
+    query traces
+  - builds phrase nodes and action/predicate-aware token nodes from cleaned
+    text and Ontology Forge output
+  - exposes `POST /api/memory/build`, `GET /api/memory/status`,
+    `GET /api/memory/graph`, `POST /api/memory/activate`, and
+    `GET /api/memory/drift-check`
+  - GraphRAG responses now include `memory_activation` with active nodes,
+    active edges, semantic skeleton, and explicit no-LLM policy flags
+  - BakeBoard polls drift checks periodically and shows Knowledge Bakery as a
+    process card with node, edge, transition, phrase, and drift metrics
+  - local browser verification reached a 2,000-node / 4,226-edge 3D graph and
+    confirmed active memory signals stay visible by retargeting to visible
+    representative nodes when the true activated node is outside the render
+    window
+  - screenshots:
+    - `docs/screenshots/124-knowledge-bakery-drift-local.png`
+    - `docs/screenshots/125-large-graph-1912-nodes-local.png`
+    - `docs/screenshots/126-large-graph-active-signal-local.png`
 - Neuro-Efficiency Layer for event sparsity, modular routing, continual
   learning policy, few-shot prototypes, self-supervised masking, compression,
   and estimated compute reduction.
@@ -123,6 +146,8 @@ Deployment:
 - Build flow note: `docs/BUILD_FLOW_3D_RAG.md`.
 - Long-run stability note: `docs/LONG_RUN_STABILITY_PLAN.md`.
 - Hardware benchmark note: `docs/HARDWARE_BENCHMARK_ADAPTATION.md`.
+- Independent native model revision note:
+  `docs/HOMAGE_INDEPENDENT_MODEL_REVISION_V1.md`
 
 ## Verification
 
@@ -425,9 +450,10 @@ Deployment:
 - The ontology-memory graph is a deterministic UI visualization, not a full
   force-directed runtime graph engine yet, but it now supports zoom, pan,
   drag, search focus, node detail, reset, and full-screen graph mode.
-- PRD audit confirms Alpha is not yet the full final engine: Harvest crawling,
-  Knowledge Bakery vector DB/summary tree, real Homage-Core-30M training, and
-  a separate Utterance Engine remain future work.
+- PRD audit confirms Alpha is not yet the full final engine: broad Harvest
+  crawling, stronger local vector learning, summary-tree compaction, real
+  Homage-Core from-scratch training, and a separate native decoder remain
+  future work.
 - The 3D GraphRAG visual is a live client-side visualization of the Alpha
   graph/traversal contract; persistent vector storage, graph mutation history,
   and real continual-training events remain future work.
@@ -463,11 +489,13 @@ Deployment:
 
 ## Next Recommended Milestone
 
-1. Add the append-only ontology event log and SQLite WAL hot graph index.
+1. Route Build Start and live-synapse growth into the Knowledge Bakery event
+   log instead of keeping those growth pulses client-side.
 2. Persist Alpha run history and Build Start graph frames with SQLite.
 3. Persist live-synapse graph mutations and replay them as a real learning
    event stream.
 4. Add a real Harvest connector with source allowlists, robots policy, and
    deduped document provenance.
-5. Persist Knowledge Bakery vector/graph memory and graph mutation history.
-6. Log real event density from DataGate and GraphRAG traces.
+5. Replace the deterministic local projection with PPMI/random-indexing or
+   graph-walk vectors trained only on the local memory event log.
+6. Add the first native decoder endpoint with unsupported-token diagnostics.

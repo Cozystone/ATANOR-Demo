@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from guard import check_guard
+from knowledge_bakery import activate_memory, build_memory, drift_check, export_graph, memory_status
 from ontology_forge import run_ontology
 from rag_engine import query_graphrag
 from rag_engine.utterance_engine import build_native_utterance
@@ -41,6 +42,7 @@ class AlphaService:
         self.graphrag = _base_status() | {"last_query": None, "confidence": 0, "result": None}
         self.guard = _base_status() | {"overall_guard_score": 0, "result": None}
         self.oven = _base_status() | {"last_loss": None, "checkpoint_path": None, "losses": []}
+        self.memory = memory_status()
 
     def run_ontology(self) -> dict[str, Any]:
         with self._lock:
@@ -49,6 +51,7 @@ class AlphaService:
             result = run_ontology()
             nodes = result["nodes"]
             edges = result["edges"]
+            memory_result = build_memory()
             status = {
                 "state": "completed",
                 "started_at": self.ontology["started_at"],
@@ -58,7 +61,10 @@ class AlphaService:
                 "edge_count": len(edges),
                 "newest_nodes": nodes[:8],
                 "newest_edges": edges[:8],
+                "memory_status": memory_result,
             }
+            with self._lock:
+                self.memory = memory_result
         except Exception as exc:  # pragma: no cover - defensive runtime guard
             status = self.ontology | {"state": "failed", "finished_at": utc_now_iso(), "error": str(exc)}
         with self._lock:
@@ -75,15 +81,70 @@ class AlphaService:
         edges = json.loads((root / "edges.json").read_text(encoding="utf-8")) if (root / "edges.json").exists() else []
         return {"nodes": nodes, "edges": edges, "status": self.ontology_status()}
 
+    def build_memory(self) -> dict[str, Any]:
+        with self._lock:
+            self.memory = self.memory | {"state": "running", "started_at": utc_now_iso(), "finished_at": None, "error": None}
+        try:
+            result = build_memory()
+            status = {
+                **result,
+                "state": "completed",
+                "started_at": self.memory.get("started_at"),
+                "finished_at": utc_now_iso(),
+                "error": None,
+            }
+        except Exception as exc:  # pragma: no cover
+            status = self.memory | {"state": "failed", "finished_at": utc_now_iso(), "error": str(exc)}
+        with self._lock:
+            self.memory = status
+            return dict(self.memory)
+
+    def memory_status(self) -> dict[str, Any]:
+        status = memory_status()
+        with self._lock:
+            self.memory = {**self.memory, **status}
+            return dict(self.memory)
+
+    def memory_graph(self, limit: int = 600) -> dict[str, Any]:
+        return export_graph(limit=limit)
+
+    def activate_memory(self, query: str, max_nodes: int = 40, max_depth: int = 3) -> dict[str, Any]:
+        result = activate_memory(query, max_nodes=max_nodes, max_depth=max_depth)
+        with self._lock:
+            self.memory = {**self.memory, **memory_status()}
+        return result
+
+    def memory_drift_check(self) -> dict[str, Any]:
+        report = drift_check()
+        with self._lock:
+            self.memory = {**self.memory, **report.get("status", {})}
+        return report
+
     async def query_graphrag(self, query: str, web_search: bool = False, web_search_provider: str | None = None) -> dict[str, Any]:
         with self._lock:
             self.graphrag = self.graphrag | {"state": "running", "started_at": utc_now_iso(), "finished_at": None, "error": None, "last_query": query}
         try:
             result = query_graphrag(query)
+            memory_activation: dict[str, Any] | None = None
+            if memory_status().get("state") == "completed":
+                memory_activation = activate_memory(query)
             should_search = web_search or is_fresh_search_query(query) or is_knowledge_lookup_query(query)
             if should_search and (web_search or _should_web_search(result) or is_fresh_search_query(query) or is_knowledge_lookup_query(query)):
                 search_payload = await search_web(query, 5, web_search_provider)
                 result = _merge_web_search_result(query, result, search_payload)
+            if memory_activation is not None:
+                result = {
+                    **result,
+                    "memory_activation": memory_activation,
+                    "answer_engine": {
+                        **result.get("answer_engine", {}),
+                        "memory_activation": "knowledge_bakery_spread_activation_v1",
+                    },
+                    "retrieval_trace": {
+                        **result.get("retrieval_trace", {}),
+                        "active_memory_node_ids": [node["id"] for node in memory_activation.get("active_nodes", [])[:16]],
+                    },
+                }
             status = {
                 "state": "completed",
                 "started_at": self.graphrag["started_at"],

@@ -13,8 +13,9 @@ GUARD_ROOT = REPO_ROOT / "packages" / "guard"
 MODEL_ROOT = REPO_ROOT / "packages" / "model"
 TRAINER_ROOT = REPO_ROOT / "packages" / "trainer"
 NEURO_ROOT = REPO_ROOT / "packages" / "neuro_efficiency"
+KNOWLEDGE_ROOT = REPO_ROOT / "packages" / "knowledge_bakery"
 
-for path in (API_ROOT, DATAGATE_ROOT, ONTOLOGY_ROOT, RAG_ROOT, GUARD_ROOT, MODEL_ROOT, TRAINER_ROOT, NEURO_ROOT):
+for path in (API_ROOT, DATAGATE_ROOT, ONTOLOGY_ROOT, RAG_ROOT, GUARD_ROOT, MODEL_ROOT, TRAINER_ROOT, NEURO_ROOT, KNOWLEDGE_ROOT):
     path_string = str(path)
     if path_string not in sys.path:
         sys.path.insert(0, path_string)

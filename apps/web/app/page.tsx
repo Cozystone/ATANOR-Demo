@@ -565,6 +565,12 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
 }
 
 function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecord | null) {
+  const memoryActiveNodes = (result?.memory_activation?.active_nodes ?? []) as AnyRecord[];
+  const memoryActiveEdges = (result?.memory_activation?.active_edges ?? []) as AnyRecord[];
+  const memoryNodeIds = new Set(memoryActiveNodes.map((node) => String(node.id ?? "")).filter(Boolean));
+  const memoryLabels = memoryActiveNodes
+    .map((node) => String(node.label ?? node.id ?? "").toLowerCase())
+    .filter(Boolean);
   const resultNodeIds = new Set((result?.matched_nodes ?? []).map((node: AnyRecord) => String(node.id ?? "")));
   const graphPathIds = new Set(
     (result?.graph_paths ?? [])
@@ -576,40 +582,68 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
     .toLowerCase()
     .split(/[^a-z0-9가-힣_-]+/i)
     .filter((term) => term.length > 1);
+  const activationTerms = [
+    ...terms,
+    ...memoryLabels.flatMap((label) => label.split(/[^a-z0-9가-힣-]+/i)),
+  ].filter((term) => term.length > 1);
   const visibleNodeIds = new Set(graph.nodes.map((node) => node.id));
+  const visibleMemoryIds = [...memoryNodeIds].filter((id) => visibleNodeIds.has(id));
   const scored = graph.nodes
     .map((node) => {
       const haystack = `${node.id} ${node.label} ${node.type}`.toLowerCase();
-      const termScore = terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+      const termScore = activationTerms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+      const memoryScore = memoryNodeIds.has(node.id) ? 10 : 0;
+      const labelScore = memoryLabels.some((label) => label && haystack.includes(label)) ? 7 : 0;
       const resultScore = resultNodeIds.has(node.id) ? 6 : 0;
       const pathScore = graphPathIds.has(node.id) ? 3 : 0;
-      return { node, score: termScore + resultScore + pathScore };
+      return { node, score: termScore + memoryScore + labelScore + resultScore + pathScore };
     })
     .filter((item) => item.score > 0)
     .sort((left, right) => right.score - left.score);
-  let activeNodeIds = scored.map((item) => item.node.id).filter((id) => visibleNodeIds.has(id)).slice(0, 10);
+  let activeNodeIds = [...visibleMemoryIds, ...scored.map((item) => item.node.id)]
+    .filter((id, index, all) => visibleNodeIds.has(id) && all.indexOf(id) === index)
+    .slice(0, 14);
+  let retargeted = Boolean(memoryNodeIds.size && !visibleMemoryIds.length && activeNodeIds.length);
   if (!activeNodeIds.length) {
     const recentLiveIds = graph.nodes
       .filter((node) => node.id.startsWith("live-synapse"))
-      .slice(-8)
+      .slice(-10)
       .map((node) => node.id);
     const summaryIds = graph.nodes
       .filter((node) => node.id.startsWith("live-summary"))
-      .slice(-3)
+      .slice(-4)
       .map((node) => node.id);
     const traversalIds = (graph.traversal_path ?? [])
       .filter((id) => visibleNodeIds.has(id))
-      .slice(-6);
-    activeNodeIds = Array.from(new Set([...recentLiveIds, ...summaryIds, ...traversalIds])).slice(0, 10);
+      .slice(-8);
+    activeNodeIds = Array.from(new Set([...recentLiveIds, ...summaryIds, ...traversalIds])).slice(0, 14);
+    retargeted = Boolean(memoryNodeIds.size && activeNodeIds.length);
   }
   const activeNodeSet = new Set(activeNodeIds);
-  const activeEdgeKeys = graph.edges
-    .filter((edge) => activeNodeSet.has(edge.source) && activeNodeSet.has(edge.target))
-    .slice(0, 16)
-    .map((edge) => `${edge.source}:${edge.target}`);
+  const memoryEdgeKeys = memoryActiveEdges
+    .map((edge) => `${edge.source}:${edge.target}`)
+    .filter((key) => {
+      const [source, target] = key.split(":");
+      return activeNodeSet.has(source) && activeNodeSet.has(target);
+    });
+  const activeEdgeKeys = [
+    ...memoryEdgeKeys,
+    ...graph.edges
+      .filter((edge) => activeNodeSet.has(edge.source) && activeNodeSet.has(edge.target))
+      .slice(0, 18)
+      .map((edge) => `${edge.source}:${edge.target}`),
+  ].filter((key, index, all) => all.indexOf(key) === index).slice(0, 22);
   const labels = activeNodeIds
     .map((id) => graph.nodes.find((node) => node.id === id)?.label ?? id)
-    .slice(0, 5);
+    .slice(0, 6);
+  const signalText = labels.length
+    ? `${retargeted ? "활성 신호(대표 노드)" : "활성 노드"}: ${labels.join(", ")}`
+    : "활성 신호 대기";
+  return {
+    edgeKeys: activeEdgeKeys,
+    nodeIds: activeNodeIds,
+    text: signalText,
+  };
   return {
     edgeKeys: activeEdgeKeys,
     nodeIds: activeNodeIds,
@@ -738,6 +772,8 @@ export default function BakeBoardPage() {
   const [oven, setOven] = useState<AnyRecord | null>(null);
   const [neuro, setNeuro] = useState<AnyRecord | null>(null);
   const [stability, setStability] = useState<AnyRecord | null>(null);
+  const [memoryStatus, setMemoryStatus] = useState<AnyRecord | null>(null);
+  const [memoryDrift, setMemoryDrift] = useState<AnyRecord | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
   const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8000");
@@ -853,6 +889,9 @@ export default function BakeBoardPage() {
       datagateStatus,
       ontologyStatus,
       ontologyGraph,
+      memoryStatusResult,
+      memoryGraphResult,
+      memoryDriftResult,
       graphragStatus,
       guardStatus,
       gpuStatus,
@@ -865,6 +904,9 @@ export default function BakeBoardPage() {
       apiJson<AnyRecord>("/api/datagate/status"),
       apiJson<AnyRecord>("/api/ontology/status"),
       apiJson<AnyRecord>("/api/ontology/graph"),
+      apiJson<AnyRecord>("/api/memory/status"),
+      apiJson<AnyRecord>("/api/memory/graph?limit=900"),
+      apiJson<AnyRecord>("/api/memory/drift-check"),
       apiJson<AnyRecord>("/api/graphrag/status"),
       apiJson<AnyRecord>("/api/guard/status"),
       apiJson<AnyRecord>("/api/telemetry/gpu"),
@@ -883,7 +925,9 @@ export default function BakeBoardPage() {
     setPipeline(pipelineStatus);
     setDatagate(datagateStatus);
     setOntology(ontologyStatus);
-    setGraph(ontologyGraph);
+    setMemoryStatus(memoryStatusResult);
+    setMemoryDrift(memoryDriftResult);
+    setGraph(memoryGraphResult?.nodes?.length ? memoryGraphResult : ontologyGraph);
     setGraphRag(graphragStatus);
     setGuard(guardStatus);
     setGpu(gpuStatus);
@@ -1009,6 +1053,16 @@ export default function BakeBoardPage() {
     if (result?.newest_nodes || result?.newest_edges) {
       setGraph({ nodes: result.newest_nodes ?? [], edges: result.newest_edges ?? [] });
     }
+  }
+
+  async function runMemoryBuildStep() {
+    setMemoryStatus((current) => ({ ...(current ?? {}), state: "running" }));
+    const result = await apiJson<AnyRecord>("/api/memory/build", { method: "POST" });
+    const graphResult = await apiJson<AnyRecord>("/api/memory/graph?limit=900");
+    const driftResult = await apiJson<AnyRecord>("/api/memory/drift-check");
+    setMemoryStatus(result);
+    setMemoryDrift(driftResult);
+    if (graphResult?.nodes?.length) setGraph(graphResult);
   }
 
   async function runTrainingDryRun() {
@@ -1395,7 +1449,7 @@ export default function BakeBoardPage() {
   const vramUsedGb = numeric(gpu?.vram_used) === null ? null : (numeric(gpu?.vram_used) ?? 0) / 1024;
   const flowHealth = useMemo(() => {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
-    return Math.round((complete / 7) * 100);
+    return Math.round((complete / Math.max(1, pipeline?.stages.length ?? 8)) * 100);
   }, [pipeline]);
 
   useEffect(() => {
@@ -1404,6 +1458,22 @@ export default function BakeBoardPage() {
   }, [continuousLearningActive, resourceStopReason]);
 
   const processSteps = [
+    {
+      number: "KB",
+      title: "Knowledge Bakery",
+      api: "POST /api/memory/build",
+      state: activeAction === "KB" ? "running" : memoryStatus?.state ?? "idle",
+      description: "정제 문서와 온톨로지에서 문장 요소, phrase 노드, 전후 토큰 확률, 3D 로컬 벡터를 SQLite 메모리로 굽습니다.",
+      metrics: [
+        `${memoryStatus?.node_count ?? 0} nodes`,
+        `${memoryStatus?.edge_count ?? 0} edges`,
+        `${memoryStatus?.transition_count ?? 0} transitions`,
+        `${memoryStatus?.phrase_count ?? 0} phrases`,
+        `drift ${memoryDrift?.state ?? "waiting"}`,
+      ],
+      action: () => runProcessAction("KB", runMemoryBuildStep),
+      actionLabel: activeAction === "KB" ? "메모리 구축 중" : "메모리 구축",
+    },
     {
       number: "HW",
       title: "시스템 벤치마크",

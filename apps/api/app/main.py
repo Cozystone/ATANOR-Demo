@@ -10,6 +10,7 @@ from app.routers.factory import router as factory_router
 from app.routers.graphrag import router as graphrag_router
 from app.routers.guard import router as guard_router
 from app.routers.harvest import router as harvest_router
+from app.routers.memory import router as memory_router
 from app.routers.neuro import router as neuro_router
 from app.routers.ontology import router as ontology_router
 from app.routers.oven import router as oven_router
@@ -70,6 +71,7 @@ app.include_router(factory_router)
 app.include_router(ontology_router)
 app.include_router(graphrag_router)
 app.include_router(guard_router)
+app.include_router(memory_router)
 app.include_router(neuro_router)
 app.include_router(telemetry_router)
 app.include_router(oven_router)
@@ -203,6 +205,7 @@ def pipeline_status() -> PipelineStatus:
     ontology_status = alpha_service.ontology_status()
     graphrag_status = alpha_service.graphrag_status()
     guard_status = alpha_service.guard_status()
+    memory_status = alpha_service.memory_status()
     oven_status = alpha_service.oven_status()
     gpu_status = telemetry_gpu()
     stages = [
@@ -234,6 +237,15 @@ def pipeline_status() -> PipelineStatus:
             "Latest query produced an inspectable evidence bundle.",
             "confidence",
             str(graphrag_status.get("confidence") or 0),
+        ),
+        alpha_stage(
+            "knowledge-bakery",
+            "Knowledge Bakery",
+            memory_status,
+            "Ready to persist sentence components, token transitions, phrase nodes, and local 3D vectors.",
+            "Local append-only memory store and activation index are available.",
+            "memory",
+            f"{memory_status.get('node_count', 0)} nodes / {memory_status.get('transition_count', 0)} transitions",
         ),
         alpha_stage(
             "guardrail",

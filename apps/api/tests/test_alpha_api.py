@@ -27,6 +27,24 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert graph.status_code == 200
     assert graph.json()["nodes"]
 
+    memory = client.get("/api/memory/status")
+    assert memory.status_code == 200
+    assert memory.json()["state"] == "completed"
+    assert memory.json()["transition_count"] > 0
+    assert memory.json()["phrase_count"] > 0
+
+    memory_graph = client.get("/api/memory/graph?limit=80")
+    assert memory_graph.status_code == 200
+    assert memory_graph.json()["nodes"]
+
+    memory_activation = client.post("/api/memory/activate", json={"query": "GraphRAG evidence", "max_nodes": 16})
+    assert memory_activation.status_code == 200
+    assert memory_activation.json()["active_nodes"]
+
+    drift = client.get("/api/memory/drift-check")
+    assert drift.status_code == 200
+    assert drift.json()["constraints"]["external_llm"] is False
+
     rag = client.post("/api/graphrag/query", json={"query": "GraphRAG evidence"})
     assert rag.status_code == 200
     assert rag.json()["result"]["evidence_docs"]
@@ -36,6 +54,7 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert rag.json()["result"]["answer_kind"] == "graph_token_prediction"
     assert rag.json()["result"]["answer_engine"]["external_llm"] is False
     assert rag.json()["result"]["answer_engine"]["prediction_basis"] == "ontology_token_transition_graph"
+    assert rag.json()["result"]["memory_activation"]["active_nodes"]
 
     web_rag = client.post("/api/graphrag/query", json={"query": "Grounding with Bing architecture", "web_search": True})
     assert web_rag.status_code == 200
@@ -123,4 +142,4 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
 
     pipeline = client.get("/api/pipeline/status")
     assert pipeline.status_code == 200
-    assert len(pipeline.json()["stages"]) == 7
+    assert len(pipeline.json()["stages"]) == 8

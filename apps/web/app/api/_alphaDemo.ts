@@ -730,6 +730,7 @@ export function demoPipelineStatus() {
       { id: "ontology-forge", name: "Ontology Forge", state: "complete", progress: 100, summary: "Concept nodes and candidate edges are available.", metric_label: "graph", metric_value: `${demoNodes.length} nodes / ${demoEdges.length} edges` },
       { id: "homage-oven", name: "Homage Oven", state: "complete", progress: 100, summary: "Dry-run scaffold produced a short loss trace.", metric_label: "last loss", metric_value: String(demoState.oven.last_loss) },
       { id: "graphrag", name: "GraphRAG", state: "complete", progress: 100, summary: "Demo evidence bundle is ready.", metric_label: "confidence", metric_value: "0.82" },
+      { id: "knowledge-bakery", name: "Knowledge Bakery", state: "complete", progress: 100, summary: "Demo sentence components, phrase nodes, and activation index are available.", metric_label: "memory", metric_value: `${demoMemoryStatus().node_count} nodes` },
       { id: "guardrail", name: "Guardrail", state: demoState.guard.state === "idle" ? "idle" : "complete", progress: demoState.guard.state === "idle" ? 0 : 100, summary: "Ready to check draft claims.", metric_label: "guard score", metric_value: String(demoState.guard.overall_guard_score) },
       { id: "gpu-monitor", name: "GPU Monitor", state: "warning", progress: 35, summary: "Deployed sandbox uses telemetry fallback.", metric_label: "vram", metric_value: "fallback" },
     ],
@@ -747,7 +748,12 @@ export function demoOntologyRun() {
 }
 
 export function demoGraphRAGQuery(query: string, webEvidenceDocs: any[] = [], webSearchPayload: any = null) {
-  const result = makeEvidence(query || "GraphRAG evidence", webEvidenceDocs, webSearchPayload);
+  const result: any = makeEvidence(query || "GraphRAG evidence", webEvidenceDocs, webSearchPayload);
+  result.memory_activation = demoMemoryActivate(result.query);
+  result.answer_engine = {
+    ...(result.answer_engine ?? {}),
+    memory_activation: "knowledge_bakery_spread_activation_v1",
+  };
   demoState.graphrag = { ...demoState.graphrag, state: "completed", started_at: now(), finished_at: now(), last_query: result.query, confidence: result.confidence, result };
   return demoState.graphrag;
 }
@@ -765,4 +771,143 @@ export function demoGuardCheck(draft: string) {
   };
   demoState.guard = { state: "completed", started_at: now(), finished_at: now(), error: null, overall_guard_score: score, result };
   return demoState.guard;
+}
+
+const demoMemoryExtraNodes = [
+  { id: "uses", label: "uses", type: "predicate", count: 2, confidence: 0.68 },
+  { id: "phrase-graphrag-uses", label: "GraphRAG uses", type: "phrase", count: 1, confidence: 0.65 },
+  { id: "phrase-guardrail-requires", label: "Guardrail requires", type: "phrase", count: 1, confidence: 0.63 },
+  { id: "local-memory", label: "Local Memory", type: "compound", count: 2, confidence: 0.66 },
+];
+
+const demoMemoryNodes = [...demoNodes, ...demoMemoryExtraNodes];
+
+const demoMemoryEdges = [
+  ...demoEdges,
+  { source: "graphrag", relation: "forms_phrase", target: "phrase-graphrag-uses", confidence: 0.69, count: 1 },
+  { source: "phrase-graphrag-uses", relation: "continues_as", target: "uses", confidence: 0.66, count: 1 },
+  { source: "uses", relation: "precedes", target: "evidence", confidence: 0.65, count: 1 },
+  { source: "guardrail", relation: "forms_phrase", target: "phrase-guardrail-requires", confidence: 0.64, count: 1 },
+  { source: "local-memory", relation: "co_occurs", target: "knowledgegraph", confidence: 0.61, count: 1 },
+];
+
+function memoryVector(id: string, index: number) {
+  const angle = index * 1.618;
+  const radius = 2.2 + (index % 4) * 0.65;
+  return {
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius * 0.72,
+    z: ((index % 5) - 2) * 0.62,
+  };
+}
+
+export function demoMemoryStatus() {
+  return {
+    state: "completed",
+    started_at: now(),
+    finished_at: now(),
+    error: null,
+    db_path: "demo://homage.db",
+    event_log_path: "demo://events.jsonl",
+    built_at: now(),
+    vector_source: "local_relation_projection_v1",
+    document_count: 2,
+    chunk_count: 4,
+    node_count: demoMemoryNodes.length,
+    edge_count: demoMemoryEdges.length,
+    event_count: 18,
+    vector_count: demoMemoryNodes.length,
+    transition_count: 6,
+    cooccurrence_count: 7,
+    phrase_count: demoMemoryExtraNodes.filter((node) => node.type === "phrase").length,
+    predicate_count: demoMemoryExtraNodes.filter((node) => node.type === "predicate").length,
+    llm_policy: {
+      external_llm: false,
+      local_quantized_llm: false,
+      pretrained_generation_weights: false,
+    },
+  };
+}
+
+export function demoMemoryGraph(limit = 600) {
+  const visibleNodes = demoMemoryNodes.slice(0, limit).map((node, index) => ({
+    ...node,
+    ...memoryVector(node.id, index),
+    projection_source: "local_relation_projection_v1",
+  }));
+  const visibleIds = new Set(visibleNodes.map((node) => node.id));
+  return {
+    nodes: visibleNodes,
+    edges: demoMemoryEdges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)),
+    status: demoMemoryStatus(),
+  };
+}
+
+export function demoMemoryActivate(query: string) {
+  const terms = query.toLowerCase().split(/[^a-z0-9가-힣-]+/i).filter(Boolean);
+  const activeNodes = demoMemoryNodes
+    .map((node, index) => {
+      const haystack = `${node.id} ${node.label} ${node.type}`.toLowerCase();
+      const matchScore = terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+      return {
+        id: node.id,
+        label: node.label,
+        type: node.type,
+        activation_score: Number((0.42 + matchScore + node.confidence + index * 0.005).toFixed(5)),
+        confidence: node.confidence,
+        projection_3d: Object.values(memoryVector(node.id, index)),
+      };
+    })
+    .filter((node) => node.activation_score > 1.05)
+    .sort((left, right) => right.activation_score - left.activation_score)
+    .slice(0, 12);
+  const fallbackNodes = activeNodes.length ? activeNodes : demoMemoryNodes.slice(0, 6).map((node, index) => ({
+    id: node.id,
+    label: node.label,
+    type: node.type,
+    activation_score: Number((0.7 - index * 0.04).toFixed(5)),
+    confidence: node.confidence,
+    projection_3d: Object.values(memoryVector(node.id, index)),
+  }));
+  const activeIds = new Set(fallbackNodes.map((node) => node.id));
+  return {
+    query,
+    state: "completed",
+    seed_nodes: fallbackNodes.slice(0, 3).map((node) => node.id),
+    active_nodes: fallbackNodes,
+    active_edges: demoMemoryEdges
+      .filter((edge) => activeIds.has(edge.source) && activeIds.has(edge.target))
+      .map((edge) => ({ ...edge, activation_score: edge.confidence })),
+    semantic_skeleton: fallbackNodes.slice(0, 6).map((node, index) => ({
+      role: index < 2 ? "seed" : "activated",
+      node: node.id,
+      label: node.label,
+      score: node.activation_score,
+    })),
+    activation_policy: {
+      max_nodes: 40,
+      max_depth: 3,
+      external_llm: false,
+      local_quantized_llm: false,
+      pretrained_generation_weights: false,
+    },
+    drift_report: demoMemoryDriftCheck(),
+  };
+}
+
+export function demoMemoryDriftCheck() {
+  return {
+    state: "passed",
+    checked_at: now(),
+    next_check_seconds: 60,
+    violations: [],
+    warnings: [],
+    constraints: {
+      external_llm: false,
+      local_quantized_llm: false,
+      pretrained_generation_weights: false,
+      template_only_answers: false,
+    },
+    status: demoMemoryStatus(),
+  };
 }
