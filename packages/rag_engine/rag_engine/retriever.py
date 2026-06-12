@@ -77,30 +77,16 @@ def _is_internal_structure_query(query: str) -> bool:
 
 
 def _conversational_result(query: str, kind: str) -> dict[str, Any]:
-    answers = {
-        "greeting": (
-            "안녕하세요. 저는 Homage RAG 콘솔입니다. 인사에는 근거 문서를 억지로 붙이지 않고, "
-            "빌드로 만들어진 온톨로지 메모리와 문서 근거가 필요한 질문일 때만 GraphRAG 검색을 실행합니다. "
-            "GraphRAG, Guardrail, 온톨로지 관계, 학습 과정 중 궁금한 것을 물어보면 활성 노드와 근거 문서를 함께 보여드릴게요."
-        ),
-        "thanks": (
-            "천만에요. 이어서 GraphRAG 검색, Guardrail 검증, 온톨로지 메모리 구조 중 궁금한 부분을 물어보면 "
-            "관련 노드와 근거 문서를 함께 확인해드릴게요."
-        ),
-    }
     return {
         "query": query,
         "method": "homage-conversation-router-v1",
-        "answer": answers.get(kind, answers["greeting"]),
+        "answer": f"CONTROL_INTENT\nkind={kind}\nretrieval=skipped\nanswer_surface=disabled",
         "matched_nodes": [],
         "matched_edges": [],
         "evidence_docs": [],
         "citations": [],
         "graph_paths": [],
-        "follow_up_questions": [
-            "GraphRAG가 근거를 어떻게 쓰는지 볼까요?",
-            "Guardrail 검증 흐름을 확인할까요?",
-        ],
+        "follow_up_questions": [],
         "retrieval_trace": {
             "strategy": "conversational intent; retrieval skipped",
             "query_terms": _tokens(query),
@@ -109,10 +95,12 @@ def _conversational_result(query: str, kind: str) -> dict[str, Any]:
             "matched_node_ids": [],
         },
         "confidence": 0.96,
+        "answer_kind": "control_intent",
         "answer_engine": {
-            "name": "Homage Utterance Engine",
-            "mode": "native-conversation-router-alpha",
+            "name": "Homage Graph Token Predictor",
+            "mode": "control-intent-no-generation-alpha",
             "external_llm": False,
+            "surface_generation": "disabled",
         },
     }
 
@@ -215,10 +203,12 @@ def _node_inventory_result(query: str, ontology_dir: Path) -> dict[str, Any]:
             "matched_node_ids": [str(node.get("id", "")) for node in nodes],
         },
         "confidence": 0.99 if nodes else 0.2,
+        "answer_kind": "inspection",
         "answer_engine": {
-            "name": "Homage Utterance Engine",
-            "mode": "native-graph-inspection-alpha",
+            "name": "BakeBoard Inspection Router",
+            "mode": "graph-inspection-control-alpha",
             "external_llm": False,
+            "surface_generation": "disabled",
         },
     }
 
@@ -276,10 +266,12 @@ def _graph_legend_result(query: str, ontology_dir: Path) -> dict[str, Any]:
             "matched_node_ids": [str(node.get("id", "")) for node in representatives],
         },
         "confidence": 0.98 if nodes else 0.25,
+        "answer_kind": "inspection",
         "answer_engine": {
-            "name": "Homage Utterance Engine",
-            "mode": "native-graph-legend-alpha",
+            "name": "BakeBoard Inspection Router",
+            "mode": "graph-legend-control-alpha",
             "external_llm": False,
+            "surface_generation": "disabled",
         },
     }
 
@@ -467,9 +459,9 @@ def _best_snippet(text: str, terms: set[str], limit: int = 320) -> str:
 def _internal_context_docs(query: str) -> list[dict[str, Any]]:
     """Internal architecture context used when retrieval has no direct evidence.
 
-    These chunks are not returned as evidence documents. They only let the
-    native utterance stage keep generating an honest system answer instead of
-    stopping with a "not connected" fallback.
+    These chunks are exposed as internal training samples so the graph-token
+    predictor can walk architecture tokens without pretending they came from
+    external retrieved evidence.
     """
 
     snippets = [
@@ -480,9 +472,9 @@ def _internal_context_docs(query: str) -> list[dict[str, Any]]:
             "GraphRAG는 질문 시 활성 노드와 문서 chunk를 모아 context bundle을 만든다."
         ),
         (
-            "Homage Utterance Engine은 외부 LLM을 쓰지 않고 intent, active concepts, "
-            "ontology context, claim plan, evidence state, surface text 순서로 답변을 만든다. "
-            "직접 문서 근거가 약할 때는 내부 구조 컨텍스트와 현재 그래프 상태를 분리해서 설명한다."
+            "Homage Graph Token Predictor는 외부 LLM을 쓰지 않고 sentence tokens, "
+            "co-occurrence edges, ontology paths, active concepts를 연결해 다음 토큰열을 걷는다. "
+            "연결이 약하면 답변 품질도 그대로 약하게 드러난다."
         ),
         (
             "BakeBoard의 신호 시각화는 답변 생성 중 읽힌 노드를 주황색 발광으로 보여준다. "
@@ -529,16 +521,7 @@ def _synthesize_answer(
     synthesis_docs = evidence_docs or (_internal_context_docs(query) if use_internal_context else [])
     synthesis_paths = graph_paths if evidence_docs else []
     utterance = build_native_utterance(query, synthesis_docs, matched_nodes, synthesis_paths)
-    follow_up = [
-        "이 답변을 Guardrail로 검증할까요?",
-        "관련 온톨로지 경로를 더 넓게 확장할까요?",
-    ]
-    if not evidence_docs:
-        follow_up = (
-            ["현재 활성 노드를 보여줄까요?", "이 구조를 Build Start 흐름과 연결해서 볼까요?"]
-            if use_internal_context
-            else []
-        )
+    follow_up: list[str] = []
     return utterance["answer"], citations, follow_up, utterance
 
 
@@ -565,7 +548,9 @@ def query_graphrag(
     ranked_docs = _rank_chunks(query, query_counts, expanded_terms, chunks)
     evidence_docs = ranked_docs[:5]
     use_internal_context = not evidence_docs and _is_internal_structure_query(query)
-    raw_no_node = not evidence_docs and not use_internal_context and not matched_nodes
+    if use_internal_context:
+        evidence_docs = _internal_context_docs(query)
+    raw_no_node = not evidence_docs
     answer, citations, follow_up_questions, utterance = _synthesize_answer(
         query,
         evidence_docs,
@@ -587,7 +572,7 @@ def query_graphrag(
 
     return {
         "query": query,
-        "method": "homage-native-no-node-utterance-v1" if raw_no_node else "homage-native-graphrag-utterance-v1",
+        "method": "homage-research-no-evidence-v1" if raw_no_node else "homage-graph-token-rag-v1",
         "answer": answer,
         "matched_nodes": matched_nodes,
         "matched_edges": matched_edges,
@@ -597,14 +582,11 @@ def query_graphrag(
         "pmv": utterance["pmv"],
         "claim_plan": utterance["claim_plan"],
         "active_concepts": utterance["active_concepts"],
+        "answer_kind": utterance.get("answer_kind"),
         "answer_engine": utterance["answer_engine"],
         "follow_up_questions": follow_up_questions,
         "retrieval_trace": {
-            "strategy": (
-                "no node hit; native no-node sentence generated"
-                if raw_no_node
-                else "hybrid lexical BM25-style ranking + ontology 1-hop expansion + Homage Utterance Engine native synthesis"
-            ),
+            "strategy": "no evidence; diagnostic only" if raw_no_node else "hybrid lexical ranking + ontology expansion + graph-token prediction",
             "query_terms": sorted(query_terms),
             "expanded_terms": sorted(expanded_terms)[:30],
             "ranked_chunk_ids": [doc["chunk_id"] for doc in ranked_docs[:8]],

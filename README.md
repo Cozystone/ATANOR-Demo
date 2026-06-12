@@ -4,6 +4,13 @@ Homage1.0 is a transparent neuro-symbolic AI factory MVP. Alpha includes a
 FastAPI backend, a Next.js BakeBoard dashboard, deterministic local pipeline
 packages, and a deployed interactive BakeBoard demo.
 
+The current research answer path is not a polished evidence-summary RAG. It is
+a raw Graph Token Predictor: harvested/web text is decomposed into sentence
+tokens, token transitions, co-occurrence edges, and ontology paths; generation
+then walks that graph to predict a next-token sequence. Weak graph structure is
+allowed to produce weak text because Alpha is meant to expose the real research
+state instead of hiding it with rule-based filler.
+
 Production demo:
 
 - https://homage-alpha.vercel.app
@@ -94,8 +101,8 @@ Default behavior:
 - Build Start sends `web_search: true` by default and records provider metadata
   on `harvest_docs`.
 - RAG chat can send `web_search: true`; when local graph evidence is weak,
-  Homage reads raw search-result snippets as evidence and still reports
-  `external_llm: false`.
+  Homage reads raw search-result snippets as graph-token training samples and
+  still reports `external_llm: false`.
 - Fresh/current/news queries auto-enable web search. If no provider key is
   configured, Homage first tries a public news RSS fallback (`news-rss`) and
   only then falls back to deterministic static references.
@@ -136,7 +143,7 @@ Microsoft Grounding with Bing:
 3. Grow a typed ontology/RAG memory graph with deduped concepts and relations.
 4. Watch the 3D GraphRAG traversal view expand, zoom, pan, and rotate.
 5. When the graph passes the Alpha gate, prepare the Homage Oven dry-run.
-6. Query GraphRAG from the RAG chat workbench.
+6. Query the Graph Token Predictor from the RAG chat workbench.
 7. Check a draft in Guardrail.
 8. Inspect GPU telemetry or fallback.
 9. Inspect the Neuro-Efficiency Layer for event sparsity, active specialists,
@@ -155,9 +162,11 @@ Outputs:
 - `data/ontology/ontology_report.json`
 - `checkpoints/homage-core-30m-dev/manifest.json`
 
-GraphRAG responses include synthesized `answer` text, `citations`,
-`retrieval_trace`, graph paths, and per-evidence retrieval signals in addition
-to matched nodes and evidence documents.
+GraphRAG responses include raw graph-token `answer` text, `answer_kind`,
+`answer_engine.diagnostics`, `citations`, `retrieval_trace`, graph paths, and
+per-evidence retrieval signals in addition to matched nodes and evidence
+documents. Utility requests such as node inventory and color legend are marked
+as inspection/control output, not model generation.
 
 ## Main APIs
 
@@ -199,6 +208,7 @@ npm --workspace apps/web run build
   representative browser sample. Standard runs now use a 480-node render window,
   and max/infinite runs can target 500,000 nodes while rendering a 2,000-node
   rolling frontier plus summary nodes.
+- No external LLM answer generation.
 - No LLM judging.
 - No pretrained model weights.
 - Homage Oven is a safe dry-run scaffold, not real long training.

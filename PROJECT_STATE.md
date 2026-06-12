@@ -14,13 +14,18 @@ Deployment:
 - DataGate API and BakeBoard integration.
 - Ontology Forge deterministic concept/edge extraction.
 - GraphRAG deterministic hybrid retrieval with chunk ranking, ontology
-  expansion, synthesized answer text, citations, and retrieval trace.
+  expansion, raw graph-token answer text, citations, diagnostics, and
+  retrieval trace.
 - Guardrail deterministic claim support and overclaim detection.
 - GPU/system telemetry with graceful fallback.
 - Homage-Core-30M model scaffold and safe training dry-run trace.
-- Homage Utterance Engine Alpha:
-  - PRD-style `intent -> concepts -> ontology path -> claim plan -> evidence -> surface text` answer flow
-  - native GraphRAG answer generation metadata: PMV, claim plan, active concepts, answer engine stages
+- Homage Graph Token Predictor Alpha:
+  - sentence/text snippets are decomposed into token transitions,
+    co-occurrence edges, active concepts, and ontology paths
+  - answer text is a deterministic graph walk over that token/ontology graph,
+    not a polished evidence-summary template
+  - metadata exposes PMV, active concepts, `answer_kind`,
+    `answer_engine.diagnostics`, and `external_llm: false`
   - no external or pretrained LLM calls
 - Neuro-Efficiency Layer for event sparsity, modular routing, continual
   learning policy, few-shot prototypes, self-supervised masking, compression,
@@ -68,11 +73,11 @@ Deployment:
     `acts_on` relations instead of only noun-like concept/keyword nodes.
   - BakeBoard legend and live growth templates include `행위`, `구`, and `관계`
     node types.
-- Native no-node answer generation:
-  - unknown questions such as `김안석이 누구야` now return a clean sentence answer
-    with no `raw_no_node::` debug marker or arrow-fragment output.
-  - Korean topic tokens trim simple particles, so `김안석이` is handled as
-    `김안석` in the no-node answer.
+- Research no-evidence behavior:
+  - unknown questions such as `김안석이 누구야` now return `NO_EVIDENCE`
+    diagnostics instead of a clean rule-based sentence.
+  - Korean topic tokens trim simple particles for graph seeds, but weak graphs
+    are allowed to expose weak output instead of hiding it.
 - Active neuron-like signal fallback:
   - if matched node ids roll out of the 3D render window during sustained
     growth, the signal retargets visible live frontier / summary / traversal
@@ -83,8 +88,8 @@ Deployment:
   - Build Start accepts `web_search`, `search_query`, and
     `web_search_provider`, then folds web result URLs into Harvest docs.
   - RAG query accepts `web_search`; when local graph evidence is weak, Homage
-    reads raw search snippets as evidence and still reports `external_llm:
-    false`.
+    reads raw search snippets as graph-token training samples and still reports
+    `external_llm: false`.
   - Raw-result provider hooks: `static`, `brave`, `serper`, and `tavily`.
   - Microsoft Grounding with Bing is exposed as a metadata/status connector for
     future Foundry-agent mode because it returns agent/model responses rather
@@ -126,6 +131,27 @@ Deployment:
 - `pytest packages/datagate packages/ontology_forge packages/rag_engine packages/guard packages/model packages/trainer packages/neuro_efficiency apps/api -q` passed: 49 tests.
 - Python compile check passed for backend and packages.
 - `npm --workspace apps/web run build` passed.
+- Latest graph-token predictor verification:
+  - full Alpha Python suite passed with explicit `PYTHONPATH`: 64 tests.
+  - `npm --workspace apps/web run build` passed.
+  - local FastAPI direct smoke on `http://127.0.0.1:8010/api/graphrag/query`
+    returned `homage-graph-token-rag-v1`, `answer_kind:
+    graph_token_prediction`, `prediction_basis:
+    ontology_token_transition_graph`, `graph_path_count: 3`, and
+    `external_llm: false`.
+  - local Next production server on `http://127.0.0.1:3030` rendered the RAG
+    chat workbench; a browser query for `유재석이 누구야` showed `생성 방식
+    graph_token_prediction`, `웹 검색 wikipedia`, evidence cards, and raw
+    graph-walk text rather than a polished template answer.
+  - production deploy succeeded:
+    `https://web-es9v4o6xc-anthony-kims-projects-bc874109.vercel.app`
+  - `https://homage-alpha.vercel.app` now points to that deployment.
+  - production API smoke returned `homage-graph-token-web-rag-v1`,
+    `answer_kind: graph_token_prediction`, provider `wikipedia`,
+    `prediction_basis: ontology_token_transition_graph`, and `external_llm:
+    false`.
+  - screenshot:
+    - `docs/screenshots/123-graph-token-predictor-ui-local.png`
 - Latest local verification for the unbounded/no-node/sentence-element update:
   - full Alpha Python suite passed with explicit `PYTHONPATH`: 63 tests.
   - `npm --workspace apps/web run build` passed.
@@ -144,10 +170,10 @@ Deployment:
   - `POST /api/harvest/web-search` returned static provider results, provider
     status, and Bing display query URL.
   - `POST /api/graphrag/query` with `web_search: true` returned
-    `homage-native-web-search-rag-v1`, search evidence docs, citations,
-    `web_search` metadata, and `external_llm: false`.
+    `homage-graph-token-web-rag-v1`, search evidence docs, citations,
+    `web_search` metadata, graph-token diagnostics, and `external_llm: false`.
   - Fresh/current/news queries now auto-enable web search. Local smoke for a
-    Korean "today news" query returned `homage-native-web-search-rag-v1`,
+    Korean "today news" query returned `homage-graph-token-web-rag-v1`,
     provider `news-rss`, 5 evidence docs, `external_llm: false`, and no
     `raw_no_node::` marker.
   - Person/knowledge lookup queries now auto-enable web search. Local smoke for
@@ -210,15 +236,15 @@ Deployment:
   - Learning Process buttons show running state, update their cards directly,
     and were verified locally and on the deployed alias
   - Latest production deploy is aliased to `https://homage-alpha.vercel.app`
-- Native Homage Utterance Engine verification passed:
+- Homage Graph Token Predictor verification passed:
   - local API and browser answered GraphRAG questions with
-    `homage-native-graphrag-utterance-v1`
+    `homage-graph-token-rag-v1`
   - color legend questions route to `homage-graph-legend-v1` with no evidence
     card fallback
-  - answer metadata includes PMV, claim plan, active concepts, native engine
-    stages, and `external_llm: false`
+  - answer metadata includes PMV, active concepts, answer kind, graph-token
+    diagnostics, predictor stages, and `external_llm: false`
   - production API at `https://homage-alpha.vercel.app` returned the same
-    native engine metadata after redeploy
+    graph-token predictor metadata after redeploy
 - Sustained Learning Stability verification passed:
   - `python -m compileall packages\neuro_efficiency apps\api\app` passed
   - `python -m pytest packages\neuro_efficiency apps\api -q` passed: 11 tests
@@ -253,16 +279,16 @@ Deployment:
   - screenshot:
     - `docs/screenshots/94-hardware-benchmark-local.png`
     - `docs/screenshots/95-hardware-benchmark-production.png`
-- Native RAG open-structure verification passed:
+- Graph-token RAG open-structure verification passed:
   - `네 구조 설명해봐` now returns a generated Homage architecture answer
   - no direct-evidence fallback text is shown
-  - `evidence_docs` remains empty when the answer uses internal architecture
-    context rather than retrieved document chunks
+  - internal architecture context is exposed as internal training samples for
+    graph-token prediction rather than hidden polished prose
   - signal overlay changed from `신호 경로` to `활성 노드`
   - local browser verification showed nodes pulsing orange without path text
   - production API at `https://homage-alpha.vercel.app/api/graphrag/query`
-    returns `homage-native-open-structure-v1`, `external_llm: false`,
-    empty retrieved evidence, and no direct-evidence fallback copy for the
+    returns `homage-graph-token-rag-v1`, `external_llm: false`,
+    internal training samples, and no direct-evidence fallback copy for the
     same structure question
   - production browser verification passed for generated structure answers,
     70/30 split layout, and orange active-node pulses without path wording

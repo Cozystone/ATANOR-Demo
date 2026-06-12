@@ -488,10 +488,12 @@ function graphInventoryStatus(query: string, graph: Rag3DGraph) {
         ranked_chunk_ids: [],
         matched_node_ids: nodes.map((node) => node.id),
       },
+      answer_kind: "inspection",
       answer_engine: {
-        name: "Homage Utterance Engine",
-        mode: "native-graph-inspection-alpha",
+        name: "BakeBoard Inspection Router",
+        mode: "graph-inspection-control-alpha",
         external_llm: false,
+        surface_generation: "disabled",
       },
       confidence: nodes.length ? 0.99 : 0.2,
     },
@@ -550,10 +552,12 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
         ranked_chunk_ids: [],
         matched_node_ids: representativeNodes.map((node) => node.id),
       },
+      answer_kind: "inspection",
       answer_engine: {
-        name: "Homage Utterance Engine",
-        mode: "native-graph-legend-alpha",
+        name: "BakeBoard Inspection Router",
+        mode: "graph-legend-control-alpha",
         external_llm: false,
+        surface_generation: "disabled",
       },
       confidence: nodes.length ? 0.98 : 0.25,
     },
@@ -1072,7 +1076,7 @@ export default function BakeBoardPage() {
         ...messages,
         {
           role: "assistant",
-          text: answer ?? `${nodeText} 중심으로 근거를 찾았습니다. 근거 문서 ${evidence.length}개를 연결했고, 신뢰도는 ${Math.round((result?.confidence ?? 0) * 100)}%입니다.`,
+          text: answer ?? `NO_ANSWER\nnodes=${nodeText}\nevidence_docs=${evidence.length}`,
           evidence,
         },
       ]);
@@ -2022,7 +2026,7 @@ export default function BakeBoardPage() {
                 <div className="chat-status-row">
                   <div><span>RAG 신뢰도</span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
                   <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
-                  <div><span>발화 엔진</span><strong>{graphResult?.answer_engine?.external_llm === false ? "네이티브" : "준비"}</strong></div>
+                  <div><span>생성 방식</span><strong>{graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "준비"}</strong></div>
                   <div><span>웹 검색</span><strong>{webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}</strong></div>
                 </div>
                 <div className="chat-scroll" ref={chatScrollRef}>

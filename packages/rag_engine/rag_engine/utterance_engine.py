@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import math
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 
@@ -23,117 +24,152 @@ def _tokens(text: str) -> list[str]:
     return [token for token in tokens if len(token) > 1 or token.isdigit()]
 
 
-def _sentences(text: str) -> list[str]:
-    chunks = re.split(r"(?<=[.!?。！？])\s+|\n+", text.strip())
-    return [chunk.strip() for chunk in chunks if chunk.strip()]
-
-
 def _infer_intent(query: str) -> str:
     normalized = query.lower()
-    if re.search(r"(왜|이유|줄이는|효과|why)", normalized):
+    if re.search(r"(why|cause|reason)", normalized):
         return "explain_cause"
-    if re.search(r"(어떻게|방법|과정|흐름|how)", normalized):
+    if re.search(r"(how|process|flow|step)", normalized):
         return "explain_process"
-    if re.search(r"(비교|차이|versus|vs)", normalized):
+    if re.search(r"(versus|vs|compare)", normalized):
         return "compare"
-    if re.search(r"(뭐|무엇|정의|의미|what)", normalized):
+    if re.search(r"(who|what|define)", normalized):
         return "define"
     return "answer_grounded"
-
-
-def _answer_goal_for(intent: str) -> str:
-    return {
-        "explain_cause": "explain why the concept works",
-        "explain_process": "describe the process in order",
-        "compare": "compare the activated concepts",
-        "define": "define the activated concept",
-        "answer_grounded": "answer with graph-grounded context",
-    }.get(intent, "answer with graph-grounded context")
-
-
-def _audience_level(query: str) -> str:
-    if re.search(r"(쉽게|초보|간단|한줄|짧게)", query):
-        return "intuitive"
-    if re.search(r"(구조|아키텍처|엔진|구현|trace|경로)", query, re.IGNORECASE):
-        return "technical but intuitive"
-    return "general technical"
 
 
 def _node_label(node: dict[str, Any]) -> str:
     return str(node.get("label") or node.get("id") or "").strip()
 
 
-def _path_text(path: list[str]) -> str:
-    if len(path) >= 3:
-        return f"{path[0]} --{path[1]}--> {path[2]}"
-    return " -> ".join(path)
+def _clean_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
-def _rank_sentences(query: str, evidence_docs: list[dict[str, Any]], active_concepts: list[str]) -> list[dict[str, Any]]:
-    query_terms = set(_tokens(query))
-    concept_terms = set(_tokens(" ".join(active_concepts)))
-    ranked: list[dict[str, Any]] = []
-    for doc in evidence_docs:
-        text = str(doc.get("snippet") or doc.get("text") or "")
-        for index, sentence in enumerate(_sentences(text) or [text]):
-            sentence_terms = set(_tokens(sentence))
-            query_overlap = len(query_terms & sentence_terms)
-            concept_overlap = len(concept_terms & sentence_terms)
-            score = query_overlap * 1.2 + concept_overlap * 0.8 + float(doc.get("score") or 0)
-            if sentence.strip():
-                ranked.append(
-                    {
-                        "text": sentence.strip(),
-                        "score": round(score, 4),
-                        "doc_id": doc.get("chunk_id") or doc.get("doc_id") or f"evidence-{index}",
-                    }
-                )
-    ranked.sort(key=lambda item: (-item["score"], str(item["doc_id"])))
-    return ranked
+def _particle_trim(token: str) -> str:
+    return re.sub(r"(은|는|이|가|을|를|에게|에서|으로|로|와|과|도|만|의)$", "", token)
 
 
-def _compact_join(parts: list[str], limit: int = 900) -> str:
-    text = " ".join(part.strip() for part in parts if part and part.strip())
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:limit].rstrip()
+def _seed_tokens(query: str, active_concepts: list[str]) -> list[str]:
+    raw = _tokens(" ".join([query, *active_concepts]))
+    seeds: list[str] = []
+    for token in raw:
+        trimmed = _particle_trim(token)
+        if trimmed and trimmed not in seeds:
+            seeds.append(trimmed)
+    return seeds[:8]
 
 
-def _clean_topic_token(token: str) -> str:
-    if re.fullmatch(r"[가-힣]{2,}(에게|에서|으로|은|는|이|가|을|를|의|와|과)", token):
-        return re.sub(r"(에게|에서|으로|은|는|이|가|을|를|의|와|과)$", "", token)
-    return token
+def _build_transition_graph(texts: list[str]) -> tuple[dict[str, Counter[str]], Counter[str], dict[str, Counter[str]]]:
+    transitions: dict[str, Counter[str]] = defaultdict(Counter)
+    frequencies: Counter[str] = Counter()
+    cooccurs: dict[str, Counter[str]] = defaultdict(Counter)
+
+    for text in texts:
+        tokens = _tokens(text)
+        if not tokens:
+            continue
+        frequencies.update(tokens)
+        for left, right in zip(tokens, tokens[1:]):
+            transitions[left][right] += 1
+        window = 6
+        for index, token in enumerate(tokens):
+            for neighbor in tokens[index + 1 : index + window]:
+                if neighbor != token:
+                    cooccurs[token][neighbor] += 1
+                    cooccurs[neighbor][token] += 0.35
+    return transitions, frequencies, cooccurs
 
 
-def _native_no_node_generation(query: str, active_concepts: list[str], intent: str) -> str:
-    """Generate a clean native answer when memory has no node hit."""
+def _choose_start(seeds: list[str], frequencies: Counter[str], transitions: dict[str, Counter[str]]) -> str | None:
+    candidates = []
+    for seed in seeds:
+        if seed in transitions or seed in frequencies:
+            candidates.append(seed)
+    if candidates:
+        candidates.sort(key=lambda token: (len(transitions.get(token, {})), frequencies[token]), reverse=True)
+        return candidates[0]
+    if frequencies:
+        return frequencies.most_common(1)[0][0]
+    return None
 
+
+def _predict_tokens(
+    query: str,
+    evidence_docs: list[dict[str, Any]],
+    active_concepts: list[str],
+    graph_paths: list[list[str]],
+    max_tokens: int = 56,
+) -> tuple[list[str], dict[str, Any]]:
+    texts = [_clean_text(doc.get("snippet") or doc.get("text")) for doc in evidence_docs]
+    texts.extend(" ".join(path) for path in graph_paths if path)
+    if active_concepts:
+        texts.append(" ".join(active_concepts))
+    transitions, frequencies, cooccurs = _build_transition_graph(texts)
+    seeds = _seed_tokens(query, active_concepts)
+    current = _choose_start(seeds, frequencies, transitions)
+    if not current:
+        return [], {
+            "seeds": seeds,
+            "token_count": 0,
+            "edge_count": 0,
+            "reason": "no_tokens",
+        }
+
+    generated = [current]
+    used_edges: list[dict[str, Any]] = []
+    used_edge_keys: set[tuple[str, str]] = set()
+    recent: Counter[str] = Counter({current: 1})
+    seed_set = set(seeds)
+
+    for step in range(max_tokens - 1):
+        options = Counter(transitions.get(current, {}))
+        for neighbor, weight in cooccurs.get(current, {}).items():
+            options[neighbor] += weight * 0.18
+        if not options:
+            bridge = _choose_start(seeds, frequencies, transitions)
+            if not bridge or bridge == current:
+                break
+            options[bridge] += 0.35
+
+        scored: list[tuple[float, str]] = []
+        for token, weight in options.items():
+            repetition_penalty = 1.0 / (1.0 + recent[token] * 1.8)
+            edge_reuse_penalty = 0.15 if (current, token) in used_edge_keys else 1.0
+            seed_bonus = 0.45 if token in seed_set else 0.0
+            rarity = 1.0 / math.sqrt(max(1, frequencies[token]))
+            score = float(weight) * repetition_penalty * edge_reuse_penalty + seed_bonus + rarity * 0.08
+            scored.append((score, token))
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        next_token = scored[0][1]
+        generated.append(next_token)
+        used_edge_keys.add((current, next_token))
+        used_edges.append({"source": current, "target": next_token, "score": round(scored[0][0], 4), "step": step + 1})
+        recent[next_token] += 1
+        if recent[next_token] > 4 and step > 8:
+            break
+        current = next_token
+
+    diagnostics = {
+        "seeds": seeds,
+        "token_count": sum(frequencies.values()),
+        "unique_tokens": len(frequencies),
+        "edge_count": sum(len(targets) for targets in transitions.values()),
+        "graph_path_count": len(graph_paths),
+        "graph_units": ["token_transition", "window_cooccurrence", "ontology_path"],
+        "used_edges": used_edges[:24],
+    }
+    return generated, diagnostics
+
+
+def _diagnostic_no_evidence(query: str, active_concepts: list[str], intent: str) -> str:
     clean_query = re.sub(r"\s+", " ", query.strip())
-    tokens = [token for token in (active_concepts or _tokens(query)[:5]) if token]
-    topic = _clean_topic_token(tokens[0]) if tokens else clean_query or "이 질문"
-    tail = ", ".join(tokens[1:4])
-    question_mark = "?" if clean_query and not clean_query.endswith(("?", "？")) else ""
-    seed = sum(ord(char) for char in clean_query) % 3 if clean_query else 0
-
-    if intent == "define" or re.search(r"(누구|무엇|뭐|who|what)", clean_query, re.IGNORECASE):
-        variants = [
-            f"지금 메모리 안에는 '{topic}' 설명에 필요한 근거 노드나 문서가 아직 없습니다. 그래서 누구라고 단정하지 않고, 이 이름을 새 entity 후보로 남겨 다음 수집 때 관계와 근거를 붙이겠습니다.",
-            f"{topic}에 대한 확인된 온톨로지 노드는 아직 없습니다. 현재 질문은 식별 요청으로 읽혔고, 학습 파이프라인은 이 표현을 미학습 대상 후보로 보관합니다.",
-            f"아직 '{topic}' 대상을 특정할 수 있는 문서 근거가 없습니다. 지금은 알 수 없다고 답하는 편이 맞고, Harvest가 관련 자료를 모으면 인물/대상 노드로 연결할 수 있습니다.",
-        ]
-    elif intent == "explain_process":
-        variants = [
-            f"{clean_query}{question_mark} 지금 메모리에는 이 절차를 뒷받침할 노드가 없어서 확정 설명은 만들지 않습니다. 대신 질문의 핵심 단서 {topic}{f', {tail}' if tail else ''}를 다음 온톨로지 후보로 남깁니다.",
-            f"이 과정은 아직 학습된 경로로 이어지지 않았습니다. Homage는 질문 토큰을 후보 노드로 분리해 두고, 새 문서가 들어오면 순서 관계를 다시 계산합니다.",
-            f"현재 그래프에는 이 절차를 설명할 연결이 없습니다. 수집이 진행되면 {topic} 주변의 선후 관계와 행위 관계를 먼저 만들겠습니다.",
-        ]
-    else:
-        variants = [
-            f"지금 그래프에는 '{topic}' 항목과 직접 이어지는 근거가 없습니다. 답을 꾸며내지 않고, 질문에서 감지한 단서를 미학습 노드 후보로 남겨 두겠습니다.",
-            f"{clean_query}{question_mark} 현재 Homage 메모리는 이 질문을 뒷받침할 문서 조각을 찾지 못했습니다. 새 근거가 들어오면 {topic} 주변 관계부터 다시 활성화합니다.",
-            f"아직 이 질문은 온톨로지의 활성 노드와 맞물리지 않습니다. 감지된 단서 {topic}{f', {tail}' if tail else ''}를 후보로 보관하고 다음 빌드에서 연결을 시도합니다.",
-        ]
-
-    return variants[seed]
+    return (
+        "NO_EVIDENCE\n"
+        f"query={clean_query}\n"
+        f"intent={intent}\n"
+        f"active_concepts={active_concepts[:6]}\n"
+        "graph_token_prediction=not_enough_edges"
+    )
 
 
 def build_native_utterance(
@@ -142,12 +178,11 @@ def build_native_utterance(
     matched_nodes: list[dict[str, Any]],
     graph_paths: list[list[str]],
 ) -> dict[str, Any]:
-    """Build a PRD-style answer without using an external LLM.
+    """Generate by graph-token prediction, not by an external LLM.
 
-    The Alpha engine follows the Homage Utterance Engine order:
-    intent -> concepts -> ontology path -> claim plan -> evidence -> surface text.
-    It is still lightweight, but it avoids pretending that GraphRAG retrieval text
-    itself is a model response.
+    Evidence snippets are treated as training samples for a small ontology-style
+    token transition graph. The answer is the deterministic walk produced by
+    that graph. If the graph is weak, the output should look weak.
     """
 
     intent = _infer_intent(query)
@@ -155,67 +190,46 @@ def build_native_utterance(
     if not active_concepts:
         active_concepts = [term for term, _ in Counter(_tokens(query)).most_common(4)]
     active_concepts = active_concepts[:6]
-    ranked_sentences = _rank_sentences(query, evidence_docs, active_concepts)
-    selected_evidence = ranked_sentences[:3]
-    path_lines = [_path_text(path) for path in graph_paths[:3]]
 
-    pmv = {
-        "intent": intent,
-        "topic": active_concepts[0] if active_concepts else query,
-        "stance": "grounded and cautious",
-        "audience_level": _audience_level(query),
-        "answer_goal": _answer_goal_for(intent),
-        "required_evidence": True,
-        "style": "clear Korean technical explanation",
-    }
-
-    claim_plan = []
-    if active_concepts:
-        claim_plan.append(
-            {
-                "claim": f"{active_concepts[0]}는 현재 질문의 중심 개념이다.",
-                "support": selected_evidence[0]["doc_id"] if selected_evidence else "graph",
-            }
-        )
-    if path_lines:
-        claim_plan.append({"claim": "답변은 온톨로지 경로를 따라 좁혀진다.", "support": "graph_path"})
-    for evidence in selected_evidence[:2]:
-        claim_plan.append({"claim": evidence["text"], "support": evidence["doc_id"]})
-
-    if not evidence_docs:
-        answer = _native_no_node_generation(query, active_concepts, intent)
+    if evidence_docs:
+        predicted_tokens, diagnostics = _predict_tokens(query, evidence_docs, active_concepts, graph_paths)
+        answer = " ".join(predicted_tokens) if predicted_tokens else _diagnostic_no_evidence(query, active_concepts, intent)
+        answer_kind = "graph_token_prediction" if predicted_tokens else "no_evidence"
+        mode = "ontology-graph-token-prediction-alpha" if predicted_tokens else "no-evidence-diagnostic-alpha"
     else:
-        lead_by_intent = {
-            "explain_cause": "핵심 이유는 지식을 모델 파라미터에만 맡기지 않고, 그래프 경로와 근거 청크로 분리해 확인하기 때문입니다.",
-            "explain_process": "흐름은 질문 의도를 잡고, 관련 개념을 활성화한 뒤, 온톨로지 경로와 근거 청크를 합쳐 답변 계획을 만드는 순서입니다.",
-            "compare": "비교의 기준은 어떤 개념이 검색을 맡고, 어떤 개념이 검증과 발화를 보조하는지입니다.",
-            "define": "의미를 먼저 말하면, 이 노드는 Homage 메모리 안에서 특정 역할을 맡은 활성 개념입니다.",
-            "answer_grounded": "현재 답변은 Homage Utterance Engine이 GraphRAG context bundle을 읽고 만든 네이티브 발화입니다.",
-        }
-        concept_part = f"활성 개념은 {', '.join(active_concepts[:4])}입니다." if active_concepts else ""
-        signal_part = f"활성 신호는 {', '.join(active_concepts[:4])} 노드에서 켜졌습니다." if active_concepts else ""
-        evidence_part = " ".join(item["text"] for item in selected_evidence)
-        answer = _compact_join([lead_by_intent[intent], concept_part, signal_part, evidence_part])
+        diagnostics = {"seeds": _seed_tokens(query, active_concepts), "token_count": 0, "edge_count": 0}
+        answer = _diagnostic_no_evidence(query, active_concepts, intent)
+        answer_kind = "no_evidence"
+        mode = "no-evidence-diagnostic-alpha"
 
     return {
         "answer": answer,
-        "pmv": pmv,
-        "claim_plan": claim_plan,
+        "pmv": {
+            "intent": intent,
+            "topic": active_concepts[0] if active_concepts else query,
+            "stance": "experimental_generation_not_authoritative",
+            "audience_level": "research",
+            "answer_goal": "predict token sequence from ontology/token graph connectivity",
+            "required_evidence": True,
+            "style": "raw_graph_token_prediction",
+        },
+        "claim_plan": [],
         "active_concepts": active_concepts,
+        "answer_kind": answer_kind,
         "answer_engine": {
-            "name": "Homage Utterance Engine",
-            "mode": "native-no-node-sentence-alpha" if not evidence_docs else "native-next-thought-alpha",
+            "name": "Homage Graph Token Predictor",
+            "mode": mode,
             "external_llm": False,
             "homage_core": "homage-core-30m-scaffold",
+            "prediction_basis": "ontology_token_transition_graph",
+            "surface_generation": "graph_walk",
+            "template_free_surface": True,
             "stages": [
-                "intent",
-                "concepts",
-                "ontology_path",
-                "claim_plan",
-                "evidence",
-                "surface_text",
-                "reference_tail",
-                "guard_ready",
+                "tokenize_evidence",
+                "build_transition_edges",
+                "score_connected_tokens",
+                "predict_next_token_sequence",
             ],
+            "diagnostics": diagnostics,
         },
     }

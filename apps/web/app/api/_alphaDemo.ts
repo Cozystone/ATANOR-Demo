@@ -286,13 +286,16 @@ function nodeTypeDescription(type?: string) {
   return descriptions[type ?? ""] ?? "현재 그래프에서 관찰된 사용자 정의 기억 노드";
 }
 
-function nativeAnswerEngine(mode = "native-next-thought-alpha") {
+function nativeAnswerEngine(mode = "ontology-graph-token-prediction-alpha") {
   return {
-    name: "Homage Utterance Engine",
+    name: "Homage Graph Token Predictor",
     mode,
     external_llm: false,
     homage_core: "homage-core-30m-scaffold",
-    stages: ["intent", "concepts", "ontology_path", "claim_plan", "evidence", "surface_text", "reference_tail", "guard_ready"],
+    prediction_basis: "ontology_token_transition_graph",
+    surface_generation: "graph_walk",
+    template_free_surface: true,
+    stages: ["decompose_sentences", "build_token_edges", "merge_ontology_paths", "score_connected_tokens", "predict_next_token_sequence"],
   };
 }
 
@@ -315,7 +318,8 @@ function makeNodeInventoryResult(query: string) {
       ranked_chunk_ids: [],
       matched_node_ids: demoNodes.map((node) => node.id),
     },
-    answer_engine: nativeAnswerEngine("native-graph-inspection-alpha"),
+    answer_kind: "inspection",
+    answer_engine: { ...nativeAnswerEngine("graph-inspection-control-alpha"), name: "BakeBoard Inspection Router", surface_generation: "disabled" },
     confidence: 0.99,
   };
 }
@@ -349,7 +353,8 @@ function makeLegendResult(query: string) {
       ranked_chunk_ids: [],
       matched_node_ids: representatives.map((node) => node.id),
     },
-    answer_engine: nativeAnswerEngine("native-graph-legend-alpha"),
+    answer_kind: "inspection",
+    answer_engine: { ...nativeAnswerEngine("graph-legend-control-alpha"), name: "BakeBoard Inspection Router", surface_generation: "disabled" },
     confidence: 0.98,
   };
 }
@@ -366,24 +371,16 @@ function nodeMatchesQuery(nodeId: string, query: string) {
 }
 
 function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "no_match") {
-  const answerByKind = {
-    greeting:
-      "안녕하세요. 저는 Homage RAG 콘솔입니다. 인사에는 근거 문서를 억지로 붙이지 않고, 빌드로 만들어진 온톨로지 메모리와 문서 근거가 필요한 질문일 때만 GraphRAG 검색을 실행합니다. GraphRAG, Guardrail, 온톨로지 관계, 학습 과정 중 궁금한 것을 물어보면 근거 경로와 함께 답할게요.",
-    thanks:
-      "천만에요. 이어서 GraphRAG 검색, Guardrail 검증, 온톨로지 메모리 구조 중 궁금한 부분을 물어보면 바로 이어서 확인해드릴게요.",
-    no_match:
-      "지금 질문은 현재 데모 온톨로지의 근거 문서와 직접 연결되지 않았습니다. GraphRAG, 지식 그래프, 근거 문서, Guardrail 검증처럼 학습된 메모리의 개념으로 질문하면 관련 노드와 문서 근거를 함께 찾아드릴게요.",
-  };
   return {
     query,
     method: "homage-conversation-router-v1",
-    answer: answerByKind[kind],
+    answer: `CONTROL_INTENT\nkind=${kind}\nretrieval=skipped\nanswer_surface=disabled`,
     matched_nodes: [],
     matched_edges: [],
     evidence_docs: [],
     citations: [],
     graph_paths: [],
-    follow_up_questions: ["GraphRAG가 근거를 어떻게 쓰는지 볼까요?", "Guardrail 검증 흐름을 확인할까요?"],
+    follow_up_questions: [],
     retrieval_trace: {
       strategy: kind === "no_match" ? "no evidence match; retrieval skipped" : "conversational intent; retrieval skipped",
       query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
@@ -391,7 +388,8 @@ function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "
       ranked_chunk_ids: [],
       matched_node_ids: [],
     },
-    answer_engine: nativeAnswerEngine(kind === "no_match" ? "native-no-evidence-alpha" : "native-conversation-router-alpha"),
+    answer_kind: "control_intent",
+    answer_engine: { ...nativeAnswerEngine("control-intent-no-generation-alpha"), surface_generation: "disabled" },
     confidence: kind === "no_match" ? 0.35 : 0.96,
   };
 }
@@ -413,7 +411,7 @@ function makeOpenGenerationResult(query: string) {
       path: "internal://homage-architecture",
       score: 0.3,
       snippet:
-        "Homage Utterance Engine은 외부 LLM을 쓰지 않고 intent, active concepts, ontology context, claim plan, evidence state, surface text 순서로 답변을 만듭니다. 직접 문서 근거가 약할 때는 내부 구조 컨텍스트와 현재 그래프 상태를 분리해서 설명합니다.",
+        "Homage Graph Token Predictor는 외부 LLM을 쓰지 않고 sentence tokens, co-occurrence edges, ontology paths, active concepts를 연결해 다음 토큰열을 걷습니다. 연결이 약하면 답변 품질도 그대로 약하게 드러납니다.",
       retrieval_signals: { internal_context: true },
     },
   ];
@@ -421,25 +419,26 @@ function makeOpenGenerationResult(query: string) {
   const utterance = makeNativeDemoUtterance(query, demoNodes, graphPaths, internalDocs);
   return {
     query,
-    method: "homage-native-open-structure-v1",
+    method: "homage-graph-token-rag-v1",
     answer: utterance.answer,
     matched_nodes: demoNodes,
     matched_edges: demoEdges,
-    evidence_docs: [],
-    citations: [],
+    evidence_docs: internalDocs,
+    citations: internalDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.path, score: doc.score })),
     graph_paths: graphPaths,
-    follow_up_questions: ["활성 노드를 더 크게 볼까요?", "Build Start 흐름과 연결해서 볼까요?"],
+    follow_up_questions: [],
     retrieval_trace: {
-      strategy: "no direct document hit; native generation from internal architecture context",
+      strategy: "internal architecture docs + ontology token transition graph + graph-token prediction",
       query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
       expanded_terms: ["homage", "architecture", "graphrag", "ontology", "guardrail", "oven"],
-      ranked_chunk_ids: [],
+      ranked_chunk_ids: internalDocs.map((doc) => doc.chunk_id),
       matched_node_ids: demoNodes.map((node) => node.id),
     },
     pmv: utterance.pmv,
     claim_plan: utterance.claim_plan,
     active_concepts: utterance.active_concepts,
-    answer_engine: nativeAnswerEngine("native-open-structure-alpha"),
+    answer_kind: utterance.answer_kind,
+    answer_engine: utterance.answer_engine,
     confidence: 0.64,
   };
 }
@@ -447,18 +446,15 @@ function makeOpenGenerationResult(query: string) {
 function makeNoEvidenceResult(query: string) {
   const queryTerms = normalizedQuery(query).split(/\s+/).filter(Boolean);
   const tokens = queryTerms.slice(0, 4);
-  const head = cleanTopicToken(tokens[0] ?? "null");
-  const tail = tokens.slice(1, 4).join(", ");
-  const seed = Array.from(query.trim()).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 3;
-  const variants = [
-    `지금 메모리 안에는 '${head}' 설명에 필요한 근거 노드나 문서가 아직 없습니다. 그래서 단정하지 않고 이 표현을 새 entity 후보로 남겨 다음 수집 때 관계와 근거를 붙이겠습니다.`,
-    `${head}에 대한 확인된 온톨로지 노드는 아직 없습니다. 현재 질문은 식별 요청으로 읽혔고, 학습 파이프라인은 ${tail ? `${head}, ${tail}` : head} 단서를 미학습 후보로 보관합니다.`,
-    `아직 '${head}' 대상을 특정할 수 있는 문서 근거가 없습니다. 지금은 알 수 없다고 답하는 편이 맞고, Harvest가 관련 자료를 모으면 새 노드와 관계로 연결할 수 있습니다.`,
-  ];
-  const answer = variants[seed];
+  const answer = [
+    "NO_EVIDENCE",
+    `query=${query.trim()}`,
+    `active_concepts=${JSON.stringify(tokens)}`,
+    "graph_token_prediction=not_enough_edges",
+  ].join("\n");
   return {
     query,
-    method: "homage-native-no-node-utterance-v1",
+    method: "homage-research-no-evidence-v1",
     answer,
     matched_nodes: [],
     matched_edges: [],
@@ -467,7 +463,7 @@ function makeNoEvidenceResult(query: string) {
     graph_paths: [],
     follow_up_questions: [],
     retrieval_trace: {
-      strategy: "no node hit; native no-node sentence generated",
+      strategy: "no evidence; graph token prediction disabled",
       query_terms: queryTerms,
       expanded_terms: [],
       ranked_chunk_ids: [],
@@ -476,22 +472,22 @@ function makeNoEvidenceResult(query: string) {
     pmv: {
       intent: "answer_grounded",
       topic: query,
-      stance: "ungrounded but explicit",
-      audience_level: "general technical",
-      answer_goal: "answer without inventing unsupported facts",
+      stance: "experimental_generation_not_authoritative",
+      audience_level: "research",
+      answer_goal: "show failure state without plausible filler",
       required_evidence: true,
-      style: "clean native sentence",
+      style: "diagnostic",
     },
     claim_plan: [],
     active_concepts: queryTerms.slice(0, 4),
-    answer_engine: nativeAnswerEngine("native-no-node-sentence-alpha"),
-    confidence: 0.28,
+    answer_kind: "no_evidence",
+    answer_engine: { ...nativeAnswerEngine("no-evidence-diagnostic-alpha"), surface_generation: "disabled" },
+    confidence: 0,
   };
 }
 
-function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, _graphPaths: string[][], evidenceDocs: any[]) {
+function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, graphPaths: string[][], evidenceDocs: any[]) {
   const activeConcepts = matchedNodes.map((node) => node.label).slice(0, 6);
-  const evidenceText = evidenceDocs.slice(0, 2).map((doc) => doc.snippet).join(" ");
   const intent = /(왜|이유|why|줄이는)/i.test(query)
     ? "explain_cause"
     : /(어떻게|방법|과정|how)/i.test(query)
@@ -499,35 +495,33 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
       : /(뭐|무엇|정의|의미|what)/i.test(query)
         ? "define"
         : "answer_grounded";
-  const lead = intent === "explain_cause"
-    ? "핵심 이유는 지식을 모델 파라미터에만 맡기지 않고, 그래프 경로와 근거 청크로 분리해 확인하기 때문입니다."
-    : intent === "explain_process"
-    ? "흐름은 질문 의도, 활성 개념, 그래프 경로, 근거 청크, 표면 발화 순서로 좁혀집니다."
-    : intent === "define"
-      ? "의미를 먼저 말하면, 이 항목은 Homage 메모리 안에서 특정 역할을 맡은 활성 개념입니다."
-      : "현재 답변은 Homage Utterance Engine이 GraphRAG context bundle을 읽고 만든 네이티브 발화입니다.";
+  const graphDocs = graphPaths.map((path, index) => ({
+    chunk_id: `graph-path#${index + 1}`,
+    snippet: path.join(" "),
+  }));
+  const conceptDoc = activeConcepts.length ? [{ chunk_id: "active-concepts#1", snippet: activeConcepts.join(" ") }] : [];
+  const prediction = makeGraphTokenPrediction(query, [...evidenceDocs, ...graphDocs, ...conceptDoc]);
   return {
-    answer: [
-      lead,
-      activeConcepts.length ? `활성 개념은 ${activeConcepts.join(", ")}입니다.` : "",
-      activeConcepts.length ? `활성 신호는 ${activeConcepts.slice(0, 4).join(", ")} 노드에서 켜졌습니다.` : "",
-      evidenceText,
-    ].filter(Boolean).join(" "),
+    answer: prediction.answer,
     pmv: {
       intent,
       topic: activeConcepts[0] ?? query,
-      stance: "grounded and cautious",
-      audience_level: "technical but intuitive",
-      answer_goal: "answer with graph-grounded context",
+      stance: "experimental_generation_not_authoritative",
+      audience_level: "research",
+      answer_goal: "predict token sequence from ontology/token graph connectivity",
       required_evidence: true,
-      style: "clear Korean technical explanation",
+      style: "raw_graph_token_prediction",
     },
-    claim_plan: [
-      ...(activeConcepts[0] ? [{ claim: `${activeConcepts[0]}는 현재 질문의 중심 개념이다.`, support: "graph" }] : []),
-      ...evidenceDocs.slice(0, 2).map((doc) => ({ claim: doc.snippet, support: doc.chunk_id })),
-    ],
+    claim_plan: [],
     active_concepts: activeConcepts,
-    answer_engine: nativeAnswerEngine(),
+    answer_kind: prediction.answer_kind,
+    answer_engine: {
+      ...nativeAnswerEngine(prediction.answer_kind === "no_evidence" ? "no-evidence-diagnostic-alpha" : "ontology-graph-token-prediction-alpha"),
+      name: "Homage Graph Token Predictor",
+      prediction_basis: "ontology_token_transition_graph",
+      surface_generation: "graph_walk",
+      diagnostics: prediction.diagnostics,
+    },
   };
 }
 
@@ -535,20 +529,95 @@ function cleanWebSnippet(value: any) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
-function makeExtractiveWebAnswer(query: string, webEvidenceDocs: any[]) {
-  const first = webEvidenceDocs[0];
-  const title = cleanWebSnippet(first?.title || first?.doc_id || "");
-  const snippets = webEvidenceDocs
-    .slice(0, 3)
-    .map((doc) => cleanWebSnippet(doc.snippet))
-    .filter(Boolean);
-  if (!snippets.length) return title || query;
-  const firstProvider = first?.retrieval_signals?.provider || first?.provider;
-  if (firstProvider === "wikipedia" || String(first?.doc_id ?? "").startsWith("wikipedia")) {
-    return title ? `${title}: ${snippets[0]}` : snippets[0];
+function predictionTokens(text: string) {
+  return Array.from(text.toLowerCase().matchAll(/[\p{L}\p{N}_-]+/gu))
+    .map((match) => match[0].replace(/^(?:-|_)+|(?:-|_)+$/g, ""))
+    .filter((token) => token.length > 1 || /^\d+$/.test(token));
+}
+
+function trimParticle(token: string) {
+  return token.replace(/(은|는|이|가|을|를|에게|에서|으로|로|와|과|도|만|의)$/u, "");
+}
+
+function makeGraphTokenPrediction(query: string, webEvidenceDocs: any[]) {
+  const texts = webEvidenceDocs.map((doc) => cleanWebSnippet(doc.snippet || doc.text)).filter(Boolean);
+  const transitions = new Map<string, Map<string, number>>();
+  const frequencies = new Map<string, number>();
+  const cooccurs = new Map<string, Map<string, number>>();
+
+  function addNested(map: Map<string, Map<string, number>>, left: string, right: string, weight: number) {
+    if (!map.has(left)) map.set(left, new Map());
+    map.get(left)!.set(right, (map.get(left)!.get(right) ?? 0) + weight);
   }
-  const body = snippets.join(" ");
-  return title ? `${title}: ${body}` : body;
+
+  for (const text of texts) {
+    const tokens = predictionTokens(text);
+    tokens.forEach((token) => frequencies.set(token, (frequencies.get(token) ?? 0) + 1));
+    for (let index = 0; index < tokens.length - 1; index += 1) {
+      addNested(transitions, tokens[index], tokens[index + 1], 1);
+    }
+    for (let index = 0; index < tokens.length; index += 1) {
+      for (const neighbor of tokens.slice(index + 1, index + 6)) {
+        if (neighbor !== tokens[index]) {
+          addNested(cooccurs, tokens[index], neighbor, 1);
+          addNested(cooccurs, neighbor, tokens[index], 0.35);
+        }
+      }
+    }
+  }
+
+  const seeds = predictionTokens(query).map(trimParticle).filter(Boolean);
+  const startCandidates = seeds.filter((seed) => transitions.has(seed) || frequencies.has(seed));
+  const start = [...startCandidates, ...frequencies.keys()]
+    .sort((left, right) => ((transitions.get(right)?.size ?? 0) - (transitions.get(left)?.size ?? 0)) || ((frequencies.get(right) ?? 0) - (frequencies.get(left) ?? 0)))[0];
+
+  if (!start) {
+    return {
+      answer: `NO_EVIDENCE\nquery=${query}\ngraph_token_prediction=not_enough_edges`,
+      diagnostics: { seeds, token_count: 0, edge_count: 0 },
+      answer_kind: "no_evidence",
+    };
+  }
+
+  const generated = [start];
+  const recent = new Map<string, number>([[start, 1]]);
+  const usedEdgeKeys = new Set<string>();
+  const usedEdges: any[] = [];
+  let current = start;
+  for (let step = 0; step < 55; step += 1) {
+    const options = new Map<string, number>();
+    transitions.get(current)?.forEach((weight, token) => options.set(token, (options.get(token) ?? 0) + weight));
+    cooccurs.get(current)?.forEach((weight, token) => options.set(token, (options.get(token) ?? 0) + weight * 0.18));
+    if (!options.size) break;
+    const next = [...options.entries()]
+      .map(([token, weight]) => {
+        const penalty = 1 / (1 + (recent.get(token) ?? 0) * 1.8);
+        const edgeReusePenalty = usedEdgeKeys.has(`${current}\u0000${token}`) ? 0.15 : 1;
+        const seedBonus = seeds.includes(token) ? 0.45 : 0;
+        const rarity = 1 / Math.sqrt(Math.max(1, frequencies.get(token) ?? 1));
+        return { token, score: weight * penalty * edgeReusePenalty + seedBonus + rarity * 0.08 };
+      })
+      .sort((left, right) => right.score - left.score || left.token.localeCompare(right.token))[0];
+    if (!next) break;
+    generated.push(next.token);
+    usedEdgeKeys.add(`${current}\u0000${next.token}`);
+    usedEdges.push({ source: current, target: next.token, score: Number(next.score.toFixed(4)), step: step + 1 });
+    recent.set(next.token, (recent.get(next.token) ?? 0) + 1);
+    if ((recent.get(next.token) ?? 0) > 4 && step > 8) break;
+    current = next.token;
+  }
+
+  return {
+    answer: generated.join(" "),
+    diagnostics: {
+      seeds,
+      token_count: [...frequencies.values()].reduce((sum, value) => sum + value, 0),
+      unique_tokens: frequencies.size,
+      edge_count: [...transitions.values()].reduce((sum, targets) => sum + targets.size, 0),
+      used_edges: usedEdges.slice(0, 24),
+    },
+    answer_kind: "graph_token_prediction",
+  };
 }
 
 function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPayload: any) {
@@ -564,21 +633,29 @@ function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPay
       },
     };
   }
+  const prediction = makeGraphTokenPrediction(query, webEvidenceDocs);
   return {
     ...base,
-    method: "homage-native-web-search-rag-v1",
-    answer: makeExtractiveWebAnswer(query, webEvidenceDocs),
+    method: "homage-graph-token-web-rag-v1",
+    answer: prediction.answer,
     evidence_docs: webEvidenceDocs,
     citations: webEvidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.url ?? doc.path, url: doc.url, score: doc.score })),
     web_search: webSearchPayload,
-    answer_engine: nativeAnswerEngine("native-web-search-grounded-alpha"),
+    answer_engine: {
+      ...nativeAnswerEngine("web-ontology-graph-token-prediction-alpha"),
+      name: "Homage Graph Token Predictor",
+      surface_generation: "graph_walk",
+      prediction_basis: "ontology_token_transition_graph",
+      diagnostics: prediction.diagnostics,
+    },
     retrieval_trace: {
       ...base.retrieval_trace,
-      strategy: "local demo fallback + raw web search harvest + native Homage synthesis",
+      strategy: "raw web search harvest + ontology token transition graph + graph-token prediction",
       web_search_provider: webSearchPayload?.provider,
       web_search_status: webSearchPayload?.status,
       web_result_urls: webEvidenceDocs.map((doc) => doc.url ?? doc.path),
     },
+    answer_kind: prediction.answer_kind,
     confidence: Math.max(base.confidence, 0.52),
   };
 }
@@ -619,7 +696,7 @@ export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSear
   const utterance = makeNativeDemoUtterance(query, matchedNodes, graphPaths, evidenceDocs);
   return {
     query,
-    method: "homage-native-graphrag-utterance-v1",
+    method: "homage-graph-token-rag-v1",
     answer: utterance.answer,
     matched_nodes: matchedNodes,
     matched_edges: matchedEdges,
@@ -629,10 +706,11 @@ export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSear
     pmv: utterance.pmv,
     claim_plan: utterance.claim_plan,
     active_concepts: utterance.active_concepts,
+    answer_kind: utterance.answer_kind,
     answer_engine: utterance.answer_engine,
-    follow_up_questions: ["이 답변을 Guardrail로 검증할까요?", "관련 온톨로지 경로를 더 넓게 확장할까요?"],
+    follow_up_questions: [],
     retrieval_trace: {
-      strategy: "hybrid lexical BM25-style ranking + ontology 1-hop expansion + Homage Utterance Engine native synthesis",
+      strategy: "hybrid lexical ranking + ontology expansion + graph-token prediction",
       query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
       expanded_terms: matchedNodes.map((node) => node.id),
       ranked_chunk_ids: evidenceDocs.map((doc) => doc.chunk_id),

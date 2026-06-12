@@ -19,12 +19,13 @@ def test_query_graphrag_matches_docs_and_graph(tmp_path):
     assert result["answer"]
     assert result["citations"]
     assert result["retrieval_trace"]["ranked_chunk_ids"]
-    assert result["method"] == "homage-native-graphrag-utterance-v1"
+    assert result["method"] == "homage-graph-token-rag-v1"
     assert result["answer_engine"]["external_llm"] is False
+    assert result["answer_engine"]["mode"] == "ontology-graph-token-prediction-alpha"
+    assert result["answer_kind"] == "graph_token_prediction"
     assert result["pmv"]["intent"]
-    assert result["claim_plan"]
-    assert not result["answer"].startswith("질문 '")
-    assert "읽힌 경로" not in result["answer"]
+    assert result["answer_engine"]["prediction_basis"] == "ontology_token_transition_graph"
+    assert "ontology_path" in result["answer_engine"]["diagnostics"]["graph_units"]
     assert result["confidence"] > 0
 
 
@@ -41,10 +42,12 @@ def test_query_graphrag_routes_greeting_without_evidence(tmp_path):
 
     assert result["method"] == "homage-conversation-router-v1"
     assert result["answer_engine"]["external_llm"] is False
+    assert result["answer_engine"]["surface_generation"] == "disabled"
     assert result["evidence_docs"] == []
     assert result["matched_nodes"] == []
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
-    assert "근거 문서를 억지로 붙이지" in result["answer"]
+    assert result["answer"].startswith("CONTROL_INTENT")
+    assert result["answer_kind"] == "control_intent"
 
 
 def test_query_graphrag_lists_nodes_without_retrieval(tmp_path):
@@ -68,6 +71,8 @@ def test_query_graphrag_lists_nodes_without_retrieval(tmp_path):
 
     assert result["method"] == "homage-graph-inspection-v1"
     assert result["answer_engine"]["external_llm"] is False
+    assert result["answer_kind"] == "inspection"
+    assert result["answer_engine"]["surface_generation"] == "disabled"
     assert result["evidence_docs"] == []
     assert result["matched_nodes"][0]["id"] == "graphrag"
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
@@ -95,6 +100,8 @@ def test_query_graphrag_explains_color_legend_without_retrieval(tmp_path):
 
     assert result["method"] == "homage-graph-legend-v1"
     assert result["answer_engine"]["external_llm"] is False
+    assert result["answer_kind"] == "inspection"
+    assert result["answer_engine"]["surface_generation"] == "disabled"
     assert result["evidence_docs"] == []
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
     assert "색깔은 노드의 역할" in result["answer"]
@@ -120,15 +127,13 @@ def test_query_graphrag_generates_structure_answer_without_direct_evidence(tmp_p
 
     result = query_graphrag("네 구조 설명해봐", str(cleaned), str(ontology))
 
-    assert result["method"] == "homage-native-graphrag-utterance-v1"
+    assert result["method"] == "homage-graph-token-rag-v1"
     assert result["answer_engine"]["external_llm"] is False
-    assert result["evidence_docs"] == []
-    assert result["citations"] == []
-    assert "직접 연결" not in result["answer"]
-    assert "경로" not in result["answer"]
-    assert "Homage" in result["answer"]
-    assert "DataGate" in result["answer"] or "Ontology Forge" in result["answer"]
-    assert result["follow_up_questions"]
+    assert result["evidence_docs"]
+    assert result["citations"]
+    assert result["answer_kind"] == "graph_token_prediction"
+    assert result["answer_engine"]["mode"] == "ontology-graph-token-prediction-alpha"
+    assert result["follow_up_questions"] == []
 
 
 def test_query_graphrag_unknown_external_entity_does_not_use_structure_context(tmp_path):
@@ -145,15 +150,15 @@ def test_query_graphrag_unknown_external_entity_does_not_use_structure_context(t
 
     result = query_graphrag("유재석이 누구야", str(cleaned), str(ontology))
 
-    assert result["method"] == "homage-native-no-node-utterance-v1"
+    assert result["method"] == "homage-research-no-evidence-v1"
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_engine"]["mode"] == "native-no-node-sentence-alpha"
+    assert result["answer_engine"]["mode"] == "no-evidence-diagnostic-alpha"
+    assert result["answer_kind"] == "no_evidence"
     assert result["evidence_docs"] == []
     assert result["citations"] == []
     assert "Homage1.0은 Harvest" not in result["answer"]
     assert "검증된 문서 근거" not in result["answer"]
     assert "외부 LLM" not in result["answer"]
     assert "raw_no_node::" not in result["answer"]
-    assert "->" not in result["answer"]
-    assert len(result["answer"].splitlines()) == 1
+    assert result["answer"].startswith("NO_EVIDENCE")
     assert result["follow_up_questions"] == []

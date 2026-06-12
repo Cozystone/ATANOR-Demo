@@ -13,6 +13,18 @@ function isRawNoNodeResult(body: any) {
   );
 }
 
+function isLegacySurfaceResult(body: any) {
+  const result = body?.result ?? {};
+  return (
+    result.method === "homage-native-web-search-rag-v1"
+    || result.method === "homage-native-graphrag-utterance-v1"
+    || result.method === "homage-native-no-node-utterance-v1"
+    || result.answer_engine?.mode === "native-web-search-grounded-alpha"
+    || result.answer_engine?.mode === "native-next-thought-alpha"
+    || result.answer_engine?.mode === "native-no-node-sentence-alpha"
+  );
+}
+
 export async function POST(request: Request) {
   const body = await request.text();
   let query = "GraphRAG evidence";
@@ -38,7 +50,7 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
       body,
     });
-    if (proxied?.body?.result?.answer && !isRawNoNodeResult(proxied.body) && (!webSearch || proxied.body.result.web_search)) {
+    if (proxied?.body?.result?.answer && !isRawNoNodeResult(proxied.body) && !isLegacySurfaceResult(proxied.body) && (!webSearch || proxied.body.result.web_search)) {
       return NextResponse.json(proxied.body, { status: proxied.status });
     }
   } catch {

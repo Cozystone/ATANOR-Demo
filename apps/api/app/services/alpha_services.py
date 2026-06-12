@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import threading
@@ -13,6 +12,7 @@ from typing import Any, Literal
 from guard import check_guard
 from ontology_forge import run_ontology
 from rag_engine import query_graphrag
+from rag_engine.utterance_engine import build_native_utterance
 from trainer import run_dry_run
 
 from app.services.web_search import is_fresh_search_query, is_knowledge_lookup_query, search_web, web_results_to_evidence
@@ -242,27 +242,14 @@ alpha_service = AlphaService()
 
 def _should_web_search(result: dict[str, Any]) -> bool:
     return (
-        result.get("method") == "homage-native-no-node-utterance-v1"
+        result.get("method") in {"homage-native-no-node-utterance-v1", "homage-research-no-evidence-v1"}
         or not result.get("evidence_docs")
         or float(result.get("confidence") or 0) < 0.42
     )
 
 
-def _clean_web_snippet(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
-
-
-def _make_extractive_web_answer(query: str, evidence_docs: list[dict[str, Any]]) -> str:
-    first = evidence_docs[0] if evidence_docs else {}
-    title = _clean_web_snippet(first.get("title") or first.get("doc_id") or "")
-    snippets = [_clean_web_snippet(doc.get("snippet")) for doc in evidence_docs[:3]]
-    body = " ".join(snippet for snippet in snippets if snippet)
-    if not body:
-        return title or query
-    first_provider = first.get("provider") or first.get("retrieval_signals", {}).get("provider")
-    if first_provider == "wikipedia" or str(first.get("doc_id") or "").startswith("wikipedia"):
-        return f"{title}: {snippets[0]}" if title else snippets[0]
-    return f"{title}: {body}" if title else body
+def _make_graph_token_web_utterance(query: str, evidence_docs: list[dict[str, Any]]) -> dict[str, Any]:
+    return build_native_utterance(query, evidence_docs, [], [])
 
 
 def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: dict[str, Any]) -> dict[str, Any]:
@@ -277,11 +264,11 @@ def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: d
                 "web_search_status": search_payload.get("status"),
             },
         }
-    answer = _make_extractive_web_answer(query, evidence_docs)
+    utterance = _make_graph_token_web_utterance(query, evidence_docs)
     return {
         **base,
-        "method": "homage-native-web-search-rag-v1",
-        "answer": answer,
+        "method": "homage-graph-token-web-rag-v1",
+        "answer": utterance["answer"],
         "evidence_docs": evidence_docs,
         "citations": [
             {
@@ -296,16 +283,23 @@ def _merge_web_search_result(query: str, base: dict[str, Any], search_payload: d
         "web_search": search_payload,
         "answer_engine": {
             **base.get("answer_engine", {}),
-            "name": "Homage Utterance Engine",
-            "mode": "native-web-search-grounded-alpha",
+            **utterance["answer_engine"],
+            "name": "Homage Graph Token Predictor",
+            "mode": "web-ontology-graph-token-prediction-alpha",
             "external_llm": False,
+            "surface_generation": "graph_walk",
+            "template_free_surface": True,
         },
         "retrieval_trace": {
             **base.get("retrieval_trace", {}),
-            "strategy": "local GraphRAG fallback + raw web search harvest + native Homage synthesis",
+            "strategy": "raw web search harvest + ontology token transition graph + graph-token prediction",
             "web_search_provider": search_payload.get("provider"),
             "web_search_status": search_payload.get("status"),
             "web_result_urls": [doc.get("url") for doc in evidence_docs],
         },
+        "pmv": utterance["pmv"],
+        "claim_plan": utterance["claim_plan"],
+        "active_concepts": utterance["active_concepts"],
+        "answer_kind": utterance["answer_kind"],
         "confidence": max(float(base.get("confidence") or 0), 0.52),
     }

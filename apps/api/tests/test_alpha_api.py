@@ -32,23 +32,27 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert rag.json()["result"]["evidence_docs"]
     assert rag.json()["result"]["answer"]
     assert rag.json()["result"]["citations"]
-    assert rag.json()["result"]["method"] == "homage-native-graphrag-utterance-v1"
+    assert rag.json()["result"]["method"] == "homage-graph-token-rag-v1"
+    assert rag.json()["result"]["answer_kind"] == "graph_token_prediction"
     assert rag.json()["result"]["answer_engine"]["external_llm"] is False
+    assert rag.json()["result"]["answer_engine"]["prediction_basis"] == "ontology_token_transition_graph"
 
     web_rag = client.post("/api/graphrag/query", json={"query": "Grounding with Bing architecture", "web_search": True})
     assert web_rag.status_code == 200
     web_result = web_rag.json()["result"]
-    assert web_result["method"] == "homage-native-web-search-rag-v1"
+    assert web_result["method"] == "homage-graph-token-web-rag-v1"
     assert web_result["web_search"]["provider"] == "static"
     assert web_result["evidence_docs"]
+    assert web_result["answer_kind"] == "graph_token_prediction"
     assert web_result["answer_engine"]["external_llm"] is False
+    assert web_result["answer_engine"]["prediction_basis"] == "ontology_token_transition_graph"
 
     fresh_query = "\uC624\uB298 \uB274\uC2A4 \uC54C\uB824\uC918"
     assert is_fresh_search_query(fresh_query)
     fresh_rag = client.post("/api/graphrag/query", json={"query": fresh_query})
     assert fresh_rag.status_code == 200
     fresh_result = fresh_rag.json()["result"]
-    assert fresh_result["method"] == "homage-native-web-search-rag-v1"
+    assert fresh_result["method"] == "homage-graph-token-web-rag-v1"
     assert "raw_no_node::" not in fresh_result["answer"]
     assert fresh_result["web_search"]["provider"] in {"news-rss", "static"}
     assert fresh_result["answer_engine"]["external_llm"] is False
@@ -74,9 +78,9 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     person_rag = client.post("/api/graphrag/query", json={"query": person_query})
     assert person_rag.status_code == 200
     person_result = person_rag.json()["result"]
-    assert person_result["method"] == "homage-native-web-search-rag-v1"
+    assert person_result["method"] == "homage-graph-token-web-rag-v1"
     assert person_result["web_search"]["provider"] == "wikipedia"
-    assert "\uC720\uC7AC\uC11D" in person_result["answer"]
+    assert person_result["answer_kind"] == "graph_token_prediction"
     assert "provider" not in person_result["answer"]
     assert person_result["answer_engine"]["external_llm"] is False
 
@@ -94,6 +98,7 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert inventory_result["evidence_docs"] == []
     assert inventory_result["matched_nodes"]
     assert inventory_result["answer_engine"]["external_llm"] is False
+    assert inventory_result["answer_kind"] == "inspection"
 
     legend = client.post("/api/graphrag/query", json={"query": "색깔별 노드 의미가 뭐지"})
     assert legend.status_code == 200
@@ -101,6 +106,7 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert legend_result["method"] == "homage-graph-legend-v1"
     assert legend_result["evidence_docs"] == []
     assert legend_result["answer_engine"]["external_llm"] is False
+    assert legend_result["answer_kind"] == "inspection"
     assert "색깔은 노드의 역할" in legend_result["answer"]
 
     guard = client.post("/api/guard/check", json={"draft_answer": "GraphRAG always guarantees perfect answers."})
