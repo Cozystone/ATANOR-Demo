@@ -49,6 +49,31 @@ Latest Cloud Brain design update:
   nodes/edges instead of demo memory counts.
 - Production screenshot: `docs/screenshots/150-cloud-brain-production-verified.png`.
 
+Latest Hippocampus implementation update:
+
+- Added `packages/knowledge_bakery/knowledge_bakery/learning_daemon.py`.
+- The local daemon now watches `data/raw` for `.txt`/`.md`, moves new files into
+  `data/cleaned`, runs `ontology_forge` batch extraction, refreshes
+  `data/ontology`, rebuilds GraphRAG memory, and persists synaptic state in
+  SQLite WAL.
+- Repeated edges use UPSERT-style potentiation:
+  `weight = weight + 0.1`, `count = count + 1`.
+- Added decay/pruning:
+  `weight = weight * 0.95`, delete edges below threshold, then delete orphan
+  synaptic nodes.
+- Added `POST /api/learning/daemon/decay`; Cloud Brain non-dry-run prune now
+  calls the same local decay path.
+- Neo4j is optional. If `NEO4J_URI` and credentials are set, potentiation and
+  decay are mirrored with Cypher `MERGE`; otherwise SQLite remains the active
+  local brain.
+- Reference influence: DeepKE-style knowledge extraction separation and
+  ScrapeGraphAI-style document/web pipeline orchestration, without adopting
+  their external LLM dependency.
+- Runtime verification on local FastAPI `http://127.0.0.1:8047`: daemon is
+  running, `data/raw` sample documents were ingested into `data/cleaned`, and
+  SQLite WAL currently reports `99` synaptic nodes / `279` synaptic edges with
+  average edge weight `0.589`.
+
 Latest 2026-06-12 follow-up:
 
 - Max-target Collect still treats `500,000` as a long-run storage/training

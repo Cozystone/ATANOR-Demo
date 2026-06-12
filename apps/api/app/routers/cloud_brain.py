@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.services.alpha_services import alpha_service
-from knowledge_bakery import daemon_status, tick_daemon
+from knowledge_bakery import daemon_status, run_synaptic_decay, tick_daemon
 
 
 router = APIRouter(prefix="/api/cloud-brain", tags=["cloud-brain"])
@@ -141,15 +141,20 @@ def cloud_brain_consolidate(request: CloudBrainConsolidateRequest) -> dict[str, 
 
 @router.post("/prune")
 def cloud_brain_prune(request: CloudBrainPruneRequest) -> dict[str, Any]:
+    prune = (
+        {"state": "dry_run", "pruned_edges": 0}
+        if request.dry_run
+        else run_synaptic_decay(factor=0.95, threshold=request.min_weight)
+    )
     daemon = daemon_status()
     return {
         **_status_shell(daemon),
-        "state": "dry_run" if request.dry_run else "planned",
-        "pruned": False,
+        "state": prune.get("state", "dry_run"),
+        "pruned": int(prune.get("pruned_edges") or 0) > 0,
         "policy": {
             "min_weight": request.min_weight,
             "max_idle_days": request.max_idle_days,
-            "decay_factor": "planned",
+            "decay_factor": 0.95,
         },
-        "reason": "Edge decay/pruning is specified but not yet mutating the local memory store.",
+        "result": prune,
     }

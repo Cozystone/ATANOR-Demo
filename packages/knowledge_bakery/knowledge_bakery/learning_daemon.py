@@ -1,0 +1,972 @@
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .memory import build_memory, memory_status
+
+
+DEFAULT_RAW_DIR = "data/raw"
+DEFAULT_CLEANED_DIR = "data/cleaned"
+DEFAULT_ONTOLOGY_DIR = "data/ontology"
+DEFAULT_MEMORY_DIR = "data/memory"
+DEFAULT_INTERVAL_SECONDS = 30
+DEFAULT_DECAY_INTERVAL_SECONDS = 3600
+DEFAULT_DECAY_FACTOR = 0.95
+DEFAULT_PRUNE_THRESHOLD = 0.05
+DEFAULT_POTENTIATION_INCREMENT = 0.1
+MIN_DISK_FREE_GB = 20.0
+MIN_RAM_AVAILABLE_GB = 1.5
+SUPPORTED_RAW_EXTENSIONS = {".txt", ".md"}
+
+_lock = threading.RLock()
+_stop_event = threading.Event()
+_worker_thread: threading.Thread | None = None
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_iso(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _memory_root(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
+    return Path(memory_dir)
+
+
+def _db_path(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
+    return _memory_root(memory_dir) / "homage.db"
+
+
+def _state_path(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
+    return _memory_root(memory_dir) / "daemon_state.json"
+
+
+def _checkpoint_dir(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
+    return _memory_root(memory_dir) / "daemon_checkpoints"
+
+
+def _default_state() -> dict[str, Any]:
+    return {
+        "mode": "local-daemon",
+        "module": "hippocampus-continuous-learning",
+        "state": "idle",
+        "desired_running": False,
+        "resume_after_reboot": True,
+        "resume_needed": False,
+        "worker_alive": False,
+        "started_at": None,
+        "last_heartbeat_at": None,
+        "last_tick_at": None,
+        "last_checkpoint_at": None,
+        "last_decay_at": None,
+        "last_input_fingerprint": None,
+        "last_round_action": None,
+        "last_round_message": "No long-running local learner has been started.",
+        "last_error": None,
+        "interval_seconds": DEFAULT_INTERVAL_SECONDS,
+        "decay_interval_seconds": DEFAULT_DECAY_INTERVAL_SECONDS,
+        "decay_factor": DEFAULT_DECAY_FACTOR,
+        "prune_threshold": DEFAULT_PRUNE_THRESHOLD,
+        "potentiation_increment": DEFAULT_POTENTIATION_INCREMENT,
+        "total_runtime_seconds": 0,
+        "total_rounds": 0,
+        "learned_rounds": 0,
+        "idle_rounds": 0,
+        "ingested_file_count": 0,
+        "last_ingested_files": [],
+        "latest_event_count": 0,
+        "latest_node_count": 0,
+        "latest_edge_count": 0,
+        "synaptic_node_count": 0,
+        "synaptic_edge_count": 0,
+        "avg_synaptic_weight": 0.0,
+        "resource_warning": None,
+        "raw_dir": DEFAULT_RAW_DIR,
+        "cleaned_dir": DEFAULT_CLEANED_DIR,
+        "ontology_dir": DEFAULT_ONTOLOGY_DIR,
+        "watch_dirs": [DEFAULT_RAW_DIR, DEFAULT_CLEANED_DIR, DEFAULT_ONTOLOGY_DIR],
+        "neo4j": {
+            "enabled": bool(os.environ.get("NEO4J_URI")),
+            "available": False,
+            "last_error": None,
+        },
+        "reboot_resilience": {
+            "state_file": str(_state_path()),
+            "checkpoint_dir": str(_checkpoint_dir()),
+            "sqlite_wal": str(_db_path()),
+            "heartbeat_interval_seconds": DEFAULT_INTERVAL_SECONDS,
+            "checkpoint_interval_seconds": 300,
+            "resume_contract": "Restart local FastAPI and call /api/learning/daemon/resume; the daemon resumes from SQLite WAL, events.jsonl, and daemon_state.json.",
+        },
+        "llm_policy": {
+            "external_llm": False,
+            "local_quantized_llm": False,
+            "pretrained_generation_weights": False,
+        },
+    }
+
+
+def _read_state(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
+    path = _state_path(memory_dir)
+    if not path.exists():
+        return _default_state()
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        loaded = {}
+    state = _default_state()
+    state.update(loaded)
+    state["neo4j"] = {**_default_state()["neo4j"], **dict(loaded.get("neo4j") or {})}
+    state["reboot_resilience"] = {
+        **_default_state()["reboot_resilience"],
+        **dict(loaded.get("reboot_resilience") or {}),
+    }
+    state["llm_policy"] = {
+        **_default_state()["llm_policy"],
+        **dict(loaded.get("llm_policy") or {}),
+    }
+    raw_dir = str(state.get("raw_dir") or DEFAULT_RAW_DIR)
+    cleaned_dir = str(state.get("cleaned_dir") or DEFAULT_CLEANED_DIR)
+    ontology_dir = str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR)
+    watch_dirs = list(state.get("watch_dirs") or [])
+    for required in [raw_dir, cleaned_dir, ontology_dir]:
+        if required not in watch_dirs:
+            watch_dirs.append(required)
+    state["watch_dirs"] = watch_dirs
+    return state
+
+
+def _write_state(state: dict[str, Any], memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> None:
+    root = _memory_root(memory_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    temp = _state_path(memory_dir).with_suffix(".tmp")
+    temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(_state_path(memory_dir))
+
+
+def _connect(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> sqlite3.Connection:
+    root = _memory_root(memory_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(_db_path(memory_dir))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    _init_synaptic_schema(conn)
+    return conn
+
+
+def _init_synaptic_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS synaptic_nodes (
+          node_id TEXT PRIMARY KEY,
+          label TEXT NOT NULL,
+          type TEXT NOT NULL,
+          count INTEGER NOT NULL DEFAULT 0,
+          confidence REAL NOT NULL DEFAULT 0.5,
+          evidence_doc_ids TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS synaptic_edges (
+          edge_id TEXT PRIMARY KEY,
+          source TEXT NOT NULL,
+          relation TEXT NOT NULL,
+          target TEXT NOT NULL,
+          weight REAL NOT NULL,
+          count INTEGER NOT NULL DEFAULT 1,
+          confidence REAL NOT NULL DEFAULT 0.5,
+          evidence_doc_ids TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS ingested_files (
+          file_fingerprint TEXT PRIMARY KEY,
+          original_path TEXT NOT NULL,
+          cleaned_path TEXT NOT NULL,
+          byte_count INTEGER NOT NULL,
+          node_count INTEGER NOT NULL DEFAULT 0,
+          edge_count INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL,
+          ingested_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS learning_events (
+          event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_type TEXT NOT NULL,
+          subject_id TEXT,
+          payload_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_synaptic_edges_source ON synaptic_edges(source);
+        CREATE INDEX IF NOT EXISTS idx_synaptic_edges_target ON synaptic_edges(target);
+        CREATE INDEX IF NOT EXISTS idx_synaptic_edges_weight ON synaptic_edges(weight);
+        """
+    )
+
+
+def _worker_alive() -> bool:
+    return bool(_worker_thread and _worker_thread.is_alive())
+
+
+def _json_set(existing: str | None, additions: list[str] | set[str] | tuple[str, ...]) -> str:
+    try:
+        current = set(json.loads(existing or "[]"))
+    except json.JSONDecodeError:
+        current = set()
+    current.update(str(item) for item in additions if str(item))
+    return json.dumps(sorted(current), ensure_ascii=False)
+
+
+def _write_learning_event(conn: sqlite3.Connection, event_type: str, subject_id: str | None, payload: dict[str, Any]) -> None:
+    conn.execute(
+        "INSERT INTO learning_events(event_type, subject_id, payload_json, created_at) VALUES (?, ?, ?, ?)",
+        (event_type, subject_id, json.dumps(payload, ensure_ascii=False), utc_now_iso()),
+    )
+
+
+def _file_fingerprint(path: Path) -> dict[str, Any]:
+    data = path.read_bytes()
+    digest = hashlib.sha256()
+    digest.update(path.name.encode("utf-8", errors="ignore"))
+    digest.update(len(data).to_bytes(8, "big", signed=False))
+    digest.update(hashlib.sha256(data).digest())
+    return {
+        "fingerprint": digest.hexdigest(),
+        "byte_count": len(data),
+    }
+
+
+def _input_fingerprint(watch_dirs: list[str] | tuple[str, ...]) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    file_count = 0
+    byte_count = 0
+    extensions = {".txt", ".md", ".json"}
+    for raw_dir in watch_dirs:
+        root = Path(raw_dir)
+        if not root.exists():
+            continue
+        for path in sorted(item for item in root.rglob("*") if item.is_file() and item.suffix.lower() in extensions):
+            try:
+                data = path.read_bytes()
+            except OSError:
+                continue
+            file_count += 1
+            byte_count += len(data)
+            digest.update(str(path.as_posix()).encode("utf-8", errors="ignore"))
+            digest.update(len(data).to_bytes(8, "big", signed=False))
+            digest.update(hashlib.sha256(data).digest())
+    return {
+        "fingerprint": digest.hexdigest(),
+        "file_count": file_count,
+        "byte_count": byte_count,
+        "watch_dirs": list(watch_dirs),
+    }
+
+
+def _resource_snapshot(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
+    root = _memory_root(memory_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(root.resolve().anchor or ".")
+    snapshot: dict[str, Any] = {
+        "disk_free_gb": round(disk.free / (1024**3), 2),
+        "disk_total_gb": round(disk.total / (1024**3), 2),
+        "ram_available_gb": None,
+        "ram_total_gb": None,
+    }
+    try:
+        import psutil  # type: ignore
+
+        memory = psutil.virtual_memory()
+        snapshot["ram_available_gb"] = round(memory.available / (1024**3), 2)
+        snapshot["ram_total_gb"] = round(memory.total / (1024**3), 2)
+    except Exception:
+        pass
+    return snapshot
+
+
+def _resource_blocker(snapshot: dict[str, Any]) -> str | None:
+    disk_free = float(snapshot.get("disk_free_gb") or 0)
+    ram_available = snapshot.get("ram_available_gb")
+    if disk_free < MIN_DISK_FREE_GB:
+        return f"disk_free_below_{MIN_DISK_FREE_GB:g}gb"
+    if ram_available is not None and float(ram_available) < MIN_RAM_AVAILABLE_GB:
+        return f"ram_available_below_{MIN_RAM_AVAILABLE_GB:g}gb"
+    return None
+
+
+def _merge_runtime(state: dict[str, Any]) -> dict[str, Any]:
+    now_ts = time.time()
+    started_ts = _parse_iso(state.get("started_at"))
+    if started_ts and state.get("desired_running"):
+        state["total_runtime_seconds"] = max(int(now_ts - started_ts), int(state.get("total_runtime_seconds") or 0))
+    return state
+
+
+def _synaptic_status(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
+    if not _db_path(memory_dir).exists():
+        return {"synaptic_node_count": 0, "synaptic_edge_count": 0, "avg_synaptic_weight": 0.0, "ingested_file_count": 0}
+    conn = _connect(memory_dir)
+    row = conn.execute(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM synaptic_nodes) AS node_count,
+          (SELECT COUNT(*) FROM synaptic_edges) AS edge_count,
+          (SELECT COALESCE(AVG(weight), 0) FROM synaptic_edges) AS avg_weight,
+          (SELECT COUNT(*) FROM ingested_files WHERE status = 'ingested') AS ingested_file_count
+        """
+    ).fetchone()
+    conn.close()
+    return {
+        "synaptic_node_count": int(row["node_count"]),
+        "synaptic_edge_count": int(row["edge_count"]),
+        "avg_synaptic_weight": round(float(row["avg_weight"] or 0), 5),
+        "ingested_file_count": int(row["ingested_file_count"]),
+    }
+
+
+def _safe_memory_status(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
+    try:
+        return memory_status(str(memory_dir))
+    except sqlite3.OperationalError:
+        root = _memory_root(memory_dir)
+        return {
+            "state": "idle",
+            "db_path": str(root / "homage.db"),
+            "event_log_path": str(root / "events.jsonl"),
+            "document_count": 0,
+            "chunk_count": 0,
+            "node_count": 0,
+            "edge_count": 0,
+            "event_count": 0,
+            "vector_count": 0,
+            "transition_count": 0,
+            "cooccurrence_count": 0,
+            "phrase_count": 0,
+            "predicate_count": 0,
+            "built_at": None,
+        }
+
+
+def _refresh_counts(state: dict[str, Any], memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
+    status = _safe_memory_status(memory_dir)
+    synaptic = _synaptic_status(memory_dir)
+    state["latest_event_count"] = int(status.get("event_count") or 0)
+    state["latest_node_count"] = int(status.get("node_count") or 0)
+    state["latest_edge_count"] = int(status.get("edge_count") or 0)
+    state.update(synaptic)
+    return state
+
+
+def _unique_cleaned_path(source: Path, cleaned_dir: Path, fingerprint: str) -> Path:
+    cleaned_dir.mkdir(parents=True, exist_ok=True)
+    safe_stem = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in source.stem).strip("-") or "raw"
+    candidate = cleaned_dir / f"{safe_stem}-{fingerprint[:10]}{source.suffix.lower()}"
+    counter = 1
+    while candidate.exists():
+        candidate = cleaned_dir / f"{safe_stem}-{fingerprint[:10]}-{counter}{source.suffix.lower()}"
+        counter += 1
+    return candidate
+
+
+def _run_ontology(input_dir: str, output_dir: str) -> dict[str, Any]:
+    from ontology_forge import run_ontology
+
+    return run_ontology(input_dir, output_dir)
+
+
+def _upsert_sqlite_synapses(
+    conn: sqlite3.Connection,
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    *,
+    increment: float = DEFAULT_POTENTIATION_INCREMENT,
+) -> dict[str, int]:
+    now = utc_now_iso()
+    node_count = 0
+    edge_count = 0
+    for node in nodes:
+        node_id = str(node.get("id") or "").strip()
+        if not node_id:
+            continue
+        existing = conn.execute("SELECT evidence_doc_ids, count FROM synaptic_nodes WHERE node_id = ?", (node_id,)).fetchone()
+        evidence = _json_set(existing["evidence_doc_ids"] if existing else None, node.get("evidence_doc_ids") or [])
+        count = int(existing["count"] if existing else 0) + max(1, int(node.get("count") or 1))
+        conn.execute(
+            """
+            INSERT INTO synaptic_nodes(node_id, label, type, count, confidence, evidence_doc_ids, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(node_id) DO UPDATE SET
+              label = excluded.label,
+              type = excluded.type,
+              count = ?,
+              confidence = MAX(synaptic_nodes.confidence, excluded.confidence),
+              evidence_doc_ids = ?,
+              updated_at = excluded.updated_at
+            """,
+            (
+                node_id,
+                str(node.get("label") or node_id),
+                str(node.get("type") or "concept"),
+                count,
+                float(node.get("confidence") or 0.5),
+                evidence,
+                now,
+                now,
+                count,
+                evidence,
+            ),
+        )
+        node_count += 1
+
+    for edge in edges:
+        source = str(edge.get("source") or "").strip()
+        relation = str(edge.get("relation") or "relates").strip() or "relates"
+        target = str(edge.get("target") or "").strip()
+        if not source or not target:
+            continue
+        edge_id = f"{source}:{relation}:{target}"
+        confidence = float(edge.get("confidence") or 0.5)
+        existing = conn.execute("SELECT evidence_doc_ids FROM synaptic_edges WHERE edge_id = ?", (edge_id,)).fetchone()
+        evidence = _json_set(existing["evidence_doc_ids"] if existing else None, edge.get("evidence_doc_ids") or [])
+        conn.execute(
+            """
+            INSERT INTO synaptic_edges(edge_id, source, relation, target, weight, count, confidence, evidence_doc_ids, created_at, updated_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+            ON CONFLICT(edge_id) DO UPDATE SET
+              weight = synaptic_edges.weight + ?,
+              count = synaptic_edges.count + 1,
+              confidence = MAX(synaptic_edges.confidence, excluded.confidence),
+              evidence_doc_ids = ?,
+              updated_at = excluded.updated_at,
+              last_seen_at = excluded.last_seen_at
+            """,
+            (
+                edge_id,
+                source,
+                relation,
+                target,
+                max(increment, confidence),
+                confidence,
+                evidence,
+                now,
+                now,
+                now,
+                increment,
+                evidence,
+            ),
+        )
+        edge_count += 1
+
+    _write_learning_event(
+        conn,
+        "synapses_potentiated",
+        None,
+        {"node_count": node_count, "edge_count": edge_count, "increment": increment},
+    )
+    return {"nodes": node_count, "edges": edge_count}
+
+
+class _Neo4jSink:
+    def __init__(self) -> None:
+        self.uri = os.environ.get("NEO4J_URI")
+        self.user = os.environ.get("NEO4J_USER", "neo4j")
+        self.password = os.environ.get("NEO4J_PASSWORD")
+        self.database = os.environ.get("NEO4J_DATABASE")
+        self._driver = None
+        self.error: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.uri and self.password)
+
+    def _connect(self):
+        if not self.enabled:
+            return None
+        if self._driver:
+            return self._driver
+        try:
+            from neo4j import GraphDatabase  # type: ignore
+
+            self._driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            return self._driver
+        except Exception as exc:
+            self.error = str(exc)
+            return None
+
+    def upsert(self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]], increment: float) -> dict[str, Any]:
+        driver = self._connect()
+        if not driver:
+            return {"enabled": self.enabled, "available": False, "error": self.error}
+        query = """
+        UNWIND $nodes AS node
+        MERGE (n:Concept {id: node.id})
+        ON CREATE SET n.created_at = $now, n.count = 0
+        SET n.label = node.label,
+            n.type = node.type,
+            n.count = coalesce(n.count, 0) + coalesce(node.count, 1),
+            n.confidence = CASE WHEN coalesce(n.confidence, 0) > node.confidence THEN n.confidence ELSE node.confidence END,
+            n.updated_at = $now
+        WITH 1 AS ignored
+        UNWIND $edges AS edge
+        MERGE (s:Concept {id: edge.source})
+        MERGE (t:Concept {id: edge.target})
+        MERGE (s)-[r:RELATED {relation: edge.relation}]->(t)
+        ON CREATE SET r.created_at = $now, r.weight = edge.weight, r.count = 1
+        ON MATCH SET r.weight = coalesce(r.weight, 0) + $increment,
+                     r.count = coalesce(r.count, 0) + 1
+        SET r.confidence = CASE WHEN coalesce(r.confidence, 0) > edge.confidence THEN r.confidence ELSE edge.confidence END,
+            r.updated_at = $now,
+            r.last_seen_at = $now
+        """
+        payload_nodes = [
+            {
+                "id": str(node.get("id")),
+                "label": str(node.get("label") or node.get("id")),
+                "type": str(node.get("type") or "concept"),
+                "count": int(node.get("count") or 1),
+                "confidence": float(node.get("confidence") or 0.5),
+            }
+            for node in nodes
+            if node.get("id")
+        ]
+        payload_edges = [
+            {
+                "source": str(edge.get("source")),
+                "relation": str(edge.get("relation") or "relates"),
+                "target": str(edge.get("target")),
+                "weight": max(increment, float(edge.get("confidence") or 0.5)),
+                "confidence": float(edge.get("confidence") or 0.5),
+            }
+            for edge in edges
+            if edge.get("source") and edge.get("target")
+        ]
+        try:
+            with (driver.session(database=self.database) if self.database else driver.session()) as session:
+                session.execute_write(lambda tx: tx.run(query, nodes=payload_nodes, edges=payload_edges, increment=increment, now=utc_now_iso()).consume())
+            return {"enabled": True, "available": True, "error": None}
+        except Exception as exc:
+            self.error = str(exc)
+            return {"enabled": True, "available": False, "error": self.error}
+
+    def decay(self, factor: float, threshold: float) -> dict[str, Any]:
+        driver = self._connect()
+        if not driver:
+            return {"enabled": self.enabled, "available": False, "error": self.error}
+        query = """
+        MATCH ()-[r:RELATED]->()
+        SET r.weight = coalesce(r.weight, 0) * $factor,
+            r.decayed_at = $now
+        WITH r
+        WHERE r.weight < $threshold
+        DELETE r
+        WITH count(r) AS pruned
+        MATCH (n:Concept)
+        WHERE NOT (n)--()
+        DELETE n
+        RETURN pruned
+        """
+        try:
+            with (driver.session(database=self.database) if self.database else driver.session()) as session:
+                result = session.execute_write(lambda tx: list(tx.run(query, factor=factor, threshold=threshold, now=utc_now_iso())))
+            pruned = int(result[0]["pruned"]) if result else 0
+            return {"enabled": True, "available": True, "error": None, "pruned_edges": pruned}
+        except Exception as exc:
+            self.error = str(exc)
+            return {"enabled": True, "available": False, "error": self.error}
+
+
+def _neo4j_sink() -> _Neo4jSink:
+    return _Neo4jSink()
+
+
+def ingest_raw_documents(
+    *,
+    raw_dir: str = DEFAULT_RAW_DIR,
+    cleaned_dir: str = DEFAULT_CLEANED_DIR,
+    ontology_dir: str = DEFAULT_ONTOLOGY_DIR,
+    memory_dir: str = DEFAULT_MEMORY_DIR,
+    increment: float = DEFAULT_POTENTIATION_INCREMENT,
+    max_files: int | None = None,
+    min_file_age_seconds: float = 0.5,
+) -> dict[str, Any]:
+    raw_root = Path(raw_dir)
+    cleaned_root = Path(cleaned_dir)
+    ontology_root = Path(ontology_dir)
+    memory_root = _memory_root(memory_dir)
+    raw_root.mkdir(parents=True, exist_ok=True)
+    cleaned_root.mkdir(parents=True, exist_ok=True)
+    ontology_root.mkdir(parents=True, exist_ok=True)
+    memory_root.mkdir(parents=True, exist_ok=True)
+
+    candidates = [
+        path
+        for path in sorted(raw_root.rglob("*"))
+        if path.is_file()
+        and path.suffix.lower() in SUPPORTED_RAW_EXTENSIONS
+        and time.time() - path.stat().st_mtime >= min_file_age_seconds
+    ]
+    if max_files is not None:
+        candidates = candidates[:max_files]
+    if not candidates:
+        return {"state": "idle", "ingested": 0, "duplicates": 0, "files": [], "nodes": 0, "edges": 0, "neo4j": None}
+
+    conn = _connect(memory_dir)
+    neo4j = _neo4j_sink()
+    ingested_files: list[dict[str, Any]] = []
+    duplicate_count = 0
+    total_nodes = 0
+    total_edges = 0
+    neo4j_status: dict[str, Any] | None = None
+
+    for raw_file in candidates:
+        fingerprint = _file_fingerprint(raw_file)
+        file_hash = fingerprint["fingerprint"]
+        existing = conn.execute("SELECT status, cleaned_path FROM ingested_files WHERE file_fingerprint = ?", (file_hash,)).fetchone()
+        cleaned_path = _unique_cleaned_path(raw_file, cleaned_root, file_hash)
+        shutil.move(str(raw_file), str(cleaned_path))
+        if existing:
+            duplicate_count += 1
+            _write_learning_event(
+                conn,
+                "raw_duplicate_moved",
+                file_hash,
+                {"cleaned_path": str(cleaned_path), "original_ingest": str(existing["cleaned_path"])},
+            )
+            continue
+
+        batch_dir = memory_root / "ingest_batches" / file_hash[:16]
+        batch_ontology_dir = memory_root / "ingest_ontology" / file_hash[:16]
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        batch_copy = batch_dir / cleaned_path.name
+        shutil.copy2(cleaned_path, batch_copy)
+
+        result = _run_ontology(str(batch_dir), str(batch_ontology_dir))
+        nodes = list(result.get("nodes") or [])
+        edges = list(result.get("edges") or [])
+        upserted = _upsert_sqlite_synapses(conn, nodes, edges, increment=increment)
+        neo4j_status = neo4j.upsert(nodes, edges, increment)
+        conn.execute(
+            """
+            INSERT INTO ingested_files(file_fingerprint, original_path, cleaned_path, byte_count, node_count, edge_count, status, ingested_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (file_hash, str(raw_file), str(cleaned_path), fingerprint["byte_count"], len(nodes), len(edges), "ingested", utc_now_iso()),
+        )
+        _write_learning_event(
+            conn,
+            "raw_file_ingested",
+            file_hash,
+            {"original_path": str(raw_file), "cleaned_path": str(cleaned_path), "nodes": len(nodes), "edges": len(edges)},
+        )
+        ingested_files.append(
+            {
+                "fingerprint": file_hash,
+                "original_path": str(raw_file),
+                "cleaned_path": str(cleaned_path),
+                "nodes": len(nodes),
+                "edges": len(edges),
+            }
+        )
+        total_nodes += upserted["nodes"]
+        total_edges += upserted["edges"]
+
+    conn.commit()
+    conn.close()
+
+    if ingested_files:
+        _run_ontology(str(cleaned_root), str(ontology_root))
+        build_memory(cleaned_dir=str(cleaned_root), ontology_dir=str(ontology_root), memory_dir=memory_dir)
+
+    return {
+        "state": "completed" if ingested_files else "idle",
+        "ingested": len(ingested_files),
+        "duplicates": duplicate_count,
+        "files": ingested_files,
+        "nodes": total_nodes,
+        "edges": total_edges,
+        "neo4j": neo4j_status,
+    }
+
+
+def run_synaptic_decay(
+    memory_dir: str = DEFAULT_MEMORY_DIR,
+    *,
+    factor: float = DEFAULT_DECAY_FACTOR,
+    threshold: float = DEFAULT_PRUNE_THRESHOLD,
+) -> dict[str, Any]:
+    factor = max(0.0, min(1.0, float(factor)))
+    threshold = max(0.0, float(threshold))
+    conn = _connect(memory_dir)
+    before = conn.execute("SELECT COUNT(*) AS count FROM synaptic_edges").fetchone()["count"]
+    conn.execute("UPDATE synaptic_edges SET weight = weight * ?, updated_at = ?", (factor, utc_now_iso()))
+    pruned_rows = conn.execute("SELECT edge_id FROM synaptic_edges WHERE weight < ?", (threshold,)).fetchall()
+    pruned_ids = [row["edge_id"] for row in pruned_rows]
+    conn.executemany("DELETE FROM synaptic_edges WHERE edge_id = ?", [(edge_id,) for edge_id in pruned_ids])
+    conn.execute(
+        """
+        DELETE FROM synaptic_nodes
+        WHERE node_id NOT IN (SELECT source FROM synaptic_edges)
+          AND node_id NOT IN (SELECT target FROM synaptic_edges)
+        """
+    )
+    after = conn.execute("SELECT COUNT(*) AS count FROM synaptic_edges").fetchone()["count"]
+    _write_learning_event(
+        conn,
+        "synaptic_decay",
+        None,
+        {"factor": factor, "threshold": threshold, "before_edges": before, "after_edges": after, "pruned_edges": len(pruned_ids)},
+    )
+    conn.commit()
+    conn.close()
+    neo4j_status = _neo4j_sink().decay(factor, threshold)
+    return {
+        "state": "completed",
+        "factor": factor,
+        "threshold": threshold,
+        "before_edges": int(before),
+        "after_edges": int(after),
+        "pruned_edges": len(pruned_ids),
+        "neo4j": neo4j_status,
+    }
+
+
+def daemon_status(memory_dir: str = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
+    with _lock:
+        state = _merge_runtime(_read_state(memory_dir))
+        alive = _worker_alive()
+        state["worker_alive"] = alive
+        if state.get("desired_running") and not alive and state.get("state") not in {"failed"}:
+            state["state"] = "resume_needed"
+            state["resume_needed"] = True
+            state["last_round_message"] = (
+                "Local FastAPI was restarted or the daemon worker is not alive. "
+                "Call resume to continue from the persisted memory store."
+            )
+        else:
+            state["resume_needed"] = False
+        state["resource_snapshot"] = _resource_snapshot(memory_dir)
+        state["checkpoint_count"] = len(list(_checkpoint_dir(memory_dir).glob("*.json"))) if _checkpoint_dir(memory_dir).exists() else 0
+        state["local_required"] = True
+        state["deployment_policy"] = "The Vercel deployment stays a small viewer; real Cloud Brain learning runs only beside local FastAPI."
+        _refresh_counts(state, memory_dir)
+        return state
+
+
+def daemon_checkpoint(memory_dir: str = DEFAULT_MEMORY_DIR, reason: str = "manual") -> dict[str, Any]:
+    with _lock:
+        root = _checkpoint_dir(memory_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        state = _read_state(memory_dir)
+        conn = _connect(memory_dir)
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.close()
+        snapshot = {
+            "created_at": utc_now_iso(),
+            "reason": reason,
+            "daemon": state,
+            "memory": _safe_memory_status(memory_dir),
+            "synaptic": _synaptic_status(memory_dir),
+        }
+        filename = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{reason.replace(' ', '-')[:32]}.json"
+        (root / filename).write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+        state["last_checkpoint_at"] = snapshot["created_at"]
+        state["last_checkpoint_path"] = str(root / filename)
+        _write_state(state, memory_dir)
+        return daemon_status(memory_dir)
+
+
+def tick_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, force: bool = False, run_decay: bool = True) -> dict[str, Any]:
+    with _lock:
+        state = _read_state(memory_dir)
+        snapshot = _resource_snapshot(memory_dir)
+        blocker = _resource_blocker(snapshot)
+        now = utc_now_iso()
+        if blocker:
+            state.update(
+                {
+                    "state": "failed",
+                    "desired_running": False,
+                    "last_error": blocker,
+                    "resource_warning": blocker,
+                    "last_heartbeat_at": now,
+                    "last_round_message": "Resource guard stopped the daemon before the workstation became unstable.",
+                }
+            )
+            _write_state(_refresh_counts(state, memory_dir), memory_dir)
+            return daemon_status(memory_dir)
+
+        ingest_result = ingest_raw_documents(
+            raw_dir=str(state.get("raw_dir") or DEFAULT_RAW_DIR),
+            cleaned_dir=str(state.get("cleaned_dir") or DEFAULT_CLEANED_DIR),
+            ontology_dir=str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR),
+            memory_dir=memory_dir,
+            increment=float(state.get("potentiation_increment") or DEFAULT_POTENTIATION_INCREMENT),
+            min_file_age_seconds=0.0 if force else 0.5,
+        )
+        watch_dirs = list(state.get("watch_dirs") or [DEFAULT_RAW_DIR, DEFAULT_CLEANED_DIR, DEFAULT_ONTOLOGY_DIR])
+        fingerprint = _input_fingerprint(watch_dirs)
+        memory = _safe_memory_status(memory_dir)
+        decay_result = None
+        last_decay = _parse_iso(state.get("last_decay_at")) or 0
+        due_for_decay = run_decay and (time.time() - last_decay >= float(state.get("decay_interval_seconds") or DEFAULT_DECAY_INTERVAL_SECONDS))
+        if due_for_decay:
+            decay_result = run_synaptic_decay(
+                memory_dir,
+                factor=float(state.get("decay_factor") or DEFAULT_DECAY_FACTOR),
+                threshold=float(state.get("prune_threshold") or DEFAULT_PRUNE_THRESHOLD),
+            )
+            state["last_decay_at"] = now
+
+        needs_build = (
+            force
+            or ingest_result.get("ingested", 0) > 0
+            or state.get("last_input_fingerprint") != fingerprint["fingerprint"]
+            or memory.get("state") != "completed"
+        )
+        if needs_build:
+            _run_ontology(str(state.get("cleaned_dir") or DEFAULT_CLEANED_DIR), str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR))
+            result = build_memory(
+                cleaned_dir=str(state.get("cleaned_dir") or DEFAULT_CLEANED_DIR),
+                ontology_dir=str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR),
+                memory_dir=memory_dir,
+            )
+            action = "raw_ingested_and_memory_rebuilt" if ingest_result.get("ingested") else "memory_rebuilt_from_inputs"
+            message = (
+                f"Ingested {ingest_result.get('ingested', 0)} raw files; indexed {fingerprint['file_count']} watched files "
+                f"into {result.get('node_count', 0)} nodes and {result.get('edge_count', 0)} edges."
+            )
+            state["learned_rounds"] = int(state.get("learned_rounds") or 0) + 1
+        else:
+            result = memory
+            action = "heartbeat_no_new_input"
+            message = "No new raw/cleaned/ontology input changed; heartbeat and checkpoint state were preserved."
+            state["idle_rounds"] = int(state.get("idle_rounds") or 0) + 1
+
+        state.update(
+            {
+                "state": "running" if state.get("desired_running") else "idle",
+                "last_heartbeat_at": now,
+                "last_tick_at": now,
+                "last_input_fingerprint": fingerprint["fingerprint"],
+                "last_input_file_count": fingerprint["file_count"],
+                "last_input_bytes": fingerprint["byte_count"],
+                "last_round_action": action,
+                "last_round_message": message,
+                "last_error": None,
+                "resource_warning": None,
+                "total_rounds": int(state.get("total_rounds") or 0) + 1,
+                "last_ingest_result": ingest_result,
+                "last_decay_result": decay_result,
+                "last_ingested_files": ingest_result.get("files", []),
+                "resource_snapshot": snapshot,
+                "latest_event_count": int(result.get("event_count") or 0),
+                "latest_node_count": int(result.get("node_count") or 0),
+                "latest_edge_count": int(result.get("edge_count") or 0),
+            }
+        )
+        _write_state(_merge_runtime(_refresh_counts(state, memory_dir)), memory_dir)
+        return daemon_status(memory_dir)
+
+
+async def _async_worker_loop(memory_dir: str, interval_seconds: int) -> None:
+    while not _stop_event.is_set():
+        await asyncio.to_thread(tick_daemon, memory_dir)
+        status = daemon_status(memory_dir)
+        if status.get("state") == "failed":
+            break
+        last_checkpoint = _parse_iso(status.get("last_checkpoint_at")) or 0
+        if time.time() - last_checkpoint >= 300:
+            await asyncio.to_thread(daemon_checkpoint, memory_dir, "auto")
+        try:
+            await asyncio.wait_for(asyncio.to_thread(_stop_event.wait, interval_seconds), timeout=interval_seconds + 1)
+        except asyncio.TimeoutError:
+            pass
+
+
+def _worker_entry(memory_dir: str, interval_seconds: int) -> None:
+    asyncio.run(_async_worker_loop(memory_dir, interval_seconds))
+
+
+def start_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, interval_seconds: int = DEFAULT_INTERVAL_SECONDS, resume: bool = True) -> dict[str, Any]:
+    global _worker_thread
+    interval_seconds = max(5, min(3600, int(interval_seconds or DEFAULT_INTERVAL_SECONDS)))
+    with _lock:
+        if _worker_alive():
+            return daemon_status(memory_dir)
+        state = _read_state(memory_dir)
+        if not resume:
+            state = _default_state()
+        now = utc_now_iso()
+        state.update(
+            {
+                "state": "running",
+                "desired_running": True,
+                "resume_needed": False,
+                "started_at": state.get("started_at") if resume and state.get("started_at") else now,
+                "last_heartbeat_at": now,
+                "interval_seconds": interval_seconds,
+                "last_error": None,
+                "last_round_message": "Local Cloud Brain hippocampus daemon is running.",
+            }
+        )
+        state["reboot_resilience"] = {
+            **state.get("reboot_resilience", {}),
+            "state_file": str(_state_path(memory_dir)),
+            "checkpoint_dir": str(_checkpoint_dir(memory_dir)),
+            "sqlite_wal": str(_db_path(memory_dir)),
+            "heartbeat_interval_seconds": interval_seconds,
+        }
+        _write_state(state, memory_dir)
+        _stop_event.clear()
+        _worker_thread = threading.Thread(target=_worker_entry, args=(memory_dir, interval_seconds), daemon=True, name="homage-hippocampus-daemon")
+        _worker_thread.start()
+        return daemon_status(memory_dir)
+
+
+def resume_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, interval_seconds: int = DEFAULT_INTERVAL_SECONDS) -> dict[str, Any]:
+    return start_daemon(memory_dir=memory_dir, interval_seconds=interval_seconds, resume=True)
+
+
+def stop_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, reason: str = "manual") -> dict[str, Any]:
+    with _lock:
+        _stop_event.set()
+        state = _read_state(memory_dir)
+        state.update(
+            {
+                "state": "stopped",
+                "desired_running": False,
+                "resume_needed": False,
+                "last_heartbeat_at": utc_now_iso(),
+                "last_round_message": f"Local Cloud Brain hippocampus daemon stopped: {reason}.",
+            }
+        )
+        _write_state(_merge_runtime(state), memory_dir)
+    if _worker_thread and _worker_thread.is_alive():
+        _worker_thread.join(timeout=2)
+    return daemon_checkpoint(memory_dir, f"stop-{reason}")
+
+
+if os.environ.get("HOMAGE_AUTOSTART_DAEMON") == "1":
+    saved = _read_state(DEFAULT_MEMORY_DIR)
+    if saved.get("desired_running"):
+        start_daemon(DEFAULT_MEMORY_DIR, int(saved.get("interval_seconds") or DEFAULT_INTERVAL_SECONDS), resume=True)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from knowledge_bakery import daemon_checkpoint, daemon_status, resume_daemon, start_daemon, stop_daemon, tick_daemon
+from knowledge_bakery import daemon_checkpoint, daemon_status, resume_daemon, run_synaptic_decay, start_daemon, stop_daemon, tick_daemon
 
 
 router = APIRouter(prefix="/api/learning/daemon", tags=["learning"])
@@ -24,6 +24,12 @@ class DaemonCheckpointRequest(BaseModel):
 
 class DaemonTickRequest(BaseModel):
     force: bool = False
+    run_decay: bool = True
+
+
+class DaemonDecayRequest(BaseModel):
+    factor: float = Field(default=0.95, ge=0.0, le=1.0)
+    threshold: float = Field(default=0.05, ge=0.0, le=1.0)
 
 
 @router.get("/status")
@@ -53,4 +59,9 @@ def learning_daemon_checkpoint(request: DaemonCheckpointRequest) -> dict:
 
 @router.post("/tick")
 def learning_daemon_tick(request: DaemonTickRequest) -> dict:
-    return tick_daemon(force=request.force)
+    return tick_daemon(force=request.force, run_decay=request.run_decay)
+
+
+@router.post("/decay")
+def learning_daemon_decay(request: DaemonDecayRequest) -> dict:
+    return run_synaptic_decay(factor=request.factor, threshold=request.threshold)

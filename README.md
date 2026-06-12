@@ -173,6 +173,18 @@ Alpha Cloud Brain API:
 - `POST /api/cloud-brain/consolidate`
 - `POST /api/cloud-brain/prune`
 
+Local Hippocampus learner:
+
+- Drop `.txt` or `.md` files into `data/raw`.
+- Start local FastAPI and call `POST /api/learning/daemon/start`.
+- The daemon watches `data/raw`, moves stable files into `data/cleaned`, runs
+  `ontology_forge`, potentiates repeated relation edges in SQLite WAL, refreshes
+  the GraphRAG memory index, and checkpoints state under `data/memory`.
+- `POST /api/learning/daemon/decay` applies synaptic decay/pruning.
+- Neo4j mirroring is optional via `NEO4J_URI`, `NEO4J_USER`,
+  `NEO4J_PASSWORD`, and optional `NEO4J_DATABASE`; SQLite remains the fallback
+  source of truth when Neo4j is not configured.
+
 Optional autostart after FastAPI startup:
 
 ```powershell

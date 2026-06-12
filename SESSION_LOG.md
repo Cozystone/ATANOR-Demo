@@ -883,3 +883,36 @@
   until a local worker or shared backend is connected.
 - Updated README, Project State, Task Board, Context Capsule, and Codex research
   prompt references to use Cloud Brain terminology.
+
+## 2026-06-12 - Hippocampus continuous learning daemon
+
+- Reviewed DeepKE and ScrapeGraphAI at a technical level:
+  - DeepKE informs the separation of entity/relation/attribute extraction.
+  - ScrapeGraphAI informs graph-shaped document/web pipeline orchestration.
+  - Homage keeps external LLM generation disabled.
+- Added `packages/knowledge_bakery/knowledge_bakery/learning_daemon.py`.
+- Rewired `knowledge_bakery.__init__` so existing daemon APIs now use the new
+  Hippocampus implementation.
+- Added raw ingestion:
+  - watches `data/raw` for `.txt` and `.md`
+  - moves stable files into `data/cleaned`
+  - runs `ontology_forge` on the new-file batch
+  - refreshes global `data/ontology`
+  - rebuilds local GraphRAG memory
+- Added synaptic persistence tables in SQLite WAL:
+  `synaptic_nodes`, `synaptic_edges`, `ingested_files`, and `learning_events`.
+- Added potentiation:
+  repeated edge UPSERTs increment `weight` by `0.1` and increment `count`.
+- Added decay/pruning:
+  `run_synaptic_decay` multiplies weights by a decay factor and deletes weak
+  edges plus orphan nodes.
+- Added optional Neo4j mirroring using Cypher `MERGE` when `NEO4J_URI` and
+  credentials are configured.
+- Added `POST /api/learning/daemon/decay` and wired non-dry-run Cloud Brain
+  prune to the local decay path.
+- Added regression tests proving raw ingestion, potentiation, decay/pruning,
+  daemon API status/checkpoint, and Cloud Brain facade behavior.
+- Verified locally with FastAPI on `http://127.0.0.1:8047`: started the daemon,
+  forced one ingestion tick, moved the two sample raw documents into
+  `data/cleaned`, and confirmed `99` synaptic nodes / `279` synaptic edges in
+  SQLite WAL.

@@ -32,9 +32,28 @@ The local private brain is the user's secure, persistent knowledge graph.
 
 - Storage: `data/memory/homage.db`, SQLite WAL, append-only JSONL events.
 - Scope: private documents, accepted local memories, user's repeated concepts.
-- Runtime: local FastAPI + Knowledge Bakery worker.
+- Runtime: local FastAPI + Knowledge Bakery Hippocampus worker.
 - Rule: never upload private nodes to Cloud Brain unless a future explicit
   sharing workflow is added.
+
+### Local Hippocampus Module
+
+The current Alpha implementation adds a real continuous cumulative learner in
+`packages/knowledge_bakery/knowledge_bakery/learning_daemon.py`.
+
+- Watches `data/raw` for `.txt` and `.md` files.
+- Moves stable files into `data/cleaned`.
+- Runs `ontology_forge` on each new-file batch. This follows the DeepKE-style
+  split of entity/relation/attribute extraction, but stays deterministic and
+  local in Alpha.
+- Refreshes the global `data/ontology` snapshot from all cleaned documents.
+- Rebuilds the local memory index for GraphRAG and native graph-token
+  generation.
+- Persists a separate synaptic graph in SQLite WAL tables:
+  `synaptic_nodes`, `synaptic_edges`, `ingested_files`, and `learning_events`.
+- Optionally mirrors potentiation/decay into Neo4j when `NEO4J_URI`,
+  `NEO4J_USER`, and `NEO4J_PASSWORD` are configured. Without Neo4j, SQLite WAL
+  remains the source of truth.
 
 ### 2. Cloud Brain
 
@@ -111,6 +130,17 @@ Useful signals:
 - successful Guardrail support
 - appearance in final accepted answers
 
+In Alpha this is implemented as an UPSERT over the local synaptic graph:
+
+```text
+ON CONFLICT(edge_id):
+  weight = weight + potentiation_increment
+  count = count + 1
+```
+
+The optional Neo4j mirror uses Cypher `MERGE` on `(source)-[:RELATED
+{relation}]->(target)` and applies the same weight increment.
+
 ### 3. Consolidation
 
 When an edge passes the threshold, it moves from working memory to long-term
@@ -160,6 +190,12 @@ if weight < prune_threshold and age > minimum_age:
 This is how Homage can learn continuously without allowing the graph to grow
 without bound.
 
+`POST /api/learning/daemon/decay` and non-dry-run
+`POST /api/cloud-brain/prune` now call the local decay routine. It multiplies
+SQLite synaptic edge weights, removes edges below threshold, then deletes
+orphan synaptic nodes. If Neo4j is configured, the same decay/prune job is
+mirrored there.
+
 ## Resource Strategy
 
 Cloud Brain must be designed around hot windows, not full graph loads.
@@ -193,13 +229,22 @@ Alpha facade implemented now:
 - `POST /api/cloud-brain/consolidate`
   - maps to the local daemon tick/consolidation path.
 - `POST /api/cloud-brain/prune`
-  - alpha endpoint returns a pruning plan; mutating decay/prune is still a
-    research task.
+  - dry-run returns a plan; non-dry-run calls local synaptic decay/pruning.
 
 The existing `/api/learning/daemon/*` routes remain as internal local-worker
 controls. `/api/cloud-brain/*` is the public-facing contract. In Alpha it is a
 local facade; a later milestone can replace its storage layer with a governed
 shared graph protocol.
+
+Internal local-worker endpoints:
+
+- `GET /api/learning/daemon/status`
+- `POST /api/learning/daemon/start`
+- `POST /api/learning/daemon/resume`
+- `POST /api/learning/daemon/tick`
+- `POST /api/learning/daemon/decay`
+- `POST /api/learning/daemon/checkpoint`
+- `POST /api/learning/daemon/stop`
 
 ## Lab Integration
 

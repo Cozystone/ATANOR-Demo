@@ -90,6 +90,12 @@
 - [x] Add Alpha `/api/cloud-brain/status`, `/api/cloud-brain/query`,
       `/api/cloud-brain/ingest`, `/api/cloud-brain/consolidate`, and
       `/api/cloud-brain/prune` facade endpoints in FastAPI and Next.js.
+- [x] Add Hippocampus continuous learning daemon:
+      `data/raw` watcher, ontology_forge ingestion, SQLite WAL synaptic graph,
+      UPSERT potentiation, decay/pruning, checkpointing, and optional Neo4j
+      mirror.
+- [x] Add `POST /api/learning/daemon/decay` and wire Cloud Brain prune to the
+      local decay path when not dry-run.
 
 ## Next
 

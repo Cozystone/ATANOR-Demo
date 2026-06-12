@@ -211,6 +211,16 @@ Latest local commit before this update: Clarify live learning limits and safety 
     `/ingest`, `/consolidate`, `/prune`
   - public cloud storage is still future; current facade is local-daemon-backed
   - the manual Guardrail checker is hidden
+- Hippocampus daemon implementation added:
+  - new `knowledge_bakery.learning_daemon`
+  - `data/raw` `.txt`/`.md` watcher
+  - moves new files to `data/cleaned`
+  - runs `ontology_forge` per batch and refreshes global `data/ontology`
+  - stores `synaptic_nodes`, `synaptic_edges`, `ingested_files`, and
+    `learning_events` in SQLite WAL
+  - repeated edges potentiate with `weight += 0.1`
+  - decay/pruning deletes low-weight edges and orphan nodes
+  - optional Neo4j Cypher `MERGE` mirror if env credentials exist
   - collapsed chat status shows RAG confidence, evidence count, and Guard score
 - Raised the local memory graph display from a demo cap to 900 nodes and 1,800
   edges so real local memory growth is visible.
