@@ -14,6 +14,21 @@ Deployment:
 - Current production deployment:
   https://web-1bwyui7xe-anthony-kims-projects-bc874109.vercel.app
 
+Latest GitHub / Desktop packaging update:
+
+- Public repository: https://github.com/Cozystone/homage1.0
+- README now presents the project as `신경망-기호 하이브리드 로컬 AI 엔진
+  Homage1.0`, with a screenshot gallery, research thesis, Local Brain / Cloud
+  Brain split, three-step Collect -> Learn -> Output flow, quick start, desktop
+  build instructions, and suggested repository topics.
+- GitHub Actions Desktop Build succeeded on tag `v0.1.0-alpha.6`.
+- Produced workflow artifacts:
+  - `homage-desktop-windows-latest` (`43,960,906` bytes)
+  - `homage-desktop-macos-latest` (`45,757,947` bytes)
+- Local Windows Tauri build is still blocked by this machine's Application
+  Control Policy (`os error 4551`), so the trusted GitHub hosted runner is the
+  current packaging proof.
+
 Latest local verification links:
 
 - Lab: http://127.0.0.1:3056/?workspace=lab&api=http://127.0.0.1:8044
