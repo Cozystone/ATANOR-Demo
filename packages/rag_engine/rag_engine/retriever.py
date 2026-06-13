@@ -365,7 +365,7 @@ def _node_score(node: dict[str, Any], query_terms: set[str]) -> float:
     return exact + partial * 0.35
 
 
-def _match_graph(query_terms: set[str], memory_dir: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[list[str]], set[str]]:
+def _match_graph(query_terms: set[str], memory_dir: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[list[str]], set[str], dict[str, Any]]:
     subgraph = query_lazy_subgraph(
         list(query_terms),
         memory_dir,
@@ -377,7 +377,7 @@ def _match_graph(query_terms: set[str], memory_dir: str) -> tuple[list[dict[str,
     matched_edges = subgraph["edges"][:18]
     graph_paths = subgraph["graph_paths"]
     expanded_terms = set(subgraph["expanded_terms"])
-    return matched_nodes, matched_edges, graph_paths, expanded_terms
+    return matched_nodes, matched_edges, graph_paths, expanded_terms, subgraph
 
 
 def _phrase_bonus(query: str, text: str, query_terms: list[str]) -> float:
@@ -543,7 +543,7 @@ def query_graphrag(
 
     query_counts = Counter(_tokens(query))
     query_terms = set(query_counts)
-    matched_nodes, matched_edges, graph_paths, expanded_terms = _match_graph(query_terms, memory_dir)
+    matched_nodes, matched_edges, graph_paths, expanded_terms, subgraph = _match_graph(query_terms, memory_dir)
 
     chunks = query_lazy_chunks(query, expanded_terms, memory_dir)
     ranked_docs = _rank_chunks(query, query_counts, expanded_terms, chunks)
@@ -592,6 +592,11 @@ def query_graphrag(
             "expanded_terms": sorted(expanded_terms)[:30],
             "ranked_chunk_ids": [doc["chunk_id"] for doc in ranked_docs[:8]],
             "matched_node_ids": [str(node.get("id", "")) for node in matched_nodes],
+            "ghost_shell": subgraph.get("ghost_shell"),
+            "fetch_sequence": subgraph.get("fetch_logs", []),
+            "active_hashes": subgraph.get("active_hashes", []),
         },
+        "ghost_shell": subgraph.get("ghost_shell"),
+        "fetch_sequence": subgraph.get("fetch_logs", []),
         "confidence": confidence,
     }

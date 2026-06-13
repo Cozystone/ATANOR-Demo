@@ -32,6 +32,7 @@ STOPWORDS = {
 
 SCHEMA_VERSION = 1
 VECTOR_SOURCE = "local_relation_projection_v1"
+GHOST_VECTOR_SOURCE = "ghost_shell_content_addressed_v1"
 AUTO_FLUSH_FRAGMENT_COUNT = 50
 AUTO_FLUSH_SECONDS = 180.0
 ACTION_HINTS = {
@@ -146,6 +147,10 @@ def _hash_unit(value: str, salt: str) -> float:
     return (integer / ((1 << 64) - 1)) * 2 - 1
 
 
+def _content_hash(raw_text: str) -> str:
+    return hashlib.sha256(raw_text.encode("utf-8", errors="ignore")).hexdigest()
+
+
 def _projection(node_id: str, degree: int, count: int) -> tuple[float, float, float]:
     scale = 1.0 + math.log1p(max(1, degree + count)) * 0.42
     return (
@@ -162,6 +167,11 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA busy_timeout=5000;")
     return conn
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()
+    return bool(row)
 
 
 def _init_schema(conn: sqlite3.Connection) -> None:
@@ -256,10 +266,29 @@ def _init_schema(conn: sqlite3.Connection) -> None:
           result_json TEXT NOT NULL,
           created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS payload_vault (
+          hash_key TEXT PRIMARY KEY,
+          raw_text TEXT NOT NULL,
+          metadata_json TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS ghost_nodes (
+          node_hash TEXT PRIMARY KEY,
+          dim0 REAL NOT NULL,
+          dim1 REAL NOT NULL,
+          dim2 REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS ghost_edges (
+          source_hash TEXT NOT NULL,
+          target_hash TEXT NOT NULL,
+          weight REAL NOT NULL,
+          PRIMARY KEY(source_hash, target_hash)
+        );
         CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source);
         CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target);
         CREATE INDEX IF NOT EXISTS idx_nodes_label ON nodes(label);
         CREATE INDEX IF NOT EXISTS idx_activation_query ON activation_events(query);
+        CREATE INDEX IF NOT EXISTS idx_ghost_edges_source ON ghost_edges(source_hash);
+        CREATE INDEX IF NOT EXISTS idx_ghost_edges_target ON ghost_edges(target_hash);
         """
     )
     conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", ("schema_version", str(SCHEMA_VERSION)))
@@ -279,6 +308,9 @@ def _reset_tables(conn: sqlite3.Connection) -> None:
         "activation_events",
         "vector_rows",
         "query_traces",
+        "payload_vault",
+        "ghost_nodes",
+        "ghost_edges",
     ]:
         conn.execute(f"DELETE FROM {table}")
 
@@ -295,6 +327,40 @@ def _write_event(event_file, conn: sqlite3.Connection, event_type: str, subject_
     conn.execute(
         "INSERT INTO memory_events(event_type, subject_id, payload_json, created_at) VALUES (?, ?, ?, ?)",
         (event_type, subject_id, json.dumps(payload, ensure_ascii=False), created_at),
+    )
+
+
+def _upsert_payload_vault(conn: sqlite3.Connection, hash_key: str, raw_text: str, metadata: dict[str, Any]) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO payload_vault(hash_key, raw_text, metadata_json)
+        VALUES (?, ?, ?)
+        """,
+        (hash_key, raw_text, json.dumps(metadata, ensure_ascii=False, sort_keys=True)),
+    )
+
+
+def _upsert_ghost_node(conn: sqlite3.Connection, node_hash: str, projection: tuple[float, float, float]) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO ghost_nodes(node_hash, dim0, dim1, dim2)
+        VALUES (?, ?, ?, ?)
+        """,
+        (node_hash, projection[0], projection[1], projection[2]),
+    )
+
+
+def _upsert_ghost_edge(conn: sqlite3.Connection, source_hash: str, target_hash: str, weight: float) -> None:
+    if source_hash == target_hash:
+        return
+    conn.execute(
+        """
+        INSERT INTO ghost_edges(source_hash, target_hash, weight)
+        VALUES (?, ?, ?)
+        ON CONFLICT(source_hash, target_hash) DO UPDATE SET
+          weight = MAX(ghost_edges.weight, excluded.weight)
+        """,
+        (source_hash, target_hash, round(max(0.0, float(weight)), 6)),
     )
 
 
@@ -341,6 +407,8 @@ def build_memory(
     edge_docs: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     transitions: Counter[tuple[str, str]] = Counter()
     cooccurs: Counter[tuple[str, str]] = Counter()
+    ghost_payloads: dict[str, tuple[str, dict[str, Any]]] = {}
+    ghost_edge_counts: Counter[tuple[str, str]] = Counter()
     source_totals: Counter[str] = Counter()
     pair_totals: Counter[tuple[str, str]] = Counter()
     flush = _AutoFlush(conn)
@@ -357,6 +425,16 @@ def build_memory(
                 "confidence": float(node.get("confidence") or 0.55),
                 "evidence_doc_ids": list(node.get("evidence_doc_ids") or []),
             }
+            node_hash = _content_hash(label)
+            ghost_payloads[node_hash] = (
+                label,
+                {
+                    "kind": "ontology_node",
+                    "legacy_id": node_id,
+                    "type": node_meta[node_id]["type"],
+                    "evidence_doc_ids": node_meta[node_id]["evidence_doc_ids"],
+                },
+            )
             _write_event(event_file, conn, "node_imported", node_id, node_meta[node_id])
             flush.mark()
 
@@ -393,6 +471,17 @@ def build_memory(
                     "INSERT OR REPLACE INTO chunks(chunk_id, doc_id, text, token_count) VALUES (?, ?, ?, ?)",
                     (chunk_id, doc_id, chunk, len(tokens)),
                 )
+                chunk_hash = _content_hash(chunk)
+                ghost_payloads[chunk_hash] = (
+                    chunk,
+                    {
+                        "kind": "chunk",
+                        "doc_id": doc_id,
+                        "chunk_id": chunk_id,
+                        "path": str(path),
+                        "token_count": len(tokens),
+                    },
+                )
                 _write_event(event_file, conn, "chunk_indexed", chunk_id, {"doc_id": doc_id, "token_count": len(tokens)})
                 flush.mark()
                 for token in tokens:
@@ -409,11 +498,38 @@ def build_memory(
                     )
                     if doc_id not in node_meta[node_id]["evidence_doc_ids"]:
                         node_meta[node_id]["evidence_doc_ids"].append(doc_id)
+                    token_hash = _content_hash(token)
+                    ghost_payloads[token_hash] = (
+                        token,
+                        {
+                            "kind": "token",
+                            "legacy_id": node_id,
+                            "type": _node_type_for_token(token),
+                            "doc_id": doc_id,
+                        },
+                    )
+                    ghost_edge_counts[(token_hash, chunk_hash)] += 1
                 for left, right in zip(tokens, tokens[1:]):
                     left_id = _slug(left)
                     right_id = _slug(right)
                     phrase_id = _phrase_node_id(left, right)
                     phrase_label = f"{left} {right}"
+                    phrase_hash = _content_hash(phrase_label)
+                    left_hash = _content_hash(left)
+                    right_hash = _content_hash(right)
+                    ghost_payloads[phrase_hash] = (
+                        phrase_label,
+                        {
+                            "kind": "phrase",
+                            "legacy_id": phrase_id,
+                            "type": "phrase",
+                            "doc_id": doc_id,
+                        },
+                    )
+                    ghost_edge_counts[(left_hash, right_hash)] += 1
+                    ghost_edge_counts[(left_hash, phrase_hash)] += 1
+                    ghost_edge_counts[(phrase_hash, right_hash)] += 1
+                    ghost_edge_counts[(phrase_hash, chunk_hash)] += 1
                     node_counts[phrase_id] += 1
                     node_meta.setdefault(
                         phrase_id,
@@ -442,6 +558,9 @@ def build_memory(
                             continue
                         left_id = _slug(left)
                         right_id = _slug(right)
+                        left_hash = _content_hash(left)
+                        right_hash = _content_hash(right)
+                        ghost_edge_counts[(left_hash, right_hash)] += 1
                         cooccurs[(left_id, right_id)] += 1
                         key = (left_id, "co_occurs", right_id)
                         edge_counts[key] += 1
@@ -449,14 +568,28 @@ def build_memory(
                         source_totals[left_id] += 1
                         pair_totals[(left_id, right_id)] += 1
 
+    node_hashes: dict[str, str] = {}
     for node_id, count in node_counts.items():
         meta = node_meta.get(node_id, {"label": node_id, "type": "token", "confidence": 0.5, "evidence_doc_ids": []})
+        label = str(meta.get("label") or node_id)
+        node_hash = _content_hash(label)
+        node_hashes[node_id] = node_hash
+        ghost_payloads[node_hash] = (
+            label,
+            {
+                "kind": "node",
+                "legacy_id": node_id,
+                "type": str(meta.get("type") or "token"),
+                "count": int(count),
+                "evidence_doc_ids": sorted(set(str(doc) for doc in meta.get("evidence_doc_ids") or [])),
+            },
+        )
         confidence = min(0.98, float(meta.get("confidence") or 0.5) + math.log1p(count) * 0.035)
         conn.execute(
             "INSERT OR REPLACE INTO nodes(node_id, label, type, count, confidence, evidence_doc_ids) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 node_id,
-                str(meta.get("label") or node_id),
+                label,
                 str(meta.get("type") or "token"),
                 int(count),
                 round(confidence, 4),
@@ -469,6 +602,10 @@ def build_memory(
         source_total = max(1, source_totals[source])
         pair_total = max(1, pair_totals[(source, target)])
         confidence = min(0.96, 0.42 + math.log1p(count) * 0.09 + len(edge_docs[(source, relation, target)]) * 0.03)
+        source_hash = node_hashes.get(source)
+        target_hash = node_hashes.get(target)
+        if source_hash and target_hash:
+            ghost_edge_counts[(source_hash, target_hash)] += int(count)
         conn.execute(
             "INSERT OR REPLACE INTO edges(edge_id, source, relation, target, confidence, count, evidence_doc_ids) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
@@ -536,7 +673,26 @@ def build_memory(
         )
         flush.mark()
 
+    ghost_degrees: Counter[str] = Counter()
+    for (source_hash, target_hash), count in ghost_edge_counts.items():
+        ghost_degrees[source_hash] += count
+        ghost_degrees[target_hash] += count
+
+    for hash_key, (raw_text, metadata) in ghost_payloads.items():
+        count_hint = int(metadata.get("count") or metadata.get("token_count") or ghost_degrees[hash_key] or 1)
+        _upsert_payload_vault(conn, hash_key, raw_text, metadata)
+        _upsert_ghost_node(conn, hash_key, _projection(hash_key, ghost_degrees[hash_key], count_hint))
+        flush.mark()
+
+    for (source_hash, target_hash), count in ghost_edge_counts.items():
+        source_total = max(1, ghost_degrees[source_hash])
+        weight = min(1.0, max(0.0001, count / source_total))
+        _upsert_ghost_edge(conn, source_hash, target_hash, weight)
+        flush.mark()
+
     conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", ("built_at", utc_now_iso()))
+    conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", ("ghost_shell", "active"))
+    conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", ("ghost_vector_source", GHOST_VECTOR_SOURCE))
     flush.flush()
     conn.commit()
     status = memory_status(memory_dir)
@@ -571,9 +727,16 @@ def memory_status(memory_dir: str = "data/memory") -> dict[str, Any]:
             "cooccurrence_count": 0,
             "phrase_count": 0,
             "predicate_count": 0,
+            "ghost_hash_count": 0,
+            "ghost_edge_count": 0,
+            "payload_vault_count": 0,
+            "ghost_shell": {"system_state": "GHOST SHELL EMPTY"},
             "built_at": None,
         }
     conn = _connect(paths.db_path)
+    has_ghost_nodes = _table_exists(conn, "ghost_nodes")
+    has_ghost_edges = _table_exists(conn, "ghost_edges")
+    has_payload_vault = _table_exists(conn, "payload_vault")
     counts = {
         "document_count": conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0],
         "chunk_count": conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0],
@@ -585,6 +748,9 @@ def memory_status(memory_dir: str = "data/memory") -> dict[str, Any]:
         "cooccurrence_count": conn.execute("SELECT COUNT(*) FROM cooccurrence_windows").fetchone()[0],
         "phrase_count": conn.execute("SELECT COUNT(*) FROM nodes WHERE type = 'phrase'").fetchone()[0],
         "predicate_count": conn.execute("SELECT COUNT(*) FROM nodes WHERE type IN ('predicate', 'verb')").fetchone()[0],
+        "ghost_hash_count": conn.execute("SELECT COUNT(*) FROM ghost_nodes").fetchone()[0] if has_ghost_nodes else 0,
+        "ghost_edge_count": conn.execute("SELECT COUNT(*) FROM ghost_edges").fetchone()[0] if has_ghost_edges else 0,
+        "payload_vault_count": conn.execute("SELECT COUNT(*) FROM payload_vault").fetchone()[0] if has_payload_vault else 0,
     }
     built = conn.execute("SELECT value FROM meta WHERE key = 'built_at'").fetchone()
     conn.close()
@@ -594,6 +760,14 @@ def memory_status(memory_dir: str = "data/memory") -> dict[str, Any]:
         "event_log_path": str(paths.event_path),
         "built_at": built["value"] if built else None,
         "vector_source": VECTOR_SOURCE if counts["vector_count"] else None,
+        "ghost_shell": {
+            "system_state": "GHOST SHELL ACTIVE" if counts["ghost_hash_count"] else "GHOST SHELL EMPTY",
+            "control_plane_hashes": counts["ghost_hash_count"],
+            "control_plane_edges": counts["ghost_edge_count"],
+            "payload_vault_records": counts["payload_vault_count"],
+            "control_plane": f"Loaded {counts['ghost_hash_count']} Schematic Hashes (Memory: Minimal)",
+            "data_plane": "Vaulting Payloads to Edge Storage",
+        },
         **counts,
     }
 
@@ -603,6 +777,60 @@ def export_graph(memory_dir: str = "data/memory", limit: int = 600) -> dict[str,
     if not paths.db_path.exists():
         return {"nodes": [], "edges": [], "status": memory_status(memory_dir)}
     conn = _connect(paths.db_path)
+    if _table_exists(conn, "ghost_nodes") and conn.execute("SELECT COUNT(*) FROM ghost_nodes").fetchone()[0] > 0:
+        node_rows = conn.execute(
+            """
+            SELECT node_hash, dim0, dim1, dim2
+            FROM ghost_nodes
+            ORDER BY node_hash ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        visible_ids = {row["node_hash"] for row in node_rows}
+        edge_rows = conn.execute(
+            """
+            SELECT source_hash, target_hash, weight
+            FROM ghost_edges
+            ORDER BY weight DESC
+            LIMIT ?
+            """,
+            (limit * 4,),
+        ).fetchall()
+        status = memory_status(memory_dir)
+        conn.close()
+        nodes = [
+            {
+                "id": row["node_hash"],
+                "node_hash": row["node_hash"],
+                "label": f"ghost:{str(row['node_hash'])[:12]}",
+                "type": "ghost_hash",
+                "count": 1,
+                "confidence": 0.5,
+                "x": row["dim0"],
+                "y": row["dim1"],
+                "z": row["dim2"],
+                "projection_source": GHOST_VECTOR_SOURCE,
+                "payload_resolved": False,
+            }
+            for row in node_rows
+        ]
+        edges = [
+            {
+                "source": row["source_hash"],
+                "target": row["target_hash"],
+                "weight": row["weight"],
+            }
+            for row in edge_rows
+            if row["source_hash"] in visible_ids and row["target_hash"] in visible_ids
+        ]
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "status": status,
+            "source": "ghost_topology_control_plane",
+            "ghost_shell": status.get("ghost_shell"),
+        }
     node_rows = conn.execute(
         """
         SELECT n.node_id, n.label, n.type, n.count, n.confidence, v.dim0, v.dim1, v.dim2

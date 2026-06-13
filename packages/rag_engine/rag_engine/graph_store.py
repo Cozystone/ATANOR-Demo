@@ -6,6 +6,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
+from .ghost_graph import ghost_status, ghost_store_available, query_ghost_rag_context
+
 
 DEFAULT_MEMORY_DIR = "data/memory"
 DEFAULT_DB_NAME = "homage.db"
@@ -311,6 +313,36 @@ def query_lazy_subgraph(
     max_depth = max(1, min(tier_depth, int(max_depth)))
     max_nodes = max(1, min(tier_nodes, int(max_nodes)))
     max_edges = max(1, min(tier_edges, int(max_edges)))
+    if ghost_store_available(memory_dir):
+        ghost = query_ghost_rag_context(
+            " ".join(str(term) for term in seed_terms),
+            memory_dir,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            max_edges=max_edges,
+        )
+        edges = [
+            {
+                "source_hash": edge["source_hash"],
+                "target_hash": edge["target_hash"],
+                "weight": edge["weight"],
+            }
+            for edge in ghost.get("edges", [])
+        ]
+        return {
+            "state": ghost.get("state", "completed"),
+            "system_state": "GHOST SHELL ACTIVE",
+            "nodes": ghost.get("nodes", []),
+            "edges": edges,
+            "graph_paths": ghost.get("graph_paths", []),
+            "expanded_terms": set(seed_terms),
+            "seed_node_ids": ghost.get("active_hashes", []),
+            "active_hashes": ghost.get("active_hashes", []),
+            "payload_docs": ghost.get("payload_docs", []),
+            "fetch_logs": ghost.get("fetch_logs", []),
+            "ghost_shell": ghost.get("telemetry", ghost_status(memory_dir)),
+            "limits": {"max_depth": max_depth, "max_nodes": max_nodes, "max_edges": max_edges, "hardware_tier": tier},
+        }
     conn = _connect_readonly(memory_dir)
     if not conn:
         return {
@@ -392,6 +424,36 @@ def query_lazy_chunks(
     limit: int = 256,
 ) -> list[dict[str, Any]]:
     """Return bounded candidate chunks from SQLite; ranking stays in retriever."""
+
+    if ghost_store_available(memory_dir):
+        ghost = query_ghost_rag_context(
+            query,
+            memory_dir,
+            max_depth=3,
+            max_nodes=512,
+            max_edges=2048,
+            active_hash_limit=min(22, max(1, int(limit))),
+        )
+        chunks: list[dict[str, Any]] = []
+        for doc in ghost.get("payload_docs", []):
+            text = str(doc.get("text") or "")
+            token_counts = Counter(_tokens(text))
+            if not token_counts:
+                continue
+            chunks.append(
+                {
+                    "doc_id": str(doc.get("doc_id") or "payload-vault"),
+                    "chunk_id": str(doc.get("chunk_id") or f"{doc.get('hash_key')}#payload"),
+                    "path": str(doc.get("path") or f"payload-vault://{doc.get('hash_key')}"),
+                    "text": text,
+                    "tokens": token_counts,
+                    "token_total": sum(token_counts.values()),
+                    "hash_key": doc.get("hash_key"),
+                    "metadata": doc.get("metadata", {}),
+                    "ghost_shell": ghost.get("telemetry", {}),
+                }
+            )
+        return chunks
 
     conn = _connect_readonly(memory_dir)
     if not conn:

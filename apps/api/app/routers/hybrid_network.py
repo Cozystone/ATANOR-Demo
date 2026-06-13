@@ -4,7 +4,9 @@ from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from knowledge_bakery import memory_status
 
+from app.services.alpha_services import alpha_service
 from app.services.edge_compute_broker import default_edge_compute_broker
 from app.services.hybrid_network_manager import default_hybrid_network_manager, resolve_cloud_knowledge
 
@@ -36,11 +38,28 @@ async def hybrid_network_resolve(request: ResolveNetworkRequest) -> dict[str, An
 @router.get("/edge/status")
 def edge_compute_status() -> dict[str, Any]:
     capacity = default_edge_compute_broker.current_capacity()
+    memory = memory_status()
+    ghost_shell = memory.get("ghost_shell") or {
+        "system_state": "GHOST SHELL EMPTY",
+        "control_plane_hashes": 0,
+        "payload_vault_records": 0,
+    }
+    graphrag = alpha_service.graphrag_status().get("result") or {}
+    fetch_sequence = graphrag.get("fetch_sequence") or graphrag.get("retrieval_trace", {}).get("fetch_sequence") or []
     return {
         "state": "ready",
         "architecture": "edge_compute_broker",
         "cloud_required": False,
         "capacity": capacity.to_metadata(),
+        "ghost_shell": {
+            **ghost_shell,
+            "logs": [
+                "SYSTEM STATE: GHOST SHELL ACTIVE" if ghost_shell.get("system_state") == "GHOST SHELL ACTIVE" else "SYSTEM STATE: GHOST SHELL EMPTY",
+                f"CONTROL PLANE: Loaded {ghost_shell.get('control_plane_hashes', 0)} Schematic Hashes (Memory: Minimal)",
+                "DATA PLANE: Vaulting Payloads to Edge Storage",
+                *fetch_sequence,
+            ],
+        },
     }
 
 

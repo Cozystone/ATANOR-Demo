@@ -21,7 +21,7 @@ type SubscriberNode = {
 };
 
 const DEFAULT_BACKEND = "http://127.0.0.1:8500";
-const ORANGE = "#ff6b35";
+const ORANGE = "#FF5500";
 const BLACK = "#050605";
 const PANEL = "#101310";
 const LINE = "rgba(255,255,255,0.12)";
@@ -122,7 +122,7 @@ function heartbeatLabel(node: SubscriberNode) {
   if (node.heartbeatAgeSeconds === null) return "no heartbeat";
   const ttl = node.heartbeatTtlSeconds;
   const freshness = ttl && node.heartbeatAgeSeconds <= ttl ? "sync" : "stale";
-  return `${freshness} · ${node.heartbeatAgeSeconds}s`;
+  return `${freshness} / ${node.heartbeatAgeSeconds}s`;
 }
 
 function formatLimit(value: number | null) {
@@ -169,6 +169,8 @@ export default function OperatorAdminPage() {
     () => collectPayloadRecords(payload).map((record, index) => normalizeSubscriber(record, asString(payload?.["state"], "unknown"), index)),
     [payload],
   );
+  const ghostShell = isRecord(payload?.["ghost_shell"]) ? payload?.["ghost_shell"] : null;
+  const ghostLogs = asArray(ghostShell?.["logs"]).map((entry) => String(entry));
   const online = subscribers.filter((node) => !node.heartbeatTtlSeconds || (node.heartbeatAgeSeconds ?? Number.POSITIVE_INFINITY) <= node.heartbeatTtlSeconds).length;
   const rootState = asString(payload?.["state"], error ? "degraded" : "waiting");
 
@@ -211,6 +213,34 @@ export default function OperatorAdminPage() {
 
       {error ? <p style={styles.error}>EDGE STATUS DEGRADED · {error}</p> : null}
 
+      <section style={styles.ghostConsole}>
+        <div style={styles.consoleHead}>
+          <span>GHOST SHELL</span>
+          <strong>{asString(ghostShell?.["system_state"], "GHOST SHELL EMPTY")}</strong>
+        </div>
+        <div style={styles.consoleGrid}>
+          <div style={styles.consoleMetric}>
+            <span style={styles.consoleLabel}>CONTROL PLANE</span>
+            <strong>{formatLimit(asNumber(ghostShell?.["control_plane_hashes"]))} schematic hashes</strong>
+          </div>
+          <div style={styles.consoleMetric}>
+            <span style={styles.consoleLabel}>DATA PLANE</span>
+            <strong>{formatLimit(asNumber(ghostShell?.["payload_vault_records"]))} vaulted payloads</strong>
+          </div>
+          <div style={styles.consoleMetric}>
+            <span style={styles.consoleLabel}>MEMORY</span>
+            <strong>{asString(ghostShell?.["memory_mode"], "minimal hash topology")}</strong>
+          </div>
+        </div>
+        <pre style={styles.consoleLog}>
+{(ghostLogs.length ? ghostLogs : [
+  "SYSTEM STATE: GHOST SHELL EMPTY",
+  "CONTROL PLANE: Loaded 0 Schematic Hashes (Memory: Minimal)",
+  "DATA PLANE: Vaulting Payloads to Edge Storage",
+]).join("\n")}
+        </pre>
+      </section>
+
       <section style={styles.grid}>
         {subscribers.length ? (
           subscribers.map((node) => (
@@ -231,7 +261,7 @@ export default function OperatorAdminPage() {
                 </div>
                 <div>
                   <dt>Broker</dt>
-                  <dd>{node.brokerState}{node.idle === null ? "" : node.idle ? " · idle" : " · active"}</dd>
+                  <dd>{node.brokerState}{node.idle === null ? "" : node.idle ? " / idle" : " / active"}</dd>
                 </div>
                 <div>
                   <dt>Batch</dt>
@@ -341,12 +371,55 @@ const styles: Record<string, CSSProperties> = {
     padding: "10px 12px",
   },
   error: {
-    border: "1px solid rgba(255,107,53,0.42)",
+    border: "1px solid rgba(255,85,0,0.42)",
     borderRadius: 8,
     color: ORANGE,
     fontWeight: 900,
     margin: "12px 0 0",
     padding: 10,
+  },
+  ghostConsole: {
+    background: "#080908",
+    border: `1px solid ${LINE}`,
+    borderRadius: 8,
+    marginTop: 16,
+    padding: 14,
+  },
+  consoleHead: {
+    alignItems: "center",
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    textTransform: "uppercase",
+  },
+  consoleGrid: {
+    display: "grid",
+    gap: 8,
+    gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+    marginTop: 12,
+  },
+  consoleMetric: {
+    border: `1px solid ${LINE}`,
+    borderRadius: 6,
+    display: "grid",
+    gap: 5,
+    padding: 10,
+  },
+  consoleLabel: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: 900,
+  },
+  consoleLog: {
+    background: "#030403",
+    border: "1px solid rgba(255,85,0,0.34)",
+    borderRadius: 6,
+    color: ORANGE,
+    font: "800 12px/1.65 Consolas, JetBrains Mono, monospace",
+    margin: "12px 0 0",
+    overflowX: "auto",
+    padding: 12,
+    whiteSpace: "pre-wrap",
   },
   grid: {
     display: "grid",
@@ -378,7 +451,7 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 4,
   },
   tier: {
-    border: "1px solid rgba(255,107,53,0.5)",
+    border: "1px solid rgba(255,85,0,0.5)",
     borderRadius: 6,
     color: ORANGE,
     fontSize: 12,

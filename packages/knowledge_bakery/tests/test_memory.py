@@ -44,7 +44,10 @@ def test_build_memory_creates_local_transition_graph(tmp_path: Path) -> None:
     graph = export_graph(str(memory), limit=40)
     assert graph["nodes"]
     assert graph["edges"]
-    assert graph["nodes"][0]["projection_source"] == "local_relation_projection_v1"
+    assert graph["source"] == "ghost_topology_control_plane"
+    assert graph["nodes"][0]["projection_source"] == "ghost_shell_content_addressed_v1"
+    assert graph["nodes"][0]["type"] == "ghost_hash"
+    assert "node_hash" in graph["nodes"][0]
 
     activation = activate_memory("GraphRAG evidence", str(memory), max_nodes=16, max_depth=3)
     assert activation["state"] == "completed"
