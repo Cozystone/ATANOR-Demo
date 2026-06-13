@@ -21,8 +21,8 @@ internal engine namespace where changing names would create compatibility risk.
   product identity and migration path are formally created.
 - Existing schema IDs such as `homage.graph-fragment.v1` where they identify
   serialized fragment contracts.
-- Existing live deployment and updater endpoints under `homage-alpha.vercel.app`
-  until a verified ATANOR deployment alias exists.
+- Existing legacy deployment aliases may continue to redirect, but the verified
+  public ATANOR deployment and updater endpoint is `https://atanor.vercel.app`.
 
 ## B. Safe To Change To ATANOR
 
@@ -36,7 +36,7 @@ internal engine namespace where changing names would create compatibility risk.
 ## C. Needs Migration Plan Later
 
 - Repository name and GitHub release namespace.
-- Public Vercel domain and updater endpoint.
+- Any old public Vercel aliases that still mention Homage.
 - Windows Store identity and package family name.
 - Full internal package rename from `homage-*` to `atanor-*`.
 - Database filename migration from `homage.db` to an ATANOR-named storage
@@ -52,4 +52,3 @@ internal engine namespace where changing names would create compatibility risk.
   name.
 - Old Vercel deployment URLs and GitHub artifact names in logs.
 - PRD excerpts and experiment logs that preserve project history.
-

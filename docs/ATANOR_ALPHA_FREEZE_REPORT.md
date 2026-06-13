@@ -74,7 +74,8 @@ Summary:
 
 - **Must keep:** database names, sidecar/runtime names, import/package names, AppData paths, Store identity, legacy env vars.
 - **Safe to change:** README/docs/UI labels/page titles/public copy/new `ATANOR_*` aliases.
-- **Needs migration later:** repository name, Vercel domain, updater endpoints, full package namespace migration, DB/AppData migration.
+- **Needs migration later:** repository name, full package namespace migration, DB/AppData migration, and Store identity migration.
+- **Migrated in alpha:** public Vercel alias and desktop updater endpoint now use `https://atanor.vercel.app`.
 - **Historical:** project logs, session logs, old handoff docs.
 
 ## Verification

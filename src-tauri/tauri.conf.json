@@ -45,7 +45,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://homage-alpha.vercel.app/updater/{{target}}/{{arch}}/{{current_version}}/updater.json"
+        "https://atanor.vercel.app/updater/{{target}}/{{arch}}/{{current_version}}/updater.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUwNDRGMjkwRjg2MDhCRDAKUldUUWkyRDRrUEpFNEQ4SmdwcU5PaXl6R2ZRUUNvUnhIaVkwVUltV0NMaEx6VTkrWVhpT0ZqeEEK",
       "windows": {

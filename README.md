@@ -25,7 +25,7 @@ In practice:
   variables, and existing internal package names may remain until a tested
   migration plan exists.
 
-[Live Lab Demo](https://homage-alpha.vercel.app) | [Architecture](docs/CLOUD_BRAIN_ARCHITECTURE.md) | [Night Build Log](docs/night_log_0612.md)
+[Live Lab Demo](https://atanor.vercel.app) | [Architecture](docs/CLOUD_BRAIN_ARCHITECTURE.md) | [Night Build Log](docs/night_log_0612.md)
 
 ![ATANOR Lab 3D GraphRAG](docs/screenshots/atanor-alpha-freeze-lab.png)
 
