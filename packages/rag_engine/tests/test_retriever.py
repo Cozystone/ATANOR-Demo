@@ -29,15 +29,16 @@ def test_query_graphrag_matches_docs_and_graph(tmp_path):
     assert result["retrieval_trace"]["ranked_chunk_ids"]
     assert result["method"] == "atanor-graph-token-rag-v1"
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_engine"]["mode"] == "local-ghost-shell-autonomous-alpha"
-    assert result["answer_kind"] == "local_synthesis"
-    assert result["answer_engine"]["prediction_basis"] == "ghost_context_bundle_autonomous_synthesis"
+    assert result["answer_engine"]["mode"] == "native-graph-token-alpha"
+    assert result["answer_kind"] == "native_graph_token_generation"
+    assert result["answer_engine"]["prediction_basis"] == "token_transition_edge_cooccurrence_graph_path"
     assert result["answer_engine"]["network_barrier"] == "sealed_for_generation"
     assert result["answer_engine"]["diagnostics"]["outbound_http_calls"] == 0
     assert result["confidence"] > 0
+    assert result["raw_native_output"] == result["answer"]
 
 
-def test_query_graphrag_routes_greeting_without_evidence(tmp_path):
+def test_query_graphrag_does_not_route_greeting_to_canned_identity(tmp_path):
     cleaned = tmp_path / "cleaned"
     ontology = tmp_path / "ontology"
     cleaned.mkdir()
@@ -48,18 +49,15 @@ def test_query_graphrag_routes_greeting_without_evidence(tmp_path):
 
     result = query_graphrag("hello", str(cleaned), str(ontology))
 
-    assert result["method"] == "atanor-conversation-router-v1"
+    assert result["method"] in {"atanor-research-no-evidence-v1", "atanor-graph-token-rag-v1"}
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_engine"]["surface_generation"] == "native_conversation_surface"
-    assert result["evidence_docs"] == []
-    assert result["matched_nodes"] == []
-    assert result["retrieval_trace"]["ranked_chunk_ids"] == []
+    assert result["answer_engine"]["surface_generation"] == "native_graph_token_generation"
     assert "CONTROL_INTENT" not in result["answer"]
-    assert "ATANOR" in result["answer"]
-    assert result["answer_kind"] == "conversation"
+    assert "ATANOR online" not in result["answer"]
+    assert result["answer_kind"] == "native_graph_token_generation"
 
 
-def test_query_graphrag_lists_nodes_without_retrieval(tmp_path):
+def test_query_graphrag_node_question_uses_native_path_not_inspection_shortcut(tmp_path):
     cleaned = tmp_path / "cleaned"
     ontology = tmp_path / "ontology"
     cleaned.mkdir()
@@ -79,17 +77,15 @@ def test_query_graphrag_lists_nodes_without_retrieval(tmp_path):
     memory = _build_query_memory(cleaned, ontology)
     result = query_graphrag("show all nodes", str(cleaned), str(ontology), memory)
 
-    assert result["method"] == "atanor-graph-inspection-v1"
+    assert result["method"] in {"atanor-research-no-evidence-v1", "atanor-graph-token-rag-v1"}
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_kind"] == "inspection"
-    assert result["answer_engine"]["surface_generation"] == "disabled"
-    assert result["evidence_docs"] == []
-    assert any(node["id"] == "graphrag" for node in result["matched_nodes"])
-    assert result["retrieval_trace"]["ranked_chunk_ids"] == []
-    assert "visible nodes" in result["answer"]
+    assert result["answer_kind"] == "native_graph_token_generation"
+    assert result["answer_engine"]["surface_generation"] == "native_graph_token_generation"
+    assert result["answer_kind"] != "inspection"
+    assert "visible nodes" not in result["answer"]
 
 
-def test_query_graphrag_explains_color_legend_without_retrieval(tmp_path):
+def test_query_graphrag_color_question_uses_native_path_not_legend_shortcut(tmp_path):
     cleaned = tmp_path / "cleaned"
     ontology = tmp_path / "ontology"
     cleaned.mkdir()
@@ -109,13 +105,11 @@ def test_query_graphrag_explains_color_legend_without_retrieval(tmp_path):
     memory = _build_query_memory(cleaned, ontology)
     result = query_graphrag("color legend", str(cleaned), str(ontology), memory)
 
-    assert result["method"] == "atanor-graph-legend-v1"
+    assert result["method"] in {"atanor-research-no-evidence-v1", "atanor-graph-token-rag-v1"}
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_kind"] == "inspection"
-    assert result["answer_engine"]["surface_generation"] == "disabled"
-    assert result["evidence_docs"] == []
-    assert result["retrieval_trace"]["ranked_chunk_ids"] == []
-    assert "graph colors" in result["answer"]
+    assert result["answer_kind"] == "native_graph_token_generation"
+    assert result["answer_engine"]["surface_generation"] == "native_graph_token_generation"
+    assert "graph colors indicate" not in result["answer"]
 
 
 def test_query_graphrag_unknown_external_entity_uses_no_external_llm(tmp_path):
@@ -132,9 +126,10 @@ def test_query_graphrag_unknown_external_entity_uses_no_external_llm(tmp_path):
 
     assert result["method"] == "atanor-research-no-evidence-v1"
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_engine"]["mode"] == "local-no-evidence-diagnostic-alpha"
-    assert result["answer_kind"] == "no_evidence"
+    assert result["answer_engine"]["mode"] == "native-graph-token-alpha"
+    assert result["answer_kind"] == "native_graph_token_generation"
     assert result["evidence_docs"] == []
     assert result["citations"] == []
     assert "raw_no_node::" not in result["answer"]
+    assert result["raw_native_output"] == result["answer"]
     assert result["follow_up_questions"] == []

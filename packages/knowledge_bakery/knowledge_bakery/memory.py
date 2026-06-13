@@ -149,6 +149,11 @@ def _content_hash(raw_text: str) -> str:
     return hashlib.sha256(raw_text.encode("utf-8", errors="ignore")).hexdigest()
 
 
+def _source_type_for_path(path: Path) -> str:
+    lowered = path.as_posix().lower()
+    return "self_corpus" if "self_corpus" in lowered else "local_corpus"
+
+
 def _projection(node_id: str, degree: int, count: int) -> tuple[float, float, float]:
     scale = 1.0 + math.log1p(max(1, degree + count)) * 0.42
     return (
@@ -401,6 +406,7 @@ def build_memory(
     cooccurs: Counter[tuple[str, str]] = Counter()
     ghost_payloads: dict[str, tuple[str, dict[str, Any]]] = {}
     ghost_edge_counts: Counter[tuple[str, str]] = Counter()
+    doc_source_types: dict[str, str] = {}
     source_totals: Counter[str] = Counter()
     pair_totals: Counter[tuple[str, str]] = Counter()
     flush = _AutoFlush(conn)
@@ -447,6 +453,8 @@ def build_memory(
 
         for path in documents:
             doc_id = path.stem
+            source_type = _source_type_for_path(path)
+            doc_source_types[doc_id] = source_type
             text = path.read_text(encoding="utf-8", errors="ignore")
             conn.execute(
                 """
@@ -458,7 +466,13 @@ def build_memory(
                 """,
                 (doc_id, str(path), len(text.encode("utf-8")), utc_now_iso()),
             )
-            _write_event(event_file, conn, "document_imported", doc_id, {"path": str(path), "byte_count": len(text.encode("utf-8"))})
+            _write_event(
+                event_file,
+                conn,
+                "document_imported",
+                doc_id,
+                {"path": str(path), "byte_count": len(text.encode("utf-8")), "source_type": source_type},
+            )
             flush.mark()
             for chunk_index, chunk in enumerate(_chunk_text(text) or [text[:900]]):
                 tokens = _tokens(chunk)
@@ -485,6 +499,7 @@ def build_memory(
                         "chunk_id": chunk_id,
                         "path": str(path),
                         "token_count": len(tokens),
+                        "source_type": source_type,
                     },
                 )
                 _write_event(event_file, conn, "chunk_indexed", chunk_id, {"doc_id": doc_id, "token_count": len(tokens)})
@@ -511,6 +526,7 @@ def build_memory(
                             "legacy_id": node_id,
                             "type": _node_type_for_token(token),
                             "doc_id": doc_id,
+                            "source_type": source_type,
                         },
                     )
                     ghost_edge_counts[(token_hash, chunk_hash)] += 1
@@ -529,6 +545,7 @@ def build_memory(
                             "legacy_id": phrase_id,
                             "type": "phrase",
                             "doc_id": doc_id,
+                            "source_type": source_type,
                         },
                     )
                     ghost_edge_counts[(left_hash, right_hash)] += 1
@@ -579,6 +596,8 @@ def build_memory(
         label = str(meta.get("label") or node_id)
         node_hash = _content_hash(label)
         node_hashes[node_id] = node_hash
+        evidence_doc_ids = sorted(set(str(doc) for doc in meta.get("evidence_doc_ids") or []))
+        evidence_source_types = sorted({doc_source_types.get(str(doc), "local_corpus") for doc in evidence_doc_ids})
         ghost_payloads[node_hash] = (
             label,
             {
@@ -586,7 +605,9 @@ def build_memory(
                 "legacy_id": node_id,
                 "type": str(meta.get("type") or "token"),
                 "count": int(count),
-                "evidence_doc_ids": sorted(set(str(doc) for doc in meta.get("evidence_doc_ids") or [])),
+                "evidence_doc_ids": evidence_doc_ids,
+                "source_type": evidence_source_types[0] if len(evidence_source_types) == 1 else ("mixed" if evidence_source_types else "local_corpus"),
+                "source_types": evidence_source_types,
             },
         )
         confidence = min(0.98, float(meta.get("confidence") or 0.5) + math.log1p(count) * 0.035)

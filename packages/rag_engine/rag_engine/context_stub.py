@@ -7,7 +7,7 @@ from typing import Any, Iterable
 
 
 class NoSequenceBackendConfigured(RuntimeError):
-    """Raised when context routing is ready but no SSM/GGUF backend is loaded."""
+    """Raised when context routing is ready but no local sequence backend is loaded."""
 
 
 @dataclass(frozen=True)
@@ -64,11 +64,11 @@ def _runtime_defaults(config: Any | None) -> tuple[int, int, str]:
 
 
 class SsmContextRouter(abc.ABC):
-    """Abstract linear-time context router for future Mamba/GGUF ingestion.
+    """Abstract linear-time context router for future local sequence ingestion.
 
     This class does not load a neural model. It provides the deterministic
     streaming envelope that lets ATANOR replace a quadratic attention path with
-    an O(N) sequence backend when such a backend is configured.
+    an O(N) locally authored sequence backend when such a backend is configured.
     """
 
     def __init__(self, *, config: Any | None = None, backend_name: str = "unconfigured_ssm") -> None:

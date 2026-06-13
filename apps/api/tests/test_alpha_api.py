@@ -51,9 +51,9 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert rag.json()["result"]["answer"]
     assert rag.json()["result"]["citations"]
     assert rag.json()["result"]["method"] == "atanor-graph-token-rag-v1"
-    assert rag.json()["result"]["answer_kind"] == "local_synthesis"
+    assert rag.json()["result"]["answer_kind"] == "native_graph_token_generation"
     assert rag.json()["result"]["answer_engine"]["external_llm"] is False
-    assert rag.json()["result"]["answer_engine"]["prediction_basis"] == "ghost_context_bundle_autonomous_synthesis"
+    assert rag.json()["result"]["answer_engine"]["prediction_basis"] == "token_transition_edge_cooccurrence_graph_path"
     assert rag.json()["result"]["answer_engine"]["network_barrier"] == "sealed_for_generation"
     assert rag.json()["result"]["memory_activation"]["active_nodes"]
 
@@ -63,9 +63,10 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert web_result["method"] == "atanor-graph-token-web-rag-v1"
     assert web_result["web_search"]["provider"] == "static"
     assert web_result["evidence_docs"]
-    assert web_result["answer_kind"] == "local_synthesis"
+    assert web_result["answer_kind"] == "native_graph_token_generation"
     assert web_result["answer_engine"]["external_llm"] is False
-    assert web_result["answer_engine"]["prediction_basis"] == "ghost_context_bundle_autonomous_synthesis"
+    assert web_result["answer_engine"]["prediction_basis"] == "token_transition_edge_cooccurrence_graph_path"
+    assert web_result["answer_engine"]["cloud_fragment_role"] == "evidence_only"
 
     fresh_query = "\uC624\uB298 \uB274\uC2A4 \uC54C\uB824\uC918"
     assert is_fresh_search_query(fresh_query)
@@ -100,43 +101,40 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     person_result = person_rag.json()["result"]
     assert person_result["method"] == "atanor-graph-token-web-rag-v1"
     assert person_result["web_search"]["provider"] == "wikipedia"
-    assert person_result["answer_kind"] == "local_synthesis"
+    assert person_result["answer_kind"] == "native_graph_token_generation"
     assert "provider" not in person_result["answer"]
     assert person_result["answer_engine"]["external_llm"] is False
 
     greeting = client.post("/api/graphrag/query", json={"query": "hello"})
     assert greeting.status_code == 200
     greeting_result = greeting.json()["result"]
-    assert greeting_result["method"] == "atanor-conversation-router-v1"
-    assert greeting_result["evidence_docs"] == []
-    assert greeting_result["matched_nodes"] == []
-    assert "web_search" not in greeting_result
-    assert "memory_activation" not in greeting_result
+    assert greeting_result["method"] in {"atanor-research-no-evidence-v1", "atanor-graph-token-rag-v1", "atanor-graph-token-web-rag-v1"}
+    assert greeting_result["answer_kind"] == "native_graph_token_generation"
+    assert greeting_result["answer_engine"]["surface_generation"] == "native_graph_token_generation"
+    assert "ATANOR online" not in greeting_result["answer"]
 
     greeting_with_search_toggle = client.post("/api/graphrag/query", json={"query": "hello", "web_search": True})
     assert greeting_with_search_toggle.status_code == 200
     greeting_with_search_result = greeting_with_search_toggle.json()["result"]
-    assert greeting_with_search_result["method"] == "atanor-conversation-router-v1"
-    assert "web_search" not in greeting_with_search_result
-    assert "memory_activation" not in greeting_with_search_result
+    assert greeting_with_search_result["answer_kind"] == "native_graph_token_generation"
+    assert greeting_with_search_result["answer_engine"]["surface_generation"] == "native_graph_token_generation"
 
     inventory = client.post("/api/graphrag/query", json={"query": "show all nodes"})
     assert inventory.status_code == 200
     inventory_result = inventory.json()["result"]
-    assert inventory_result["method"] == "atanor-graph-inspection-v1"
-    assert inventory_result["evidence_docs"] == []
-    assert inventory_result["matched_nodes"]
+    assert inventory_result["method"] in {"atanor-research-no-evidence-v1", "atanor-graph-token-rag-v1"}
+    assert inventory_result["method"] != "atanor-graph-token-web-rag-v1"
     assert inventory_result["answer_engine"]["external_llm"] is False
-    assert inventory_result["answer_kind"] == "inspection"
+    assert inventory_result["answer_kind"] == "native_graph_token_generation"
 
     legend = client.post("/api/graphrag/query", json={"query": "color legend"})
     assert legend.status_code == 200
     legend_result = legend.json()["result"]
-    assert legend_result["method"] == "atanor-graph-legend-v1"
-    assert legend_result["evidence_docs"] == []
+    assert legend_result["method"] in {"atanor-research-no-evidence-v1", "atanor-graph-token-rag-v1"}
+    assert legend_result["method"] != "atanor-graph-token-web-rag-v1"
     assert legend_result["answer_engine"]["external_llm"] is False
-    assert legend_result["answer_kind"] == "inspection"
-    assert "graph colors" in legend_result["answer"]
+    assert legend_result["answer_kind"] == "native_graph_token_generation"
+    assert "graph colors indicate" not in legend_result["answer"]
 
     guard = client.post("/api/guard/check", json={"draft_answer": "GraphRAG always guarantees perfect answers."})
     assert guard.status_code == 200

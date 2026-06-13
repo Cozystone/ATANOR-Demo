@@ -11,6 +11,9 @@ export type Rag3DNode = {
   y: number;
   z: number;
   confidence?: number;
+  source_type?: string;
+  sourceType?: string;
+  cluster_id?: string;
 };
 
 export type Rag3DEdge = {
@@ -18,6 +21,8 @@ export type Rag3DEdge = {
   target: string;
   relation: string;
   weight?: number;
+  confidence?: number;
+  source_type?: string;
 };
 
 export type Rag3DGraph = {
@@ -69,6 +74,8 @@ type EdgePulse = {
 type SceneState = {
   activeEdgeKeys: Set<string>;
   activeNodeIds: Set<string>;
+  activationHops: Map<string, number>;
+  activationEdgeIntensity: Map<string, number>;
   camera: THREE.PerspectiveCamera;
   dynamicObjects: THREE.Object3D[];
   edgeCapacity: number;
@@ -88,6 +95,7 @@ type SceneState = {
   lastFitDistance: number;
   lastGraphNodeCount: number;
   lastViewportEmitFrame: number;
+  layoutDiagnostics: Record<string, number | string>;
   newNodeIds: Set<string>;
   nodeBornAt: Map<string, number>;
   nodeCapacity: number;
@@ -242,40 +250,212 @@ function initialSpreadPosition(node: Rag3DNode, source: THREE.Vector3, index: nu
   return source.multiplyScalar(sourceWeight).add(target.multiplyScalar(1 - sourceWeight));
 }
 
-function spreadPositions(nodes: Rag3DNode[]) {
+function nodeSourceType(node: Rag3DNode) {
+  return String(node.source_type ?? node.sourceType ?? (node.id.includes("cloud") || node.id.includes("web-") ? "cloud_fragment" : "local_memory"));
+}
+
+function semanticClusterKey(node: Rag3DNode) {
+  return String(node.cluster_id ?? `${nodeSourceType(node)}:${node.type || "concept"}`);
+}
+
+function seededClusterCenter(key: string, index: number, total: number) {
+  const theta = index * GOLDEN_ANGLE + hashUnit(key, 101) * 0.48;
+  const z = hashUnit(key, 131) * 0.55;
+  const radial = Math.sqrt(Math.max(0.08, 1 - z * z));
+  const radius = 4.2 + Math.cbrt(Math.max(1, total)) * 0.54;
+  return new THREE.Vector3(
+    Math.cos(theta) * radial * radius,
+    Math.sin(theta) * radial * radius,
+    z * radius * 0.72,
+  );
+}
+
+function edgeWeight(edge: Rag3DEdge) {
+  return THREE.MathUtils.clamp(Number(edge.weight ?? edge.confidence ?? 0.52), 0.08, 2.4);
+}
+
+function computeOrganicGraphLayout(
+  nodes: Rag3DNode[],
+  edges: Rag3DEdge[],
+  options: { activeNodeIds?: Set<string>; maxIterations?: number } = {},
+) {
   const sources = normalizedSourcePositions(nodes);
-  const positions = nodes.map((node, index) => initialSpreadPosition(node, sources[index].clone(), index, nodes.length));
-  if (nodes.length <= 1) return positions;
-  if (nodes.length > 5_000) return positions;
-  const minDistance = nodes.length > 1_400 ? 0.86 : nodes.length > 700 ? 0.98 : nodes.length > 300 ? 1.08 : nodes.length > 140 ? 1.02 : nodes.length > 80 ? 0.9 : 0.82;
-  const iterations = nodes.length > 1_400 ? 2 : nodes.length > 700 ? 4 : nodes.length > 300 ? 6 : nodes.length > 140 ? 7 : nodes.length > 80 ? 8 : 9;
-  const repulsionStrength = nodes.length > 1_400 ? 0.62 : nodes.length > 700 ? 0.68 : 0.74;
+  const nodeIndex = new Map(nodes.map((node, index) => [node.id, index]));
+  const degree = new Map<string, number>();
+  edges.forEach((edge) => {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + edgeWeight(edge));
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + edgeWeight(edge));
+  });
+  const maxDegree = Math.max(1, ...nodes.map((node) => degree.get(node.id) ?? 0));
+  const clusterKeys = Array.from(new Set(nodes.map(semanticClusterKey))).sort();
+  const clusterCenters = new Map(clusterKeys.map((key, index) => [key, seededClusterCenter(key, index, clusterKeys.length)]));
+  const total = Math.max(1, nodes.length);
+  const baseRadius = Math.min(70, 7.4 + Math.cbrt(total) * 1.82);
+  const activeNodeIds = options.activeNodeIds ?? new Set<string>();
+  const positions = nodes.map((node, index) => {
+    const source = initialSpreadPosition(node, sources[index].clone(), index, nodes.length);
+    const cluster = clusterCenters.get(semanticClusterKey(node)) ?? new THREE.Vector3();
+    const degreeRatio = (degree.get(node.id) ?? 0) / maxDegree;
+    const isCloud = /cloud|web|external|fragment/i.test(nodeSourceType(node));
+    const isPredicate = /predicate|relation|edge/i.test(node.type ?? "");
+    const isActive = activeNodeIds.has(node.id);
+    const semantic = stableVolumePoint(node.id, index, total).multiplyScalar(isCloud ? 1.12 : 0.76);
+    const position = new THREE.Vector3()
+      .addScaledVector(semantic, 0.58)
+      .addScaledVector(cluster, isPredicate ? 0.18 : 0.34)
+      .addScaledVector(source, 0.08);
+    const radiusFactor = isCloud ? 1.34 : isActive ? 0.52 : 1 - degreeRatio * 0.46;
+    position.normalize().multiplyScalar(Math.max(1.2, baseRadius * radiusFactor));
+    position.x += hashUnit(node.id, 173) * 0.8;
+    position.y += hashUnit(node.id, 211) * 0.8;
+    position.z += hashUnit(node.id, 241) * 0.45;
+    return position;
+  });
+  if (nodes.length <= 1) return { positions, diagnostics: layoutDiagnostics(nodes, edges, positions, activeNodeIds) };
+
+  const sampledEdges = edges
+    .filter((edge) => nodeIndex.has(edge.source) && nodeIndex.has(edge.target))
+    .sort((left, right) => edgeWeight(right) - edgeWeight(left))
+    .filter((edge, index) => index < 24_000 || activeNodeIds.has(edge.source) || activeNodeIds.has(edge.target) || index % Math.ceil(edges.length / 24_000) === 0);
+  const iterations = Math.min(options.maxIterations ?? 60, nodes.length > 5_000 ? 18 : nodes.length > 2_000 ? 28 : nodes.length > 800 ? 42 : 64);
+  const minDistance = nodes.length > 5_000 ? 0.52 : nodes.length > 1_400 ? 0.72 : nodes.length > 700 ? 0.9 : 1.05;
+  const repulsionStride = nodes.length > 3_000 ? 7 : nodes.length > 1_200 ? 5 : nodes.length > 500 ? 3 : 1;
+
   for (let pass = 0; pass < iterations; pass += 1) {
-    for (let left = 0; left < positions.length; left += 1) {
-      for (let right = left + 1; right < positions.length; right += 1) {
+    const cooling = 1 - pass / Math.max(1, iterations);
+    for (const edge of sampledEdges) {
+      const sourceIndex = nodeIndex.get(edge.source);
+      const targetIndex = nodeIndex.get(edge.target);
+      if (sourceIndex === undefined || targetIndex === undefined) continue;
+      const source = positions[sourceIndex];
+      const target = positions[targetIndex];
+      const delta = target.clone().sub(source);
+      const distance = Math.max(0.001, delta.length());
+      const desired = THREE.MathUtils.lerp(1.8, 4.8, 1 / Math.sqrt(edgeWeight(edge) + 0.2));
+      const spring = (distance - desired) * 0.012 * edgeWeight(edge) * cooling;
+      delta.normalize().multiplyScalar(spring);
+      source.add(delta);
+      target.sub(delta);
+    }
+    for (let left = 0; left < positions.length; left += repulsionStride) {
+      for (let right = left + repulsionStride; right < positions.length; right += repulsionStride) {
         const delta = positions[left].clone().sub(positions[right]);
         let distance = delta.length();
         if (distance >= minDistance) continue;
         if (distance < 0.001) {
-          delta.set(
-            ((left % 3) - 1) * 0.015 + 0.01,
-            ((right % 5) - 2) * 0.015 + 0.01,
-            0.02,
-          );
+          delta.set(hashUnit(nodes[left].id, 307) * 0.03 + 0.02, hashUnit(nodes[right].id, 311) * 0.03 + 0.02, 0.02);
           distance = delta.length();
         }
-        const push = (minDistance - distance) * repulsionStrength;
+        const push = (minDistance - distance) * 0.34 * cooling;
         delta.normalize().multiplyScalar(push);
         positions[left].add(delta);
         positions[right].sub(delta);
       }
     }
+    positions.forEach((position, index) => {
+      const node = nodes[index];
+      const cluster = clusterCenters.get(semanticClusterKey(node));
+      const degreeRatio = (degree.get(node.id) ?? 0) / maxDegree;
+      if (cluster) position.lerp(cluster, (0.004 + degreeRatio * 0.005) * cooling);
+      if (activeNodeIds.has(node.id)) position.lerp(new THREE.Vector3(0, 0, 0), 0.018 * cooling);
+      position.z *= 0.995;
+    });
   }
   const center = new THREE.Vector3();
   positions.forEach((position) => center.add(position));
   center.divideScalar(positions.length);
   positions.forEach((position) => position.sub(center));
-  return positions;
+  return { positions, diagnostics: layoutDiagnostics(nodes, edges, positions, activeNodeIds) };
+}
+
+function layoutDiagnostics(nodes: Rag3DNode[], edges: Rag3DEdge[], positions: THREE.Vector3[], activeNodeIds: Set<string>) {
+  const degree = new Map<string, number>();
+  edges.forEach((edge) => {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  });
+  const averageDegree = nodes.length ? Array.from(degree.values()).reduce((sum, value) => sum + value, 0) / nodes.length : 0;
+  const clusterCount = new Set(nodes.map(semanticClusterKey)).size;
+  return {
+    layout_mode: "organic_semantic_force",
+    active_seed_count: activeNodeIds.size,
+    active_cluster_count: new Set(nodes.filter((node) => activeNodeIds.has(node.id)).map(semanticClusterKey)).size,
+    local_nodes: nodes.filter((node) => !/cloud|web|external|fragment/i.test(nodeSourceType(node))).length,
+    cloud_fragment_nodes: nodes.filter((node) => /cloud|web|external|fragment/i.test(nodeSourceType(node))).length,
+    average_degree: Number(averageDegree.toFixed(3)),
+    visible_edges: edges.length,
+    semantic_cluster_count: clusterCount,
+    z_axis_ratio: axisDominanceRatio(positions),
+  };
+}
+
+function axisDominanceRatio(positions: THREE.Vector3[]) {
+  if (positions.length < 2) return 0;
+  const mean = positions.reduce((acc, position) => acc.add(position), new THREE.Vector3()).divideScalar(positions.length);
+  const variance = positions.reduce(
+    (acc, position) => {
+      acc.x += (position.x - mean.x) ** 2;
+      acc.y += (position.y - mean.y) ** 2;
+      acc.z += (position.z - mean.z) ** 2;
+      return acc;
+    },
+    new THREE.Vector3(),
+  ).divideScalar(positions.length);
+  const horizontal = Math.max(0.0001, (variance.x + variance.y) / 2);
+  return Number((variance.z / horizontal).toFixed(3));
+}
+
+function computeActivationMaps(nodes: Rag3DNode[], edges: Rag3DEdge[], activeNodeIds: Set<string>, activeEdgeKeys: Set<string>) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const adjacency = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) return;
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, []);
+    adjacency.get(edge.source)!.push(edge.target);
+    adjacency.get(edge.target)!.push(edge.source);
+  });
+  const hops = new Map<string, number>();
+  const queue: Array<{ id: string; hop: number }> = [];
+  activeNodeIds.forEach((id) => {
+    if (nodeIds.has(id)) {
+      hops.set(id, 0);
+      queue.push({ id, hop: 0 });
+    }
+  });
+  edges.forEach((edge) => {
+    if (edgeIsExplicitlyActive(activeEdgeKeys, edge.source, edge.target)) {
+      [edge.source, edge.target].forEach((id) => {
+        if (nodeIds.has(id) && !hops.has(id)) {
+          hops.set(id, 0);
+          queue.push({ id, hop: 0 });
+        }
+      });
+    }
+  });
+  while (queue.length) {
+    const item = queue.shift()!;
+    if (item.hop >= 3) continue;
+    for (const next of adjacency.get(item.id) ?? []) {
+      const nextHop = item.hop + 1;
+      if ((hops.get(next) ?? Infinity) <= nextHop) continue;
+      hops.set(next, nextHop);
+      queue.push({ id: next, hop: nextHop });
+    }
+  }
+  const edgeIntensity = new Map<string, number>();
+  edges.forEach((edge) => {
+    const sourceHop = hops.get(edge.source);
+    const targetHop = hops.get(edge.target);
+    if (sourceHop === undefined && targetHop === undefined && !edgeIsExplicitlyActive(activeEdgeKeys, edge.source, edge.target)) return;
+    const hop = Math.min(sourceHop ?? 4, targetHop ?? 4);
+    edgeIntensity.set(edgeKey(edge.source, edge.target), Math.exp(-hop * 0.78));
+  });
+  return { hops, edgeIntensity };
+}
+
+function spreadPositions(nodes: Rag3DNode[], edges: Rag3DEdge[] = [], activeNodeIds = new Set<string>()) {
+  return computeOrganicGraphLayout(nodes, edges, { activeNodeIds });
 }
 
 function sourceCoordinatePositions(nodes: Rag3DNode[]) {
@@ -420,13 +600,13 @@ function ensureHaloMesh(state: SceneState, count: number) {
     disposeObject(state.haloMesh);
   }
   state.haloCapacity = nextCapacity(count, 64);
-  const geometry = new THREE.TorusGeometry(1, 0.038, 8, 56);
+  const geometry = new THREE.TorusGeometry(1, 0.018, 8, 48);
   const material = new THREE.MeshBasicMaterial({
     blending: THREE.NormalBlending,
     color: NEON_ORANGE,
     depthTest: false,
     depthWrite: false,
-    opacity: 0.72,
+    opacity: 0.34,
     transparent: true,
   });
   state.haloMesh = new THREE.InstancedMesh(geometry, material, state.haloCapacity);
@@ -498,7 +678,12 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
   }
 
   const elapsed = (performance.now() - state.startedAt) / 1000;
-  const targets = state.preserveSourceCoordinates ? sourceCoordinatePositions(graph.nodes) : spreadPositions(graph.nodes);
+  const activation = computeActivationMaps(graph.nodes, graph.edges, activeNodeIds, activeEdgeKeys);
+  state.activationHops = activation.hops;
+  state.activationEdgeIntensity = activation.edgeIntensity;
+  const organicLayout = spreadPositions(graph.nodes, graph.edges, activeNodeIds);
+  state.layoutDiagnostics = organicLayout.diagnostics;
+  const targets = state.preserveSourceCoordinates ? sourceCoordinatePositions(graph.nodes) : organicLayout.positions;
   const nextKnownNodeIds = new Set<string>();
   const nextNodeIndexById = new Map<string, number>();
   const stillPresent = new Set<string>();
@@ -557,19 +742,21 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
     if (!state.nodeIndexById.has(edge.source) || !state.nodeIndexById.has(edge.target)) continue;
     const explicitActive = edgeIsExplicitlyActive(activeEdgeKeys, edge.source, edge.target);
     const directActive = activeNodeIds.has(edge.source) || activeNodeIds.has(edge.target);
+    const hopActive = (state.activationEdgeIntensity.get(edgeKey(edge.source, edge.target)) ?? 0) > 0;
     const traversalActive = traversalPairs.has(`${edge.source}:${edge.target}`);
-    if (!explicitActive && !directActive && !traversalActive && index % edgeStride !== 0) continue;
-    state.visibleEdges.push({ ...edge, active: explicitActive || directActive || traversalActive, index });
+    if (!explicitActive && !directActive && !hopActive && !traversalActive && index % edgeStride !== 0) continue;
+    state.visibleEdges.push({ ...edge, active: explicitActive || directActive || hopActive || traversalActive, index });
   }
 
   ensureNodeBuffers(state, graph.nodes.length);
   ensureEdgeBuffers(state, state.visibleEdges.length * 2);
 
+  const hasSignalEvent = activeNodeIds.size > 0 || activeEdgeKeys.size > 0 || newNodeIds.size > 0;
   state.haloItems = graph.nodes
     .filter((node) => {
       const bornAt = state.nodeBornAt.get(node.id);
-      const newPulse = typeof bornAt === "number" && elapsed - bornAt < NEW_NODE_ANIMATION_SECONDS;
-      return activeNodeIds.has(node.id) || newNodeIds.has(node.id) || newPulse;
+      const newPulse = hasSignalEvent && typeof bornAt === "number" && elapsed - bornAt < NEW_NODE_ANIMATION_SECONDS;
+      return activeNodeIds.has(node.id) || (state.activationHops.get(node.id) ?? 99) <= 2 || newNodeIds.has(node.id) || newPulse;
     })
     .slice(0, 512)
     .map((node) => {
@@ -578,7 +765,7 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
       return {
         bornAt,
         id: node.id,
-        newNode: newNodeIds.has(node.id) || elapsed - bornAt < NEW_NODE_ANIMATION_SECONDS,
+        newNode: newNodeIds.has(node.id) || (hasSignalEvent && elapsed - bornAt < NEW_NODE_ANIMATION_SECONDS),
         position,
         scale: 0.72 + (node.confidence ?? 0.65) * 0.38,
       };
@@ -609,18 +796,27 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
 
 function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number) {
   const active = state.activeNodeIds.has(node.id);
+  const hop = state.activationHops.get(node.id);
   const bornAt = state.nodeBornAt.get(node.id);
   const newAge = typeof bornAt === "number" ? elapsed - bornAt : Number.POSITIVE_INFINITY;
   const newPulse = state.newNodeIds.has(node.id) || newAge < NEW_NODE_ANIMATION_SECONDS;
   if (active) return 0.76 + Math.sin(elapsed * 10 + hash01(node.id, 31) * Math.PI * 2) * 0.24;
+  if (hop !== undefined && hop <= 3) {
+    const base = Math.exp(-hop * 0.82);
+    return THREE.MathUtils.clamp(base * (0.58 + Math.sin(elapsed * 8 + hash01(node.id, 37) * Math.PI * 2) * 0.18), 0.08, 0.72);
+  }
   if (newPulse) return THREE.MathUtils.clamp(1 - newAge / NEW_NODE_ANIMATION_SECONDS, 0, 1);
   return 0;
 }
 
 function edgeSignalStrength(state: SceneState, edge: VisibleEdge, elapsed: number) {
   if (!edge.active) return 0;
+  const hopIntensity = state.activationEdgeIntensity.get(edgeKey(edge.source, edge.target))
+    ?? state.activationEdgeIntensity.get(edgeKey(edge.target, edge.source))
+    ?? 0;
   const phase = hash01(edge.source + edge.target, 19) * Math.PI * 2;
-  return 0.68 + Math.sin(elapsed * 10 + phase) * 0.32;
+  const pulse = 0.68 + Math.sin(elapsed * 10 + phase) * 0.32;
+  return THREE.MathUtils.clamp(Math.max(hopIntensity * pulse, edgeIsExplicitlyActive(state.activeEdgeKeys, edge.source, edge.target) ? pulse : 0), 0, 1);
 }
 
 function updateNodeBuffers(state: SceneState, elapsed: number) {
@@ -694,13 +890,13 @@ function updateHaloMesh(state: SceneState, elapsed: number) {
     const signal = halo.newNode
       ? 1 - t
       : 0.7 + Math.sin(elapsed * 10 + hash01(halo.id, 43) * Math.PI * 2) * 0.3;
-    const ringScale = halo.scale * (halo.newNode ? THREE.MathUtils.lerp(4.2, 1.15, t) : THREE.MathUtils.lerp(1.8, 2.28, signal));
+    const ringScale = halo.scale * (halo.newNode ? THREE.MathUtils.lerp(1.75, 0.68, t) : THREE.MathUtils.lerp(0.92, 1.18, signal));
     tempScale.setScalar(Math.max(0.001, ringScale));
     tempMatrix.compose(position, tempRingQuaternion, tempScale);
     state.haloMesh!.setMatrixAt(index, tempMatrix);
   });
   const material = state.haloMesh.material as THREE.MeshBasicMaterial;
-  material.opacity = state.haloItems.some((halo) => halo.newNode) ? 0.62 : 0.36;
+  material.opacity = state.haloItems.some((halo) => halo.newNode) ? 0.28 : 0.18;
   material.needsUpdate = true;
   state.haloMesh.instanceMatrix.needsUpdate = true;
 }
@@ -831,6 +1027,8 @@ export default function Rag3DScene({
     const state: SceneState = {
       activeEdgeKeys: new Set(),
       activeNodeIds: new Set(),
+      activationHops: new Map(),
+      activationEdgeIntensity: new Map(),
       camera,
       dynamicObjects: [],
       edgeCapacity: 0,
@@ -850,6 +1048,7 @@ export default function Rag3DScene({
       lastFitDistance: 0,
       lastGraphNodeCount: 0,
       lastViewportEmitFrame: -999,
+      layoutDiagnostics: { layout_mode: "organic_semantic_force" },
       newNodeIds: new Set(),
       nodeBornAt: new Map(),
       nodeCapacity: 0,
@@ -958,6 +1157,10 @@ export default function Rag3DScene({
       container.dataset.activeEdgeCount = String(state.activeEdgeKeys.size);
       container.dataset.edgePulseCount = String(state.edgePulseCount);
       container.dataset.bufferMode = "persistent-append";
+      container.dataset.layoutMode = String(state.layoutDiagnostics.layout_mode ?? "organic_semantic_force");
+      container.dataset.activeClusterCount = String(state.layoutDiagnostics.active_cluster_count ?? 0);
+      container.dataset.averageDegree = String(state.layoutDiagnostics.average_degree ?? 0);
+      container.dataset.zAxisRatio = String(state.layoutDiagnostics.z_axis_ratio ?? 0);
       if (state.onViewportChange && state.frame - state.lastViewportEmitFrame >= 12) {
         state.lastViewportEmitFrame = state.frame;
         state.onViewportChange({

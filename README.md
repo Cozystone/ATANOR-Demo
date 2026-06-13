@@ -91,6 +91,29 @@ The long-term vision is a workstation-scale AI engine that uses time, local
 storage, and graph structure to compensate for not having a massive cloud model
 behind every answer.
 
+## Native Alpha Generation Honesty
+
+ATANOR 1.0 Alpha intentionally does **not** make weak output look smart through
+canned replies, external LLMs, pretrained local models, or template fallbacks.
+If the native graph-token decoder produces broken, repetitive, or ugly text,
+the UI keeps that raw output visible and attaches diagnostics such as loop
+risk, repeated n-grams, source cluster coherence, and trace-save state.
+
+Research rules for this Alpha:
+
+- No external LLM answer generation.
+- No pretrained sLLM, Ollama, llama.cpp, GGUF, or commercial/open LLM fallback.
+- No hardcoded identity answer for "who are you" or ATANOR questions.
+- Self identity must be learned by ingesting ATANOR documentation as
+  `self_corpus` through DataGate, Ontology Forge, Knowledge Bakery, Ghost Shell,
+  Payload Vault, GraphRAG, and the native graph-token decoder.
+- Cloud Brain fragments may provide temporary evidence only; they must not
+  provide the final answer text.
+- Bad generations are stored as local training traces in
+  `data/memory/generation_traces.jsonl`.
+- User-approved corrections are stored as native training data in
+  `data/memory/corrections.jsonl`.
+
 ## Screenshots
 
 ### Lab Workspace

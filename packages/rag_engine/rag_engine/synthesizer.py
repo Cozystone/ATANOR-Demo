@@ -1,16 +1,15 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import html
+import hashlib
+import json
+import math
 import re
-from collections import Counter
-from typing import Any, Protocol
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
-
-AUTONOMOUS_SYSTEM_INSTRUCTION = (
-    "You are the ATANOR local synthesis engine. Use only the factual material inside <context>. "
-    "Do not call external LLM APIs. Do not invent missing facts. Prefer the highest temporal_weight "
-    "when time-series facts conflict, while preserving older facts as historical context."
-)
 
 BANNED_SURFACE_SIGNATURES = (
     "payload record says",
@@ -18,34 +17,11 @@ BANNED_SURFACE_SIGNATURES = (
     "CONTROL_INTENT",
 )
 
-
-class OnDeviceSmoothingBackend(Protocol):
-    """Optional local-only smoothing hook."""
-
-    name: str
-
-    def smooth(self, draft: str, context: dict[str, Any]) -> str:
-        ...
+STOP_TOKENS = {"the", "and", "for", "with", "from", "this", "that", "into"}
 
 
-class DeterministicOnDeviceSmoothingBackend:
-    """Dependency-free local surface cleanup.
-
-    This is not an external model and it opens no network path. A future local
-    GPU SLM can implement the same protocol.
-    """
-
-    name = "local-deterministic-on-device-smoother"
-
-    def smooth(self, draft: str, context: dict[str, Any]) -> str:
-        text = _clean(draft)
-        text = re.sub(r"\s+([,.!?])", r"\1", text)
-        text = re.sub(r"\s{2,}", " ", text)
-        text = text.replace(" ,", ",").replace(" .", ".")
-        return text.strip()
-
-
-_DEFAULT_SMOOTHER = DeterministicOnDeviceSmoothingBackend()
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _clean(value: Any) -> str:
@@ -55,137 +31,445 @@ def _clean(value: Any) -> str:
 def _tokens(text: str) -> list[str]:
     tokens: list[str] = []
     current: list[str] = []
-    for char in text.lower():
+    for char in str(text or "").lower():
         if char.isalnum() or char in {"-", "_"}:
             current.append(char)
         elif current:
             token = "".join(current).strip("-_")
-            if token:
+            if token and token not in STOP_TOKENS:
                 tokens.append(token)
             current = []
     if current:
         token = "".join(current).strip("-_")
-        if token:
+        if token and token not in STOP_TOKENS:
             tokens.append(token)
     return [token for token in tokens if len(token) > 1 or token.isdigit()]
 
 
-def _infer_intent(query: str) -> str:
-    normalized = query.lower()
-    if re.search(r"(why|cause|reason)", normalized):
-        return "explain_cause"
-    if re.search(r"(how|process|flow|step)", normalized):
-        return "explain_process"
-    if re.search(r"(versus|vs|compare)", normalized):
-        return "compare"
-    if re.search(r"(who|what|define)", normalized):
-        return "define"
-    return "answer_grounded"
+def _ngrams(tokens: list[str], n: int) -> list[tuple[str, ...]]:
+    if len(tokens) < n:
+        return []
+    return [tuple(tokens[index : index + n]) for index in range(len(tokens) - n + 1)]
 
 
-def _short_hash(value: str) -> str:
-    if re.fullmatch(r"[a-fA-F0-9]{64}", value):
-        return f"ghost:{value[:12]}"
-    return value
+def degeneration_metrics(text: str, evidence_docs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    tokens = _tokens(text)
+    bigrams = _ngrams(tokens, 2)
+    trigrams = _ngrams(tokens, 3)
+    unique_token_ratio = (len(set(tokens)) / len(tokens)) if tokens else 0.0
+    repeated_bigram_ratio = 0.0
+    repeated_trigram_ratio = 0.0
+    if bigrams:
+        repeated_bigram_ratio = 1.0 - (len(set(bigrams)) / len(bigrams))
+    if trigrams:
+        repeated_trigram_ratio = 1.0 - (len(set(trigrams)) / len(trigrams))
+
+    source_clusters = _source_clusters(evidence_docs or [])
+    unrelated_mix = False
+    if len(source_clusters) > 1:
+        total = sum(cluster["token_count"] for cluster in source_clusters) or 1
+        top = max(cluster["token_count"] for cluster in source_clusters)
+        unrelated_mix = (top / total) < 0.68
+
+    loop_detected = repeated_bigram_ratio >= 0.34 or repeated_trigram_ratio >= 0.24
+    return {
+        "repeated_bigram_ratio": round(repeated_bigram_ratio, 6),
+        "repeated_trigram_ratio": round(repeated_trigram_ratio, 6),
+        "unique_token_ratio": round(unique_token_ratio, 6),
+        "unrelated_evidence_mix": unrelated_mix,
+        "loop_detected": loop_detected,
+    }
 
 
 def _doc_text(doc: dict[str, Any]) -> str:
     return _clean(doc.get("snippet") or doc.get("text") or doc.get("raw_text"))
 
 
-def _doc_hash(doc: dict[str, Any]) -> str | None:
+def _doc_hash(doc: dict[str, Any]) -> str:
     value = _clean(doc.get("hash_key") or doc.get("node_hash"))
     if value:
         return value
-    chunk_id = _clean(doc.get("chunk_id"))
-    if "#payload" in chunk_id:
-        return chunk_id.split("#payload", 1)[0]
-    return None
+    text = _doc_text(doc)
+    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest() if text else ""
 
 
-def _doc_kind(doc: dict[str, Any]) -> str:
+def _doc_source_type(doc: dict[str, Any]) -> str:
     metadata = doc.get("metadata")
     if isinstance(metadata, dict):
-        return _clean(metadata.get("kind") or metadata.get("type") or "payload")
-    return "payload"
+        return _clean(metadata.get("source_type") or metadata.get("kind") or "local_memory")
+    return _clean(doc.get("source_type") or "local_memory")
 
 
-def _temporal(doc: dict[str, Any]) -> dict[str, Any]:
-    direct = doc.get("temporal")
-    if isinstance(direct, dict):
-        return dict(direct)
+def _doc_cluster_key(doc: dict[str, Any]) -> str:
     metadata = doc.get("metadata")
-    if isinstance(metadata, dict) and isinstance(metadata.get("temporal"), dict):
-        return dict(metadata["temporal"])
-    return {}
+    if isinstance(metadata, dict):
+        path = _clean(metadata.get("path") or metadata.get("doc_id") or metadata.get("chunk_id"))
+        if path:
+            return path.split("#", 1)[0]
+    return _clean(doc.get("doc_id") or doc.get("path") or doc.get("chunk_id") or _doc_hash(doc)[:12])
 
 
-def _dedupe(items: list[str], *, limit: int) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for item in items:
-        normalized = _clean(item)
-        if not normalized or normalized in seen:
+def _temporal_weight(doc: dict[str, Any]) -> float:
+    temporal = doc.get("temporal")
+    if isinstance(temporal, dict):
+        return float(temporal.get("combined_weight") or temporal.get("weight") or doc.get("score") or 0.0)
+    return float(doc.get("temporal_weight") or doc.get("score") or 0.0)
+
+
+def _source_clusters(evidence_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    clusters: dict[str, dict[str, Any]] = {}
+    for doc in evidence_docs:
+        text = _doc_text(doc)
+        tokens = _tokens(text)
+        if not tokens:
             continue
-        seen.add(normalized)
-        result.append(normalized)
-        if len(result) >= limit:
-            break
+        key = _doc_cluster_key(doc)
+        cluster = clusters.setdefault(
+            key,
+            {
+                "cluster_id": key,
+                "source_type": _doc_source_type(doc),
+                "doc_count": 0,
+                "token_count": 0,
+                "score": 0.0,
+                "hashes": [],
+            },
+        )
+        cluster["doc_count"] += 1
+        cluster["token_count"] += len(tokens)
+        cluster["score"] += float(doc.get("score") or 0.0) + _temporal_weight(doc) * 0.2
+        doc_hash = _doc_hash(doc)
+        if doc_hash:
+            cluster["hashes"].append(doc_hash)
+    result = list(clusters.values())
+    result.sort(key=lambda item: (-float(item["score"]), -int(item["token_count"]), str(item["cluster_id"])))
     return result
 
 
-def _sentence_candidates(text: str) -> list[str]:
-    pieces = re.split(r"(?<=[.!?])\s+|[\n\r]+", text)
-    return [_clean(piece) for piece in pieces if len(_clean(piece)) >= 8]
+def _dominant_cluster(evidence_docs: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]], list[dict[str, Any]]]:
+    clusters = _source_clusters(evidence_docs)
+    if not clusters:
+        return None, [], []
+    dominant = clusters[0]["cluster_id"]
+    dominant_docs = [doc for doc in evidence_docs if _doc_cluster_key(doc) == dominant]
+    return str(dominant), dominant_docs, clusters
 
 
-def _payload_facts(evidence_docs: list[dict[str, Any]], *, limit: int = 5) -> list[dict[str, Any]]:
-    candidates: list[tuple[float, int, dict[str, Any]]] = []
-    for index, doc in enumerate(evidence_docs):
-        text = _doc_text(doc)
-        if not text:
-            continue
-        temporal = _temporal(doc)
-        temporal_weight = float(temporal.get("combined_weight") or doc.get("score") or 0.0)
-        kind = _doc_kind(doc)
-        priority = 3 if kind == "chunk" else 2 if kind in {"phrase", "ontology_node"} else 1
-        fact = {
-            "id": _clean(doc.get("chunk_id") or doc.get("id") or f"payload-{index}"),
-            "kind": kind,
-            "hash": _doc_hash(doc),
-            "text": text[:700].strip(),
-            "temporal": temporal,
-            "temporal_weight": round(temporal_weight, 6),
-            "temporal_rank": doc.get("temporal_rank") or temporal.get("rank"),
+@dataclass
+class CandidateScore:
+    token: str
+    score: float
+    transition_probability: float
+    edge_cooccurrence_weight: float
+    concept_proximity: float
+    evidence_locality: float
+    source_type_priority: float
+    loop_penalty: float
+    temporal_weight: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "token": self.token,
+            "score": round(self.score, 6),
+            "transition_probability": round(self.transition_probability, 6),
+            "edge_cooccurrence_weight": round(self.edge_cooccurrence_weight, 6),
+            "concept_proximity": round(self.concept_proximity, 6),
+            "evidence_locality": round(self.evidence_locality, 6),
+            "source_type_priority": round(self.source_type_priority, 6),
+            "loop_penalty": round(self.loop_penalty, 6),
+            "temporal_weight": round(self.temporal_weight, 6),
         }
-        candidates.append((temporal_weight + priority * 0.15, len(_tokens(text)), fact))
-    candidates.sort(key=lambda item: (-item[0], -item[1], item[2]["text"]))
-    return [item[2] for item in candidates[:limit]]
 
 
-def _compact_fact_text(payload_facts: list[dict[str, Any]], *, limit: int = 5) -> list[str]:
-    candidates: list[str] = []
-    for fact in payload_facts:
-        text = _clean(fact.get("text"))
-        candidates.extend(_sentence_candidates(text) or [text])
-    return _dedupe([item[:300] for item in candidates], limit=limit)
+class NativeGraphTokenDecoder:
+    """Experimental graph-token decoder.
+
+    This is deliberately not a language-model facade. It exposes the raw token
+    sequence selected from local evidence, graph paths, and transition counts.
+    """
+
+    name = "ATANOR NativeGraphTokenDecoder"
+
+    def decode(
+        self,
+        query: str,
+        evidence_docs: list[dict[str, Any]],
+        matched_nodes: list[dict[str, Any]] | None = None,
+        matched_edges: list[dict[str, Any]] | None = None,
+        graph_paths: list[list[str]] | None = None,
+        *,
+        max_tokens: int = 72,
+    ) -> dict[str, Any]:
+        matched_nodes = matched_nodes or []
+        matched_edges = matched_edges or []
+        graph_paths = graph_paths or []
+        query_tokens = _tokens(query)
+        dominant_cluster, local_docs, source_clusters = _dominant_cluster(evidence_docs)
+        selected_docs = local_docs or evidence_docs
+        evidence_tokens = self._evidence_tokens(selected_docs)
+        surface_forms = self._surface_forms(selected_docs)
+        token_counts = Counter(evidence_tokens)
+        transition_counts = self._transition_counts(evidence_tokens)
+        cooccurrence = self._cooccurrence_counts(evidence_tokens, window=5)
+        graph_tokens = self._graph_tokens(matched_nodes, matched_edges, graph_paths)
+        output: list[str] = []
+        decoder_scores: list[dict[str, Any]] = []
+
+        current = self._seed_token(query_tokens, evidence_tokens, token_counts)
+        if current:
+            output.append(current)
+
+        stop_reason = "max_tokens"
+        while len(output) < max_tokens:
+            score = self._best_next(
+                current=current,
+                query_tokens=query_tokens,
+                generated=output,
+                token_counts=token_counts,
+                transition_counts=transition_counts,
+                cooccurrence=cooccurrence,
+                graph_tokens=graph_tokens,
+                selected_docs=selected_docs,
+            )
+            if score is None:
+                stop_reason = "no_candidate"
+                break
+            decoder_scores.append(score.to_dict())
+            if score.loop_penalty >= 0.72 and len(output) >= 4:
+                stop_reason = "loop_risk"
+                break
+            output.append(score.token)
+            current = score.token
+            if len(output) >= 8:
+                metrics = degeneration_metrics(" ".join(output), selected_docs)
+                if metrics["loop_detected"]:
+                    stop_reason = "loop_risk"
+                    break
+
+        if not output:
+            output = query_tokens[: max(1, min(12, len(query_tokens)))]
+            stop_reason = "no_evidence_tokens"
+
+        raw_answer = self._surface(output, surface_forms)
+        if self._is_cloud_evidence_verbatim(raw_answer, selected_docs) and len(output) > 4:
+            output = output[:-1]
+            raw_answer = self._surface(output, surface_forms)
+            stop_reason = f"{stop_reason}_cloud_evidence_guard"
+        degeneration = degeneration_metrics(raw_answer, selected_docs)
+        failed_quality = (
+            not evidence_tokens
+            or degeneration["loop_detected"]
+            or degeneration["unique_token_ratio"] < 0.34
+            or degeneration["unrelated_evidence_mix"]
+            or len(_tokens(raw_answer)) < 2
+        )
+        return {
+            "raw_answer": raw_answer,
+            "decoder_scores": decoder_scores[-32:],
+            "source_clusters": source_clusters,
+            "dominant_source_cluster": dominant_cluster,
+            "native_stop_reason": stop_reason,
+            "degeneration": degeneration,
+            "native_generation_failed_quality_check": failed_quality,
+            "selected_evidence_count": len(selected_docs),
+        }
+
+    def _evidence_tokens(self, docs: list[dict[str, Any]]) -> list[str]:
+        tokens: list[str] = []
+        ordered = sorted(docs, key=lambda doc: (-_temporal_weight(doc), -float(doc.get("score") or 0.0), _doc_hash(doc)))
+        for doc in ordered:
+            tokens.extend(_tokens(_doc_text(doc))[:180])
+        return tokens
+
+    def _surface_forms(self, docs: list[dict[str, Any]]) -> dict[str, str]:
+        surfaces: dict[str, str] = {}
+        ordered = sorted(docs, key=lambda doc: (-_temporal_weight(doc), -float(doc.get("score") or 0.0), _doc_hash(doc)))
+        for doc in ordered:
+            for match in re.finditer(r"[\w\-\uac00-\ud7a3]+", _doc_text(doc), flags=re.UNICODE):
+                surface = match.group(0).strip("-_")
+                if not surface:
+                    continue
+                key = surface.lower()
+                if (len(key) > 1 or key.isdigit()) and key not in STOP_TOKENS and key not in surfaces:
+                    surfaces[key] = surface
+        return surfaces
+
+    def _transition_counts(self, tokens: list[str]) -> Counter[tuple[str, str]]:
+        return Counter(zip(tokens, tokens[1:]))
+
+    def _cooccurrence_counts(self, tokens: list[str], *, window: int) -> Counter[tuple[str, str]]:
+        counts: Counter[tuple[str, str]] = Counter()
+        for index, source in enumerate(tokens):
+            for target in tokens[index + 1 : index + 1 + window]:
+                if source != target:
+                    counts[(source, target)] += 1
+        return counts
+
+    def _graph_tokens(
+        self,
+        matched_nodes: list[dict[str, Any]],
+        matched_edges: list[dict[str, Any]],
+        graph_paths: list[list[str]],
+    ) -> set[str]:
+        values: list[str] = []
+        for node in matched_nodes:
+            values.append(_clean(node.get("label") or node.get("id") or node.get("node_hash")))
+        for edge in matched_edges:
+            values.extend([_clean(edge.get("source") or edge.get("source_hash")), _clean(edge.get("target") or edge.get("target_hash"))])
+            values.append(_clean(edge.get("relation")))
+        for path in graph_paths:
+            values.extend(_clean(part) for part in path)
+        result: set[str] = set()
+        for value in values:
+            result.update(_tokens(value))
+        return result
+
+    def _seed_token(self, query_tokens: list[str], evidence_tokens: list[str], token_counts: Counter[str]) -> str | None:
+        for token in query_tokens:
+            if token in token_counts:
+                return token
+        if evidence_tokens:
+            return max(set(evidence_tokens), key=lambda token: (token_counts[token], -evidence_tokens.index(token), token))
+        return query_tokens[0] if query_tokens else None
+
+    def _best_next(
+        self,
+        *,
+        current: str | None,
+        query_tokens: list[str],
+        generated: list[str],
+        token_counts: Counter[str],
+        transition_counts: Counter[tuple[str, str]],
+        cooccurrence: Counter[tuple[str, str]],
+        graph_tokens: set[str],
+        selected_docs: list[dict[str, Any]],
+    ) -> CandidateScore | None:
+        if not token_counts:
+            return None
+        total_transitions = sum(count for (source, _target), count in transition_counts.items() if source == current) or 1
+        total_tokens = sum(token_counts.values()) or 1
+        temporal = max([_temporal_weight(doc) for doc in selected_docs] or [0.0])
+        source_priority = 0.14 if any(_doc_source_type(doc) == "self_corpus" for doc in selected_docs) else 0.0
+        candidates: list[CandidateScore] = []
+        candidate_tokens: set[str]
+        if current:
+            transition_targets = {target for source, target in transition_counts if source == current}
+            if transition_targets:
+                candidate_tokens = transition_targets
+            elif len(generated) < 8:
+                candidate_tokens = {target for source, target in cooccurrence if source == current}
+            else:
+                return None
+        else:
+            candidate_tokens = set(token_counts)
+        for token in candidate_tokens:
+            transition_probability = transition_counts.get((current or "", token), 0) / total_transitions
+            edge_weight = cooccurrence.get((current or "", token), 0) / max(1, token_counts.get(current or "", 1))
+            concept_proximity = 0.18 if token in graph_tokens else 0.0
+            if token in query_tokens:
+                concept_proximity += 0.08
+            evidence_locality = token_counts[token] / total_tokens
+            repeat_count = generated.count(token)
+            repeated_bigram = len(generated) >= 1 and generated[-1] == token
+            repeated_recent_window = token in generated[-6:]
+            self_loop_pressure = 0.12 if current and token != current and transition_counts.get((current, current), 0) else 0.0
+            loop_penalty = min(
+                1.45,
+                repeat_count * 0.34
+                + (0.55 if repeated_bigram else 0.0)
+                + (0.18 if repeated_recent_window else 0.0)
+                + (0.42 if repeat_count >= 2 else 0.0)
+                + self_loop_pressure,
+            )
+            score = (
+                transition_probability * 0.42
+                + min(1.0, edge_weight) * 0.18
+                + concept_proximity
+                + evidence_locality * 0.18
+                + source_priority
+                + min(0.35, temporal * 0.08)
+                - loop_penalty
+            )
+            candidates.append(
+                CandidateScore(
+                    token=token,
+                    score=score,
+                    transition_probability=transition_probability,
+                    edge_cooccurrence_weight=min(1.0, edge_weight),
+                    concept_proximity=concept_proximity,
+                    evidence_locality=evidence_locality,
+                    source_type_priority=source_priority,
+                    loop_penalty=loop_penalty,
+                    temporal_weight=temporal,
+                )
+            )
+        candidates.sort(key=lambda item: (-item.score, item.token))
+        if not candidates:
+            return None
+        return candidates[0]
+
+    def _surface(self, tokens: list[str], surface_forms: dict[str, str] | None = None) -> str:
+        surface_forms = surface_forms or {}
+        text = " ".join(surface_forms.get(token, token) for token in tokens).strip()
+        for signature in BANNED_SURFACE_SIGNATURES:
+            text = text.replace(signature, "")
+        return re.sub(r"\s{2,}", " ", text).strip()
+
+    def _is_cloud_evidence_verbatim(self, answer: str, selected_docs: list[dict[str, Any]]) -> bool:
+        if not answer or not selected_docs or not all(_doc_source_type(doc) == "cloud_brain" for doc in selected_docs):
+            return False
+        normalized_answer = re.sub(r"[\W_]+", " ", answer.lower()).strip()
+        for doc in selected_docs:
+            normalized_doc = re.sub(r"[\W_]+", " ", _doc_text(doc).lower()).strip()
+            if normalized_doc and normalized_doc in normalized_answer:
+                return True
+        return False
 
 
-def _xml_text(value: Any) -> str:
-    return html.escape(_clean(value), quote=False)
+def _trace_path(memory_dir: str | Path = "data/memory") -> Path:
+    root = Path(memory_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    return root / "generation_traces.jsonl"
 
 
-def _node_label(node: dict[str, Any]) -> str:
-    return _short_hash(_clean(node.get("label") or node.get("primary_name") or node.get("id")))
+def save_generation_trace(trace: dict[str, Any], memory_dir: str | Path = "data/memory") -> Path:
+    path = _trace_path(memory_dir)
+    record = {"created_at": utc_now_iso(), **trace}
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return path
+
+
+def record_user_correction(
+    query: str,
+    bad_answer: str,
+    user_correction: str,
+    *,
+    accepted: bool = True,
+    memory_dir: str | Path = "data/memory",
+) -> Path:
+    path = Path(memory_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    target = path / "corrections.jsonl"
+    record = {
+        "created_at": utc_now_iso(),
+        "query": query,
+        "bad_answer": bad_answer,
+        "user_correction": user_correction,
+        "accepted": bool(accepted),
+    }
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    return target
 
 
 class LocalSynthesizer:
-    """Local-only synthesis over Ghost Shell payloads and graph relations."""
+    """Compatibility wrapper around the native graph-token decoder."""
 
-    engine_name = "ATANOR LocalSynthesizer"
+    engine_name = "ATANOR NativeGraphTokenDecoder"
 
-    def __init__(self, smoother: OnDeviceSmoothingBackend | None = _DEFAULT_SMOOTHER) -> None:
-        self.smoother = smoother
+    def __init__(self, decoder: NativeGraphTokenDecoder | None = None) -> None:
+        self.decoder = decoder or NativeGraphTokenDecoder()
 
     def synthesize(
         self,
@@ -194,156 +478,82 @@ class LocalSynthesizer:
         matched_nodes: list[dict[str, Any]] | None = None,
         matched_edges: list[dict[str, Any]] | None = None,
         graph_paths: list[list[str]] | None = None,
+        *,
+        memory_dir: str | Path = "data/memory",
     ) -> dict[str, Any]:
         matched_nodes = matched_nodes or []
         matched_edges = matched_edges or []
         graph_paths = graph_paths or []
-
-        active_concepts = self._active_concepts(query, evidence_docs, matched_nodes)
-        relation_facts = self._relation_facts(evidence_docs, matched_nodes, matched_edges, graph_paths)
-        payload_facts = _payload_facts(evidence_docs)
-        context_block = self._build_context_block(query, active_concepts, relation_facts, payload_facts, graph_paths)
-        intent = _infer_intent(query)
-
-        if evidence_docs:
-            answer = self._compose_answer(query, active_concepts, relation_facts, payload_facts, intent)
-            answer_kind = "local_synthesis"
-            mode = "local-ghost-shell-autonomous-alpha"
-        else:
-            answer = self._no_evidence_answer(query, active_concepts, intent)
-            answer_kind = "no_evidence"
-            mode = "local-no-evidence-diagnostic-alpha"
-
-        smoothing_context = {
-            "query": query,
-            "system_instruction": AUTONOMOUS_SYSTEM_INSTRUCTION,
-            "context_block": context_block,
-            "active_concepts": active_concepts,
-            "relation_facts": relation_facts,
-            "payload_facts": payload_facts,
-            "network_barrier": "sealed_for_generation",
-        }
-        if self.smoother is not None and answer_kind != "no_evidence":
-            answer = self.smoother.smooth(answer, smoothing_context)
-
-        answer = self._sanitize_surface(answer)
-        temporal_collision = any(bool((fact.get("temporal") or {}).get("collision_detected")) for fact in payload_facts)
+        decoded = self.decoder.decode(query, evidence_docs, matched_nodes, matched_edges, graph_paths)
+        answer = decoded["raw_answer"]
         diagnostics = {
-            "intent": intent,
-            "payload_count": len(evidence_docs),
-            "relation_fact_count": len(relation_facts),
-            "payload_fact_count": len(payload_facts),
-            "active_concepts": active_concepts,
-            "relation_types": sorted({fact["relation"] for fact in relation_facts})[:12],
-            "temporal_priority": [
-                {
-                    "id": fact.get("id"),
-                    "timestamp": (fact.get("temporal") or {}).get("timestamp"),
-                    "combined_weight": (fact.get("temporal") or {}).get("combined_weight"),
-                    "rank": fact.get("temporal_rank"),
-                }
-                for fact in payload_facts
-            ],
-            "temporal_collision_detected": temporal_collision,
-            "smoother": getattr(self.smoother, "name", None),
+            "answer_kind": "native_graph_token_generation",
+            "native_generation_failed_quality_check": decoded["native_generation_failed_quality_check"],
+            "degeneration": decoded["degeneration"],
+            "training_feedback_recorded": True,
+            "source_clusters": decoded["source_clusters"],
+            "dominant_source_cluster": decoded["dominant_source_cluster"],
+            "native_stop_reason": decoded["native_stop_reason"],
+            "selected_evidence_count": decoded["selected_evidence_count"],
             "outbound_http_calls": 0,
             "network_barrier": "sealed_for_generation",
             "banned_surface_signatures": [signature for signature in BANNED_SURFACE_SIGNATURES if signature in answer],
         }
-
+        trace = {
+            "query": query,
+            "raw_answer": answer,
+            "evidence_used": [_doc_hash(doc) for doc in evidence_docs],
+            "graph_paths": graph_paths,
+            "decoder_scores": decoded["decoder_scores"],
+            "degeneration_metrics": decoded["degeneration"],
+            "source_clusters": decoded["source_clusters"],
+            "native_stop_reason": decoded["native_stop_reason"],
+            "user_feedback": None,
+        }
+        trace_path = save_generation_trace(trace, memory_dir)
+        diagnostics["generation_trace_path"] = str(trace_path)
         return {
             "answer": answer,
+            "raw_native_output": answer,
             "pmv": {
-                "intent": intent,
-                "topic": active_concepts[0] if active_concepts else query.strip(),
-                "stance": "local_payload_grounded_experimental",
-                "audience_level": "research",
-                "answer_goal": "synthesize one answer from the local Ghost Shell context bundle",
-                "required_evidence": True,
-                "style": "autonomous_local_prose",
+                "topic": (_tokens(query) or [query.strip() or "query"])[0],
+                "stance": "research_native_generation",
+                "answer_goal": "emit native graph-token output without cosmetic replacement",
+                "required_evidence": bool(evidence_docs),
             },
-            "claim_plan": [self._claim_line(fact) for fact in relation_facts[:8]],
-            "active_concepts": active_concepts,
-            "answer_kind": answer_kind,
+            "claim_plan": [],
+            "active_concepts": self._active_concepts(query, evidence_docs, matched_nodes),
+            "answer_kind": "native_graph_token_generation",
+            "native_generation_failed_quality_check": decoded["native_generation_failed_quality_check"],
+            "degeneration": decoded["degeneration"],
+            "training_feedback_recorded": True,
+            "native_stop_reason": decoded["native_stop_reason"],
+            "source_clusters": decoded["source_clusters"],
+            "decoder_scores": decoded["decoder_scores"],
             "answer_engine": {
                 "name": self.engine_name,
-                "mode": mode,
+                "mode": "native-graph-token-alpha",
                 "external_llm": False,
                 "cloud_ai_provider": None,
                 "network_barrier": "sealed_for_generation",
-                "surface_generation": "local_autonomous_context_synthesis",
-                "prediction_basis": "ghost_context_bundle_autonomous_synthesis",
-                "system_instruction": AUTONOMOUS_SYSTEM_INSTRUCTION,
-                "context_block": context_block,
-                "on_device_slm_interface": {
-                    "available": self.smoother is not None,
-                    "role": "local_gpu_text_smoothing_only",
-                    "allowed_runtime": "on_device_only",
-                },
+                "surface_generation": "native_graph_token_generation",
+                "prediction_basis": "token_transition_edge_cooccurrence_graph_path",
+                "pretrained_generation_weights": False,
+                "canned_identity_response": False,
+                "template_fallback": False,
                 "stages": [
                     "query",
                     "ghost_topology_hash_search",
                     "payload_vault_disk_fetch",
-                    "temporal_decay_potentiation",
-                    "context_block_assembly",
-                    "local_autonomous_synthesis",
-                    "optional_on_device_slm_smoothing",
-                    "output",
+                    "source_cluster_selection",
+                    "native_graph_token_decode",
+                    "degeneration_scoring",
+                    "generation_trace_append",
+                    "output_raw_native_text",
                 ],
                 "diagnostics": diagnostics,
             },
         }
-
-    def _compose_answer(
-        self,
-        query: str,
-        active_concepts: list[str],
-        relation_facts: list[dict[str, str]],
-        payload_facts: list[dict[str, Any]],
-        intent: str,
-    ) -> str:
-        topic = self._topic(query, active_concepts)
-        material = _compact_fact_text(payload_facts)
-        relation_lines = [self._relation_phrase(fact) for fact in relation_facts[:4]]
-        temporal_collision = any(bool((fact.get("temporal") or {}).get("collision_detected")) for fact in payload_facts)
-        if not material:
-            return self._no_evidence_answer(query, active_concepts, intent)
-
-        parts: list[str] = []
-        if intent == "define":
-            parts.append(f"{topic}: ATANOR found this concept inside the local Ghost Shell context.")
-        elif intent == "explain_process":
-            parts.append(f"{topic}: the local pipeline resolves ghost hashes, fetches vault payloads, then synthesizes the result.")
-        elif intent == "explain_cause":
-            parts.append(f"{topic}: this follows the Transparent Anomy rule: facts stay traceable, local, and air-gapped.")
-        elif intent == "compare":
-            parts.append(f"{topic}: ATANOR separates structural memory from the local surface generator.")
-        else:
-            parts.append(f"{topic}: ATANOR synthesized this from Ghost Shell hashes and Payload Vault context.")
-
-        parts.extend(material[:3])
-        if relation_lines:
-            parts.append("Graph relations: " + "; ".join(relation_lines[:3]) + ".")
-        if temporal_collision:
-            latest = payload_facts[0].get("temporal") or {}
-            stamp = latest.get("timestamp") or "the highest-weight temporal fact"
-            parts.append(f"Temporal collision detected; synthesis prioritized {stamp}.")
-        if len(material) > 3:
-            parts.append("Additional payloads were retained as secondary context rather than overwritten.")
-        return " ".join(parts)
-
-    def _no_evidence_answer(self, query: str, active_concepts: list[str], intent: str) -> str:
-        topic = self._topic(query, active_concepts)
-        return (
-            f"{topic}: ATANOR did not find enough directly connected local evidence in Ghost Shell. "
-            "The engine does not call an external LLM to fill missing facts."
-        )
-
-    def _topic(self, query: str, active_concepts: list[str]) -> str:
-        if active_concepts:
-            return active_concepts[0]
-        tokens = _tokens(query)
-        return tokens[0] if tokens else _clean(query) or "query"
 
     def _active_concepts(
         self,
@@ -353,120 +563,17 @@ class LocalSynthesizer:
     ) -> list[str]:
         concepts: list[str] = []
         for node in matched_nodes:
-            label = _node_label(node)
+            label = _clean(node.get("label") or node.get("primary_name") or node.get("id"))
             if label and label not in concepts:
                 concepts.append(label)
         for doc in evidence_docs:
-            text = _doc_text(doc)
-            if not text:
-                continue
-            kind = _doc_kind(doc)
-            if kind in {"token", "phrase", "node", "ontology_node"}:
-                label = _short_hash(text)
-                if label not in concepts:
-                    concepts.append(label)
-        if not concepts:
-            for token, _count in Counter(_tokens(query)).most_common(4):
+            metadata = doc.get("metadata")
+            if isinstance(metadata, dict):
+                for key in ("legacy_id", "doc_id", "chunk_id"):
+                    value = _clean(metadata.get(key))
+                    if value and value not in concepts:
+                        concepts.append(value)
+        for token, _count in Counter(_tokens(query)).most_common(4):
+            if token not in concepts:
                 concepts.append(token)
         return concepts[:8]
-
-    def _relation_facts(
-        self,
-        evidence_docs: list[dict[str, Any]],
-        matched_nodes: list[dict[str, Any]],
-        matched_edges: list[dict[str, Any]],
-        graph_paths: list[list[str]],
-    ) -> list[dict[str, str]]:
-        label_by_id = {str(node.get("id")): _node_label(node) for node in matched_nodes if node.get("id")}
-        payload_by_hash = {
-            doc_hash: _short_hash(_doc_text(doc))
-            for doc in evidence_docs
-            if (doc_hash := _doc_hash(doc)) and _doc_text(doc)
-        }
-
-        def resolve(value: Any) -> str:
-            raw = _clean(value)
-            return payload_by_hash.get(raw) or label_by_id.get(raw) or _short_hash(raw)
-
-        facts: list[dict[str, str]] = []
-        seen: set[tuple[str, str, str]] = set()
-
-        def add(source: Any, relation: Any, target: Any) -> None:
-            fact = {
-                "source": resolve(source),
-                "relation": _clean(relation) or "ghost_edge",
-                "target": resolve(target),
-            }
-            key = (fact["source"], fact["relation"], fact["target"])
-            if not fact["source"] or not fact["target"] or key in seen:
-                return
-            seen.add(key)
-            facts.append(fact)
-
-        for edge in matched_edges:
-            add(edge.get("source") or edge.get("source_hash"), edge.get("relation") or "ghost_edge", edge.get("target") or edge.get("target_hash"))
-            if len(facts) >= 8:
-                return facts
-
-        for path in graph_paths:
-            if len(path) >= 3:
-                add(path[0], path[1], path[2])
-            elif len(path) >= 2:
-                add(path[0], "ghost_edge", path[1])
-            if len(facts) >= 8:
-                break
-        return facts
-
-    def _claim_line(self, fact: dict[str, str]) -> str:
-        return f"{fact.get('source', '')} --{fact.get('relation', 'relates')}--> {fact.get('target', '')}"
-
-    def _relation_phrase(self, fact: dict[str, str]) -> str:
-        relation = fact.get("relation", "relates")
-        source = fact.get("source", "")
-        target = fact.get("target", "")
-        return f"{source} --{relation}--> {target}"
-
-    def _build_context_block(
-        self,
-        query: str,
-        active_concepts: list[str],
-        relation_facts: list[dict[str, str]],
-        payload_facts: list[dict[str, Any]],
-        graph_paths: list[list[str]],
-    ) -> str:
-        concept_lines = "\n".join(f"    <concept>{_xml_text(concept)}</concept>" for concept in active_concepts)
-        payload_lines = "\n".join(
-            "    "
-            + f"<payload id=\"{_xml_text(fact.get('id'))}\" kind=\"{_xml_text(fact.get('kind'))}\""
-            + (f" hash=\"{_xml_text(fact.get('hash'))}\"" if fact.get("hash") else "")
-            + f" temporal_weight=\"{_xml_text(fact.get('temporal_weight'))}\""
-            + f" temporal_rank=\"{_xml_text(fact.get('temporal_rank'))}\""
-            + f" timestamp=\"{_xml_text((fact.get('temporal') or {}).get('timestamp'))}\""
-            + f">{_xml_text(fact.get('text'))}</payload>"
-            for fact in payload_facts
-        )
-        relation_lines = "\n".join(
-            "    "
-            + f"<edge source=\"{_xml_text(fact['source'])}\" relation=\"{_xml_text(fact['relation'])}\" target=\"{_xml_text(fact['target'])}\" />"
-            for fact in relation_facts
-        )
-        path_lines = "\n".join(
-            f"    <path>{_xml_text(' -> '.join(map(str, path)))}</path>" for path in graph_paths[:8] if path
-        )
-        return (
-            "<context>\n"
-            f"  <query>{_xml_text(query)}</query>\n"
-            f"  <temporal_policy>preserve older facts; prioritize highest temporal_weight for answer synthesis</temporal_policy>\n"
-            f"  <active_concepts>\n{concept_lines}\n  </active_concepts>\n"
-            f"  <payloads>\n{payload_lines}\n  </payloads>\n"
-            f"  <relations>\n{relation_lines}\n  </relations>\n"
-            f"  <graph_paths>\n{path_lines}\n  </graph_paths>\n"
-            "</context>"
-        )
-
-    def _sanitize_surface(self, answer: str) -> str:
-        clean = _clean(answer)
-        for signature in BANNED_SURFACE_SIGNATURES:
-            clean = clean.replace(signature, "")
-        clean = re.sub(r"\s{2,}", " ", clean)
-        return clean.strip()

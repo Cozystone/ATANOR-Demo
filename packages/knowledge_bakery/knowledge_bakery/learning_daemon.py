@@ -992,7 +992,7 @@ async def _async_worker_loop(memory_dir: str, interval_seconds: int) -> None:
         try:
             await asyncio.to_thread(tick_daemon, memory_dir)
         except RuntimeError as exc:
-            if "cannot schedule new futures after shutdown" in str(exc):
+            if _is_interpreter_shutdown(exc):
                 break
             raise
         status = daemon_status(memory_dir)
@@ -1003,7 +1003,7 @@ async def _async_worker_loop(memory_dir: str, interval_seconds: int) -> None:
             try:
                 await asyncio.to_thread(daemon_checkpoint, memory_dir, "auto")
             except RuntimeError as exc:
-                if "cannot schedule new futures after shutdown" in str(exc):
+                if _is_interpreter_shutdown(exc):
                     break
                 raise
         try:
@@ -1016,8 +1016,13 @@ def _worker_entry(memory_dir: str, interval_seconds: int) -> None:
     try:
         asyncio.run(_async_worker_loop(memory_dir, interval_seconds))
     except RuntimeError as exc:
-        if "cannot schedule new futures after shutdown" not in str(exc):
+        if not _is_interpreter_shutdown(exc):
             raise
+
+
+def _is_interpreter_shutdown(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return "cannot schedule new futures after shutdown" in message or "cannot schedule new futures after interpreter shutdown" in message
 
 
 def start_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, interval_seconds: int = DEFAULT_INTERVAL_SECONDS, resume: bool = True) -> dict[str, Any]:

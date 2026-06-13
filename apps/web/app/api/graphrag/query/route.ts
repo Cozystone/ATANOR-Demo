@@ -1,17 +1,7 @@
 import { NextResponse } from "next/server";
-import { demoGraphRAGQuery, isConversationalQuery, isLegendQuery, isNodeInventoryQuery } from "../../_alphaDemo";
+import { demoGraphRAGQuery } from "../../_alphaDemo";
 import { proxyJson } from "../../_backend";
 import { isFreshSearchQuery, isKnowledgeLookupQuery, searchWeb, webResultsToEvidence } from "../../_webSearch";
-
-function isRawNoNodeResult(body: any) {
-  const result = body?.result ?? {};
-  const answer = String(result.answer ?? "");
-  return (
-    answer.includes("raw_no_node::")
-    || result.method === "atanor-native-raw-no-node-v1"
-    || result.answer_engine?.mode === "native-raw-no-node-alpha"
-  );
-}
 
 function isLegacySurfaceResult(body: any) {
   const result = body?.result ?? {};
@@ -19,10 +9,43 @@ function isLegacySurfaceResult(body: any) {
     result.method === "atanor-native-web-search-rag-v1"
     || result.method === "atanor-native-graphrag-utterance-v1"
     || result.method === "atanor-native-no-node-utterance-v1"
+    || result.method === "atanor-conversation-router-v1"
+    || result.method === "atanor-graph-inspection-v1"
+    || result.method === "atanor-graph-legend-v1"
     || result.answer_engine?.mode === "native-web-search-grounded-alpha"
     || result.answer_engine?.mode === "native-next-thought-alpha"
     || result.answer_engine?.mode === "native-no-node-sentence-alpha"
+    || result.answer_engine?.mode === "conversation-surface-no-retrieval-alpha"
+    || result.answer_engine?.mode === "graph-inspection-control-alpha"
+    || result.answer_engine?.mode === "graph-legend-control-alpha"
+    || ["greeting", "thanks", "conversation", "inspection"].includes(String(result.answer_kind ?? ""))
   );
+}
+
+function normalizeQuery(query: string) {
+  return query.trim().toLowerCase().replace(/[\s!.?,;:()[\]{}"'`~\u3002\uff01\uff1f]+/g, "");
+}
+
+function isLowInformationConversationQuery(query: string) {
+  const compact = normalizeQuery(query);
+  if (!compact) return true;
+  const exactGreetings = new Set([
+    "hi",
+    "hello",
+    "hey",
+    "yo",
+    "thanks",
+    "thankyou",
+    "\uc548\ub155",
+    "\uc548\ub155\ud558\uc138\uc694",
+    "\ud558\uc774",
+    "\uace0\ub9c8\uc6cc",
+    "\uac10\uc0ac",
+    "\uac10\uc0ac\ud569\ub2c8\ub2e4",
+  ]);
+  if (exactGreetings.has(compact)) return true;
+  const tokens = query.toLowerCase().match(/[a-z0-9\uac00-\ud7a3_-]+/g) ?? [];
+  return tokens.length <= 2 && tokens.some((token) => exactGreetings.has(normalizeQuery(token)));
 }
 
 export async function POST(request: Request) {
@@ -38,24 +61,23 @@ export async function POST(request: Request) {
   } catch {
     // Fall through to deterministic demo with the default query.
   }
-  const conversationQuery = isConversationalQuery(query);
-  const controlQuery = conversationQuery || isLegendQuery(query) || isNodeInventoryQuery(query);
-  webSearch = !conversationQuery && (webSearch || isFreshSearchQuery(query) || isKnowledgeLookupQuery(query));
+  if (isLowInformationConversationQuery(query)) {
+    webSearch = false;
+  } else {
+    webSearch = webSearch || isFreshSearchQuery(query) || isKnowledgeLookupQuery(query);
+  }
 
   try {
     const proxied = await proxyJson("/api/graphrag/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body,
+      body: JSON.stringify({ query, web_search: webSearch, web_search_provider: webSearchProvider }),
     });
-    if (proxied?.body?.result?.answer && !isRawNoNodeResult(proxied.body) && !isLegacySurfaceResult(proxied.body) && (!webSearch || proxied.body.result.web_search)) {
+    if (proxied?.body?.result?.answer && !isLegacySurfaceResult(proxied.body) && (!webSearch || proxied.body.result.web_search)) {
       return NextResponse.json(proxied.body, { status: proxied.status });
     }
   } catch {
     // Fall through to deterministic demo.
-  }
-  if (controlQuery) {
-    return NextResponse.json(demoGraphRAGQuery(query));
   }
   if (webSearch) {
     const webSearchPayload = await searchWeb(query, 5, webSearchProvider);

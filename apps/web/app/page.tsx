@@ -50,6 +50,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   text: string;
   evidence?: AnyRecord[];
+  diagnostics?: AnyRecord;
 };
 
 type MemoryNode = {
@@ -662,6 +663,21 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
       confidence: nodes.length ? 0.98 : 0.25,
     },
   };
+}
+
+function shouldUseWebSearchForQuestion(question: string, webSearchEnabled: boolean) {
+  if (!webSearchEnabled) return false;
+  const normalized = question.trim().toLowerCase();
+  if (!normalized) return false;
+  const compact = normalized.replace(/[\s!.?,。！？~]+/g, "");
+  if (["hi", "hello", "hey", "yo", "thanks", "thankyou", "안녕", "안녕하세요", "하이", "고마워", "감사", "감사합니다"].includes(compact)) {
+    return false;
+  }
+  const tokens = normalized.match(/[a-z0-9가-힣_-]+/g) ?? [];
+  if (tokens.length <= 2 && tokens.some((token) => ["hi", "hello", "hey", "안녕", "안녕하세요", "하이"].includes(token))) {
+    return false;
+  }
+  return true;
 }
 
 function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecord | null) {
@@ -1405,26 +1421,8 @@ export default function BakeBoardPage() {
     if (learnComplete) setStageProgress("output", Math.max(8, labStageProgress.output));
     activateSignal(signalTraceForQuery(question, displayGraph3D), 15000);
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
-    if (isNodeInventoryQuestion(question) || isLegendQuestion(question)) {
-      const localResult = isLegendQuestion(question)
-        ? graphLegendStatus(question, displayGraph3D)
-        : graphInventoryStatus(question, displayGraph3D);
-      setGraphRag(localResult);
-      activateSignal(signalTraceForQuery(question, displayGraph3D, localResult.result), 15000);
-      setChatMessages((messages) => [
-        ...messages,
-        {
-          role: "assistant",
-          text: localResult.result.answer,
-          evidence: [],
-        },
-      ]);
-      if (learnComplete) setStageProgress("output", 100);
-      setIsGeneratingAnswer(false);
-      return;
-    }
     try {
-      const shouldUseWebSearch = webSearchEnabled;
+      const shouldUseWebSearch = shouldUseWebSearchForQuestion(question, webSearchEnabled);
       const result = await apiJson<AnyRecord>("/api/graphrag/query", {
         method: "POST",
         body: JSON.stringify({ query: question, web_search: shouldUseWebSearch }),
@@ -1461,6 +1459,12 @@ export default function BakeBoardPage() {
           role: "assistant",
           text: answer ?? `NO_ANSWER\nnodes=${nodeText}\nevidence_docs=${evidence.length}`,
           evidence,
+          diagnostics: {
+            native_generation_failed_quality_check: apiResult?.native_generation_failed_quality_check ?? apiResult?.answer_engine?.diagnostics?.native_generation_failed_quality_check,
+            degeneration: apiResult?.degeneration ?? apiResult?.answer_engine?.diagnostics?.degeneration,
+            native_stop_reason: apiResult?.native_stop_reason ?? apiResult?.answer_engine?.diagnostics?.native_stop_reason,
+            training_feedback_recorded: apiResult?.training_feedback_recorded ?? apiResult?.answer_engine?.diagnostics?.training_feedback_recorded,
+          },
         },
       ]);
       if (learnComplete) setStageProgress("output", 100);
@@ -2789,6 +2793,19 @@ export default function BakeBoardPage() {
                               <small>{doc.snippet}</small>
                             </div>
                           ))}
+                        </div>
+                      ) : null}
+                      {message.role === "assistant" && message.diagnostics?.degeneration ? (
+                        <div className="message-evidence native-diagnostics">
+                          <div>
+                            <strong>Native Alpha diagnostics</strong>
+                            <em>
+                              loop {String(message.diagnostics.degeneration.loop_detected)} / stop {message.diagnostics.native_stop_reason ?? "n/a"}
+                            </em>
+                            <small>
+                              repeated bigram {message.diagnostics.degeneration.repeated_bigram_ratio ?? "n/a"} · unique token {message.diagnostics.degeneration.unique_token_ratio ?? "n/a"} · trace saved {String(message.diagnostics.training_feedback_recorded ?? false)}
+                            </small>
+                          </div>
                         </div>
                       ) : null}
                     </article>

@@ -1,7 +1,7 @@
 # ATANOR 1.0 Alpha Freeze Report
 
 Generated: 2026-06-14 KST
-Updated: 2026-06-14 KST, ATANOR 0.1.1 deployment candidate
+Updated: 2026-06-14 KST, native Alpha honesty and self-corpus stabilization pass
 
 ## Repository State
 
@@ -31,6 +31,21 @@ The working tree is intentionally not clean because this freeze pass is stabiliz
   - forces local-only behavior for private queries and invalid cloud fragments
   - clamps Cloud Brain fragment size for low-memory and survival modes
   - preserves local private memory priority over cloud context during weighted RRF
+- Removed legacy canned answer shortcuts from the active GraphRAG path:
+  - greeting/control/inspection answers no longer bypass native retrieval/generation
+  - web fallback rejects older conversation and inspection router results
+  - no-evidence output remains raw native output with diagnostics instead of a polished replacement
+- Added first-class `self_corpus` ingestion:
+  - `scripts/ingest_self_corpus.py`
+  - routes README and ATANOR docs through DataGate, Ontology Forge, Knowledge Bakery, Ghost Shell, Payload Vault, GraphRAG, and native decoding
+  - tags self documentation payloads as `source_type = self_corpus`
+- Added deterministic native generation evaluation:
+  - `scripts/evaluate_native_generation.py`
+  - reports evidence count, source cluster, local/cloud ratio, repetition metrics, loop state, stop reason, and self-corpus usage
+- Added local generation trace and correction paths:
+  - `data/memory/generation_traces.jsonl`
+  - `data/memory/corrections.jsonl`
+  - traces preserve raw native output and degeneration diagnostics for later native training
 - Bumped the deployment candidate to `0.1.1` to avoid collision with the existing `0.1.0.0` Partner Center package.
 - Verified `http://127.0.0.1:3022/` after restart:
   - page title: `ATANOR`
@@ -69,7 +84,7 @@ Summary:
 Command:
 
 ```powershell
-python -m py_compile apps/api/app/main.py apps/api/app/services/network_config.py packages/rag_engine/rag_engine/retriever.py packages/rag_engine/rag_engine/synthesizer.py packages/knowledge_bakery/knowledge_bakery/memory.py packages/knowledge_bakery/knowledge_bakery/learning_daemon.py
+python -m py_compile apps/api/app/main.py apps/api/app/services/network_config.py packages/rag_engine/rag_engine/retriever.py packages/rag_engine/rag_engine/synthesizer.py packages/knowledge_bakery/knowledge_bakery/memory.py packages/knowledge_bakery/knowledge_bakery/learning_daemon.py scripts/ingest_self_corpus.py scripts/evaluate_native_generation.py
 ```
 
 Result: passed.
@@ -86,7 +101,7 @@ python -m pytest apps/api/tests packages/rag_engine/tests packages/model/tests -
 Result:
 
 ```text
-49 passed in 4.06s
+55 passed in 11.57s
 ```
 
 ### Web Build
@@ -166,7 +181,9 @@ Partner Center status observed:
 - Production Cloud Brain is not complete.
 - Real libp2p payload transport is not complete.
 - Production token economy is not implemented.
-- Local decoder is not ChatGPT-level; current generation remains Alpha-grade.
+- Local decoder is not ChatGPT-level; current generation may be broken, repetitive, or ugly by design.
+- ATANOR Alpha must not hide bad output with canned identity replies, regex summaries, external LLMs, pretrained local models, or deterministic template fallbacks.
+- Self identity answers should improve only after ATANOR documentation has been ingested as native `self_corpus`.
 - Full internal namespace migration from Homage to ATANOR is intentionally deferred.
 - GitHub official ATANOR repository creation is blocked until GitHub CLI or connector authentication is available.
 - Partner Center package upload is blocked by browser file-upload automation limitations; the final `.msixupload` is ready for manual upload.

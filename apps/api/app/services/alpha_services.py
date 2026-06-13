@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -145,7 +146,9 @@ class AlphaService:
                 evidence_docs=local_evidence_docs,
                 local_answer_confidence=float(result.get("confidence") or 0.0),
             )
-            should_search = not is_conversation and not is_control and (
+            local_only_graph_query = _is_local_operational_query(query)
+            low_information_query = _is_low_information_conversation_query(query)
+            should_search = not low_information_query and not local_only_graph_query and not is_conversation and not is_control and (
                 web_search
                 or is_fresh_search_query(query)
                 or is_knowledge_lookup_query(query)
@@ -351,6 +354,27 @@ def _is_control_result(result: dict[str, Any]) -> bool:
     }
 
 
+def _is_local_operational_query(query: str) -> bool:
+    normalized = query.strip().lower()
+    if not normalized:
+        return False
+    graph_terms = {"node", "nodes", "inventory", "legend", "color", "colors", "graph", "edge", "edges"}
+    action_terms = {"show", "list", "all", "available", "meaning", "mean", "label"}
+    tokens = set(re.findall(r"[a-z0-9_-]+", normalized))
+    return ({"legend", "color"} <= tokens) or (bool(tokens & graph_terms) and bool(tokens & action_terms))
+
+
+def _is_low_information_conversation_query(query: str) -> bool:
+    normalized = query.strip().lower()
+    if not normalized:
+        return True
+    compact = re.sub(r"[\s!.?,。！？~]+", "", normalized)
+    if compact in {"hi", "hello", "hey", "yo", "thanks", "thankyou", "안녕", "안녕하세요", "하이", "고마워", "감사", "감사합니다"}:
+        return True
+    tokens = re.findall(r"[a-z0-9가-힣_-]+", normalized)
+    return len(tokens) <= 2 and any(token in {"hi", "hello", "hey", "안녕", "안녕하세요", "하이"} for token in tokens)
+
+
 def _should_web_search(result: dict[str, Any]) -> bool:
     return (
         result.get("method") in {"atanor-native-no-node-utterance-v1", "atanor-research-no-evidence-v1"}
@@ -428,10 +452,11 @@ def _merge_web_search_result(
         "answer_engine": {
             **base.get("answer_engine", {}),
             **utterance["answer_engine"],
-            "name": "ATANOR LocalSynthesizer",
-            "mode": "local-web-evidence-synthesis-alpha",
+            "name": "ATANOR NativeGraphTokenDecoder",
+            "mode": "native-web-fragment-evidence-alpha",
             "external_llm": False,
-            "surface_generation": "local_autonomous_context_synthesis",
+            "surface_generation": "native_graph_token_generation",
+            "cloud_fragment_role": "evidence_only",
             "network_barrier": "sealed_for_generation",
         },
         "retrieval_trace": {
@@ -448,5 +473,10 @@ def _merge_web_search_result(
         "claim_plan": utterance["claim_plan"],
         "active_concepts": utterance["active_concepts"],
         "answer_kind": utterance["answer_kind"],
+        "raw_native_output": utterance.get("raw_native_output", utterance["answer"]),
+        "native_generation_failed_quality_check": utterance.get("native_generation_failed_quality_check"),
+        "degeneration": utterance.get("degeneration", {}),
+        "native_stop_reason": utterance.get("native_stop_reason"),
+        "training_feedback_recorded": utterance.get("training_feedback_recorded", False),
         "confidence": max(float(base.get("confidence") or 0), 0.52),
     }

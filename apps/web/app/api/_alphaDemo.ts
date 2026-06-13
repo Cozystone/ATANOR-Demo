@@ -135,9 +135,9 @@ export function demoLearningDaemonStatus() {
     latest_edge_count: 0,
     checkpoint_count: demoState.learningDaemon.last_checkpoint_at ? 1 : 0,
     local_required: true,
-    deployment_policy: "Vercel ??????袁⑸즴筌?씛彛???돗????????????썹땟戮녹??諭????????????ъ몥??우뒭亦낆쥋援??룰큿???뉗꽫?? ??? ??????????????숈춻????????????????????????????????ㅻ쑋?????????癲?? ???????嚥???癲??關?쒎첎???????????????嶺??????????쇰뮛????????????????????????????????됰Ŧ????????????癲ル슢??蹂좉슈??????????筌??????????????????????FastAPI?? data/memory ????????????????????????????????????븐뼐?????????",
+    deployment_policy: "Vercel deployment exposes a read-only viewer. Continuous local learning requires the FastAPI companion and data/memory state on the user machine.",
     last_round_action: "deployment_demo_boundary",
-    last_round_message: "??????袁⑸즴筌?씛彛???돗????????????썹땟戮녹??諭????????????ъ몥??우뒭亦낆쥋援??룰큿???뉗꽫??????????????븐뼐???????????????거???????Cloud Brain worker???????? ????????????????쇨덫櫻? ???????????FastAPI???????????怨뺤떪???????????????嚥???癲??關?쒎첎?????worker ??????癲?????????????????????쇨덫櫻?",
+    last_round_message: "The deployment demo is waiting for a local FastAPI companion. Cloud Brain worker state is viewer-only until a real local worker is connected.",
     resource_snapshot: {
       disk_free_gb: null,
       disk_total_gb: null,
@@ -149,7 +149,7 @@ export function demoLearningDaemonStatus() {
       checkpoint_dir: "data/memory/daemon_checkpoints",
       heartbeat_interval_seconds: 30,
       checkpoint_interval_seconds: 300,
-      resume_contract: "PC ??????????????????FastAPI???????????ш끽紐??????????諛몃마嶺뚮??????????????????????????????????궰????daemon_state.json??SQLite WAL?????Cloud Brain worker??????????? ???????μ떜媛?걫???????????????????",
+      resume_contract: "After a PC reboot, restart the FastAPI companion. The daemon resumes from daemon_state.json, SQLite WAL, and checkpoint files.",
     },
     llm_policy: {
       external_llm: false,
@@ -404,35 +404,32 @@ function includesAny(query: string, terms: string[]) {
 }
 
 function isGreetingQuery(query: string) {
-  const normalized = normalizedQuery(query);
-  return /^(hi|hello|hey|yo)[\s!.?]*$/i.test(normalized);
+  void query;
+  return false;
 }
 
 function isThanksQuery(query: string) {
-  const normalized = normalizedQuery(query);
-  return /^(thanks|thank you)[\s!.?]*$/i.test(normalized);
+  void query;
+  return false;
 }
 
 export function isConversationalQuery(query: string) {
-  return isGreetingQuery(query) || isThanksQuery(query);
+  void query;
+  return false;
 }
 
 export function isNodeInventoryQuery(query: string) {
-  const normalized = normalizedQuery(query);
-  return /(node|nodes|inventory)/i.test(normalized) && /(list|all|show|inventory|available)/i.test(normalized);
+  void query;
+  return false;
 }
 
 export function isLegendQuery(query: string) {
-  const normalized = normalizedQuery(query);
-  const asksColor = /(legend|color)/i.test(normalized);
-  const asksMeaning = /(meaning|mean|label|graph|node)/i.test(normalized);
-  return asksColor && asksMeaning;
+  void query;
+  return false;
 }
 function isInternalStructureQuery(query: string) {
-  const normalized = normalizedQuery(query);
-  const selfOrSystem = /(atanor|rag|graphrag|ghost|shell|payload|vault|architecture|system|engine|structure|graph)/i.test(normalized);
-  const asksStructure = /(structure|explain|architecture|work|flow|how|what|define)/i.test(normalized);
-  return selfOrSystem && asksStructure;
+  void query;
+  return false;
 }
 
 function nodeTypeText(type?: string) {
@@ -490,71 +487,38 @@ function nativeAnswerEngine(mode = "ontology-graph-token-prediction-alpha") {
     name: "ATANOR Graph Token Predictor",
     mode,
     external_llm: false,
+    external_generation_backend: false,
+    pretrained_generation_weights: false,
+    local_quantized_llm: false,
+    canned_identity_response: false,
+    template_fallback: false,
     homage_core: "homage-core-30m-scaffold",
     prediction_basis: "ontology_token_transition_graph",
-    surface_generation: "graph_walk",
+    surface_generation: "native_graph_token_generation",
     template_free_surface: true,
     stages: ["decompose_sentences", "build_token_edges", "merge_ontology_paths", "score_connected_tokens", "predict_next_token_sequence"],
   };
 }
 
 function makeNodeInventoryResult(query: string) {
-  const nodeLines = demoNodes.map((node, index) => `${index + 1}. ${node.label} (${nodeTypeText(node.type)}, id: ${node.id}, confidence ${Math.round(node.confidence * 100)}%)`);
   return {
-    query,
-    method: "atanor-graph-inspection-v1",
-    answer: `ATANOR Ghost Shell currently exposes ${demoNodes.length} demo nodes and ${demoEdges.length} demo edges.\n${nodeLines.join("\n")}`,
-    matched_nodes: demoNodes,
-    matched_edges: demoEdges,
-    evidence_docs: [],
-    citations: [],
-    graph_paths: demoEdges.map((edge) => [edge.source, edge.relation, edge.target]),
-    follow_up_questions: ["Show active hashes", "Explain Payload Vault"],
+    ...makeNoEvidenceResult(query),
     retrieval_trace: {
-      strategy: "graph inventory intent; retrieval skipped",
-      query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
-      expanded_terms: [],
-      ranked_chunk_ids: [],
-      matched_node_ids: demoNodes.map((node) => node.id),
+      ...makeNoEvidenceResult(query).retrieval_trace,
+      rejected_control_intent: "node_inventory",
+      strategy: "graph inventory shortcut disabled; native graph-token path preserved",
     },
-    answer_kind: "inspection",
-    answer_engine: { ...nativeAnswerEngine("graph-inspection-control-alpha"), name: "ATANOR Inspection Router", surface_generation: "disabled" },
-    confidence: 0.99,
   };
 }
 
 function makeLegendResult(query: string) {
-  const typeOrder: string[] = [];
-  const typeCounts = new Map<string, number>();
-  const representatives: typeof demoNodes = [];
-  demoNodes.forEach((node) => {
-    typeCounts.set(node.type, (typeCounts.get(node.type) ?? 0) + 1);
-    if (!typeOrder.includes(node.type)) {
-      typeOrder.push(node.type);
-      representatives.push(node);
-    }
-  });
-  const lines = typeOrder.map((type) => `- ${nodeTypeColor(type)} ${nodeTypeText(type)}: ${nodeTypeDescription(type)}. count ${typeCounts.get(type) ?? 0}`);
   return {
-    query,
-    method: "atanor-graph-legend-v1",
-    answer: `ATANOR graph colors describe Ghost Shell node classes and active signal states.\n${lines.join("\n")}`,
-    matched_nodes: representatives,
-    matched_edges: demoEdges,
-    evidence_docs: [],
-    citations: [],
-    graph_paths: demoEdges.map((edge) => [edge.source, edge.relation, edge.target]),
-    follow_up_questions: ["Show node inventory", "Explain active signal states"],
+    ...makeNoEvidenceResult(query),
     retrieval_trace: {
-      strategy: "graph legend intent; retrieval skipped",
-      query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
-      expanded_terms: typeOrder,
-      ranked_chunk_ids: [],
-      matched_node_ids: representatives.map((node) => node.id),
+      ...makeNoEvidenceResult(query).retrieval_trace,
+      rejected_control_intent: "graph_legend",
+      strategy: "graph legend shortcut disabled; native graph-token path preserved",
     },
-    answer_kind: "inspection",
-    answer_engine: { ...nativeAnswerEngine("graph-legend-control-alpha"), name: "ATANOR Inspection Router", surface_generation: "disabled" },
-    confidence: 0.98,
   };
 }
 
@@ -570,35 +534,14 @@ function nodeMatchesQuery(nodeId: string, query: string) {
 }
 
 function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "no_match") {
-  const answer = kind === "greeting"
-    ? "ATANOR online. Local Ghost Shell and Payload Vault are ready for traceable inference."
-    : kind === "thanks"
-      ? "Acknowledged. ATANOR will keep synthesis local, traceable, and air-gapped."
-      : query;
   return {
-    query,
-    method: "atanor-conversation-router-v1",
-    answer,
-    matched_nodes: [],
-    matched_edges: [],
-    evidence_docs: [],
-    citations: [],
-    graph_paths: [],
-    follow_up_questions: [],
+    ...makeNoEvidenceResult(query),
+    method: "atanor-native-demo-no-evidence-v1",
     retrieval_trace: {
-      strategy: kind === "no_match" ? "no evidence match; retrieval skipped" : "conversational intent; retrieval skipped",
-      query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
-      expanded_terms: [],
-      ranked_chunk_ids: [],
-      matched_node_ids: [],
+      ...makeNoEvidenceResult(query).retrieval_trace,
+      rejected_control_intent: kind,
+      strategy: "control intent rejected; native graph-token path preserved",
     },
-    answer_kind: "conversation",
-    answer_engine: {
-      ...nativeAnswerEngine("conversation-surface-no-retrieval-alpha"),
-      surface_generation: "native_conversation_surface",
-      control_intent: kind,
-    },
-    confidence: kind === "no_match" ? 0.35 : 0.96,
   };
 }
 
@@ -653,16 +596,20 @@ function makeOpenGenerationResult(query: string) {
 function makeNoEvidenceResult(query: string) {
   const queryTerms = normalizedQuery(query).split(/\s+/).filter(Boolean);
   const tokens = queryTerms.slice(0, 4);
-  const answer = [
-    "NO_EVIDENCE",
-    `query=${query.trim()}`,
-    `active_concepts=${JSON.stringify(tokens)}`,
-    "graph_token_prediction=not_enough_edges",
-  ].join("\n");
+  const answer = tokens.length ? tokens.join(" ") : query.trim();
+  const degeneration = {
+    repeated_bigram_ratio: 0,
+    repeated_trigram_ratio: 0,
+    unique_token_ratio: tokens.length ? 1 : 0,
+    unrelated_evidence_mix: false,
+    loop_detected: false,
+    evidence_cluster_coherence: 0,
+  };
   return {
     query,
     method: "atanor-research-no-evidence-v1",
     answer,
+    raw_native_output: answer,
     matched_nodes: [],
     matched_edges: [],
     evidence_docs: [],
@@ -670,7 +617,7 @@ function makeNoEvidenceResult(query: string) {
     graph_paths: [],
     follow_up_questions: [],
     retrieval_trace: {
-      strategy: "no evidence; graph token prediction disabled",
+      strategy: "no evidence; native graph-token output exposed",
       query_terms: queryTerms,
       expanded_terms: [],
       ranked_chunk_ids: [],
@@ -687,8 +634,20 @@ function makeNoEvidenceResult(query: string) {
     },
     claim_plan: [],
     active_concepts: queryTerms.slice(0, 4),
-    answer_kind: "no_evidence",
-    answer_engine: { ...nativeAnswerEngine("no-evidence-diagnostic-alpha"), surface_generation: "disabled" },
+    answer_kind: "native_graph_token_generation",
+    answer_engine: {
+      ...nativeAnswerEngine("native-no-evidence-alpha"),
+      diagnostics: {
+        reason: "not_enough_graph_edges",
+        degeneration,
+        canned_response: false,
+      },
+    },
+    native_generation_failed_quality_check: true,
+    degeneration,
+    training_feedback_recorded: true,
+    native_stop_reason: "no_evidence",
+    source_clusters: [],
     confidence: 0,
   };
 }
@@ -701,14 +660,14 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
       ? "explain_process"
       : /(what|define)/i.test(query)
         ? "define"
-        : "answer_grounded";  const graphDocs = graphPaths.map((path, index) => ({
-    chunk_id: `graph-path#${index + 1}`,
-    snippet: path.join(" "),
-  }));
-  const conceptDoc = activeConcepts.length ? [{ chunk_id: "active-concepts#1", snippet: activeConcepts.join(" ") }] : [];
-  const prediction = makeGraphTokenPrediction(query, [...evidenceDocs, ...graphDocs, ...conceptDoc]);
+        : "answer_grounded";
+  const prediction = makeGraphTokenPrediction(query, evidenceDocs);
   return {
     answer: prediction.answer,
+    raw_native_output: prediction.raw_native_output ?? prediction.answer,
+    degeneration: prediction.degeneration,
+    native_generation_failed_quality_check: prediction.native_generation_failed_quality_check ?? false,
+    native_stop_reason: prediction.native_stop_reason ?? "edge_exhausted",
     pmv: {
       intent,
       topic: activeConcepts[0] ?? query,
@@ -725,7 +684,7 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
       ...nativeAnswerEngine(prediction.answer_kind === "no_evidence" ? "no-evidence-diagnostic-alpha" : "ontology-graph-token-prediction-alpha"),
       name: "ATANOR Graph Token Predictor",
       prediction_basis: "ontology_token_transition_graph",
-      surface_generation: "graph_walk",
+      surface_generation: "native_graph_token_generation",
       diagnostics: prediction.diagnostics,
     },
   };
@@ -735,20 +694,55 @@ function cleanWebSnippet(value: any) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function predictionTokenSurfaces(text: string) {
+  return Array.from(String(text ?? "").matchAll(/[\p{L}\p{N}_-]+/gu))
+    .map((match) => {
+      const surface = match[0].replace(/^(?:-|_)+|(?:-|_)+$/g, "");
+      return { key: surface.toLowerCase(), surface };
+    })
+    .filter((token) => token.key.length > 1 || /^\d+$/.test(token.key));
+}
+
 function predictionTokens(text: string) {
-  return Array.from(text.toLowerCase().matchAll(/[\p{L}\p{N}_-]+/gu))
-    .map((match) => match[0].replace(/^(?:-|_)+|(?:-|_)+$/g, ""))
-    .filter((token) => token.length > 1 || /^\d+$/.test(token));
+  return predictionTokenSurfaces(text).map((token) => token.key);
 }
 
 function trimParticle(token: string) {
   return token;
 }
+
+function degenerationForTokens(tokens: string[], evidenceCount: number, stoppedForLoop: boolean) {
+  const bigrams = new Map<string, number>();
+  const trigrams = new Map<string, number>();
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const key = `${tokens[index]}\u0000${tokens[index + 1]}`;
+    bigrams.set(key, (bigrams.get(key) ?? 0) + 1);
+  }
+  for (let index = 0; index < tokens.length - 2; index += 1) {
+    const key = `${tokens[index]}\u0000${tokens[index + 1]}\u0000${tokens[index + 2]}`;
+    trigrams.set(key, (trigrams.get(key) ?? 0) + 1);
+  }
+  const repeatedBigrams = [...bigrams.values()].filter((count) => count > 1).reduce((sum, count) => sum + count - 1, 0);
+  const repeatedTrigrams = [...trigrams.values()].filter((count) => count > 1).reduce((sum, count) => sum + count - 1, 0);
+  const uniqueRatio = tokens.length ? new Set(tokens).size / tokens.length : 0;
+  const repeatedBigramRatio = tokens.length > 1 ? repeatedBigrams / Math.max(1, tokens.length - 1) : 0;
+  const repeatedTrigramRatio = tokens.length > 2 ? repeatedTrigrams / Math.max(1, tokens.length - 2) : 0;
+  return {
+    repeated_bigram_ratio: Number(repeatedBigramRatio.toFixed(4)),
+    repeated_trigram_ratio: Number(repeatedTrigramRatio.toFixed(4)),
+    unique_token_ratio: Number(uniqueRatio.toFixed(4)),
+    unrelated_evidence_mix: evidenceCount > 3 && uniqueRatio < 0.35,
+    loop_detected: stoppedForLoop || repeatedBigramRatio > 0.22 || repeatedTrigramRatio > 0.18,
+    evidence_cluster_coherence: evidenceCount ? Number(Math.max(0.1, 1 / evidenceCount).toFixed(4)) : 0,
+  };
+}
+
 function makeGraphTokenPrediction(query: string, webEvidenceDocs: any[]) {
   const texts = webEvidenceDocs.map((doc) => cleanWebSnippet(doc.snippet || doc.text)).filter(Boolean);
   const transitions = new Map<string, Map<string, number>>();
   const frequencies = new Map<string, number>();
   const cooccurs = new Map<string, Map<string, number>>();
+  const surfaceForms = new Map<string, string>();
 
   function addNested(map: Map<string, Map<string, number>>, left: string, right: string, weight: number) {
     if (!map.has(left)) map.set(left, new Map());
@@ -756,7 +750,11 @@ function makeGraphTokenPrediction(query: string, webEvidenceDocs: any[]) {
   }
 
   for (const text of texts) {
-    const tokens = predictionTokens(text);
+    const tokenSurfaces = predictionTokenSurfaces(text);
+    tokenSurfaces.forEach((token) => {
+      if (!surfaceForms.has(token.key)) surfaceForms.set(token.key, token.surface);
+    });
+    const tokens = tokenSurfaces.map((token) => token.key);
     tokens.forEach((token) => frequencies.set(token, (frequencies.get(token) ?? 0) + 1));
     for (let index = 0; index < tokens.length - 1; index += 1) {
       addNested(transitions, tokens[index], tokens[index + 1], 1);
@@ -777,10 +775,16 @@ function makeGraphTokenPrediction(query: string, webEvidenceDocs: any[]) {
     .sort((left, right) => ((transitions.get(right)?.size ?? 0) - (transitions.get(left)?.size ?? 0)) || ((frequencies.get(right) ?? 0) - (frequencies.get(left) ?? 0)))[0];
 
   if (!start) {
+    const answer = seeds.length ? seeds.join(" ") : query.trim();
+    const degeneration = degenerationForTokens(seeds, webEvidenceDocs.length, false);
     return {
-      answer: `NO_EVIDENCE\nquery=${query}\ngraph_token_prediction=not_enough_edges`,
-      diagnostics: { seeds, token_count: 0, edge_count: 0 },
-      answer_kind: "no_evidence",
+      answer,
+      raw_native_output: answer,
+      diagnostics: { seeds, token_count: 0, edge_count: 0, degeneration },
+      degeneration,
+      native_generation_failed_quality_check: true,
+      native_stop_reason: "no_evidence",
+      answer_kind: "native_graph_token_generation",
     };
   }
 
@@ -789,10 +793,14 @@ function makeGraphTokenPrediction(query: string, webEvidenceDocs: any[]) {
   const usedEdgeKeys = new Set<string>();
   const usedEdges: any[] = [];
   let current = start;
+  let stoppedForLoop = false;
   for (let step = 0; step < 55; step += 1) {
     const options = new Map<string, number>();
-    transitions.get(current)?.forEach((weight, token) => options.set(token, (options.get(token) ?? 0) + weight));
-    cooccurs.get(current)?.forEach((weight, token) => options.set(token, (options.get(token) ?? 0) + weight * 0.18));
+    const transitionOptions = transitions.get(current);
+    transitionOptions?.forEach((weight, token) => options.set(token, (options.get(token) ?? 0) + weight));
+    if (!transitionOptions?.size && generated.length < 8) {
+      cooccurs.get(current)?.forEach((weight, token) => options.set(token, (options.get(token) ?? 0) + weight * 0.1));
+    }
     if (!options.size) break;
     const next = [...options.entries()]
       .map(([token, weight]) => {
@@ -808,20 +816,31 @@ function makeGraphTokenPrediction(query: string, webEvidenceDocs: any[]) {
     usedEdgeKeys.add(`${current}\u0000${next.token}`);
     usedEdges.push({ source: current, target: next.token, score: Number(next.score.toFixed(4)), step: step + 1 });
     recent.set(next.token, (recent.get(next.token) ?? 0) + 1);
-    if ((recent.get(next.token) ?? 0) > 4 && step > 8) break;
+    if ((recent.get(next.token) ?? 0) > 4 && step > 8) {
+      stoppedForLoop = true;
+      break;
+    }
     current = next.token;
   }
+  const degeneration = degenerationForTokens(generated, webEvidenceDocs.length, stoppedForLoop);
+
+  const surfaced = generated.map((token) => surfaceForms.get(token) ?? token).join(" ");
 
   return {
-    answer: generated.join(" "),
+    answer: surfaced,
+    raw_native_output: surfaced,
     diagnostics: {
       seeds,
       token_count: [...frequencies.values()].reduce((sum, value) => sum + value, 0),
       unique_tokens: frequencies.size,
       edge_count: [...transitions.values()].reduce((sum, targets) => sum + targets.size, 0),
       used_edges: usedEdges.slice(0, 24),
+      degeneration,
     },
-    answer_kind: "graph_token_prediction",
+    degeneration,
+    native_generation_failed_quality_check: degeneration.loop_detected || generated.length < 3,
+    native_stop_reason: stoppedForLoop ? "loop_risk" : "max_or_edge_exhausted",
+    answer_kind: "native_graph_token_generation",
   };
 }
 
@@ -843,14 +862,16 @@ function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPay
     ...base,
     method: "atanor-graph-token-web-rag-v1",
     answer: prediction.answer,
+    raw_native_output: prediction.raw_native_output ?? prediction.answer,
     evidence_docs: webEvidenceDocs,
     citations: webEvidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.url ?? doc.path, url: doc.url, score: doc.score })),
     web_search: webSearchPayload,
     answer_engine: {
       ...nativeAnswerEngine("web-ontology-graph-token-prediction-alpha"),
       name: "ATANOR Graph Token Predictor",
-      surface_generation: "graph_walk",
+      surface_generation: "native_graph_token_generation",
       prediction_basis: "ontology_token_transition_graph",
+      cloud_fragment_role: "evidence_only",
       diagnostics: prediction.diagnostics,
     },
     retrieval_trace: {
@@ -861,20 +882,19 @@ function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPay
       web_result_urls: webEvidenceDocs.map((doc) => doc.url ?? doc.path),
     },
     answer_kind: prediction.answer_kind,
+    native_generation_failed_quality_check: prediction.native_generation_failed_quality_check ?? false,
+    degeneration: prediction.degeneration,
+    training_feedback_recorded: true,
+    native_stop_reason: prediction.native_stop_reason,
     confidence: Math.max(base.confidence, 0.52),
   };
 }
 
 export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSearchPayload: any = null) {
-  if (isGreetingQuery(query)) return makeConversationalResult(query, "greeting");
-  if (isThanksQuery(query)) return makeConversationalResult(query, "thanks");
-  if (isLegendQuery(query)) return makeLegendResult(query);
-  if (isNodeInventoryQuery(query)) return makeNodeInventoryResult(query);
-
   const matchedNodes = demoNodes.filter((node) => nodeMatchesQuery(node.id, query));
   if (!matchedNodes.length) {
     if (webEvidenceDocs.length || webSearchPayload) return makeWebSearchResult(query, webEvidenceDocs, webSearchPayload);
-    return isInternalStructureQuery(query) ? makeOpenGenerationResult(query) : makeNoEvidenceResult(query);
+    return makeNoEvidenceResult(query);
   }
 
   const matchedNodeIds = new Set(matchedNodes.map((node) => node.id));
@@ -884,25 +904,29 @@ export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSear
       chunk_id: "demo-001#1",
       path: "data/cleaned/demo-001.txt",
       score: 1.42,
-      snippet: "GraphRAG??KnowledgeGraph ??????????????????? ????????????? ??????筌띯뫔????????룸챷援?????Evidence??????留⑶뜮??????????????????????쇨덫櫻?",
+      snippet: "\u0047\u0072\u0061\u0070\u0068\u0052\u0041\u0047\ub294 \u004b\u006e\u006f\u0077\u006c\u0065\u0064\u0067\u0065\u0047\u0072\u0061\u0070\u0068\uc5d0\uc11c \uc9c8\ubb38\uacfc \uc5f0\uacb0\ub41c \uac1c\ub150 \uacbd\ub85c\ub97c \ud655\uc7a5\ud558\uace0, \u0045\u0076\u0069\u0064\u0065\u006e\u0063\u0065 \uccad\ud06c\ub97c \uc77d\uc5b4 \ub2f5\ubcc0 \ucd08\uc548\uc758 \uadfc\uac70\uc640 \ubc18\ub840\ub97c \ub300\uc870\ud55c\ub2e4.",
       retrieval_signals: { lexical: 1.04, coverage: 0.75, graph_boost: 0.31, phrase_bonus: 0.2 },
+      clean_snippet: "\u0047\u0072\u0061\u0070\u0068\u0052\u0041\u0047\ub294 \u004b\u006e\u006f\u0077\u006c\u0065\u0064\u0067\u0065\u0047\u0072\u0061\u0070\u0068\uc5d0\uc11c \uc9c8\ubb38\uacfc \uc5f0\uacb0\ub41c \uac1c\ub150 \uacbd\ub85c\ub97c \ud655\uc7a5\ud558\uace0, \u0045\u0076\u0069\u0064\u0065\u006e\u0063\u0065 \uccad\ud06c\ub97c \uc77d\uc5b4 \ub2f5\ubcc0 \ucd08\uc548\uc758 \uadfc\uac70\uc640 \ubc18\ub840\ub97c \ub300\uc870\ud55c\ub2e4.",
     },
     {
       doc_id: "demo-002",
       chunk_id: "demo-002#1",
       path: "data/cleaned/demo-002.txt",
       score: 0.96,
-      snippet: "Guardrail?? ????????????袁⑸즴筌?????Evidence?? ??????????????????????????????????????????븐뼐?????????",
+      snippet: "\u0047\u0075\u0061\u0072\u0064\u0072\u0061\u0069\u006c\uc740 \ub2f5\ubcc0\uc758 \uc8fc\uc7a5\uacfc \u0045\u0076\u0069\u0064\u0065\u006e\u0063\u0065\ub97c \ube44\uad50\ud574 \uadfc\uac70 \uc5c6\ub294 \ubb38\uc7a5\uacfc \uacfc\uc2e0 \ud45c\ud604\uc744 \ud45c\uc2dc\ud55c\ub2e4.",
       retrieval_signals: { lexical: 0.62, coverage: 0.5, graph_boost: 0.2, phrase_bonus: 0 },
+      clean_snippet: "\u0047\u0075\u0061\u0072\u0064\u0072\u0061\u0069\u006c\uc740 \ub2f5\ubcc0\uc758 \uc8fc\uc7a5\uacfc \u0045\u0076\u0069\u0064\u0065\u006e\u0063\u0065\ub97c \ube44\uad50\ud574 \uadfc\uac70 \uc5c6\ub294 \ubb38\uc7a5\uacfc \uacfc\uc2e0 \ud45c\ud604\uc744 \ud45c\uc2dc\ud55c\ub2e4.",
     },
-  ].filter((doc) => matchedNodes.some((node) => node.evidence_doc_ids.includes(doc.doc_id)));
+  ].map((doc: any) => ({ ...doc, snippet: doc.clean_snippet ?? doc.snippet }))
+    .filter((doc) => matchedNodes.some((node) => node.evidence_doc_ids.includes(doc.doc_id)));
   const matchedEdges = demoEdges.filter((edge) => matchedNodeIds.has(edge.source) || matchedNodeIds.has(edge.target));
   const graphPaths = matchedEdges.map((edge) => [edge.source, edge.relation, edge.target]);
   const utterance = makeNativeDemoUtterance(query, matchedNodes, graphPaths, evidenceDocs);
   return {
     query,
-    method: "homage-graph-token-rag-v1",
+    method: "atanor-native-graph-token-rag-v1",
     answer: utterance.answer,
+    raw_native_output: utterance.raw_native_output,
     matched_nodes: matchedNodes,
     matched_edges: matchedEdges,
     evidence_docs: evidenceDocs,
@@ -913,6 +937,16 @@ export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSear
     active_concepts: utterance.active_concepts,
     answer_kind: utterance.answer_kind,
     answer_engine: utterance.answer_engine,
+    native_generation_failed_quality_check: utterance.native_generation_failed_quality_check,
+    degeneration: utterance.degeneration,
+    training_feedback_recorded: true,
+    native_stop_reason: utterance.native_stop_reason,
+    source_clusters: evidenceDocs.map((doc) => ({
+      source_type: (doc.retrieval_signals as any)?.source_type ?? "demo",
+      count: 1,
+      total_score: doc.score ?? 0,
+      average_score: doc.score ?? 0,
+    })),
     follow_up_questions: [],
     retrieval_trace: {
       strategy: "hybrid lexical ranking + ontology expansion + graph-token prediction",
@@ -954,14 +988,11 @@ export function demoOntologyRun() {
 
 export function demoGraphRAGQuery(query: string, webEvidenceDocs: any[] = [], webSearchPayload: any = null) {
   const result: any = makeEvidence(query || "GraphRAG evidence", webEvidenceDocs, webSearchPayload);
-  const isConversationResult = result.method === "atanor-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(result.answer_kind);
-  if (!isConversationResult) {
-    result.memory_activation = demoMemoryActivate(result.query);
-    result.answer_engine = {
-      ...(result.answer_engine ?? {}),
-      memory_activation: "knowledge_bakery_spread_activation_v1",
-    };
-  }
+  result.memory_activation = demoMemoryActivate(result.query);
+  result.answer_engine = {
+    ...(result.answer_engine ?? {}),
+    memory_activation: "knowledge_bakery_spread_activation_v1",
+  };
   demoState.graphrag = { ...demoState.graphrag, state: "completed", started_at: now(), finished_at: now(), last_query: result.query, confidence: result.confidence, result };
   return demoState.graphrag;
 }
@@ -1052,7 +1083,7 @@ export function demoMemoryGraph(limit = 600) {
 }
 
 export function demoMemoryActivate(query: string) {
-  const terms = query.toLowerCase().split(/[^a-z0-9???????????-??]+/i).filter(Boolean);
+  const terms = query.toLowerCase().match(/[a-z0-9\uac00-\ud7a3_-]+/gi) ?? [];
   const activeNodes = demoMemoryNodes
     .map((node, index) => {
       const haystack = `${node.id} ${node.label} ${node.type}`.toLowerCase();
