@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode } from "./Rag3DScene";
+import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode, type Rag3DVisualState } from "./Rag3DScene";
 import { TauriUpdatePrompt } from "./TauriUpdatePrompt";
 
 type StageState = "idle" | "running" | "warning" | "complete";
@@ -1748,6 +1748,15 @@ export default function BakeBoardPage() {
   const daemonCanOperate = learningDaemon?.mode === "local-daemon";
   const daemonGraphReady = workspaceMode !== "daemon" || (localBackendConnected && daemonCanOperate && Boolean(learningDaemon?.worker_alive));
   const visibleGraph3D = daemonGraphReady ? displayGraph3D : { nodes: [], edges: [], traversal_path: [] };
+  const ragVisualState: Rag3DVisualState = !visibleGraph3D.nodes.length
+    ? "idle"
+    : isBuilding || continuousLearningActive || activeAction === "collect" || activeAction === "learn"
+      ? "learning"
+      : isGeneratingAnswer || activeSignalNodeIds.length || activeSignalEdgeKeys.length
+        ? "activating"
+        : graphSourceMode === "build" && buildRun
+          ? "completed"
+          : "idle";
 
   useEffect(() => {
     if (!activeSignalNodeIds.length) return;
@@ -2321,6 +2330,7 @@ export default function BakeBoardPage() {
                     graph={visibleGraph3D}
                     control={rag3dControl}
                     theme="dark"
+                    visualState={ragVisualState}
                     onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
                   />
                   <div className="rag3d-overlay">

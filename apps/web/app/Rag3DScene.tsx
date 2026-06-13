@@ -36,6 +36,8 @@ export type Rag3DControl = {
   action: "zoom-in" | "zoom-out" | "left" | "right" | "up" | "down" | "reset";
 };
 
+export type Rag3DVisualState = "loading" | "learning" | "activating" | "completed" | "idle" | "low_memory_viewer";
+
 type Rag3DSceneProps = {
   graph: Rag3DGraph | null;
   activeEdgeKeys?: string[];
@@ -50,6 +52,7 @@ type Rag3DSceneProps = {
   }) => void;
   onSelect?: (node: Rag3DNode) => void;
   theme?: "light" | "dark";
+  visualState?: Rag3DVisualState;
 };
 
 type VisibleEdge = Rag3DEdge & {
@@ -77,14 +80,17 @@ type SceneState = {
   activationHops: Map<string, number>;
   activationEdgeIntensity: Map<string, number>;
   camera: THREE.PerspectiveCamera;
+  coordinateMutationWarned: boolean;
   dynamicObjects: THREE.Object3D[];
   edgeCapacity: number;
   edgeColorArray: Float32Array | null;
   edgeGeometry: THREE.BufferGeometry | null;
   edgeLines: THREE.LineSegments | null;
   edgePositionArray: Float32Array | null;
+  edgePositionBufferDirty: boolean;
   edgePulseCount: number;
   frame: number;
+  frozenPositionSnapshot: Float32Array | null;
   graphEdges: Rag3DEdge[];
   graphNodes: Rag3DNode[];
   group: THREE.Group;
@@ -95,7 +101,7 @@ type SceneState = {
   lastFitDistance: number;
   lastGraphNodeCount: number;
   lastViewportEmitFrame: number;
-  layoutDiagnostics: Record<string, number | string>;
+  layoutDiagnostics: Record<string, number | string | number[]>;
   newNodeIds: Set<string>;
   nodeBornAt: Map<string, number>;
   nodeCapacity: number;
@@ -104,6 +110,7 @@ type SceneState = {
   nodeIndexById: Map<string, number>;
   nodePoints: THREE.Points | null;
   nodePositionArray: Float32Array | null;
+  nodePositionBufferDirty: boolean;
   nodePositionById: Map<string, THREE.Vector3>;
   nodeTargetById: Map<string, THREE.Vector3>;
   pointNodes: Rag3DNode[];
@@ -115,11 +122,11 @@ type SceneState = {
   startedAt: number;
   userCameraControlUntilFrame: number;
   visibleEdges: VisibleEdge[];
+  visualState: Rag3DVisualState;
   preserveSourceCoordinates: boolean;
   onViewportChange?: Rag3DSceneProps["onViewportChange"];
 };
 
-const BASE_NODE_COLOR = 0x7f8a99;
 const BASE_EDGE_COLOR = 0x334155;
 const BASE_EDGE_ACTIVE_NEAR = 0x64748b;
 const NEON_ORANGE = 0xff5500;
@@ -127,10 +134,12 @@ const COLD_LABEL = "#e8e8e2";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const NEW_NODE_ANIMATION_SECONDS = 1.5;
 
-const baseNodeColor = new THREE.Color(BASE_NODE_COLOR);
 const baseEdgeColor = new THREE.Color(BASE_EDGE_COLOR);
 const nearActiveEdgeColor = new THREE.Color(BASE_EDGE_ACTIVE_NEAR);
 const neonOrangeColor = new THREE.Color(NEON_ORANGE);
+const localMemoryColor = new THREE.Color(0xd6dee8);
+const representativeNodeColor = new THREE.Color(0x526170);
+const cloudFragmentColor = new THREE.Color(0x3fd7ff);
 const tempColor = new THREE.Color();
 const tempMatrix = new THREE.Matrix4();
 const tempQuaternion = new THREE.Quaternion();
@@ -144,6 +153,53 @@ function edgeKey(source: string, target: string) {
 
 function edgeIsExplicitlyActive(activeEdgeKeys: Set<string>, source: string, target: string) {
   return activeEdgeKeys.has(edgeKey(source, target)) || activeEdgeKeys.has(edgeKey(target, source));
+}
+
+function coordinateAnimationAllowed(visualState: Rag3DVisualState) {
+  return visualState === "loading" || visualState === "learning";
+}
+
+function movingPulseAllowed(visualState: Rag3DVisualState) {
+  return visualState === "loading" || visualState === "learning";
+}
+
+function resolveVisualState(
+  requested: Rag3DVisualState | undefined,
+  graph: Rag3DGraph | null,
+  activeNodeIds: Set<string>,
+  activeEdgeKeys: Set<string>,
+  newNodeIds: Set<string>,
+): Rag3DVisualState {
+  if (requested) return requested;
+  if (!graph?.nodes?.length) return "idle";
+  if (newNodeIds.size > 0) return "learning";
+  if (activeNodeIds.size > 0 || activeEdgeKeys.size > 0) return "completed";
+  return "idle";
+}
+
+function centroidTuple(position: THREE.Vector3) {
+  return [Number(position.x.toFixed(3)), Number(position.y.toFixed(3)), Number(position.z.toFixed(3))];
+}
+
+function positionCentroid(positions: THREE.Vector3[], indices?: number[]) {
+  const centroid = new THREE.Vector3();
+  const selected = indices?.length ? indices.map((index) => positions[index]).filter(Boolean) : positions;
+  selected.forEach((position) => centroid.add(position));
+  if (selected.length) centroid.divideScalar(selected.length);
+  return centroid;
+}
+
+function nodeBaseColor(node: Rag3DNode) {
+  const sourceType = nodeSourceType(node);
+  if (/cloud|web|external|fragment/i.test(sourceType)) return cloudFragmentColor;
+  if (/representative|sample|snapshot/i.test(sourceType) || node.id.startsWith("live-synapse")) return representativeNodeColor;
+  return localMemoryColor;
+}
+
+function frozenStatusText(visualState: Rag3DVisualState) {
+  if (visualState === "completed") return "Activation complete";
+  if (visualState === "idle" || visualState === "low_memory_viewer") return "Graph settled";
+  return null;
 }
 
 function disposeMaterial(material?: THREE.Material | THREE.Material[]) {
@@ -298,13 +354,12 @@ function computeOrganicGraphLayout(
     const degreeRatio = (degree.get(node.id) ?? 0) / maxDegree;
     const isCloud = /cloud|web|external|fragment/i.test(nodeSourceType(node));
     const isPredicate = /predicate|relation|edge/i.test(node.type ?? "");
-    const isActive = activeNodeIds.has(node.id);
     const semantic = stableVolumePoint(node.id, index, total).multiplyScalar(isCloud ? 1.12 : 0.76);
     const position = new THREE.Vector3()
       .addScaledVector(semantic, 0.58)
       .addScaledVector(cluster, isPredicate ? 0.18 : 0.34)
       .addScaledVector(source, 0.08);
-    const radiusFactor = isCloud ? 1.34 : isActive ? 0.52 : 1 - degreeRatio * 0.46;
+    const radiusFactor = isCloud ? 1.34 : 1 - degreeRatio * 0.46;
     position.normalize().multiplyScalar(Math.max(1.2, baseRadius * radiusFactor));
     position.x += hashUnit(node.id, 173) * 0.8;
     position.y += hashUnit(node.id, 211) * 0.8;
@@ -357,7 +412,6 @@ function computeOrganicGraphLayout(
       const cluster = clusterCenters.get(semanticClusterKey(node));
       const degreeRatio = (degree.get(node.id) ?? 0) / maxDegree;
       if (cluster) position.lerp(cluster, (0.004 + degreeRatio * 0.005) * cooling);
-      if (activeNodeIds.has(node.id)) position.lerp(new THREE.Vector3(0, 0, 0), 0.018 * cooling);
       position.z *= 0.995;
     });
   }
@@ -376,8 +430,16 @@ function layoutDiagnostics(nodes: Rag3DNode[], edges: Rag3DEdge[], positions: TH
   });
   const averageDegree = nodes.length ? Array.from(degree.values()).reduce((sum, value) => sum + value, 0) / nodes.length : 0;
   const clusterCount = new Set(nodes.map(semanticClusterKey)).size;
+  const activeIndices = nodes
+    .map((node, index) => (activeNodeIds.has(node.id) ? index : -1))
+    .filter((index) => index >= 0);
+  const graphCentroid = positionCentroid(positions);
+  const activeCentroid = activeIndices.length ? positionCentroid(positions, activeIndices) : graphCentroid.clone();
   return {
     layout_mode: "organic_semantic_force",
+    graph_centroid: centroidTuple(graphCentroid),
+    active_centroid: centroidTuple(activeCentroid),
+    active_centroid_offset: Number(activeCentroid.distanceTo(graphCentroid).toFixed(3)),
     active_seed_count: activeNodeIds.size,
     active_cluster_count: new Set(nodes.filter((node) => activeNodeIds.has(node.id)).map(semanticClusterKey)).size,
     local_nodes: nodes.filter((node) => !/cloud|web|external|fragment/i.test(nodeSourceType(node))).length,
@@ -525,6 +587,7 @@ function ensureNodeBuffers(state: SceneState, nodeCount: number) {
   state.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(state.nodePositionArray, 3).setUsage(THREE.DynamicDrawUsage));
   state.nodeGeometry.setAttribute("color", new THREE.BufferAttribute(state.nodeColorArray, 3).setUsage(THREE.DynamicDrawUsage));
   state.nodeGeometry.setDrawRange(0, nodeCount);
+  state.nodePositionBufferDirty = true;
 
   if (!state.nodePoints) {
     const pointMaterial = new THREE.PointsMaterial({
@@ -567,6 +630,7 @@ function ensureEdgeBuffers(state: SceneState, vertexCount: number) {
   state.edgeGeometry.setAttribute("position", new THREE.BufferAttribute(state.edgePositionArray, 3).setUsage(THREE.DynamicDrawUsage));
   state.edgeGeometry.setAttribute("color", new THREE.BufferAttribute(state.edgeColorArray, 3).setUsage(THREE.DynamicDrawUsage));
   state.edgeGeometry.setDrawRange(0, vertexCount);
+  state.edgePositionBufferDirty = true;
 
   if (!state.edgeLines) {
     const edgeMaterial = new THREE.LineBasicMaterial({
@@ -661,7 +725,20 @@ function findSpawnPositionForNode(nodeId: string, edges: Rag3DEdge[], positions:
   return fallback.clone().multiplyScalar(0.54);
 }
 
-function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: Set<string>, activeEdgeKeys: Set<string>, newNodeIds: Set<string>) {
+function syncGraph(
+  state: SceneState,
+  graph: Rag3DGraph | null,
+  activeNodeIds: Set<string>,
+  activeEdgeKeys: Set<string>,
+  newNodeIds: Set<string>,
+  requestedVisualState?: Rag3DVisualState,
+) {
+  const nextVisualState = resolveVisualState(requestedVisualState, graph, activeNodeIds, activeEdgeKeys, newNodeIds);
+  if (state.visualState !== nextVisualState) {
+    state.frozenPositionSnapshot = null;
+    state.coordinateMutationWarned = false;
+  }
+  state.visualState = nextVisualState;
   state.activeNodeIds = new Set(activeNodeIds);
   state.activeEdgeKeys = new Set(activeEdgeKeys);
   state.newNodeIds = new Set(newNodeIds);
@@ -682,7 +759,13 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
   state.activationHops = activation.hops;
   state.activationEdgeIntensity = activation.edgeIntensity;
   const organicLayout = spreadPositions(graph.nodes, graph.edges, activeNodeIds);
-  state.layoutDiagnostics = organicLayout.diagnostics;
+  state.layoutDiagnostics = {
+    ...organicLayout.diagnostics,
+    hop1_count: Array.from(activation.hops.values()).filter((hop) => hop === 1).length,
+    hop2_count: Array.from(activation.hops.values()).filter((hop) => hop === 2).length,
+    hop3_count: Array.from(activation.hops.values()).filter((hop) => hop === 3).length,
+    visual_state: nextVisualState,
+  };
   const targets = state.preserveSourceCoordinates ? sourceCoordinatePositions(graph.nodes) : organicLayout.positions;
   const nextKnownNodeIds = new Set<string>();
   const nextNodeIndexById = new Map<string, number>();
@@ -697,7 +780,9 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
     stillPresent.add(node.id);
 
     if (!state.nodePositionById.has(node.id)) {
-      const spawn = findSpawnPositionForNode(node.id, graph.edges, state.nodePositionById, target);
+      const spawn = coordinateAnimationAllowed(nextVisualState)
+        ? findSpawnPositionForNode(node.id, graph.edges, state.nodePositionById, target)
+        : target.clone();
       state.nodePositionById.set(node.id, spawn);
       state.nodeBornAt.set(node.id, elapsed);
     }
@@ -714,6 +799,10 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
   state.nodeTargetById = targetMap;
   state.nodeIndexById = nextNodeIndexById;
   state.pointNodes = graph.nodes;
+  state.nodePositionBufferDirty = true;
+  state.edgePositionBufferDirty = true;
+  state.frozenPositionSnapshot = null;
+  state.coordinateMutationWarned = false;
 
   const fitDistance = fitDistanceForPositions(targets, state.camera);
   const graphExpanded = graph.nodes.length > state.lastGraphNodeCount;
@@ -772,10 +861,12 @@ function syncGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds: S
     });
   ensureHaloMesh(state, state.haloItems.length);
 
-  state.pulseItems = state.visibleEdges
-    .filter((edge) => edge.active)
-    .slice(0, 640)
-    .flatMap((edge) => [0, 1, 2].map((pulse) => ({ source: edge.source, target: edge.target, phase: pulse / 3 })));
+  state.pulseItems = movingPulseAllowed(nextVisualState)
+    ? state.visibleEdges
+      .filter((edge) => edge.active)
+      .slice(0, 640)
+      .flatMap((edge) => [0, 1, 2].map((pulse) => ({ source: edge.source, target: edge.target, phase: pulse / 3 })))
+    : [];
   ensurePulseMesh(state, state.pulseItems.length);
   state.edgePulseCount = state.pulseItems.length;
 
@@ -799,11 +890,18 @@ function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number)
   const hop = state.activationHops.get(node.id);
   const bornAt = state.nodeBornAt.get(node.id);
   const newAge = typeof bornAt === "number" ? elapsed - bornAt : Number.POSITIVE_INFINITY;
-  const newPulse = state.newNodeIds.has(node.id) || newAge < NEW_NODE_ANIMATION_SECONDS;
-  if (active) return 0.76 + Math.sin(elapsed * 10 + hash01(node.id, 31) * Math.PI * 2) * 0.24;
+  const newPulse = coordinateAnimationAllowed(state.visualState) && (state.newNodeIds.has(node.id) || newAge < NEW_NODE_ANIMATION_SECONDS);
+  if (state.visualState === "low_memory_viewer") return active ? 0.42 : 0;
+  if (active) {
+    const amplitude = state.visualState === "completed" ? 0.08 : 0.24;
+    const base = state.visualState === "completed" ? 0.62 : 0.76;
+    return base + Math.sin(elapsed * 10 + hash01(node.id, 31) * Math.PI * 2) * amplitude;
+  }
   if (hop !== undefined && hop <= 3) {
     const base = Math.exp(-hop * 0.82);
-    return THREE.MathUtils.clamp(base * (0.58 + Math.sin(elapsed * 8 + hash01(node.id, 37) * Math.PI * 2) * 0.18), 0.08, 0.72);
+    const pulseAmplitude = state.visualState === "completed" ? 0.06 : 0.18;
+    const pulseBase = state.visualState === "completed" ? 0.46 : 0.58;
+    return THREE.MathUtils.clamp(base * (pulseBase + Math.sin(elapsed * 8 + hash01(node.id, 37) * Math.PI * 2) * pulseAmplitude), 0.06, 0.72);
   }
   if (newPulse) return THREE.MathUtils.clamp(1 - newAge / NEW_NODE_ANIMATION_SECONDS, 0, 1);
   return 0;
@@ -815,43 +913,79 @@ function edgeSignalStrength(state: SceneState, edge: VisibleEdge, elapsed: numbe
     ?? state.activationEdgeIntensity.get(edgeKey(edge.target, edge.source))
     ?? 0;
   const phase = hash01(edge.source + edge.target, 19) * Math.PI * 2;
-  const pulse = 0.68 + Math.sin(elapsed * 10 + phase) * 0.32;
+  const pulse = state.visualState === "completed"
+    ? 0.62 + Math.sin(elapsed * 8 + phase) * 0.12
+    : 0.68 + Math.sin(elapsed * 10 + phase) * 0.32;
   return THREE.MathUtils.clamp(Math.max(hopIntensity * pulse, edgeIsExplicitlyActive(state.activeEdgeKeys, edge.source, edge.target) ? pulse : 0), 0, 1);
+}
+
+function assertCompletedCoordinatesStable(state: SceneState) {
+  if (state.visualState !== "completed" || !state.nodePositionArray) return;
+  const length = state.graphNodes.length * 3;
+  const current = state.nodePositionArray.subarray(0, length);
+  if (!state.frozenPositionSnapshot || state.frozenPositionSnapshot.length !== length) {
+    state.frozenPositionSnapshot = new Float32Array(current);
+    return;
+  }
+  if (state.coordinateMutationWarned) return;
+  for (let index = 0; index < length; index += 1) {
+    if (Math.abs(current[index] - state.frozenPositionSnapshot[index]) > 0.00001) {
+      console.warn("Unexpected coordinate mutation in completed graph state");
+      state.coordinateMutationWarned = true;
+      state.frozenPositionSnapshot = new Float32Array(current);
+      return;
+    }
+  }
 }
 
 function updateNodeBuffers(state: SceneState, elapsed: number) {
   if (!state.nodePositionArray || !state.nodeColorArray || !state.nodeGeometry) return;
   const positionAttribute = state.nodeGeometry.getAttribute("position") as THREE.BufferAttribute;
   const colorAttribute = state.nodeGeometry.getAttribute("color") as THREE.BufferAttribute;
+  const allowPositionMutation = coordinateAnimationAllowed(state.visualState);
+  let positionBufferChanged = state.nodePositionBufferDirty;
 
   state.graphNodes.forEach((node, index) => {
     const position = state.nodePositionById.get(node.id) ?? new THREE.Vector3();
     const target = state.nodeTargetById.get(node.id) ?? position;
     const bornAt = state.nodeBornAt.get(node.id);
     const age = typeof bornAt === "number" ? elapsed - bornAt : 99;
-    const expansionRate = age < NEW_NODE_ANIMATION_SECONDS ? 0.115 : 0.045;
-    position.lerp(target, expansionRate);
+    if (allowPositionMutation) {
+      const beforeX = position.x;
+      const beforeY = position.y;
+      const beforeZ = position.z;
+      const expansionRate = age < NEW_NODE_ANIMATION_SECONDS ? 0.115 : 0.045;
+      position.lerp(target, expansionRate);
+      if (Math.abs(position.x - beforeX) > 0.00001 || Math.abs(position.y - beforeY) > 0.00001 || Math.abs(position.z - beforeZ) > 0.00001) {
+        positionBufferChanged = true;
+      }
+    }
 
     state.nodePositionArray![index * 3] = position.x;
     state.nodePositionArray![index * 3 + 1] = position.y;
     state.nodePositionArray![index * 3 + 2] = position.z;
 
     const signal = nodeSignalStrength(state, node, elapsed);
-    tempColor.copy(baseNodeColor).lerp(neonOrangeColor, signal);
+    tempColor.copy(nodeBaseColor(node)).lerp(neonOrangeColor, signal);
     state.nodeColorArray![index * 3] = tempColor.r;
     state.nodeColorArray![index * 3 + 1] = tempColor.g;
     state.nodeColorArray![index * 3 + 2] = tempColor.b;
   });
 
-  positionAttribute.needsUpdate = true;
+  if (positionBufferChanged) {
+    positionAttribute.needsUpdate = true;
+    state.nodeGeometry.computeBoundingSphere();
+    state.nodePositionBufferDirty = false;
+  }
   colorAttribute.needsUpdate = true;
-  state.nodeGeometry.computeBoundingSphere();
+  assertCompletedCoordinatesStable(state);
 }
 
 function updateEdgeBuffers(state: SceneState, elapsed: number) {
   if (!state.edgePositionArray || !state.edgeColorArray || !state.edgeGeometry) return;
   const positionAttribute = state.edgeGeometry.getAttribute("position") as THREE.BufferAttribute;
   const colorAttribute = state.edgeGeometry.getAttribute("color") as THREE.BufferAttribute;
+  const positionBufferChanged = state.edgePositionBufferDirty || coordinateAnimationAllowed(state.visualState);
 
   state.visibleEdges.forEach((edge, edgeIndex) => {
     const source = state.nodePositionById.get(edge.source);
@@ -876,7 +1010,10 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
     state.edgeColorArray![vertexIndex + 5] = tempColor.b;
   });
 
-  positionAttribute.needsUpdate = true;
+  if (positionBufferChanged) {
+    positionAttribute.needsUpdate = true;
+    state.edgePositionBufferDirty = false;
+  }
   colorAttribute.needsUpdate = true;
 }
 
@@ -903,6 +1040,10 @@ function updateHaloMesh(state: SceneState, elapsed: number) {
 
 function updatePulseMesh(state: SceneState, elapsed: number) {
   if (!state.pulseMesh) return;
+  if (!movingPulseAllowed(state.visualState)) {
+    state.pulseMesh.count = 0;
+    return;
+  }
   state.pulseMesh.count = state.pulseItems.length;
   state.pulseItems.forEach((pulse, index) => {
     const source = state.nodePositionById.get(pulse.source);
@@ -927,6 +1068,7 @@ export default function Rag3DScene({
   onViewportChange,
   onSelect,
   theme = "light",
+  visualState,
 }: Rag3DSceneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
@@ -950,28 +1092,28 @@ export default function Rag3DScene({
   useEffect(() => {
     graphRef.current = graph;
     const state = sceneStateRef.current;
-    if (state) syncGraph(state, graph, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current);
-  }, [graph]);
+    if (state) syncGraph(state, graph, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current, visualState);
+  }, [graph, visualState]);
 
   useEffect(() => {
     const state = sceneStateRef.current;
     if (!state) return;
     state.preserveSourceCoordinates = preserveSourceCoordinates;
-    syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current);
-  }, [preserveSourceCoordinates]);
+    syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current, visualState);
+  }, [preserveSourceCoordinates, visualState]);
 
   useEffect(() => {
     activeNodeRef.current = new Set(activeNodeIds);
     activeEdgeRef.current = new Set(activeEdgeKeys);
     const state = sceneStateRef.current;
-    if (state) syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current);
-  }, [activeEdgeKeys, activeNodeIds]);
+    if (state) syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current, visualState);
+  }, [activeEdgeKeys, activeNodeIds, visualState]);
 
   useEffect(() => {
     newNodeRef.current = new Set(newNodeIds);
     const state = sceneStateRef.current;
-    if (state) syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current);
-  }, [newNodeIds]);
+    if (state) syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current, visualState);
+  }, [newNodeIds, visualState]);
 
   useEffect(() => {
     if (!control) return;
@@ -1030,14 +1172,17 @@ export default function Rag3DScene({
       activationHops: new Map(),
       activationEdgeIntensity: new Map(),
       camera,
+      coordinateMutationWarned: false,
       dynamicObjects: [],
       edgeCapacity: 0,
       edgeColorArray: null,
       edgeGeometry: null,
       edgeLines: null,
+      edgePositionBufferDirty: true,
       edgePositionArray: null,
       edgePulseCount: 0,
       frame: 0,
+      frozenPositionSnapshot: null,
       graphEdges: [],
       graphNodes: [],
       group,
@@ -1057,6 +1202,7 @@ export default function Rag3DScene({
       nodeIndexById: new Map(),
       nodePoints: null,
       nodePositionArray: null,
+      nodePositionBufferDirty: true,
       nodePositionById: new Map(),
       nodeTargetById: new Map(),
       pointNodes: [],
@@ -1068,11 +1214,12 @@ export default function Rag3DScene({
       startedAt: performance.now(),
       userCameraControlUntilFrame: 0,
       visibleEdges: [],
+      visualState: resolveVisualState(visualState, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current),
       preserveSourceCoordinates,
       onViewportChange: viewportChangeRef.current,
     };
     sceneStateRef.current = state;
-    syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current);
+    syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current, visualState);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -1143,7 +1290,7 @@ export default function Rag3DScene({
       animation = requestAnimationFrame(animate);
       state.frame += 1;
       const elapsed = (performance.now() - state.startedAt) / 1000;
-      if (!drag.active) group.rotation.y += 0.00125;
+      if (!drag.active && coordinateAnimationAllowed(state.visualState)) group.rotation.y += 0.00125;
 
       updateNodeBuffers(state, elapsed);
       updateEdgeBuffers(state, elapsed);
@@ -1157,10 +1304,14 @@ export default function Rag3DScene({
       container.dataset.activeEdgeCount = String(state.activeEdgeKeys.size);
       container.dataset.edgePulseCount = String(state.edgePulseCount);
       container.dataset.bufferMode = "persistent-append";
+      container.dataset.visualState = state.visualState;
       container.dataset.layoutMode = String(state.layoutDiagnostics.layout_mode ?? "organic_semantic_force");
       container.dataset.activeClusterCount = String(state.layoutDiagnostics.active_cluster_count ?? 0);
       container.dataset.averageDegree = String(state.layoutDiagnostics.average_degree ?? 0);
       container.dataset.zAxisRatio = String(state.layoutDiagnostics.z_axis_ratio ?? 0);
+      container.dataset.activeCentroidOffset = String(state.layoutDiagnostics.active_centroid_offset ?? 0);
+      container.dataset.hop1Count = String(state.layoutDiagnostics.hop1_count ?? 0);
+      container.dataset.hop2Count = String(state.layoutDiagnostics.hop2_count ?? 0);
       if (state.onViewportChange && state.frame - state.lastViewportEmitFrame >= 12) {
         state.lastViewportEmitFrame = state.frame;
         state.onViewportChange({
@@ -1204,5 +1355,19 @@ export default function Rag3DScene({
     };
   }, [theme]);
 
-  return <div className="rag3d-host" ref={hostRef} aria-label="3D RAG traversal graph" />;
+  const displayVisualState = resolveVisualState(
+    visualState,
+    graph,
+    new Set(activeNodeIds),
+    new Set(activeEdgeKeys),
+    new Set(newNodeIds),
+  );
+  const settledText = frozenStatusText(displayVisualState);
+
+  return (
+    <div className="rag3d-shell">
+      <div className="rag3d-host" ref={hostRef} aria-label="3D RAG traversal graph" />
+      {settledText ? <span className="rag3d-settled-label">{settledText}</span> : null}
+    </div>
+  );
 }

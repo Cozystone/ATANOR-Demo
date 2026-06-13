@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import Rag3DScene, { type Rag3DEdge, type Rag3DGraph, type Rag3DNode } from "../Rag3DScene";
+import Rag3DScene, { type Rag3DEdge, type Rag3DGraph, type Rag3DNode, type Rag3DVisualState } from "../Rag3DScene";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -619,6 +619,13 @@ export default function OperatorAdminPage() {
   const trace = isRecord(result?.["retrieval_trace"]) ? result?.["retrieval_trace"] : null;
   const activeHashes = asArray(trace?.["active_hashes"]).map((item) => String(item));
   const activeNodeIdsForScene = activeHashes.length ? activeHashes : liveNodeIds;
+  const sceneVisualState: Rag3DVisualState = !graph.nodes.length
+    ? "idle"
+    : liveNodeIds.length || liveEdgeKeys.length || activeHashes.length
+      ? "activating"
+      : rootState === "waiting"
+        ? "idle"
+        : "completed";
   const activeEdgeKeys = graph.edges
     .filter((edge) => activeHashes.includes(edge.source) || activeHashes.includes(edge.target))
     .slice(0, 72)
@@ -751,6 +758,7 @@ export default function OperatorAdminPage() {
                 onViewportChange={handleViewportChange}
                 onSelect={(node) => setSelectedNode(node)}
                 theme="dark"
+                visualState={sceneVisualState}
               />
             ) : (
               <div style={styles.emptyGraph}>
