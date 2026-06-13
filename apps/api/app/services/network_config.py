@@ -42,7 +42,7 @@ class NetworkConfig:
 
     mode: NetworkMode = "local_first"
     local_peer_id: str = "homage-local-peer"
-    local_payload_endpoint: str | None = "http://127.0.0.1:8000"
+    local_payload_endpoint: str | None = "http://127.0.0.1:8500"
     peer_directory_path: Path = Path("data/network/peers.json")
     enable_server_signaling: bool = False
     enable_local_peer_directory: bool = True
@@ -56,6 +56,15 @@ class NetworkConfig:
     max_fragment_bytes: int = 2_000_000
     max_nodes: int = 2_048
     max_edges: int = 8_192
+    contradiction_threshold: float = 0.72
+    trust_penalty_on_contradiction: float = 0.1
+    trust_store_path: Path = Path("data/network/peer_trust.json")
+    replay_interval_seconds: float = 300.0
+    replay_top_percent: float = 0.05
+    replay_max_edges_per_cycle: int = 8_192
+    replay_min_confidence: float = 0.62
+    ssm_ingest_chunk_tokens: int = 512
+    ssm_max_depth: int = 3
     signing_key: str | None = None
 
     @classmethod
@@ -68,7 +77,7 @@ class NetworkConfig:
         return cls(
             mode=mode,
             local_peer_id=os.getenv("HOMAGE_LOCAL_PEER_ID", "homage-local-peer"),
-            local_payload_endpoint=os.getenv("HOMAGE_LOCAL_PAYLOAD_ENDPOINT", "http://127.0.0.1:8000"),
+            local_payload_endpoint=os.getenv("HOMAGE_LOCAL_PAYLOAD_ENDPOINT", "http://127.0.0.1:8500"),
             peer_directory_path=Path(os.getenv("HOMAGE_PEER_DIRECTORY", "data/network/peers.json")),
             enable_server_signaling=_env_bool("HOMAGE_ENABLE_SERVER_SIGNALING", server_signaling_default),
             enable_local_peer_directory=_env_bool("HOMAGE_ENABLE_LOCAL_PEER_DIRECTORY", True),
@@ -82,6 +91,15 @@ class NetworkConfig:
             max_fragment_bytes=_env_int("HOMAGE_MAX_FRAGMENT_BYTES", 2_000_000),
             max_nodes=_env_int("HOMAGE_MAX_FRAGMENT_NODES", 2_048),
             max_edges=_env_int("HOMAGE_MAX_FRAGMENT_EDGES", 8_192),
+            contradiction_threshold=_env_float("HOMAGE_CONTRADICTION_THRESHOLD", 0.72),
+            trust_penalty_on_contradiction=_env_float("HOMAGE_TRUST_PENALTY_ON_CONTRADICTION", 0.1),
+            trust_store_path=Path(os.getenv("HOMAGE_TRUST_STORE", "data/network/peer_trust.json")),
+            replay_interval_seconds=_env_float("HOMAGE_REPLAY_INTERVAL_SECONDS", 300.0),
+            replay_top_percent=_env_float("HOMAGE_REPLAY_TOP_PERCENT", 0.05),
+            replay_max_edges_per_cycle=_env_int("HOMAGE_REPLAY_MAX_EDGES_PER_CYCLE", 8_192),
+            replay_min_confidence=_env_float("HOMAGE_REPLAY_MIN_CONFIDENCE", 0.62),
+            ssm_ingest_chunk_tokens=_env_int("HOMAGE_SSM_INGEST_CHUNK_TOKENS", 512),
+            ssm_max_depth=_env_int("HOMAGE_SSM_MAX_DEPTH", 3),
             signing_key=os.getenv("HOMAGE_FRAGMENT_SIGNING_KEY"),
         )
 
@@ -107,4 +125,8 @@ class NetworkConfig:
             "max_fragment_bytes": self.max_fragment_bytes,
             "max_nodes": self.max_nodes,
             "max_edges": self.max_edges,
+            "contradiction_threshold": self.contradiction_threshold,
+            "replay_top_percent": self.replay_top_percent,
+            "replay_max_edges_per_cycle": self.replay_max_edges_per_cycle,
+            "ssm_ingest_chunk_tokens": self.ssm_ingest_chunk_tokens,
         }

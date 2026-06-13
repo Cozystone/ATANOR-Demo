@@ -4,6 +4,7 @@ import os
 import sqlite3
 from pathlib import Path
 
+from app.services.crash_safety import enable_sqlite_crash_pragmas
 from app.services.desktop_paths import configure_desktop_data_dir, resolve_data_path
 
 
@@ -24,8 +25,7 @@ def connect_homage_memory() -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    enable_sqlite_crash_pragmas(conn)
     return conn
 
 

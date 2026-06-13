@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from app.routers.cloud_brain import router as cloud_brain_router
 from app.routers.datagate import router as datagate_router
 from app.routers.factory import router as factory_router
+from app.routers.graph import router as graph_router
 from app.routers.graphrag import router as graphrag_router
 from app.routers.guard import router as guard_router
 from app.routers.harvest import router as harvest_router
@@ -19,6 +21,7 @@ from app.routers.ontology import router as ontology_router
 from app.routers.oven import router as oven_router
 from app.routers.telemetry import router as telemetry_router
 from app.services.alpha_services import alpha_service, telemetry_gpu
+from app.services.crash_safety import create_boot_shadow_backups
 from app.services.datagate_service import DataGateStatus, datagate_service
 
 StageState = Literal["idle", "running", "warning", "complete"]
@@ -40,10 +43,17 @@ class PipelineStatus(BaseModel):
     stages: list[PipelineStage]
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    create_boot_shadow_backups()
+    yield
+
+
 app = FastAPI(
     title="Homage1.0 API",
     description="Mock API for the Homage1.0 BakeBoard skeleton.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -74,6 +84,7 @@ app.include_router(hybrid_network_router)
 app.include_router(learning_router)
 app.include_router(cloud_brain_router)
 app.include_router(factory_router)
+app.include_router(graph_router)
 app.include_router(ontology_router)
 app.include_router(graphrag_router)
 app.include_router(guard_router)
@@ -278,6 +289,6 @@ def pipeline_status() -> PipelineStatus:
     ]
     return PipelineStatus(
         generated_at=datetime.now(timezone.utc),
-        system_state="mock",
+        system_state="alpha_active",
         stages=stages,
     )

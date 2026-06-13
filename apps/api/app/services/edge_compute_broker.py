@@ -95,14 +95,20 @@ class EdgeComputeBroker:
                 "state": "not_advertised",
                 "reason": "local node is not idle enough for edge compute jobs",
                 "capacity": capacity.to_metadata(),
+                "local_replay": await self.consolidate_if_idle(),
             }
+        local_replay = await self.consolidate_if_idle()
         if not self.config.enable_server_signaling:
-            return await NullCapacitySignal().broadcast_edge_availability(capacity.to_metadata())
+            result = await NullCapacitySignal().broadcast_edge_availability(capacity.to_metadata())
+            result["local_replay"] = local_replay
+            return result
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 self.capacity_signal.broadcast_edge_availability(capacity.to_metadata()),
                 timeout=self.config.timeout_seconds,
             )
+            result["local_replay"] = local_replay
+            return result
         except Exception as exc:
             return {
                 "state": "signal_failed_local_continues",
@@ -110,14 +116,27 @@ class EdgeComputeBroker:
                 "broadcast": False,
                 "error": str(exc),
                 "capacity": capacity.to_metadata(),
+                "local_replay": local_replay,
+            }
+
+    async def consolidate_if_idle(self) -> dict[str, Any]:
+        try:
+            from rag_engine.replay_daemon import consolidate_working_memory
+
+            summary = await consolidate_working_memory(config=self.config, broker=self)
+            return summary.to_dict()
+        except Exception as exc:
+            return {
+                "state": "replay_failed",
+                "error": str(exc),
             }
 
     @staticmethod
     def _detect_tier() -> str:
         try:
-            from neuro_efficiency.hardware_adapter import detect_hardware, resolve_hardware_config
+            from neuro_efficiency.hardware_adapter import get_runtime_config
 
-            config = resolve_hardware_config(detect_hardware())
+            config = get_runtime_config()
             if config.tier == "target":
                 return "tier_1"
             if config.tier == "baseline":

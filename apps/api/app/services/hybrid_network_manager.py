@@ -571,7 +571,10 @@ class HybridNetworkManager:
                 try:
                     envelope = await asyncio.wait_for(transport.fetch_fragment(hint), timeout=self.timeout_seconds + 0.75)
                     self._validate_envelope(envelope)
+                    consistency_report = await self._verify_ontological_consistency(envelope)
                     transport_attempt["state"] = "completed"
+                    if consistency_report is not None:
+                        transport_attempt["consistency"] = consistency_report
                     attempt["state"] = f"{transport.name}_completed"
                     fragments.append(envelope.to_dict())
                     attempt["transport_attempts"].append(transport_attempt)
@@ -635,6 +638,20 @@ class HybridNetworkManager:
             max_nodes=self.config.max_nodes,
             max_edges=self.config.max_edges,
         )
+
+    async def _verify_ontological_consistency(self, envelope: GraphFragmentEnvelope) -> dict[str, Any] | None:
+        try:
+            from rag_engine.self_correction import verify_fragment_consistency
+        except Exception:
+            return None
+        report = await verify_fragment_consistency(envelope, config=self.config)
+        if not report.accepted:
+            raise ValueError(
+                f"ontological inconsistency blocked fragment "
+                f"{envelope.fragment_id}: score={report.contradiction_score:.3f} "
+                f"threshold={report.threshold:.3f}"
+            )
+        return report.to_dict()
 
     @staticmethod
     def _dedupe_hints(hints: list[PeerHint]) -> list[PeerHint]:

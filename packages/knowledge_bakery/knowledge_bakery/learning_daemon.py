@@ -27,6 +27,8 @@ DEFAULT_POTENTIATION_INCREMENT = 0.1
 MIN_DISK_FREE_GB = 20.0
 MIN_RAM_AVAILABLE_GB = 1.5
 SUPPORTED_RAW_EXTENSIONS = {".txt", ".md"}
+AUTO_FLUSH_FRAGMENT_COUNT = 50
+AUTO_FLUSH_SECONDS = 180.0
 
 _lock = threading.RLock()
 _stop_event = threading.Event()
@@ -170,9 +172,10 @@ def _connect(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> sqlite3.Connection:
     root.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_db_path(memory_dir))
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     _init_synaptic_schema(conn)
     return conn
 
@@ -245,6 +248,30 @@ def _write_learning_event(conn: sqlite3.Connection, event_type: str, subject_id:
         "INSERT INTO learning_events(event_type, subject_id, payload_json, created_at) VALUES (?, ?, ?, ?)",
         (event_type, subject_id, json.dumps(payload, ensure_ascii=False), utc_now_iso()),
     )
+
+
+class _AutoFlush:
+    def __init__(self, conn: sqlite3.Connection, *, max_fragments: int = AUTO_FLUSH_FRAGMENT_COUNT, max_seconds: float = AUTO_FLUSH_SECONDS) -> None:
+        self.conn = conn
+        self.max_fragments = max(1, int(max_fragments))
+        self.max_seconds = max(1.0, float(max_seconds))
+        self.pending = 0
+        self.last_flush = time.monotonic()
+        self.flush_count = 0
+
+    def mark(self, fragments: int = 1) -> None:
+        self.pending += max(1, int(fragments))
+        now = time.monotonic()
+        if self.pending >= self.max_fragments or now - self.last_flush >= self.max_seconds:
+            self.flush()
+
+    def flush(self) -> None:
+        if self.pending <= 0:
+            return
+        self.conn.commit()
+        self.pending = 0
+        self.last_flush = time.monotonic()
+        self.flush_count += 1
 
 
 def _file_fingerprint(path: Path) -> dict[str, Any]:
@@ -407,6 +434,7 @@ def _upsert_sqlite_synapses(
     now = utc_now_iso()
     node_count = 0
     edge_count = 0
+    flush = _AutoFlush(conn)
     for node in nodes:
         node_id = str(node.get("id") or "").strip()
         if not node_id:
@@ -440,6 +468,7 @@ def _upsert_sqlite_synapses(
             ),
         )
         node_count += 1
+        flush.mark()
 
     for edge in edges:
         source = str(edge.get("source") or "").strip()
@@ -479,13 +508,15 @@ def _upsert_sqlite_synapses(
             ),
         )
         edge_count += 1
+        flush.mark()
 
     _write_learning_event(
         conn,
         "synapses_potentiated",
         None,
-        {"node_count": node_count, "edge_count": edge_count, "increment": increment},
+        {"node_count": node_count, "edge_count": edge_count, "increment": increment, "auto_flushes": flush.flush_count},
     )
+    flush.flush()
     return {"nodes": node_count, "edges": edge_count}
 
 
@@ -635,6 +666,7 @@ def ingest_raw_documents(
 
     conn = _connect(memory_dir)
     neo4j = _neo4j_sink()
+    ingest_flush = _AutoFlush(conn)
     ingested_files: list[dict[str, Any]] = []
     duplicate_count = 0
     total_nodes = 0
@@ -655,6 +687,7 @@ def ingest_raw_documents(
                 file_hash,
                 {"cleaned_path": str(cleaned_path), "original_ingest": str(existing["cleaned_path"])},
             )
+            ingest_flush.mark()
             continue
 
         batch_dir = memory_root / "ingest_batches" / file_hash[:16]
@@ -681,6 +714,7 @@ def ingest_raw_documents(
             file_hash,
             {"original_path": str(raw_file), "cleaned_path": str(cleaned_path), "nodes": len(nodes), "edges": len(edges)},
         )
+        ingest_flush.mark()
         ingested_files.append(
             {
                 "fingerprint": file_hash,
@@ -693,6 +727,7 @@ def ingest_raw_documents(
         total_nodes += upserted["nodes"]
         total_edges += upserted["edges"]
 
+    ingest_flush.flush()
     conn.commit()
     conn.close()
 

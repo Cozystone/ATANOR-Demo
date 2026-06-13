@@ -31,6 +31,21 @@ type PipelineStatus = {
   stages: PipelineStage[];
 };
 
+const defaultEdgeBrokerStatus: AnyRecord = {
+  state: "viewer_only",
+  architecture: "edge_compute_broker",
+  cloud_required: false,
+  capacity: {
+    peer_id: "deployment-viewer",
+    tier: "viewer",
+    idle: false,
+    endpoint: null,
+    task_types: ["status_view"],
+    max_batch_nodes: 0,
+    max_batch_edges: 0,
+  },
+};
+
 type ChatMessage = {
   role: "user" | "assistant";
   text: string;
@@ -345,7 +360,44 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function normalizeLocalBackendUrl(value: string) {
   const trimmed = value.trim().replace(/\/+$/, "");
-  return trimmed || "http://127.0.0.1:8000";
+  return trimmed || "http://127.0.0.1:8500";
+}
+
+function edgeStatusApiPath(baseUrl: string) {
+  return `/api/network/edge/status?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}`;
+}
+
+function graphStreamApiPath(baseUrl: string, limit = 5000) {
+  return `/api/graph/stream?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}&limit=${encodeURIComponent(String(limit))}`;
+}
+
+function readBrowserStorage(key: string) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeBrowserStorage(key: string, value: string) {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
+  } catch {
+    // Storage can be unavailable in embedded browser sandboxes.
+  }
+}
+
+function removeBrowserStorage(key: string) {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage can be unavailable in embedded browser sandboxes.
+  }
 }
 
 function localBackendErrorMessage(baseUrl: string, caught: unknown) {
@@ -772,7 +824,7 @@ function makeMemoryNodes(graph: AnyRecord | null): MemoryNode[] {
     [18, 72],
     [86, 20],
   ];
-  return rawNodes.slice(0, 900).map((node: AnyRecord, index: number) => ({
+  return rawNodes.slice(0, 5000).map((node: AnyRecord, index: number) => ({
     id: node.id ?? node.label ?? `node-${index}`,
     label: node.label ?? node.name ?? node.id ?? `Node ${index + 1}`,
     type: node.type ?? node.labels?.[0] ?? "concept",
@@ -796,7 +848,7 @@ function makeMemoryEdges(graph: AnyRecord | null, nodes: MemoryNode[]): MemoryEd
       ];
   return rawEdges
     .filter((edge: AnyRecord) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
-    .slice(0, 1800)
+    .slice(0, 20000)
     .map((edge: AnyRecord, index: number) => ({
       id: `${edge.source}-${edge.target}-${index}`,
       source: edge.source,
@@ -825,12 +877,13 @@ export default function BakeBoardPage() {
   const [memoryStatus, setMemoryStatus] = useState<AnyRecord | null>(null);
   const [memoryDrift, setMemoryDrift] = useState<AnyRecord | null>(null);
   const [learningDaemon, setLearningDaemon] = useState<AnyRecord | null>(null);
+  const [edgeStatus, setEdgeStatus] = useState<AnyRecord | null>(defaultEdgeBrokerStatus);
   const [graphSourceMode, setGraphSourceMode] = useState<"build" | "memory">("memory");
   const [workbenchInfoOpen, setWorkbenchInfoOpen] = useState(false);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
-  const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8000");
+  const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8500");
   const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
   const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
   const [learningVolume, setLearningVolume] = useState<LearningVolume>("standard");
@@ -875,7 +928,7 @@ export default function BakeBoardPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("api") || params.has("backend")) return;
-    const savedUrl = window.localStorage.getItem("homage.localFastApiUrl");
+    const savedUrl = readBrowserStorage("homage.localFastApiUrl");
     if (savedUrl) {
       setLocalBackendUrl(savedUrl);
       connectLocalBackend(savedUrl).catch(() => undefined);
@@ -927,6 +980,9 @@ export default function BakeBoardPage() {
     setLocalBackendMessage("로컬 FastAPI 확인 중");
     try {
       await directBackendJson<AnyRecord>(url, "/health");
+      fetchJson<AnyRecord>(edgeStatusApiPath(url))
+        .then((edgeBrokerStatus) => setEdgeStatus(edgeBrokerStatus))
+        .catch(() => setEdgeStatus(defaultEdgeBrokerStatus));
       const [systemStatus, gpuStatus, benchmarkStatus] = await Promise.all([
         directBackendJson<AnyRecord>(url, "/api/telemetry/system"),
         directBackendJson<AnyRecord>(url, "/api/telemetry/gpu"),
@@ -940,7 +996,7 @@ export default function BakeBoardPage() {
       setBenchmark(benchmarkStatus);
       setLocalBackendStatus("connected");
       setLocalBackendMessage("로컬 FastAPI 연결됨");
-      window.localStorage.setItem("homage.localFastApiUrl", url);
+      writeBrowserStorage("homage.localFastApiUrl", url);
       const recommended = benchmarkStatus?.recommended_learning_volume as LearningVolume | undefined;
       let nextVolume = learningVolume;
       let nextTargetNodeCount = targetNodeCount;
@@ -970,7 +1026,7 @@ export default function BakeBoardPage() {
   function disconnectLocalBackend() {
     setLocalBackendStatus("idle");
     setLocalBackendMessage("배포 fallback 사용 중");
-    window.localStorage.removeItem("homage.localFastApiUrl");
+    removeBrowserStorage("homage.localFastApiUrl");
   }
 
   async function refreshAll() {
@@ -990,6 +1046,7 @@ export default function BakeBoardPage() {
       memoryGraphResult,
       memoryDriftResult,
       learningDaemonStatus,
+      edgeBrokerStatus,
       graphragStatus,
       guardStatus,
       gpuStatus,
@@ -1003,9 +1060,10 @@ export default function BakeBoardPage() {
       apiJson<AnyRecord>("/api/ontology/status"),
       apiJson<AnyRecord>("/api/ontology/graph"),
       apiJson<AnyRecord>("/api/memory/status"),
-      apiJson<AnyRecord>("/api/memory/graph?limit=900", undefined, localStrict),
+      fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000", undefined, localStrict)),
       apiJson<AnyRecord>("/api/memory/drift-check"),
       apiJson<AnyRecord>("/api/learning/daemon/status"),
+      fetchJson<AnyRecord>(edgeStatusApiPath(localBackendUrl)).catch(() => defaultEdgeBrokerStatus),
       apiJson<AnyRecord>("/api/graphrag/status"),
       apiJson<AnyRecord>("/api/guard/status"),
       apiJson<AnyRecord>("/api/telemetry/gpu"),
@@ -1027,6 +1085,7 @@ export default function BakeBoardPage() {
     setMemoryStatus(memoryStatusResult);
     setMemoryDrift(memoryDriftResult);
     setLearningDaemon(learningDaemonStatus);
+    setEdgeStatus(edgeBrokerStatus);
     setGraph(memoryGraphResult?.nodes?.length ? memoryGraphResult : ontologyGraph);
     setGraphRag(graphragStatus);
     setGuard(guardStatus);
@@ -1203,7 +1262,7 @@ export default function BakeBoardPage() {
     const previousEdgeCount = Number(memoryStatus?.edge_count ?? graph?.edges?.length ?? 0);
     setMemoryStatus((current) => ({ ...(current ?? {}), state: "running" }));
     const result = await apiJson<AnyRecord>("/api/memory/build", { method: "POST" }, localStrict);
-    const graphResult = await apiJson<AnyRecord>("/api/memory/graph?limit=900", undefined, localStrict);
+    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000", undefined, localStrict));
     const driftResult = await apiJson<AnyRecord>("/api/memory/drift-check", undefined, localStrict);
     setMemoryStatus(result);
     setMemoryDrift(driftResult);
@@ -1719,6 +1778,13 @@ export default function BakeBoardPage() {
   const hotWindowNodes = stability?.graph_policy?.hot_window_nodes ?? 2048;
   const uiRenderNodes = stability?.graph_policy?.ui_render_nodes ?? 240;
   const telemetryLabel = telemetrySourceText(system, benchmark);
+  const edgeTierLabel = String(edgeStatus?.capacity?.tier ?? "unknown").replace("tier_", "T");
+  const edgeBrokerState = edgeStatus?.capacity?.idle
+    ? "idle"
+    : edgeStatus?.state === "viewer_only"
+      ? "viewer"
+      : edgeStatus?.state ?? "waiting";
+  const edgeBrokerLabel = `Edge ${edgeTierLabel} · Broker ${edgeBrokerState}`;
   const resourceStopReason = resourcePressureReason(system, gpu, stability, benchmark);
   const diskFreeGb = numeric(system?.disk_free_gb);
   const ramUsedGb = numeric(system?.ram_used_gb);
@@ -1746,6 +1812,7 @@ export default function BakeBoardPage() {
   const compactInfoSummary = [
     `${currentLearningPreset.label}${learningVolume === "infinite" ? "" : ` ${targetNodeCount.toLocaleString()}`}`,
     localBackendConnected ? "로컬 연결" : "fallback",
+    edgeBrokerLabel,
     `GPU ${gpu?.utilization ?? 0}%`,
     `RAM ${ramSoftGb}GB`,
   ].join(" · ");
@@ -2161,8 +2228,8 @@ export default function BakeBoardPage() {
           <strong>Homage</strong>
         </div>
         <div className="workspace-switcher" aria-label="작업 공간 전환">
-          <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>실험실</button>
-          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>클라우드 브레인</button>
+          <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>로컬 브레인 [LOCAL BRAIN]</button>
+          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>클라우드 브레인 [CLOUD BRAIN]</button>
         </div>
         <div className="layout-switcher" aria-label="레이아웃 전환">
           {[
@@ -2429,6 +2496,7 @@ export default function BakeBoardPage() {
                   </div>
                   <div className="mini-metrics">
                     <span>흐름 {flowHealth}%</span>
+                    <span>{edgeBrokerLabel}</span>
                     <span>GPU {gpu?.utilization ?? 0}%</span>
                     <span>RAM soft {ramSoftGb}GB</span>
                     <span>{telemetryLabel}</span>
@@ -2462,6 +2530,8 @@ export default function BakeBoardPage() {
                   <div><span>누적 시간</span><strong>{daemonRuntimeText}</strong></div>
                   <div><span>라운드</span><strong>{learningDaemon?.total_rounds ?? 0}</strong></div>
                   <div><span>학습 반영</span><strong>{learningDaemon?.learned_rounds ?? 0}</strong></div>
+                  <div><span>HW Tier</span><strong>{edgeTierLabel}</strong></div>
+                  <div><span>Broker</span><strong>{edgeBrokerState}</strong></div>
                   <div><span>노드</span><strong>{learningDaemon?.latest_node_count ?? memoryStatus?.node_count ?? 0}</strong></div>
                   <div><span>관계</span><strong>{learningDaemon?.latest_edge_count ?? memoryStatus?.edge_count ?? 0}</strong></div>
                   <div><span>이벤트</span><strong>{learningDaemon?.latest_event_count ?? memoryStatus?.event_count ?? 0}</strong></div>

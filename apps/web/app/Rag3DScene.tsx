@@ -79,6 +79,8 @@ const palette: Record<string, number> = {
   verb: 0xff6b35,
 };
 
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
 function labelSprite(text: string, scale = 1) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -112,6 +114,21 @@ function disposeMaterial(material?: THREE.Material | THREE.Material[]) {
     return;
   }
   material?.dispose();
+}
+
+function setObjectOpacity(object: THREE.Object3D, opacity: number) {
+  const material = (object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+  if (Array.isArray(material)) {
+    material.forEach((item) => {
+      item.opacity = opacity;
+      item.needsUpdate = true;
+    });
+    return;
+  }
+  if (material) {
+    material.opacity = opacity;
+    material.needsUpdate = true;
+  }
 }
 
 function disposeObject(object: THREE.Object3D) {
@@ -155,16 +172,17 @@ function hash01(value: string, salt: number) {
 }
 
 function stableVolumePoint(id: string, index: number, total: number) {
-  const u = hashUnit(id, 13);
-  const theta = (hashUnit(id, 29) + 1) * Math.PI;
-  const radial = Math.sqrt(Math.max(0.0001, 1 - u * u));
-  const volumeRadius = Math.min(20, 4.6 + Math.cbrt(Math.max(1, total)) * 0.9);
-  const internalDepth = 0.28 + Math.cbrt(hash01(id, 47)) * 0.72;
-  const localJitter = ((index % 19) / 19) * 0.22;
-  const radius = volumeRadius * Math.min(1, internalDepth + localJitter);
+  const count = Math.max(1, total);
+  const y = THREE.MathUtils.clamp(1 - ((index + 0.5) / count) * 2 + hashUnit(id, 13) * 0.035, -0.98, 0.98);
+  const theta = index * GOLDEN_ANGLE + hashUnit(id, 29) * 0.82;
+  const radial = Math.sqrt(Math.max(0.0001, 1 - y * y));
+  const volumeRadius = Math.min(34, 5.8 + Math.cbrt(count) * 1.34);
+  const shellNoise = 0.64 + Math.cbrt(hash01(id, 47)) * 0.46;
+  const localJitter = 1 + hashUnit(id, 71) * 0.065;
+  const radius = volumeRadius * Math.min(1.12, shellNoise * localJitter);
   return new THREE.Vector3(
     Math.cos(theta) * radial * radius,
-    u * radius * 0.96,
+    y * radius,
     Math.sin(theta) * radial * radius,
   );
 }
@@ -199,7 +217,7 @@ function normalizedSourcePositions(nodes: Rag3DNode[]) {
 function initialSpreadPosition(node: Rag3DNode, source: THREE.Vector3, index: number, total: number) {
   if (total <= 14) return source;
   const target = stableVolumePoint(node.id, index, total);
-  const sourceWeight = node.id.startsWith("live-synapse") ? 0.55 : total > 800 ? 0.5 : 0.52;
+  const sourceWeight = node.id.startsWith("live-synapse") ? 0.18 : total > 800 ? 0.08 : total > 300 ? 0.12 : 0.18;
   return source.multiplyScalar(sourceWeight).add(target.multiplyScalar(1 - sourceWeight));
 }
 
@@ -207,9 +225,10 @@ function spreadPositions(nodes: Rag3DNode[]) {
   const sources = normalizedSourcePositions(nodes);
   const positions = nodes.map((node, index) => initialSpreadPosition(node, sources[index].clone(), index, nodes.length));
   if (nodes.length <= 1) return positions;
-  if (nodes.length > 1_400) return positions;
-  const minDistance = nodes.length > 700 ? 0.64 : nodes.length > 300 ? 0.72 : nodes.length > 140 ? 0.78 : nodes.length > 80 ? 0.66 : 0.74;
-  const iterations = nodes.length > 700 ? 2 : nodes.length > 300 ? 3 : nodes.length > 140 ? 4 : nodes.length > 80 ? 5 : 7;
+  if (nodes.length > 5_000) return positions;
+  const minDistance = nodes.length > 1_400 ? 0.82 : nodes.length > 700 ? 0.94 : nodes.length > 300 ? 1.05 : nodes.length > 140 ? 1 : nodes.length > 80 ? 0.88 : 0.82;
+  const iterations = nodes.length > 1_400 ? 2 : nodes.length > 700 ? 4 : nodes.length > 300 ? 6 : nodes.length > 140 ? 7 : nodes.length > 80 ? 8 : 9;
+  const repulsionStrength = nodes.length > 1_400 ? 0.58 : nodes.length > 700 ? 0.62 : 0.68;
   for (let pass = 0; pass < iterations; pass += 1) {
     for (let left = 0; left < positions.length; left += 1) {
       for (let right = left + 1; right < positions.length; right += 1) {
@@ -224,13 +243,17 @@ function spreadPositions(nodes: Rag3DNode[]) {
           );
           distance = delta.length();
         }
-        const push = (minDistance - distance) * 0.5;
+        const push = (minDistance - distance) * repulsionStrength;
         delta.normalize().multiplyScalar(push);
         positions[left].add(delta);
         positions[right].sub(delta);
       }
     }
   }
+  const center = new THREE.Vector3();
+  positions.forEach((position) => center.add(position));
+  center.divideScalar(positions.length);
+  positions.forEach((position) => position.sub(center));
   return positions;
 }
 
@@ -317,13 +340,16 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
   pointGeometry.setAttribute("color", new THREE.BufferAttribute(pointColors, 3));
   pointGeometry.computeBoundingSphere();
   const pointMaterial = new THREE.PointsMaterial({
-    size: graph.nodes.length > 100_000 ? 0.038 : graph.nodes.length > 25_000 ? 0.05 : graph.nodes.length > 5_000 ? 0.066 : 0.095,
+    size: graph.nodes.length > 100_000 ? 0.038 : graph.nodes.length > 25_000 ? 0.05 : graph.nodes.length > 5_000 ? 0.066 : graph.nodes.length > 1_000 ? 0.13 : 0.26,
     vertexColors: true,
     sizeAttenuation: true,
     transparent: true,
-    opacity: 0.96,
+    opacity: 1,
+    depthWrite: false,
+    depthTest: false,
   });
   const points = new THREE.Points(pointGeometry, pointMaterial);
+  points.renderOrder = 2;
   points.userData.kind = "node-points";
   state.nodePoints = points;
   state.pointNodes = graph.nodes;
@@ -347,6 +373,8 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     halos.instanceMatrix.needsUpdate = true;
     if (halos.instanceColor) halos.instanceColor.needsUpdate = true;
     halos.userData.activeHalo = true;
+    halos.userData.baseOpacity = haloMaterial.opacity;
+    halos.renderOrder = 3;
     addDynamicObject(state, halos);
   }
 
@@ -361,6 +389,8 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     });
     rings.instanceMatrix.needsUpdate = true;
     rings.userData.activeHalo = true;
+    rings.userData.baseOpacity = ringMaterial.opacity;
+    rings.renderOrder = 4;
     addDynamicObject(state, rings);
   }
 
@@ -408,9 +438,12 @@ function renderGraph(state: SceneState, graph: Rag3DGraph | null, activeNodeIds:
     const edgeMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: graph.nodes.length > 25_000 ? 0.32 : 0.5,
+      opacity: graph.edges.length > 20_000 ? 0.1 : graph.edges.length > 5_000 ? 0.14 : graph.edges.length > 2_000 ? 0.16 : graph.nodes.length > 25_000 ? 0.24 : 0.4,
+      depthWrite: false,
     });
-    addDynamicObject(state, new THREE.LineSegments(edgeGeometry, edgeMaterial));
+    const edgeLines = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+    edgeLines.renderOrder = 1;
+    addDynamicObject(state, edgeLines);
   }
   if (pulseInstances.length) {
     const pulseGeometry = new THREE.SphereGeometry(1, 8, 8);
@@ -584,8 +617,9 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
       if (!drag.active) group.rotation.y += 0.00125;
       for (const object of state.dynamicObjects) {
         if (!object.userData.activeHalo) continue;
-        const pulse = 1 + Math.sin(state.frame * 0.16 + object.position.y) * 0.2;
-        object.scale.setScalar(pulse);
+        const baseOpacity = Number(object.userData.baseOpacity ?? 0.28);
+        const signal = 0.82 + Math.sin(state.frame * 0.14 + object.id * 0.37) * 0.18;
+        setObjectOpacity(object, THREE.MathUtils.clamp(baseOpacity * signal, 0.04, 0.72));
       }
       for (const object of state.dynamicObjects) {
         const pulse = object.userData.edgePulse as { source: THREE.Vector3; target: THREE.Vector3; phase: number } | undefined;
@@ -598,7 +632,7 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
           pulseBatch.forEach((item, index) => {
             const t = (state.frame * 0.018 + item.phase) % 1;
             position.copy(item.source).lerp(item.target, t);
-            scale.setScalar(0.06 + Math.sin(t * Math.PI) * 0.075);
+            scale.setScalar(0.05 + Math.sin(t * Math.PI) * 0.04);
             matrix.compose(position, quaternion, scale);
             object.setMatrixAt(index, matrix);
           });
@@ -608,7 +642,7 @@ export default function Rag3DScene({ graph, activeEdgeKeys = [], activeNodeIds =
         if (!pulse) continue;
         const t = (state.frame * 0.018 + pulse.phase) % 1;
         object.position.copy(pulse.source).lerp(pulse.target, t);
-        object.scale.setScalar(0.75 + Math.sin((t * Math.PI)) * 0.7);
+        object.scale.setScalar(0.34 + Math.sin(t * Math.PI) * 0.22);
       }
       const totalNodes = graphRef.current?.nodes?.length ?? 0;
       container.dataset.cameraZ = camera.position.z.toFixed(1);

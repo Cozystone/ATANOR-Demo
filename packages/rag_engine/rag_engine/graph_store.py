@@ -51,7 +51,7 @@ def _slug(label: str) -> str:
 
 def _memory_db_path(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> Path:
     path = Path(memory_dir)
-    if path.suffix == ".db":
+    if path.suffix in {".db", ".sqlite", ".sqlite3"}:
         return path
     return path / DEFAULT_DB_NAME
 
@@ -63,6 +63,7 @@ def _connect_readonly(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> sqlite3.Co
     uri = f"file:{db_path.as_posix()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 

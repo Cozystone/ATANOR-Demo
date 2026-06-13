@@ -5,6 +5,7 @@ import json
 import math
 import re
 import sqlite3
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -31,6 +32,8 @@ STOPWORDS = {
 
 SCHEMA_VERSION = 1
 VECTOR_SOURCE = "local_relation_projection_v1"
+AUTO_FLUSH_FRAGMENT_COUNT = 50
+AUTO_FLUSH_SECONDS = 180.0
 ACTION_HINTS = {
     "use",
     "uses",
@@ -155,8 +158,9 @@ def _projection(node_id: str, degree: int, count: int) -> tuple[float, float, fl
 def _connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     return conn
 
 
@@ -294,6 +298,28 @@ def _write_event(event_file, conn: sqlite3.Connection, event_type: str, subject_
     )
 
 
+class _AutoFlush:
+    def __init__(self, conn: sqlite3.Connection, *, max_fragments: int = AUTO_FLUSH_FRAGMENT_COUNT, max_seconds: float = AUTO_FLUSH_SECONDS) -> None:
+        self.conn = conn
+        self.max_fragments = max(1, int(max_fragments))
+        self.max_seconds = max(1.0, float(max_seconds))
+        self.pending = 0
+        self.last_flush = time.monotonic()
+
+    def mark(self, fragments: int = 1) -> None:
+        self.pending += max(1, int(fragments))
+        now = time.monotonic()
+        if self.pending >= self.max_fragments or now - self.last_flush >= self.max_seconds:
+            self.flush()
+
+    def flush(self) -> None:
+        if self.pending <= 0:
+            return
+        self.conn.commit()
+        self.pending = 0
+        self.last_flush = time.monotonic()
+
+
 def build_memory(
     cleaned_dir: str = "data/cleaned",
     ontology_dir: str = "data/ontology",
@@ -317,6 +343,7 @@ def build_memory(
     cooccurs: Counter[tuple[str, str]] = Counter()
     source_totals: Counter[str] = Counter()
     pair_totals: Counter[tuple[str, str]] = Counter()
+    flush = _AutoFlush(conn)
 
     with paths.event_path.open("w", encoding="utf-8") as event_file:
         for node in ontology_nodes:
@@ -331,6 +358,7 @@ def build_memory(
                 "evidence_doc_ids": list(node.get("evidence_doc_ids") or []),
             }
             _write_event(event_file, conn, "node_imported", node_id, node_meta[node_id])
+            flush.mark()
 
         for edge in ontology_edges:
             source = str(edge.get("source") or "")
@@ -345,6 +373,7 @@ def build_memory(
             source_totals[source] += max(1, len(docs))
             pair_totals[(source, target)] += max(1, len(docs))
             _write_event(event_file, conn, "edge_imported", f"{source}:{relation}:{target}", dict(edge))
+            flush.mark()
 
         for path in documents:
             doc_id = path.stem
@@ -354,6 +383,7 @@ def build_memory(
                 (doc_id, str(path), len(text.encode("utf-8")), utc_now_iso()),
             )
             _write_event(event_file, conn, "document_imported", doc_id, {"path": str(path), "byte_count": len(text.encode("utf-8"))})
+            flush.mark()
             for chunk_index, chunk in enumerate(_chunk_text(text) or [text[:900]]):
                 tokens = _tokens(chunk)
                 if not tokens:
@@ -364,6 +394,7 @@ def build_memory(
                     (chunk_id, doc_id, chunk, len(tokens)),
                 )
                 _write_event(event_file, conn, "chunk_indexed", chunk_id, {"doc_id": doc_id, "token_count": len(tokens)})
+                flush.mark()
                 for token in tokens:
                     node_id = _slug(token)
                     node_counts[node_id] += 1
@@ -432,6 +463,7 @@ def build_memory(
                 json.dumps(sorted(set(str(doc) for doc in meta.get("evidence_doc_ids") or [])), ensure_ascii=False),
             ),
         )
+        flush.mark()
 
     for (source, relation, target), count in edge_counts.items():
         source_total = max(1, source_totals[source])
@@ -470,6 +502,7 @@ def build_memory(
                 round(confidence, 4),
             ),
         )
+        flush.mark()
 
     transition_totals: Counter[str] = Counter()
     cooccur_totals: Counter[str] = Counter()
@@ -482,11 +515,13 @@ def build_memory(
             "INSERT OR REPLACE INTO token_transitions(source, target, count, probability) VALUES (?, ?, ?, ?)",
             (source, target, int(count), round(count / max(1, transition_totals[source]), 6)),
         )
+        flush.mark()
     for (source, target), count in cooccurs.items():
         conn.execute(
             "INSERT OR REPLACE INTO cooccurrence_windows(source, target, count, probability) VALUES (?, ?, ?, ?)",
             (source, target, int(count), round(count / max(1, cooccur_totals[source]), 6)),
         )
+        flush.mark()
 
     degree_counts: Counter[str] = Counter()
     for source, _relation, target in edge_counts:
@@ -499,8 +534,10 @@ def build_memory(
             "INSERT OR REPLACE INTO vector_rows(node_id, dim0, dim1, dim2, vector_source, trained_on_events) VALUES (?, ?, ?, ?, ?, ?)",
             (node_id, x, y, z, VECTOR_SOURCE, event_count),
         )
+        flush.mark()
 
     conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", ("built_at", utc_now_iso()))
+    flush.flush()
     conn.commit()
     status = memory_status(memory_dir)
     conn.close()
