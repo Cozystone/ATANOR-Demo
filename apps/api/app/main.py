@@ -1,10 +1,37 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import os
+from pathlib import Path
+import sys
 from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from app.services.desktop_paths import configure_desktop_data_dir
+
+
+def _configure_runtime_data_dir_from_args() -> None:
+    """Honor the Tauri sidecar data directory before any data services run."""
+
+    if "--operator" in sys.argv:
+        os.environ["ATANOR_OPERATOR"] = "1"
+        os.environ["ATANOR_AUTO_START_DAEMON"] = "1"
+        os.environ["ATANOR_AUTOSTART_DAEMON"] = "1"
+        os.environ["HOMAGE_OPERATOR"] = "1"
+        os.environ["HOMAGE_AUTO_START_DAEMON"] = "1"
+    if "--data-dir" not in sys.argv:
+        return
+    try:
+        index = sys.argv.index("--data-dir")
+        data_dir = sys.argv[index + 1]
+    except (ValueError, IndexError):
+        return
+    configure_desktop_data_dir(data_dir, chdir=True)
+
+
+_configure_runtime_data_dir_from_args()
 
 from app.routers.cloud_brain import router as cloud_brain_router
 from app.routers.datagate import router as datagate_router
@@ -23,6 +50,10 @@ from app.routers.telemetry import router as telemetry_router
 from app.services.alpha_services import alpha_service, telemetry_gpu
 from app.services.crash_safety import create_boot_shadow_backups
 from app.services.datagate_service import DataGateStatus, datagate_service
+from app.services.ingestion_stream import cleaned_directory_watcher, graph_event_hub
+from knowledge_bakery import daemon_status as learning_daemon_status
+from knowledge_bakery import start_daemon
+from neuro_efficiency import build_hardware_benchmark
 
 StageState = Literal["idle", "running", "warning", "complete"]
 
@@ -46,12 +77,24 @@ class PipelineStatus(BaseModel):
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     create_boot_shadow_backups()
-    yield
+    try:
+        skip_benchmark = os.getenv("ATANOR_SKIP_STARTUP_BENCHMARK", os.getenv("HOMAGE_SKIP_STARTUP_BENCHMARK")) == "1"
+        build_hardware_benchmark({"run_probes": not skip_benchmark})
+    except Exception:
+        pass
+    cleaned_directory_watcher.start()
+    if os.getenv("ATANOR_AUTO_START_DAEMON", os.getenv("ATANOR_AUTOSTART_DAEMON", os.getenv("HOMAGE_AUTO_START_DAEMON"))) == "1":
+        start_daemon(interval_seconds=30, resume=True)
+    await graph_event_hub.publish_snapshot(event_type="graph_snapshot", trigger="api_startup", limit=5000)
+    try:
+        yield
+    finally:
+        await cleaned_directory_watcher.stop()
 
 
 app = FastAPI(
-    title="Homage1.0 API",
-    description="Mock API for the Homage1.0 BakeBoard skeleton.",
+    title="ATANOR API",
+    description="ATANOR local-first Ghost Shell and Payload Vault API.",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -63,9 +106,17 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3030",
         "http://127.0.0.1:3030",
+        "http://localhost:3022",
+        "http://127.0.0.1:3022",
+        "tauri://localhost",
+        "asset://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "null",
+        "https://atanor-alpha.vercel.app",
         "https://homage-alpha.vercel.app",
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+|tauri://.*|asset://.*|https?://.*\.tauri\.localhost",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -153,62 +204,34 @@ def alpha_stage(
     )
 
 
-MOCK_STAGES = [
-    PipelineStage(
+def harvest_stage() -> PipelineStage:
+    raw_dir = Path(os.environ.get("ATANOR_RAW_DIR", os.environ.get("HOMAGE_RAW_DIR", "data/raw")))
+    cleaned_dir = Path(os.environ.get("ATANOR_CLEANED_DIR", os.environ.get("HOMAGE_CLEANED_DIR", "data/cleaned")))
+    raw_files = [path for ext in ("*.txt", "*.md") for path in raw_dir.rglob(ext)] if raw_dir.exists() else []
+    cleaned_files = [path for ext in ("*.txt", "*.md") for path in cleaned_dir.rglob(ext)] if cleaned_dir.exists() else []
+    daemon = learning_daemon_status()
+    worker_alive = bool(daemon.get("worker_alive"))
+    queued = len(raw_files)
+    processed = len(cleaned_files)
+    state: StageState = "running" if worker_alive else "warning" if daemon.get("desired_running") else "idle"
+    if worker_alive and queued == 0:
+        summary = "Continuous ingestion stream is awake and waiting for payloads."
+        progress = 1
+    elif worker_alive:
+        summary = "Continuous ingestion stream is ingesting raw payload files."
+        progress = 50
+    else:
+        summary = "Continuous ingestion stream is not alive; self-healing daemon status should restart it."
+        progress = 0
+    return PipelineStage(
         id="harvest",
         name="Harvest",
-        state="running",
-        progress=42,
-        summary="Collecting source documents and recording provenance.",
-        metric_label="documents",
-        metric_value="128 queued",
-    ),
-    PipelineStage(
-        id="ontology-forge",
-        name="Ontology Forge",
-        state="running",
-        progress=35,
-        summary="Extracting concepts, relations, and candidate graph triples.",
-        metric_label="triples",
-        metric_value="312 draft",
-    ),
-    PipelineStage(
-        id="homage-oven",
-        name="Homage Oven",
-        state="idle",
-        progress=10,
-        summary="Preparing tokenizer, dataset builder, and training loop hooks.",
-        metric_label="checkpoint",
-        metric_value="not started",
-    ),
-    PipelineStage(
-        id="graphrag",
-        name="GraphRAG",
-        state="complete",
-        progress=100,
-        summary="Mock retrieval trace is ready for dashboard integration.",
-        metric_label="evidence",
-        metric_value="7 bundles",
-    ),
-    PipelineStage(
-        id="guardrail",
-        name="Guardrail",
-        state="running",
-        progress=63,
-        summary="Checking unsupported claims, ontology conflicts, and policy fit.",
-        metric_label="guard score",
-        metric_value="0.86",
-    ),
-    PipelineStage(
-        id="gpu-monitor",
-        name="GPU Monitor",
-        state="idle",
-        progress=22,
-        summary="Mocking VRAM, utilization, and training telemetry.",
-        metric_label="vram",
-        metric_value="3.2 / 16 GB",
-    ),
-]
+        state=state,
+        progress=progress,
+        summary=summary,
+        metric_label="stream",
+        metric_value=f"{queued} queued / {processed} vaulted",
+    )
 
 
 @app.get("/health")
@@ -226,7 +249,7 @@ def pipeline_status() -> PipelineStatus:
     oven_status = alpha_service.oven_status()
     gpu_status = telemetry_gpu()
     stages = [
-        MOCK_STAGES[0],
+        harvest_stage(),
         datagate_stage(datagate_status),
         alpha_stage(
             "ontology-forge",
@@ -238,8 +261,8 @@ def pipeline_status() -> PipelineStatus:
             f"{ontology_status.get('node_count', 0)} nodes / {ontology_status.get('edge_count', 0)} edges",
         ),
         alpha_stage(
-            "homage-oven",
-            "Homage Oven",
+            "atanor-oven",
+            "ATANOR Oven",
             oven_status,
             "Training scaffold is ready for a safe dry-run.",
             "Dry-run produced a loss trace and checkpoint manifest.",

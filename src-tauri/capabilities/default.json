@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default Homage desktop permissions",
+  "description": "Default ATANOR desktop permissions",
   "windows": ["main"],
   "permissions": [
     "core:default",

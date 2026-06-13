@@ -16,6 +16,17 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_alias(primary: str, legacy: str, default: str | None = None) -> str | None:
+    return os.getenv(primary, os.getenv(legacy, default))
+
+
+def _env_bool_alias(primary: str, legacy: str, default: bool) -> bool:
+    value = _env_alias(primary, legacy)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, str(default)))
@@ -26,6 +37,20 @@ def _env_int(name: str, default: int) -> int:
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _env_int_alias(primary: str, legacy: str, default: int) -> int:
+    try:
+        return int(_env_alias(primary, legacy, str(default)) or default)
+    except ValueError:
+        return default
+
+
+def _env_float_alias(primary: str, legacy: str, default: float) -> float:
+    try:
+        return float(_env_alias(primary, legacy, str(default)) or default)
     except ValueError:
         return default
 
@@ -42,6 +67,7 @@ class NetworkConfig:
 
     mode: NetworkMode = "local_first"
     local_peer_id: str = "homage-local-peer"
+    homage_gateway_api: str = "http://127.0.0.1:8500"
     local_payload_endpoint: str | None = "http://127.0.0.1:8500"
     peer_directory_path: Path = Path("data/network/peers.json")
     enable_server_signaling: bool = False
@@ -69,38 +95,48 @@ class NetworkConfig:
 
     @classmethod
     def from_env(cls) -> "NetworkConfig":
-        raw_mode = os.getenv("HOMAGE_NETWORK_MODE", "local_first").strip().lower()
+        raw_mode = (_env_alias("ATANOR_NETWORK_MODE", "HOMAGE_NETWORK_MODE", "local_first") or "local_first").strip().lower()
         mode: NetworkMode = raw_mode if raw_mode in {"local_first", "server_assisted", "p2p_dominant"} else "local_first"  # type: ignore[assignment]
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
         server_signaling_default = mode == "server_assisted" and bool(supabase_url and supabase_key)
         return cls(
             mode=mode,
-            local_peer_id=os.getenv("HOMAGE_LOCAL_PEER_ID", "homage-local-peer"),
-            local_payload_endpoint=os.getenv("HOMAGE_LOCAL_PAYLOAD_ENDPOINT", "http://127.0.0.1:8500"),
-            peer_directory_path=Path(os.getenv("HOMAGE_PEER_DIRECTORY", "data/network/peers.json")),
-            enable_server_signaling=_env_bool("HOMAGE_ENABLE_SERVER_SIGNALING", server_signaling_default),
-            enable_local_peer_directory=_env_bool("HOMAGE_ENABLE_LOCAL_PEER_DIRECTORY", True),
-            enable_p2p_payload=_env_bool("HOMAGE_ENABLE_P2P_PAYLOAD", True),
-            enable_http_payload_fallback=_env_bool("HOMAGE_ENABLE_HTTP_PAYLOAD_FALLBACK", True),
-            fallback_to_server_payload=_env_bool("HOMAGE_FALLBACK_TO_SERVER_PAYLOAD", True),
+            local_peer_id=_env_alias("ATANOR_LOCAL_PEER_ID", "HOMAGE_LOCAL_PEER_ID", "atanor-local-peer") or "atanor-local-peer",
+            homage_gateway_api=_env_alias(
+                "ATANOR_GATEWAY_API",
+                "HOMAGE_GATEWAY_API",
+                _env_alias("ATANOR_LOCAL_PAYLOAD_ENDPOINT", "HOMAGE_LOCAL_PAYLOAD_ENDPOINT", "http://127.0.0.1:8500"),
+            )
+            or "http://127.0.0.1:8500",
+            local_payload_endpoint=_env_alias(
+                "ATANOR_LOCAL_PAYLOAD_ENDPOINT",
+                "HOMAGE_LOCAL_PAYLOAD_ENDPOINT",
+                _env_alias("ATANOR_GATEWAY_API", "HOMAGE_GATEWAY_API", "http://127.0.0.1:8500"),
+            ),
+            peer_directory_path=Path(_env_alias("ATANOR_PEER_DIRECTORY", "HOMAGE_PEER_DIRECTORY", "data/network/peers.json") or "data/network/peers.json"),
+            enable_server_signaling=_env_bool_alias("ATANOR_ENABLE_SERVER_SIGNALING", "HOMAGE_ENABLE_SERVER_SIGNALING", server_signaling_default),
+            enable_local_peer_directory=_env_bool_alias("ATANOR_ENABLE_LOCAL_PEER_DIRECTORY", "HOMAGE_ENABLE_LOCAL_PEER_DIRECTORY", True),
+            enable_p2p_payload=_env_bool_alias("ATANOR_ENABLE_P2P_PAYLOAD", "HOMAGE_ENABLE_P2P_PAYLOAD", True),
+            enable_http_payload_fallback=_env_bool_alias("ATANOR_ENABLE_HTTP_PAYLOAD_FALLBACK", "HOMAGE_ENABLE_HTTP_PAYLOAD_FALLBACK", True),
+            fallback_to_server_payload=_env_bool_alias("ATANOR_FALLBACK_TO_SERVER_PAYLOAD", "HOMAGE_FALLBACK_TO_SERVER_PAYLOAD", True),
             supabase_url=supabase_url,
             supabase_key=supabase_key,
-            supabase_peer_table=os.getenv("HOMAGE_SUPABASE_PEER_TABLE", "homage_peer_index"),
-            timeout_seconds=_env_float("HOMAGE_NETWORK_TIMEOUT_SECONDS", 2.5),
-            max_fragment_bytes=_env_int("HOMAGE_MAX_FRAGMENT_BYTES", 2_000_000),
-            max_nodes=_env_int("HOMAGE_MAX_FRAGMENT_NODES", 2_048),
-            max_edges=_env_int("HOMAGE_MAX_FRAGMENT_EDGES", 8_192),
-            contradiction_threshold=_env_float("HOMAGE_CONTRADICTION_THRESHOLD", 0.72),
-            trust_penalty_on_contradiction=_env_float("HOMAGE_TRUST_PENALTY_ON_CONTRADICTION", 0.1),
-            trust_store_path=Path(os.getenv("HOMAGE_TRUST_STORE", "data/network/peer_trust.json")),
-            replay_interval_seconds=_env_float("HOMAGE_REPLAY_INTERVAL_SECONDS", 300.0),
-            replay_top_percent=_env_float("HOMAGE_REPLAY_TOP_PERCENT", 0.05),
-            replay_max_edges_per_cycle=_env_int("HOMAGE_REPLAY_MAX_EDGES_PER_CYCLE", 8_192),
-            replay_min_confidence=_env_float("HOMAGE_REPLAY_MIN_CONFIDENCE", 0.62),
-            ssm_ingest_chunk_tokens=_env_int("HOMAGE_SSM_INGEST_CHUNK_TOKENS", 512),
-            ssm_max_depth=_env_int("HOMAGE_SSM_MAX_DEPTH", 3),
-            signing_key=os.getenv("HOMAGE_FRAGMENT_SIGNING_KEY"),
+            supabase_peer_table=_env_alias("ATANOR_SUPABASE_PEER_TABLE", "HOMAGE_SUPABASE_PEER_TABLE", "atanor_peer_index") or "atanor_peer_index",
+            timeout_seconds=_env_float_alias("ATANOR_NETWORK_TIMEOUT_SECONDS", "HOMAGE_NETWORK_TIMEOUT_SECONDS", 2.5),
+            max_fragment_bytes=_env_int_alias("ATANOR_MAX_FRAGMENT_BYTES", "HOMAGE_MAX_FRAGMENT_BYTES", 2_000_000),
+            max_nodes=_env_int_alias("ATANOR_MAX_FRAGMENT_NODES", "HOMAGE_MAX_FRAGMENT_NODES", 2_048),
+            max_edges=_env_int_alias("ATANOR_MAX_FRAGMENT_EDGES", "HOMAGE_MAX_FRAGMENT_EDGES", 8_192),
+            contradiction_threshold=_env_float_alias("ATANOR_CONTRADICTION_THRESHOLD", "HOMAGE_CONTRADICTION_THRESHOLD", 0.72),
+            trust_penalty_on_contradiction=_env_float_alias("ATANOR_TRUST_PENALTY_ON_CONTRADICTION", "HOMAGE_TRUST_PENALTY_ON_CONTRADICTION", 0.1),
+            trust_store_path=Path(_env_alias("ATANOR_TRUST_STORE", "HOMAGE_TRUST_STORE", "data/network/peer_trust.json") or "data/network/peer_trust.json"),
+            replay_interval_seconds=_env_float_alias("ATANOR_REPLAY_INTERVAL_SECONDS", "HOMAGE_REPLAY_INTERVAL_SECONDS", 300.0),
+            replay_top_percent=_env_float_alias("ATANOR_REPLAY_TOP_PERCENT", "HOMAGE_REPLAY_TOP_PERCENT", 0.05),
+            replay_max_edges_per_cycle=_env_int_alias("ATANOR_REPLAY_MAX_EDGES_PER_CYCLE", "HOMAGE_REPLAY_MAX_EDGES_PER_CYCLE", 8_192),
+            replay_min_confidence=_env_float_alias("ATANOR_REPLAY_MIN_CONFIDENCE", "HOMAGE_REPLAY_MIN_CONFIDENCE", 0.62),
+            ssm_ingest_chunk_tokens=_env_int_alias("ATANOR_SSM_INGEST_CHUNK_TOKENS", "HOMAGE_SSM_INGEST_CHUNK_TOKENS", 512),
+            ssm_max_depth=_env_int_alias("ATANOR_SSM_MAX_DEPTH", "HOMAGE_SSM_MAX_DEPTH", 3),
+            signing_key=_env_alias("ATANOR_FRAGMENT_SIGNING_KEY", "HOMAGE_FRAGMENT_SIGNING_KEY"),
         )
 
     @property
@@ -115,6 +151,8 @@ class NetworkConfig:
         return {
             "mode": self.mode,
             "local_peer_id": self.local_peer_id,
+            "atanor_gateway_api": self.homage_gateway_api,
+            "homage_gateway_api": self.homage_gateway_api,
             "standalone_localhost_ready": self.standalone_localhost_ready,
             "server_signaling_enabled": self.enable_server_signaling,
             "server_configured": self.server_configured,

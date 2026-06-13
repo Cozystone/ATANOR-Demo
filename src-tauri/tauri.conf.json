@@ -1,19 +1,19 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Homage",
-  "version": "0.1.0",
+  "productName": "ATANOR",
+  "version": "0.1.1",
   "identifier": "ai.homage.desktop",
   "build": {
     "beforeDevCommand": "npm --workspace apps/web run dev",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm --workspace apps/web run build:desktop",
+    "beforeBuildCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tauri_before_build.ps1",
     "frontendDist": "../apps/web/out"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Homage",
+        "title": "ATANOR",
         "width": 1440,
         "height": 920,
         "minWidth": 1120,
@@ -29,8 +29,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "externalBin": ["binaries/homage-api"],
+    "windows": {
+      "signCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign_windows_artifact.ps1 -FilePath %1"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

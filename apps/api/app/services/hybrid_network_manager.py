@@ -428,7 +428,7 @@ class HttpFallbackTransport:
         url = self._build_url(endpoint, peer_id, concept_id)
 
         def _fetch() -> dict[str, Any]:
-            request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "Homage/0.1"})
+            request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "ATANOR/0.1"})
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 data = response.read(self.config.max_fragment_bytes + 1)
             if len(data) > self.config.max_fragment_bytes:

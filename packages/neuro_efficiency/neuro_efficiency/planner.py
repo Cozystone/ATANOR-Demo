@@ -116,7 +116,7 @@ def build_neuro_efficiency_plan(workload: dict[str, Any] | None = None) -> dict[
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "architecture": "Homage Neuro-Efficiency Layer",
+        "architecture": "ATANOR Neuro-Efficiency Layer",
         "objective": "Run adaptive AI workloads with sparse events, modular routing, compact memory, and explicit compression controls.",
         "workload": {
             "task_type": task_type,

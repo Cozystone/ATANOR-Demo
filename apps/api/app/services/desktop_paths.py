@@ -5,11 +5,13 @@ import platform
 from pathlib import Path
 
 
+# Keep the original internal AppData namespace for Alpha compatibility.
+# ATANOR is the product brand; Homage remains the stable engine/runtime folder.
 APP_NAME = "Homage"
 
 
 def default_app_data_dir() -> Path:
-    override = os.getenv("HOMAGE_DATA_DIR")
+    override = os.getenv("ATANOR_DATA_DIR", os.getenv("HOMAGE_DATA_DIR"))
     if override:
         return Path(override).expanduser().resolve()
 
@@ -35,6 +37,7 @@ def configure_desktop_data_dir(data_dir: str | Path | None = None, *, chdir: boo
         root / "logs",
     ]:
         child.mkdir(parents=True, exist_ok=True)
+    os.environ["ATANOR_DATA_DIR"] = str(root)
     os.environ["HOMAGE_DATA_DIR"] = str(root)
     if chdir:
         os.chdir(root)

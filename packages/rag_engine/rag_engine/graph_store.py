@@ -338,6 +338,7 @@ def query_lazy_subgraph(
             "expanded_terms": set(seed_terms),
             "seed_node_ids": ghost.get("active_hashes", []),
             "active_hashes": ghost.get("active_hashes", []),
+            "active_hash_scores": ghost.get("active_hash_scores", {}),
             "payload_docs": ghost.get("payload_docs", []),
             "fetch_logs": ghost.get("fetch_logs", []),
             "ghost_shell": ghost.get("telemetry", ghost_status(memory_dir)),
@@ -450,9 +451,14 @@ def query_lazy_chunks(
                     "token_total": sum(token_counts.values()),
                     "hash_key": doc.get("hash_key"),
                     "metadata": doc.get("metadata", {}),
+                    "score": float(doc.get("score") or 0.0),
+                    "temporal": doc.get("temporal"),
+                    "temporal_rank": doc.get("temporal_rank"),
+                    "temporal_weight": float(doc.get("score") or 0.0),
                     "ghost_shell": ghost.get("telemetry", {}),
                 }
             )
+        chunks.sort(key=lambda item: (-float(item.get("temporal_weight") or 0.0), item["chunk_id"]))
         return chunks
 
     conn = _connect_readonly(memory_dir)

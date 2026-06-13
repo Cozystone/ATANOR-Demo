@@ -28,6 +28,22 @@ fn find_free_port() -> Result<u16, String> {
     Ok(port)
 }
 
+fn operator_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Ok(override_dir) = std::env::var("ATANOR_OPERATOR_DATA_DIR")
+        .or_else(|_| std::env::var("HOMAGE_OPERATOR_DATA_DIR"))
+    {
+        if !override_dir.trim().is_empty() {
+            return Ok(PathBuf::from(override_dir));
+        }
+    }
+    if is_operator_binary() {
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            return Ok(PathBuf::from(local_app_data).join("Homage"));
+        }
+    }
+    Ok(app.path().app_data_dir()?)
+}
+
 fn kill_sidecar(app: &tauri::AppHandle) {
     if let Some(state) = app.try_state::<ApiRuntimeState>() {
         if let Ok(mut guard) = state.child.lock() {
@@ -40,22 +56,23 @@ fn kill_sidecar(app: &tauri::AppHandle) {
 
 fn spawn_python_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let port = find_free_port()?;
-    let data_dir = app.path().app_data_dir()?;
+    let data_dir = operator_data_dir(app)?;
     std::fs::create_dir_all(&data_dir)?;
     let api_base_url = format!("http://127.0.0.1:{port}");
 
-    let (mut rx, child) = app
-        .shell()
-        .sidecar("homage-api")?
-        .args([
-            "--host",
-            "127.0.0.1",
-            "--port",
-            &port.to_string(),
-            "--data-dir",
-            &data_dir.to_string_lossy(),
-        ])
-        .spawn()?;
+    let mut args = vec![
+        "--host".to_string(),
+        "127.0.0.1".to_string(),
+        "--port".to_string(),
+        port.to_string(),
+        "--data-dir".to_string(),
+        data_dir.to_string_lossy().to_string(),
+    ];
+    if is_operator_binary() {
+        args.push("--operator".to_string());
+    }
+
+    let (mut rx, child) = app.shell().sidecar("homage-api")?.args(args).spawn()?;
 
     let state = app.state::<ApiRuntimeState>();
     *state.api_base_url.lock().map_err(|_| "api state poisoned")? = Some(api_base_url);
@@ -85,6 +102,25 @@ fn spawn_python_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+fn is_operator_binary() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_stem().map(|name| name.to_string_lossy().to_lowercase()))
+        .map(|name| name.contains("operator"))
+        .unwrap_or(false)
+}
+
+fn route_operator_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    if !is_operator_binary() {
+        return Ok(());
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        window.set_title("ATANOR Operator")?;
+        let _ = window.eval("window.location.replace('/admin')");
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn get_desktop_runtime(state: State<ApiRuntimeState>) -> DesktopRuntimeInfo {
     let api_base_url = state.api_base_url.lock().ok().and_then(|value| value.clone());
@@ -110,10 +146,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![get_desktop_runtime])
         .setup(|app| {
             spawn_python_sidecar(app)?;
+            route_operator_window(app)?;
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Homage desktop application")
+        .expect("error while building ATANOR desktop application")
         .run(|app, event| match event {
             RunEvent::ExitRequested { .. } | RunEvent::Exit => kill_sidecar(app),
             _ => {}

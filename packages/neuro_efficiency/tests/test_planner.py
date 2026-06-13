@@ -12,7 +12,7 @@ def test_plan_exposes_efficiency_controls() -> None:
         }
     )
 
-    assert plan["architecture"] == "Homage Neuro-Efficiency Layer"
+    assert plan["architecture"] == "ATANOR Neuro-Efficiency Layer"
     assert 0 < plan["event_gate"]["event_density"] <= 1
     assert plan["event_gate"]["sparsity"] > 0
     assert len(plan["module_routing"]["active_modules"]) <= 4

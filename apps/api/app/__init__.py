@@ -1,1 +1,1 @@
-"""Homage1.0 FastAPI application package."""
+"""ATANOR FastAPI application package."""

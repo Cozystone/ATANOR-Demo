@@ -10,7 +10,7 @@ from datagate import DataGateConfig
 
 # A long clean prose document (well over min_chars, low special/link ratios).
 CLEAN_LONG = (
-    "Homage1.0 is a transparent neuro-symbolic AI factory. "
+    "ATANOR is a transparent neuro-symbolic AI factory. "
     "It collects knowledge from documents, filters out low quality data, "
     "structures the survivors into an ontology and a knowledge graph, and "
     "trains a small language model from scratch. The whole process is shown "
@@ -32,16 +32,16 @@ DUP_A = DUP_TEXT
 DUP_B = DUP_TEXT
 
 # Symbol soup: long enough to pass min_length, but mostly non-text glyphs.
-SYMBOL_SOUP = "█▓▒░@#$%^&*<>{}[]|\\~`█▓▒░@#$%^&*<>{}=+/" * 12
+SYMBOL_SOUP = "?댿뼋?믠뼇@#$%^&*<>{}[]|\\~`?댿뼋?믠뼇@#$%^&*<>{}=+/" * 12
 
 # A document that is almost entirely links.
 LINK_LIST = "\n".join(f"https://example.com/page/{i}" for i in range(40))
 
-# Korean prose (Unicode alnum) — should pass the special-char filter.
+# Korean prose (Unicode alnum) ??should pass the special-char filter.
 KOREAN_DOC = (
-    "호마지는 투명한 뉴로 심볼릭 인공지능 공장이다. "
-    "이 시스템은 문서에서 지식을 모으고 저품질 데이터를 걸러낸다. "
-    "작은 언어 모델을 처음부터 학습시키며 그 과정을 웹에서 보여준다. "
+    "?몃쭏吏???щ챸???대줈 ?щ낵由??멸났吏??怨듭옣?대떎. "
+    "???쒖뒪?쒖? 臾몄꽌?먯꽌 吏?앹쓣 紐⑥쑝怨???덉쭏 ?곗씠?곕? 嫄몃윭?몃떎. "
+    "?묒? ?몄뼱 紐⑤뜽??泥섏쓬遺???숈뒿?쒗궎硫?洹?怨쇱젙???뱀뿉??蹂댁뿬以?? "
 ) * 3
 
 EMPTY_DOC = ""

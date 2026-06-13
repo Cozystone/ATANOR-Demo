@@ -13,10 +13,10 @@ def homage_memory_db_path() -> Path:
 
     The install directory must be treated as read-only/replaceable because
     Tauri updates can overwrite it. All durable state lives under the OS
-    application data directory or the explicit HOMAGE_DATA_DIR override.
+    application data directory or the explicit ATANOR_DATA_DIR/HOMAGE_DATA_DIR override.
     """
 
-    root = configure_desktop_data_dir(os.getenv("HOMAGE_DATA_DIR"), chdir=False)
+    root = configure_desktop_data_dir(os.getenv("ATANOR_DATA_DIR", os.getenv("HOMAGE_DATA_DIR")), chdir=False)
     return root / "data" / "memory" / "homage_memory.sqlite3"
 
 

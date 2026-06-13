@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "knowledge-bakery"
 version = "0.1.0"
-description = "Persistent graph memory and activation engine for Homage1.0."
+description = "Persistent graph memory and activation engine for ATANOR."
 requires-python = ">=3.11"
 dependencies = []
 

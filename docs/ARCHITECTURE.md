@@ -1,4 +1,4 @@
-# Homage1.0 Architecture
+# ATANOR Architecture
 
 ## Phase 1 Skeleton
 
@@ -18,7 +18,7 @@ apps/api FastAPI mock pipeline API
 
 - Framework: FastAPI
 - Current responsibility: expose health and mock pipeline status endpoints.
-- Future responsibilities: DataGate, Ontology Forge, Homage Oven, GraphRAG, Guardrail, GPU monitoring, and event streaming.
+- Future responsibilities: DataGate, Ontology Forge, ATANOR Oven, GraphRAG, Guardrail, GPU monitoring, and event streaming.
 
 ## Frontend
 

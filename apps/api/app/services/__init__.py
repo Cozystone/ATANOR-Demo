@@ -1,1 +1,1 @@
-"""Backend service layer for Homage1.0."""
+"""Backend service layer for ATANOR."""

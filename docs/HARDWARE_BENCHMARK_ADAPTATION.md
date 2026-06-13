@@ -1,6 +1,6 @@
 # Hardware Benchmark Adaptation
 
-Homage1.0 now runs a short hardware benchmark at the beginning of a BakeBoard
+ATANOR now runs a short hardware benchmark at the beginning of a BakeBoard
 session. The benchmark exists to prevent the ontology builder and training
 scaffold from choosing one fixed workload for every machine.
 

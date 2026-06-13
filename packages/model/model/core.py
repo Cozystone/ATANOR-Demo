@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class HomageCoreConfig:
-    name: str = "homage-core-30m"
+class AtanorCoreConfig:
+    name: str = "atanor-core-30m"
     vocab_size: int = 256
     context_length: int = 256
     hidden_size: int = 384
@@ -24,11 +24,11 @@ class HomageCoreConfig:
         return embedding + transformer + heads + auxiliary
 
 
-class HomageCoreModel:
+class AtanorCoreModel:
     """Shape-only model scaffold. No pretrained weights, no heavy ML dependency."""
 
-    def __init__(self, config: HomageCoreConfig | None = None) -> None:
-        self.config = config or HomageCoreConfig()
+    def __init__(self, config: AtanorCoreConfig | None = None) -> None:
+        self.config = config or AtanorCoreConfig()
         self.initialization = "random"
 
     def forward_shape(self, batch_size: int, sequence_length: int) -> tuple[int, int, int]:
@@ -48,3 +48,7 @@ class HomageCoreModel:
                 "verifier": self.config.verifier_head,
             },
         }
+
+
+HomageCoreConfig = AtanorCoreConfig
+HomageCoreModel = AtanorCoreModel

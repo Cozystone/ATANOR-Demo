@@ -67,7 +67,7 @@ class SsmContextRouter(abc.ABC):
     """Abstract linear-time context router for future Mamba/GGUF ingestion.
 
     This class does not load a neural model. It provides the deterministic
-    streaming envelope that lets Homage replace a quadratic attention path with
+    streaming envelope that lets ATANOR replace a quadratic attention path with
     an O(N) sequence backend when such a backend is configured.
     """
 

@@ -43,7 +43,7 @@ const staticResults: WebSearchResult[] = [
     id: "web-static-004",
     title: "MiroFish",
     url: "https://github.com/666ghj/MiroFish",
-    snippet: "MiroFish demonstrates a console-style graph growth interface useful as a UI reference for Homage BakeBoard.",
+    snippet: "MiroFish demonstrates a console-style graph growth interface useful as a UI reference for ATANOR BakeBoard.",
     provider: "static",
     source_type: "repository_or_docs",
     license_status: "reference_only",
@@ -91,7 +91,7 @@ export function webSearchProviderStatus(provider?: string | null) {
       configured: isConfigured("microsoft-grounding"),
       mode: "foundry_agent_tool",
       native_homage_default: false,
-      reason: "Grounding with Bing is an Azure Foundry Agent tool that returns model responses with citations, not raw searchable chunks for Homage native synthesis.",
+      reason: "Grounding with Bing is an Azure Foundry Agent tool that returns model responses with citations, not raw searchable chunks for ATANOR native synthesis.",
       required_env: [
         "FOUNDRY_PROJECT_ENDPOINT",
         "FOUNDRY_MODEL_DEPLOYMENT_NAME",
@@ -147,7 +147,7 @@ async function wikipediaSearch(query: string, count: number): Promise<WebSearchR
   const apiUrl = `https://ko.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1&srlimit=${count}&srsearch=${encodeURIComponent(lookup)}`;
   const response = await fetch(apiUrl, {
     cache: "no-store",
-    headers: { "User-Agent": "HomageAlpha/0.1 web-search" },
+    headers: { "User-Agent": "ATANORAlpha/0.1 web-search" },
     signal: AbortSignal.timeout(5000),
   });
   if (!response.ok) throw new Error(`Wikipedia search returned ${response.status}`);
@@ -164,7 +164,7 @@ async function wikipediaSearch(query: string, count: number): Promise<WebSearchR
       try {
         const summaryResponse = await fetch(`https://ko.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/\s+/g, "_"))}`, {
           cache: "no-store",
-          headers: { "User-Agent": "HomageAlpha/0.1 web-search" },
+          headers: { "User-Agent": "ATANORAlpha/0.1 web-search" },
           signal: AbortSignal.timeout(5000),
         });
         if (summaryResponse.ok) {
@@ -197,7 +197,7 @@ async function newsRssSearch(query: string, count: number): Promise<WebSearchRes
   const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ko&gl=KR&ceid=KR:ko`;
   const response = await fetch(rssUrl, {
     cache: "no-store",
-    headers: { "User-Agent": "HomageAlpha/0.1 web-search" },
+    headers: { "User-Agent": "ATANORAlpha/0.1 web-search" },
     signal: AbortSignal.timeout(5000),
   });
   if (!response.ok) throw new Error(`News RSS returned ${response.status}`);
@@ -309,7 +309,7 @@ export async function searchWeb(query?: string | null, count = 5, provider?: str
       configured: isConfigured("microsoft-grounding"),
       bing_query_url: bingQueryUrl,
       status: "metadata_only",
-      message: "Grounding with Bing is configured through Azure Foundry Agents and does not expose raw result chunks to this native Homage harvest path.",
+      message: "Grounding with Bing is configured through Azure Foundry Agents and does not expose raw result chunks to this native ATANOR harvest path.",
       provider_status: webSearchProviderStatus(selected),
     };
   }

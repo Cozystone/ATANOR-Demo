@@ -1,6 +1,6 @@
 # DataGate
 
-Deterministic, rule-based quality gate for Homage1.0. DataGate takes raw local
+Deterministic, rule-based quality gate for ATANOR. DataGate takes raw local
 text documents from `data/raw`, runs them through an ordered fail-fast filter
 chain, scores the survivors, and partitions everything into `cleaned` and
 `rejected` with full per-document metadata.
@@ -45,16 +45,16 @@ data/raw/*.{txt,md}
 
 ### Outputs (full-batch overwrite every run)
 
-- `data/cleaned/{doc_id}.txt` — accepted docs, original text verbatim
-- `data/rejected/{doc_id}.txt` — rejected docs, original text verbatim
-- `data/metadata/documents.jsonl` — one `DocumentMetadata` JSON object per
+- `data/cleaned/{doc_id}.txt` ??accepted docs, original text verbatim
+- `data/rejected/{doc_id}.txt` ??rejected docs, original text verbatim
+- `data/metadata/documents.jsonl` ??one `DocumentMetadata` JSON object per
   input file, in processing order
 
 ### Invariants
 
-- every input file → exactly one jsonl line
-- `status="rejected"` ⇒ `rejection_reason` and `rejected_by` are non-null
-- `status="accepted"` ⇒ `quality_score` is non-null and a `cleaned/` file exists
+- every input file ??exactly one jsonl line
+- `status="rejected"` ??`rejection_reason` and `rejected_by` are non-null
+- `status="accepted"` ??`quality_score` is non-null and a `cleaned/` file exists
 - `report.accepted + report.rejected == report.total`
 
 ## Determinism

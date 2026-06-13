@@ -23,6 +23,9 @@ def test_benchmark_recommends_max_for_target_desktop() -> None:
     assert benchmark["source"] == "local-hardware-probe"
     assert benchmark["can_read_local_hardware"] is True
     assert benchmark["recommended_learning_volume"] == "max"
+    assert benchmark["execution_tier"] == "tier_1_m"
+    assert benchmark["max_chunk_nodes"] == 5_000
+    assert benchmark["continuous_threading_enabled"] is True
     assert benchmark["recommended_stability_payload"] == {
         "target_nodes": 500_000,
         "target_edges": 2_400_000,
@@ -31,6 +34,7 @@ def test_benchmark_recommends_max_for_target_desktop() -> None:
     assert benchmark["ontology_tuning"]["hot_window_nodes"] == 24_000
     assert benchmark["ontology_tuning"]["ui_render_nodes"] == 2_000
     assert benchmark["training_tuning"]["precision"] == "bf16-preferred"
+    assert benchmark["training_tuning"]["microbatch_tokens"] == 1280
     assert benchmark["probes"]["ran"] is False
 
 
@@ -51,6 +55,8 @@ def test_benchmark_recommends_lite_for_small_machine() -> None:
     )
 
     assert benchmark["recommended_learning_volume"] == "lite"
+    assert benchmark["execution_tier"] == "tier_3"
+    assert benchmark["max_chunk_nodes"] == 300
     assert benchmark["recommended_stability_payload"]["target_nodes"] == 3_000
     assert benchmark["training_tuning"]["microbatch_tokens"] == 256
     assert benchmark["runtime_envelope"]["ram_soft_gb"] == 5.8

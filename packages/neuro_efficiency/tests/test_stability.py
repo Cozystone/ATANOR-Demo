@@ -6,7 +6,7 @@ from neuro_efficiency import build_sustained_run_plan
 def test_sustained_run_plan_defaults_match_target_hardware() -> None:
     plan = build_sustained_run_plan()
 
-    assert plan["profile_name"] == "Homage Sustained Learning Profile"
+    assert plan["profile_name"] == "ATANOR Sustained Learning Profile"
     assert plan["hardware_profile"]["cpu"] == "AMD Ryzen 9 9950X3D"
     assert plan["hardware_profile"]["vram_gb"] == 16
     assert plan["hardware_profile"]["ram_gb"] == 32

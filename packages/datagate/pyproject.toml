@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "datagate"
 version = "0.1.0"
-description = "Deterministic rule-based quality gate for Homage1.0 raw text documents."
+description = "Deterministic rule-based quality gate for ATANOR raw text documents."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

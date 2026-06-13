@@ -401,7 +401,7 @@ def _consolidate_sync(
     force: bool,
 ) -> ReplaySummary:
     tier, idle = _capacity_from_broker(broker)
-    allowed_tiers = {"tier_1", "tier_2"}
+    allowed_tiers = {"tier_s", "tier_1_m", "tier_1_s", "tier_2_a", "tier_1", "tier_2"}
     if not force and (not idle or tier not in allowed_tiers):
         return ReplaySummary(
             state="skipped_not_idle",

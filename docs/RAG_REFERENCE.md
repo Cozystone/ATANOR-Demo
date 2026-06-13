@@ -12,18 +12,18 @@
 - Reddit discussion:
   `https://www.reddit.com/r/MachineLearning/comments/1ookxb0/r_knowledge_graph_traversal_with_llms_and/`.
   The useful product lesson was the distinction between a semantic-similarity
-  graph and a real knowledge graph: Homage should preserve typed nodes,
+  graph and a real knowledge graph: ATANOR should preserve typed nodes,
   relation semantics, deduplication, and update history rather than treating
   every chunk-neighbor link as ontology.
 - Similarity Graph Traversal Semantic RAG research repo:
   `https://github.com/glacier-creative-git/similarity-graph-traversal-semantic-rag-research`.
   Useful ideas: anchor selection, neighbor traversal, hierarchical graph levels,
-  and 3D traversal visualization. Homage keeps these as design influences, not
+  and 3D traversal visualization. ATANOR keeps these as design influences, not
   copied source code.
 
-## Homage Alpha Decision
+## ATANOR Alpha Decision
 
-Homage Alpha keeps a local deterministic RAG engine instead of vendoring a
+ATANOR Alpha keeps a local deterministic RAG engine instead of vendoring a
 large external framework. The implementation now follows a compact hybrid
 GraphRAG shape:
 
@@ -40,7 +40,7 @@ The Build Start Alpha flow extends that shape with a 3D client-side traversal
 view: Harvest evidence enters the graph as source-backed claims, typed
 ontology nodes dedupe repeated concepts, relation edges carry labels, and the
 training gate waits until the graph has enough nodes, edges, and evidence to
-justify a Homage Oven dry-run.
+justify a ATANOR Oven dry-run.
 
 ## Why This Is Better Than The Previous Alpha RAG
 

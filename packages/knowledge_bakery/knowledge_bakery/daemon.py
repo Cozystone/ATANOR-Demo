@@ -368,7 +368,7 @@ def stop_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, reason: str = "manual") ->
     return daemon_checkpoint(memory_dir, f"stop-{reason}")
 
 
-if os.environ.get("HOMAGE_AUTOSTART_DAEMON") == "1":
+if os.environ.get("ATANOR_AUTOSTART_DAEMON") == "1" or os.environ.get("HOMAGE_AUTOSTART_DAEMON") == "1":
     saved = _read_state(DEFAULT_MEMORY_DIR)
     if saved.get("desired_running"):
         start_daemon(DEFAULT_MEMORY_DIR, int(saved.get("interval_seconds") or DEFAULT_INTERVAL_SECONDS), resume=True)

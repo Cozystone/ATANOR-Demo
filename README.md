@@ -1,22 +1,61 @@
-# Homage1.0
+# ATANOR 1.0 Alpha
 
-**신경망-기호 하이브리드 로컬 AI 엔진 Homage1.0**
+**Architecture for Transparent Anomy and Networked Ontology in Radical Engines**
 
-Homage1.0 is an Alpha research engine for building a local AI system that keeps
-knowledge in an inspectable 3D ontology graph instead of hiding it inside a
-giant pretrained model. The current build combines a FastAPI backend, a Next.js
-BakeBoard UI, a hardware-adaptive GraphRAG memory layer, and an experimental
-Tauri desktop packaging path with a Python sidecar.
+**Local-first neuro-symbolic AI engine powered by the Homage Engine**
 
-[Live Lab Demo](https://homage-alpha.vercel.app) · [Architecture](docs/CLOUD_BRAIN_ARCHITECTURE.md) · [Night Build Log](docs/night_log_0612.md)
+ATANOR is a local-first neuro-symbolic AI research engine for building,
+inspecting, and evolving knowledge graphs on a workstation. It keeps factual
+memory in traceable graph structures instead of hiding it inside opaque model
+weights, then uses local retrieval and synthesis paths to produce answers from
+inspectable context.
 
-![Homage Lab 3D GraphRAG](docs/screenshots/147-production-lab-volumetric-default.png)
+## Naming Boundary
+
+ATANOR is the external product and research brand. **Homage** remains the
+original internal engine namespace where changing names would risk breaking
+Alpha installations, data paths, tests, sidecar binaries, package imports,
+Store identity, or legacy environment variables.
+
+In practice:
+
+- Public copy, page titles, README text, product UI, and new environment aliases
+  should use **ATANOR**.
+- Stable runtime paths such as `homage.db`, `homage-api`, `HOMAGE_*` fallback
+  variables, and existing internal package names may remain until a tested
+  migration plan exists.
+
+[Live Lab Demo](https://homage-alpha.vercel.app) | [Architecture](docs/CLOUD_BRAIN_ARCHITECTURE.md) | [Night Build Log](docs/night_log_0612.md)
+
+![ATANOR Lab 3D GraphRAG](docs/screenshots/atanor-alpha-freeze-lab.png)
+
+## Philosophy
+
+ATANOR is not an imitation of mainstream cloud LLM systems. It is an attempt to
+build an independent, radical engine where knowledge, memory, retrieval, and
+generation are structurally separated and visible.
+
+The name defines the architecture:
+
+| Letter | Pillar | Meaning |
+| --- | --- | --- |
+| A | Architecture | Replace black-box matrices with decoupled, hybrid structural memory. |
+| T | Transparent | Build a 100% traceable, non-hallucinatory fact-based inference net. |
+| A | Anomy | Preserve decentralized, air-gapped autonomy from mainstream cloud control. |
+| N | Networked | Let 3D nodes prune, reinforce, and grow like biological synapses. |
+| O | Ontology | Use multilingual concept-based knowledge graphs instead of raw string piles. |
+| R | Radical Engines | Run a workstation-native inference engine that evolves with the user's data. |
+
+Transparent Anomy is the operating principle: ATANOR prefers an inspectable,
+air-gapped, locally owned graph over a remote black box. Every active node,
+edge, payload hash, and retrieval step should be traceable enough for the user
+to see why an answer was produced.
 
 ## Research Thesis
 
-Homage starts from a simple question: can a personal workstation become more
-useful by storing knowledge as an evolving graph, instead of forcing a language
-model to memorize everything inside opaque weights?
+ATANOR starts from a simple question: can a personal workstation become useful
+by storing knowledge as an evolving ontology graph, instead of forcing a model
+to memorize everything inside opaque weights?
 
 The target architecture separates the system into two brains:
 
@@ -27,23 +66,19 @@ The target architecture separates the system into two brains:
 
 The current Alpha does not claim to outperform modern LLMs. It is a transparent
 prototype for testing whether graph lookup, synaptic edge weights, pruning,
-lazy loading, and a future local syntax assembler can reduce the amount of
-brute-force generation needed for useful answers.
-
-한국어로 요약하면, Homage는 지식을 거대 모델 파라미터 안에 억지로 숨기는 대신
-3D 온톨로지 그래프에 드러내 놓고, 질문할 때 필요한 하위 그래프만 읽어 자연어
-출력으로 조립하려는 신경망-기호 하이브리드 로컬 AI 실험입니다.
+lazy loading, and a future local syntax assembler can reduce the brute-force
+generation needed for useful answers.
 
 ## What This Is
 
-Homage is a research attempt to replace part of the brute-force LLM workflow
+ATANOR is a research attempt to replace part of the brute-force LLM workflow
 with a more explicit neuro-symbolic system:
 
 - **Knowledge lives in a graph.** Documents, sentence parts, concepts, and
   relations become ontology nodes and weighted edges.
 - **Generation is separated from memorization.** Alpha does not use an external
-  LLM to “sound smart.” It exposes a native graph-token prediction path so weak
-  memory produces visibly weak output.
+  LLM to hide weak reasoning behind polished prose. It exposes native graph
+  retrieval and local synthesis paths so weak memory remains visible.
 - **Learning is cumulative.** Repeated relations potentiate, stale edges decay,
   and pruning keeps local storage from growing without bound.
 - **Hardware adapts the workload.** The backend detects RAM/VRAM tiers and
@@ -63,14 +98,14 @@ behind every answer.
 The main lab view focuses on a 3D GraphRAG memory map and a right-side process
 panel for collection, learning, and output.
 
-![Lab workspace](docs/screenshots/147-production-lab-volumetric-default.png)
+![Lab workspace](docs/screenshots/atanor-alpha-freeze-lab.png)
 
 ### Cloud Brain Viewer
 
 The deployed version acts as a small viewer. Real long-running workers run next
 to local FastAPI or a future desktop sidecar.
 
-![Cloud Brain viewer](docs/screenshots/150-cloud-brain-production-verified.png)
+![Cloud Brain viewer](docs/screenshots/atanor-alpha-freeze-admin.png)
 
 ### Learning Edge Signals
 
@@ -82,8 +117,8 @@ decorative animation.
 
 ### Local Daemon
 
-The Cloud Brain / Hippocampus worker watches local input, checkpoints memory,
-and survives reboot through SQLite WAL plus daemon state files.
+The Cloud Brain worker watches local input, checkpoints memory, and survives
+reboot through SQLite WAL plus daemon state files.
 
 ![Local daemon running](docs/screenshots/128-local-daemon-running.png)
 
@@ -91,7 +126,7 @@ More UI verification screenshots are available in [docs/screenshots](docs/screen
 
 ## Three-Step Flow
 
-Homage is intentionally organized around three visible stages:
+ATANOR is intentionally organized around three visible stages:
 
 | Stage | Purpose | What the UI should reveal |
 | --- | --- | --- |
@@ -127,10 +162,16 @@ Knowledge Bakery / Local Brain
   checkpointed daemon state
         |
         v
-GraphRAG + Native Graph Token Predictor
+Ghost Shell + Payload Vault
+  SHA-256 topology hashes
+  disk-bound raw payloads
+  lazy payload resolution
+        |
+        v
+GraphRAG + Local Synthesis
   lazy subgraph retrieval
   active-node signals
-  graph-token answer attempt
+  local context synthesis
         |
         v
 Guard / Drift / Stability
@@ -144,7 +185,7 @@ Guard / Drift / Stability
 | Area | Path | Status |
 | --- | --- | --- |
 | FastAPI backend | `apps/api` | Alpha APIs, local telemetry, RAG, daemon control |
-| Next.js UI | `apps/web` | BakeBoard lab, Cloud Brain viewer, 3D GraphRAG |
+| Next.js UI | `apps/web` | Lab, Cloud Brain viewer, 3D GraphRAG |
 | DataGate | `packages/datagate` | deterministic source filtering |
 | Ontology Forge | `packages/ontology_forge` | contextual entity resolution and UUID concept schema |
 | Knowledge Bakery | `packages/knowledge_bakery` | local memory DB, daemon, potentiation/decay |
@@ -154,15 +195,22 @@ Guard / Drift / Stability
 
 ## Current Alpha Capabilities
 
+- Local FastAPI backend for telemetry, GraphRAG, daemon control, and memory APIs.
+- Next.js BakeBoard UI for the lab and Cloud Brain viewer.
+- Tauri desktop packaging path with a Python FastAPI sidecar.
+- DataGate filtering and Ontology Forge concept extraction.
+- Knowledge Bakery cumulative memory with SQLite WAL, checkpoints,
+  potentiation, decay, and pruning.
+- Ghost Shell / Payload Vault oriented graph storage and lazy retrieval.
 - 3D GraphRAG dashboard with zoom, pan, graph controls, and large-graph
   rendering through `THREE.Points`, `InstancedMesh`, and `LineSegments`.
 - Sequential lab flow: collection, learning, output.
 - Local FastAPI connection for real PC telemetry and benchmark-based workload
   tuning.
-- Hardware-adaptive lazy subgraph retrieval:
-  - Target: 32GB RAM + 12GB+ VRAM
-  - Baseline: 16GB RAM
-  - Minimum: under 16GB RAM
+- Hardware-adaptive lazy subgraph retrieval with six runtime tiers.
+- Cloud/Edge network abstraction prepared for future metadata signaling and
+  payload transport.
+- External LLM answer generation is disabled in the Alpha path.
 - Continuous local learner:
   - watches `data/raw`
   - moves files into `data/cleaned`
@@ -171,7 +219,7 @@ Guard / Drift / Stability
   - applies decay/pruning
   - checkpoints state
 - Hybrid network manager:
-  - Supabase metadata-only signaling facade
+  - metadata-only signaling facade
   - P2P-ready graph fragment transport interface
   - signed HTTP fragment fallback
   - SHA256 payload validation before fragment ingestion
@@ -183,13 +231,21 @@ Guard / Drift / Stability
 
 ## What It Is Not Yet
 
-Homage Alpha is not a finished replacement for ChatGPT, Claude, Llama, or other
+ATANOR Alpha is not a finished replacement for ChatGPT, Claude, Llama, or other
 modern LLMs. It is a transparent research scaffold. The answer quality will be
 rough when the graph is weak, because the project intentionally avoids hiding
 weak reasoning behind a polished external LLM.
 
 The independent local syntax assembler / decoder is still a future research
-track. Current generation is an Alpha graph-token prediction path.
+track. Current generation is an Alpha graph retrieval and local synthesis path.
+
+Not yet included:
+
+- Production Cloud Brain.
+- Real libp2p payload transport.
+- Production token economy.
+- Full ChatGPT-level decoder.
+- Full internal namespace migration from Homage to ATANOR.
 
 ## Quick Start
 
@@ -240,6 +296,10 @@ data/memory/daemon_checkpoints/
 data/memory/canonical_concepts.sqlite3
 ```
 
+The database filename is still kept as `homage.db` for Alpha compatibility. It
+will be migrated to an ATANOR-named storage contract in a schema-versioned
+release.
+
 If the PC reboots, restart FastAPI and call:
 
 ```powershell
@@ -248,8 +308,8 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/learning/daemon/resume
 
 ## Desktop App Status
 
-The repo now includes a Tauri desktop scaffold and a compiled Python sidecar
-build path.
+The repo includes a Tauri desktop scaffold and a compiled Python sidecar build
+path.
 
 ```powershell
 npm run desktop:sidecar
@@ -259,13 +319,11 @@ npm run tauri -- build
 
 Current local build note:
 
-- FastAPI sidecar was generated successfully at
+- FastAPI sidecar is generated at
   `src-tauri/binaries/homage-api-x86_64-pc-windows-msvc.exe`.
-- `npm run tauri -- build` currently fails on this machine because Windows
-  Application Control Policy blocks Cargo build-script execution with
-  `os error 4551`.
-- Building on a trusted Rust/Tauri machine or CI runner should be the next
-  packaging step.
+- The sidecar binary keeps its legacy Alpha filename for compatibility.
+- Building on a trusted Rust/Tauri machine or CI runner is recommended for
+  signed distribution artifacts.
 
 GitHub Actions workflow:
 
@@ -274,24 +332,20 @@ GitHub Actions workflow:
 - Add `TAURI_SIGNING_PRIVATE_KEY` and
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets before producing
   updater artifacts for public release.
-- If the signing key is missing, CI disables updater artifact generation for
-  that run and still attempts to produce ordinary desktop installers.
-- Built installers are uploaded as workflow artifacts under
-  `src-tauri/target/release/bundle`.
 
 ## Suggested GitHub About
 
 Description:
 
 ```text
-신경망-기호 하이브리드 로컬 AI 엔진 Homage1.0
+ATANOR: Architecture for Transparent Anomy and Networked Ontology in Radical Engines.
 ```
 
 Topics:
 
 ```text
 neuro-symbolic-ai, graphrag, knowledge-graph, local-ai, fastapi, nextjs, tauri,
-threejs, continual-learning, ontology
+threejs, continual-learning, ontology, transparent-ai
 ```
 
 ## Verification

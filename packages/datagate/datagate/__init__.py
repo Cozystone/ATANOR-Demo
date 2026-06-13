@@ -1,6 +1,6 @@
-"""DataGate: deterministic rule-based quality gate for Homage1.0.
+"""DataGate: deterministic rule-based quality gate for ATANOR.
 
-Pure library — no FastAPI or web framework imports. ``apps/api`` wraps it.
+Pure library ??no FastAPI or web framework imports. ``apps/api`` wraps it.
 """
 
 from __future__ import annotations

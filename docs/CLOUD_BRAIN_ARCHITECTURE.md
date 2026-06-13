@@ -2,14 +2,14 @@
 
 ## One-Line Definition
 
-Cloud Brain is the shared public ontology layer for Homage1.0: a governed,
+Cloud Brain is the shared public ontology layer for ATANOR: a governed,
 continuously updated web knowledge graph that can lend verified graph fragments
-to each user's local private brain without turning Homage into an external LLM
+to each user's local private brain without turning ATANOR into an external LLM
 wrapper.
 
 ## Why This Exists
 
-Homage separates knowledge from generation. The local private brain stores the
+ATANOR separates knowledge from generation. The local private brain stores the
 user's durable personal graph, while the generation layer remains a native
 graph-token / syntax-assembly research engine. Cloud Brain extends this design
 with a shared public memory:
@@ -85,10 +85,10 @@ Cloud Brain is the public/shared ontology memory.
 - State: public node ids, typed edges, source evidence, confidence, frequency,
   decay state, and freshness windows.
 - Output: small signed ontology fragments, not natural-language model answers.
-- UI role: deployed Homage shows Cloud Brain as a viewer; local Homage can run
+- UI role: deployed ATANOR shows Cloud Brain as a viewer; local ATANOR can run
   an actual worker and checkpoint its state.
 - Future distribution: an AWS-hosted public ontology service should exchange
-  signed graph fragments, not LLM completions. Local Homage keeps private memory
+  signed graph fragments, not LLM completions. Local ATANOR keeps private memory
   local, asks Cloud Brain only for public graph fragments, and fuses them with
   local retrieval through confidence-weighted routing.
 
@@ -110,7 +110,7 @@ User question
   -> If web search is unavailable, rate-limited, too shallow, or lacks context:
        request Cloud Brain fragments by topic/node ids
   -> Build temporary working graph
-  -> Generate with Homage native graph-token/syntax engine
+  -> Generate with ATANOR native graph-token/syntax engine
   -> Guardrail checks unsupported claims against evidence/edges
   -> If useful and repeated, promote candidate edges into local memory
 ```
@@ -121,7 +121,7 @@ results are too noisy or unavailable.
 
 ## Cloud-Edge Hybrid Roadmap
 
-Homage is evolving toward a local-first, cloud-assisted network. The important
+ATANOR is evolving toward a local-first, cloud-assisted network. The important
 rule is that server coordination and edge payload movement are separate.
 
 ### Phase 1: Local-First Core
@@ -255,7 +255,7 @@ if weight < prune_threshold and age > minimum_age:
     delete edge or archive as cold evidence
 ```
 
-This is how Homage can learn continuously without allowing the graph to grow
+This is how ATANOR can learn continuously without allowing the graph to grow
 without bound.
 
 `POST /api/learning/daemon/decay` and non-dry-run
@@ -331,7 +331,7 @@ it must not pretend a public worker is running unless it is actually connected.
 ## Research Boundary
 
 Cloud Brain is a graph-memory architecture, not a proof that the final native
-decoder is solved. Homage Alpha still exposes weak generation when the graph is
+decoder is solved. ATANOR Alpha still exposes weak generation when the graph is
 weak. The right engineering behavior is:
 
 - show weak output when the graph-token predictor is weak

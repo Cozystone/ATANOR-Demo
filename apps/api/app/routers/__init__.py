@@ -1,1 +1,1 @@
-"""FastAPI routers for Homage1.0."""
+"""FastAPI routers for ATANOR."""

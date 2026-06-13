@@ -7,6 +7,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
+from .temporal import apply_temporal_weights
+from .vault_repository import get_vault_repository
 
 DEFAULT_MEMORY_DIR = "data/memory"
 DEFAULT_DB_NAME = "homage.db"
@@ -108,43 +110,16 @@ class PayloadVault:
     def __init__(self, memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> None:
         self.memory_dir = memory_dir
 
-    def resolve_payloads(self, hash_list: list[str], *, limit: int = ACTIVE_HASH_LIMIT) -> list[dict[str, Any]]:
-        keys = list(dict.fromkeys(hash_list))[: max(1, int(limit))]
-        if not keys:
-            return []
-        conn = _connect_readonly(self.memory_dir)
-        if not conn:
-            return []
-        try:
-            if not _table_exists(conn, "payload_vault"):
-                return []
-            marks = _placeholders(keys)
-            rows = conn.execute(
-                f"""
-                SELECT hash_key, raw_text, metadata_json
-                FROM payload_vault
-                WHERE hash_key IN ({marks})
-                LIMIT ?
-                """,
-                (*keys, len(keys)),
-            ).fetchall()
-            by_hash = {str(row["hash_key"]): row for row in rows}
-            resolved: list[dict[str, Any]] = []
-            for key in keys:
-                row = by_hash.get(key)
-                if not row:
-                    continue
-                metadata = json.loads(str(row["metadata_json"] or "{}"))
-                resolved.append(
-                    {
-                        "hash_key": key,
-                        "raw_text": str(row["raw_text"] or ""),
-                        "metadata": metadata,
-                    }
-                )
-            return resolved
-        finally:
-            conn.close()
+    def resolve_payloads(
+        self,
+        hash_list: list[str],
+        *,
+        limit: int = ACTIVE_HASH_LIMIT,
+        hash_weights: dict[str, float] | None = None,
+    ) -> list[dict[str, Any]]:
+        repository = get_vault_repository(self.memory_dir)
+        payloads = repository.resolve_payloads(hash_list, limit=limit)
+        return apply_temporal_weights(payloads, hash_weights=hash_weights)
 
 
 class GhostTopology:
@@ -255,6 +230,11 @@ class GhostTopology:
                 for node_hash, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))
                 if node_hash in visited
             ][:active_hash_limit]
+            active_hash_scores = {
+                node_hash: float(score)
+                for node_hash, score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+                if node_hash in visited
+            }
             visible_hashes = [
                 node_hash
                 for node_hash, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))
@@ -272,6 +252,7 @@ class GhostTopology:
                 "nodes": [visited[node_hash] for node_hash in visible_hashes],
                 "edges": kept_edges,
                 "active_hashes": active_hashes,
+                "active_hash_scores": active_hash_scores,
                 "graph_paths": [[edge["source_hash"], edge["target_hash"]] for edge in kept_edges[:8]],
                 "limits": {
                     "max_depth": max_depth,
@@ -333,9 +314,12 @@ def query_ghost_rag_context(
         active_hash_limit=active_hash_limit,
     )
     active_hashes = list(subgraph.get("active_hashes") or [])[:active_hash_limit]
+    active_hash_scores = dict(subgraph.get("active_hash_scores") or {})
     fetch_logs = [f"[FETCH] Emitting signal for {len(active_hashes)} hashes..."]
-    payloads = PayloadVault(memory_dir).resolve_payloads(active_hashes, limit=active_hash_limit)
+    payloads = PayloadVault(memory_dir).resolve_payloads(active_hashes, limit=active_hash_limit, hash_weights=active_hash_scores)
     fetch_logs.append("[FETCH] Payloads resolved. Synthesizing response.")
+    if payloads:
+        fetch_logs.append("[TEMPORAL] Applied decay/potentiation weights; newest factual band has priority.")
     docs = [
         {
             "doc_id": str(payload["metadata"].get("doc_id") or payload["metadata"].get("kind") or "payload-vault"),
@@ -344,6 +328,10 @@ def query_ghost_rag_context(
             "text": payload["raw_text"],
             "hash_key": payload["hash_key"],
             "metadata": payload["metadata"],
+            "score": payload.get("temporal_weight", 0.0),
+            "temporal": payload.get("temporal"),
+            "temporal_rank": payload.get("temporal_rank"),
+            "vault_driver": payload.get("vault_driver"),
         }
         for payload in payloads
         if str(payload.get("raw_text") or "").strip()

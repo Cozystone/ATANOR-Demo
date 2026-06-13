@@ -90,7 +90,7 @@ def test_pipeline_status_returns_alpha_stages() -> None:
         "Harvest",
         "DataGate",
         "Ontology Forge",
-        "Homage Oven",
+        "ATANOR Oven",
         "GraphRAG",
         "Knowledge Bakery",
         "Guardrail",

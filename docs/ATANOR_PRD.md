@@ -1,0 +1,1311 @@
+# ATANOR PRD
+
+**臾몄꽌 踰꾩쟾:** v0.1  
+**?묒꽦??** 2026-06-10  
+**?꾨줈?앺듃 肄붾뱶紐?** ATANOR  
+**?쒗뭹 ?뺥깭:** Transparent Neuro-Symbolic AI Factory  
+**?듭떖 紐⑤뜽:** ATANOR-Core  
+**????쒕낫??** BakeBoard  
+
+---
+
+## 0. ??臾몄옣 ?뺤쓽
+
+**ATANOR? ?명꽣?룰낵 ?ъ슜??臾몄꽌?먯꽌 吏?앹쓣 ?섏쭛?섍퀬, ??덉쭏 ?곗씠?곕? 嫄몃윭?닿퀬, ?⑦넧濡쒖?/吏?앷렇?섑봽濡?援ъ“?뷀븯怨? ATANOR-Core?쇰뒗 ?낆옄 ?뚰삎 ?몄뼱紐⑤뜽??泥섏쓬遺???숈뒿?쒗궎硫? GraphRAG? 媛?쒕젅?쇱쓣 ?듯빐 ?듬???留뚮뱾怨?寃利앺븯????怨쇱젙???뱀뿉???щ챸?섍쾶 蹂댁뿬二쇰뒗 AI 怨듭옣?대떎.**
+
+---
+
+## 1. 理쒖쥌 ?먮떒: AI 怨듭옣??留욌떎
+
+### 1.1 ?⑥씪 紐⑤뜽留뚯쑝濡?媛硫????섎뒗 ?댁쑀
+
+泥섏쓬遺???숈뒿?섎뒗 ?⑥씪 紐⑤뜽? ?곌뎄?곸쑝濡??섎?媛 ?덉?留? ?ъ슜??紐⑺몴? 留욎? ?딅뒗?? ?ъ슜?먭? ?먰븯??寃껋? ?⑥닚???쒖옉? GPT ?섎굹?앷? ?꾨땲???ㅼ쓬 ??怨쇱젙?대떎.
+
+- ?명꽣?룹뿉???щ즺媛 ?ㅼ뼱?ㅻ뒗 怨쇱젙
+- ??덉쭏 ?곗씠?곌? 嫄몃윭吏??怨쇱젙
+- ?⑦넧濡쒖?媛 ?앹꽦?섎뒗 怨쇱젙
+- 紐⑤뜽???숈뒿?섎뒗 怨쇱젙
+- GPU ?ъ슜?됯낵 ?숈뒿 ?곹깭
+- 吏덈Ц???ㅼ뼱?붿쓣 ???대뼡 ?⑦넧濡쒖? ?몃뱶媛 ?쒖꽦?붾릺?붿?
+- GraphRAG媛 ?대뼡 洹쇨굅瑜?媛?몄삤?붿?
+- Guardrail???대뼡 ?섍컖/怨쇱옣???섏젙?섎뒗吏
+- 理쒖쥌 ?듬????대뼡 寃쎈줈濡??앹꽦?섎뒗吏
+
+?⑥씪 紐⑤뜽? 寃곌낵臾쇰쭔 蹂댁뿬以?? ATANOR? **吏?앹씠 留뚮뱾?댁?怨??듬??쇰줈 蹂?섎릺???꾩껜 怨듭젙**??蹂댁뿬以섏빞 ?쒕떎.
+
+### 1.2 理쒖쥌 援ъ“
+
+```text
+ATANOR = AI 怨듭옣
+ATANOR-Core = 洹?怨듭옣 ?덉뿉??泥섏쓬遺???숈뒿?섎뒗 ?낆옄 紐⑤뜽
+BakeBoard = 怨듭젙 ?꾩껜瑜?蹂댁뿬二쇰뒗 ????쒕낫??```
+
+### 1.3 媛쒕컻 ?꾨왂
+
+```text
+理쒖쥌 鍮꾩쟾: AI 怨듭옣
+泥??곗텧臾? ?⑥씪 紐⑤뜽 ATANOR-Core-30M
+媛쒕컻 諛⑹떇: ?⑥씪 紐⑤뜽??癒쇱? 援쎄퀬, ?댄썑 怨듭옣?쇰줈 媛먯떬??```
+
+---
+
+## 2. ?꾨줈?앺듃 紐⑺몴
+
+### 2.1 1李?紐⑺몴
+
+媛쒖씤 PC?먯꽌 **泥섏쓬遺???숈뒿?섎뒗 ?낆옄 ?뚰삎 ?몄뼱紐⑤뜽**怨?洹??숈뒿/異붾줎 怨쇱젙???쒓컖?뷀븯???쒖뒪?쒖쓣 留뚮뱺??
+
+### 2.2 2李?紐⑺몴
+
+Neuro-Symbolic AI, Ontology, GraphRAG, Guardrail??寃고빀???묒? 紐⑤뜽???쒓퀎瑜??쒖뒪??援ъ“濡?蹂댁셿?쒕떎.
+
+### 2.3 3李?紐⑺몴
+
+?듬? ?앹꽦 怨쇱젙???멸컙 諛쒗솕 援ъ“泥섎읆 留뚮뱺??
+
+```text
+?섎룄 ??媛쒕뀗 ???⑦넧濡쒖? 寃쎈줈 ??諛쒗솕 怨④꺽 ??洹쇨굅 寃?????쒗쁽 ?몄쭛 ???덊띁?곗뒪 遺李???寃利????듬?
+```
+
+---
+
+## 3. ?듭떖 泥좏븰
+
+### 3.1 紐⑤뜽???ш쾶 留뚮뱾吏 留먭퀬, 紐⑤뜽 二쇰???吏??援ъ“瑜??ш쾶 留뚮뱺??
+???LLM? 紐⑤뱺 寃껋쓣 嫄곕????뚮씪誘명꽣 ?덉뿉 ?뺤텞?쒕떎. ATANOR? ?ㅼ쓬泥섎읆 ??븷??遺꾨━?쒕떎.
+
+| ??븷 | ?대떦 紐⑤뱢 |
+|---|---|
+| ?몄뼱 ?앹꽦 | ATANOR-Core |
+| 吏?????| Ontology / Knowledge Graph |
+| 臾몄꽌 寃??| GraphRAG |
+| 洹쇨굅 寃利?| ATANOR Guard |
+| 諛쒗솕 怨꾪쉷 | ATANOR Utterance Engine |
+| ?숈뒿/異붾줎 ?쒓컖??| BakeBoard |
+
+### 3.2 Next Token???꾨땲??Next Thought??媛源앷쾶 留뚮뱺??
+湲곗〈 GPT???앹꽦? ?ㅼ쓬 ?좏겙??諛섎났 ?덉륫?쒕떎.
+
+```text
+P(y|x) = ??P(y_t | y_<t, x)
+```
+
+ATANOR? ?듬? ?꾩뿉 諛쒗솕 怨꾪쉷??留뚮뱺??
+
+```text
+P(y|x) = P(intent|x)
+       쨌 P(concepts|intent, x)
+       쨌 P(plan|concepts, ontology)
+       쨌 P(evidence|plan, graph)
+       쨌 P(surface_text|plan, evidence, style)
+```
+
+---
+
+## 4. ?쒖뒪???꾩껜 ?꾪궎?띿쿂
+
+```text
+?명꽣??/ ?ъ슜??臾몄꽌 / 怨듦컻 ?곗씠??        ??[1] ATANOR Harvest
+    ??臾몄꽌 ?섏쭛, 異쒖쿂쨌?쇱씠?좎뒪 湲곕줉
+        ??[2] DataGate
+    ?덉쭏 ?꾪꽣, 以묐났 ?쒓굅, 媛쒖씤?뺣낫 ?쒓굅, ?곗씠???먯닔??        ??[3] Ontology Forge
+    媛쒕뀗 異붿텧, 愿怨?異붿텧, ?⑦넧濡쒖?/吏?앷렇?섑봽 ?앹꽦
+        ??[4] Knowledge Bakery
+    Vector DB + Graph DB + ?붿빟 ?몃━ + 洹쇨굅 ??μ냼
+        ??[5] ATANOR Oven
+    ?좏겕?섏씠? ?숈뒿, ATANOR-Core 泥섏쓬遺???숈뒿
+        ??[6] ATANOR GraphRAG
+    吏덈Ц ??洹몃옒???먯깋 ??洹쇨굅 寃????而⑦뀓?ㅽ듃 ?뺤옣
+        ??[7] ATANOR Utterance Engine
+    ?섎룄/二쇱옣/臾몄옣 怨④꺽/?덊띁?곗뒪 湲곕컲 諛쒗솕 ?앹꽦
+        ??[8] ATANOR Guard
+    ?섍컖, 怨쇱옣, 洹쇨굅 遺議? ?⑦넧濡쒖? 異⑸룎 寃??        ??[9] ATANOR Answer
+    理쒖쥌 ?듬? + ?ъ슜 寃쎈줈 ?쒖떆
+        ??[10] BakeBoard
+    ??怨쇱젙 ???쒓컖??```
+
+---
+
+## 5. 二쇱슂 紐⑤뱢 ?곸꽭 ?ㅺ퀎
+
+## 5.1 ATANOR Harvest
+
+### ??븷
+
+?명꽣?룰낵 ?ъ슜??臾몄꽌?먯꽌 ?숈뒿/寃???щ즺瑜??섏쭛?쒕떎.
+
+### 湲곕뒫
+
+- URL 湲곕컲 臾몄꽌 ?섏쭛
+- 濡쒖뺄 ?뚯씪 ?낅줈??- 臾몄꽌 蹂몃Ц 異붿텧
+- source URL, ?섏쭛?? ?쇱씠?좎뒪 ?곹깭 ???- robots.txt/?쎄? 以???곹깭 湲곕줉
+- ?숈뒿 ?ъ슜 媛???щ? ?쒓퉭
+
+### 異쒕젰 ?덉떆
+
+```json
+{
+  "doc_id": "doc_000001",
+  "source_url": "https://example.com/article",
+  "source_type": "official_docs",
+  "collected_at": "2026-06-10",
+  "license_status": "allowed",
+  "robots_allowed": true,
+  "use_for_training": true
+}
+```
+
+---
+
+## 5.2 DataGate
+
+### ??븷
+
+?섏걶 ?щ즺瑜??쒓굅?쒕떎. ?묒? 紐⑤뜽? ??덉쭏 ?곗씠?곗뿉 留ㅼ슦 痍⑥빟?섎?濡?DataGate??ATANOR???듭떖?대떎.
+
+### 泥섎━ ?④퀎
+
+```text
+HTML 異붿텧
+???몄뼱 媛먯?
+??boilerplate ?쒓굅
+??源⑥쭊 臾몄옄 ?쒓굅
+??以묐났 ?쒓굅
+??媛쒖씤?뺣낫/鍮꾨??뺣낫 ?쒓굅
+???덉쭏 ?먯닔?????꾨찓??遺꾨쪟
+??TRAINABLE / RAG_ONLY / REVIEW / REJECTED 遺꾨쪟
+```
+
+### ?덉쭏 ?먯닔
+
+```text
+DataQuality =
+0.20 횞 ?뺣낫諛??+ 0.15 횞 臾몄옣?꾩꽦??+ 0.15 횞 異쒖쿂?좊ː??+ 0.15 횞 ?꾨찓?멸??⑥꽦
++ 0.10 횞 以묐났??쓬
++ 0.10 횞 援ъ“??+ 0.10 횞 援먯쑁???ㅻ챸??+ 0.05 횞 理쒖떊??```
+
+### ?먯젙 湲곗?
+
+```text
+0.80 ?댁긽: TRAINABLE
+0.60~0.80: RAG_ONLY ?먮뒗 REVIEW
+0.60 誘몃쭔: REJECTED
+```
+
+### ?쒓굅 ???
+- 愿묎퀬??臾몄꽌
+- 諛섎났 臾멸뎄
+- ?덈Т 吏㏃? 臾몄꽌
+- 源⑥쭊 ?몄퐫??- 以묐났 臾몄꽌
+- 異쒖쿂 遺덈챸??臾몄꽌
+- 媛쒖씤?뺣낫 ?ы븿 臾몄꽌
+- API key, password, token ?ы븿 臾몄꽌
+- ??묎텒 ?꾪뿕?????꾨Ц 蹂듭젣 臾몄꽌
+
+---
+
+## 5.3 Ontology Forge
+
+### ??븷
+
+?뺤젣??臾몄꽌?먯꽌 媛쒕뀗怨?愿怨꾨? 異붿텧???숈쟻?쇰줈 ?깆옣?섎뒗 ?⑦넧濡쒖?/吏?앷렇?섑봽瑜?留뚮뱺??
+
+### 泥섎━ ?④퀎
+
+```text
+臾몄옣 遺꾨━
+??媛쒕뀗 ?꾨낫 異붿텧
+??愿怨??꾨낫 異붿텧
+??triple ?앹꽦
+??canonicalization
+??以묐났 蹂묓빀
+???좊ː??怨꾩궛
+??graph ???```
+
+### Triple ?덉떆
+
+```text
+GraphRAG ??uses??> KnowledgeGraph
+KnowledgeGraph ??contains??> Entity
+KnowledgeGraph ??contains??> Relation
+RAG ??grounds??> Answer
+Evidence ??reduces??> HallucinationRisk
+```
+
+### Edge Type
+
+| Edge Type | ?섎? |
+|---|---|
+| `is_a` | 遺꾨쪟 |
+| `part_of` | 遺遺??꾩껜 |
+| `causes` | ?먯씤 |
+| `requires` | ?꾩슂 議곌굔 |
+| `improves` | 媛쒖꽑 |
+| `reduces` | 媛먯냼 |
+| `conflicts_with` | 異⑸룎 |
+| `co_context` | 媛숈? 留λ씫?먯꽌 ?먯＜ ?깆옣 |
+| `analogy_to` | 鍮꾩쑀???좎궗??|
+| `evidence_for` | 洹쇨굅 愿怨?|
+| `contrasts_with` | ?議?愿怨?|
+
+---
+
+## 5.4 Contextual Associative Ontology, CAO
+
+### 媛쒕뀗
+
+ATANOR???⑦넧濡쒖????뺤쟻 ?ъ쟾???꾨땲?? 臾몄꽌? ??붾? 泥섎━?섎㈃??留λ씫 ?좎궗??湲곕컲?쇰줈 ?몃뱶 媛??곌??깆쓣 怨꾩냽 ?볦븘媛꾨떎.
+
+### ?몃뱶 ?쒖꽦??
+```text
+a_i(t) = 慣 쨌 sim(c_t, e_i)
+       + 棺 쨌 誇_j W_ji a_j(t-1)
+       + 款 쨌 recency_i
+       + 灌 쨌 evidence_i
+```
+
+| 湲고샇 | ?섎? |
+|---|---|
+| `c_t` | ?꾩옱 臾몃㎘ 踰≫꽣 |
+| `e_i` | ?몃뱶 i???꾨쿋??|
+| `W_ji` | ?몃뱶 j?먯꽌 i濡?媛??edge weight |
+| `recency_i` | 理쒓렐 ???臾몄꽌 ?깆옣??|
+| `evidence_i` | 洹쇨굅 臾몄꽌 ?좊ː??|
+
+### Edge ?낅뜲?댄듃
+
+```text
+W_ij ??(1 - decay)W_ij
+       + 管 쨌 a_i(t) 쨌 a_j(t) 쨌 sim(e_i, e_j) 쨌 q_t
+```
+
+`q_t`??臾몃㎘ ?덉쭏 ?먯닔??
+
+```text
+q_t = DataQuality 횞 EvidenceConfidence 횞 GuardApproval
+```
+
+利??꾨Т 臾몄꽌?먯꽌 媛숈씠 ?깆옣?덈떎怨?諛붾줈 愿怨꾧? 媛뺥솕?섏? ?딅뒗?? ?덉쭏 醫뗭? 臾몄꽌, 洹쇨굅 ?덈뒗 愿怨? Guard瑜??듦낵??留λ씫留?edge 媛뺥솕???ъ슜?쒕떎.
+
+---
+
+## 5.5 Knowledge Bakery
+
+### ??븷
+
+吏????μ냼??
+
+### 援ъ꽦
+
+```text
+Vector DB
+- 臾몄꽌 chunk embedding
+- ?섎? 寃??
+Graph DB
+- 媛쒕뀗 ?몃뱶
+- 愿怨?edge
+- triple evidence
+
+Summary Tree
+- 湲?臾몄꽌??怨꾩링 ?붿빟
+
+Evidence Store
+- claim蹂?洹쇨굅 ?먮Ц
+```
+
+### 寃???먮쫫
+
+```text
+吏덈Ц
+??媛쒕뀗 異붿텧
+??graph seed node ?좏깮
+??graph expansion / Personalized PageRank
+??vector search
+??summary tree search
+??evidence bundle ?앹꽦
+```
+
+---
+
+## 5.6 ATANOR Oven
+
+### ??븷
+
+泥섏쓬遺??紐⑤뜽???숈뒿?쒗궎???ㅻ툙?대떎.
+
+### 援ъ꽦
+
+- tokenizer trainer
+- dataset builder
+- ATANOR-Core architecture
+- training loop
+- checkpoint manager
+- evaluation loop
+- GPU monitor
+- activation logger
+
+### 紐⑤뜽 ?④퀎
+
+| ?④퀎 | 紐⑤뜽 | 紐⑹쟻 |
+|---|---|---|
+| v0 | ATANOR-Core-30M | ?꾩껜 ?뚯씠?꾨씪??寃利?|
+| v1 | ATANOR-Core-120M | 湲곕낯 ?몄뼱 ?앹꽦 |
+| v2 | ATANOR-Core-180M-Graph | concept/relation head + graph ?쒓컖??|
+| v3 | ATANOR-Core-350M-MoE | tiny MoE + expert routing |
+
+---
+
+## 5.7 ATANOR-Core
+
+### 湲곕낯 援ъ“
+
+```text
+Decoder-only Transformer
++ RoPE
++ RMSNorm
++ SwiGLU
++ GQA optional
++ Concept Head
++ Relation Head
++ Verifier Head
++ Optional Tiny MoE
+```
+
+### ?숈뒿 ?먯떎
+
+```text
+L_total =
+L_lm
++ 貫1 L_concept
++ 貫2 L_relation
++ 貫3 L_path
++ 貫4 L_verify
++ 貫5 L_router_balance
+```
+
+### 媛??먯떎 ?섎?
+
+| Loss | ??븷 |
+|---|---|
+| `L_lm` | ?ㅼ쓬 ?좏겙 ?덉륫 |
+| `L_concept` | ?꾩옱 臾몃㎘??媛쒕뀗 ?몃뱶 ?덉륫 |
+| `L_relation` | 媛쒕뀗 媛?愿怨??덉륫 |
+| `L_path` | ?⑦넧濡쒖? 異붾줎 寃쎈줈 ?덉륫 |
+| `L_verify` | claim 吏???щ? ?먮떒 |
+| `L_router_balance` | MoE expert ?좊┝ 諛⑹? |
+
+---
+
+## 5.8 Graph-Gated Attention
+
+?쇰컲 Attention:
+
+```text
+Attention(Q,K,V)=softmax(QK巢 / ?쉊)V
+```
+
+ATANOR Graph-Gated Attention:
+
+```text
+Attention_G(Q,K,V)=softmax((QK巢 + 棺M_G) / ?쉊)V
+```
+
+`M_G`???꾩옱 ?쒖꽦?붾맂 ?⑦넧濡쒖? 愿怨꾩뿉 ?곕씪 留뚮뱾?댁???graph mask?? 愿??媛쒕뀗?쇰━??attention??媛뺥솕?섍퀬, 愿?⑥꽦????? ?곌껐? ?쏀솕?쒕떎.
+
+---
+
+## 5.9 ATANOR GraphRAG
+
+### ??븷
+
+?묒? ATANOR-Core媛 紐⑤뱺 吏?앹쓣 ?뚮씪誘명꽣 ?덉뿉 ?몄슦吏 ?딆븘???섎룄濡? ?⑦넧濡쒖?? 臾몄꽌 洹쇨굅瑜?寃?됲빐 而⑦뀓?ㅽ듃瑜??뺤옣?쒕떎.
+
+### 湲곕뒫
+
+- vector search
+- graph search
+- community-level retrieval
+- summary tree retrieval
+- claim-level evidence retrieval
+- context bundle ?앹꽦
+
+### Context Bundle ?덉떆
+
+```json
+{
+  "query": "GraphRAG媛 ?섍컖??以꾩씠???댁쑀??",
+  "active_concepts": ["GraphRAG", "KnowledgeGraph", "Hallucination", "Evidence"],
+  "graph_paths": [
+    ["GraphRAG", "uses", "KnowledgeGraph"],
+    ["KnowledgeGraph", "organizes", "Evidence"],
+    ["Evidence", "grounds", "Answer"],
+    ["GroundedAnswer", "reduces", "HallucinationRisk"]
+  ],
+  "evidence": [
+    {
+      "doc_id": "doc_123",
+      "claim": "GraphRAG extracts a knowledge graph from raw text.",
+      "confidence": 0.92
+    }
+  ]
+}
+```
+
+---
+
+## 5.10 ATANOR Utterance Engine
+
+### ?듭떖 諛쒖긽
+
+ATANOR? 紐⑤뱺 ?⑥뼱瑜?泥섏쓬遺???덉륫?섏? ?딅뒗?? ?멸컙 諛쒗솕泥섎읆 ?ㅼ쓬 ?쒖꽌瑜??곕Ⅸ??
+
+```text
+?섎룄
+??媛쒕뀗
+???⑦넧濡쒖? 寃쎈줈
+??二쇱옣 怨꾪쉷
+??臾몄옣 怨④꺽
+??洹쇨굅 寃?????쒗쁽 ?몄쭛
+???덊띁?곗뒪 遺李???寃利???理쒖쥌 諛쒗솕
+```
+
+### 紐⑤뱢
+
+```text
+Intent Engine
+Contextual Ontology Activator
+Utterance Planner
+Lemma / Frame Selector
+Evidence Retriever
+Retrieve-Transform-Reference
+Edit-based Surface Realizer
+Reference Tail Builder
+ATANOR Guard
+```
+
+### PMV: Preverbal Message Vector
+
+```json
+{
+  "intent": "architecture_design",
+  "topic": "ATANOR resource allocation",
+  "stance": "practical",
+  "audience_level": "technical but intuitive",
+  "answer_goal": "make development plan",
+  "required_evidence": true,
+  "style": "clear project management"
+}
+```
+
+### 諛쒗솕 怨④꺽 ?덉떆
+
+```text
+[?듭떖 ?먮떒]
+[??洹몃윴吏]
+[媛쒕컻 援ъ“]
+[?먯썝 諛곕텇]
+[handoff 諛⑹떇]
+[?ㅼ쓬 ?≪뀡]
+```
+
+---
+
+## 5.11 ATANOR Guard
+
+### ??븷
+
+?섍컖怨?怨쇱옣??以꾩씠???덉쭏 寃?ш??대떎.
+
+### 4以?媛?쒕젅??
+| Guard | ??븷 |
+|---|---|
+| Safety Guard | ?좏빐/?꾪뿕 ?붿껌 ?꾪꽣 |
+| Evidence Guard | 洹쇨굅 ?녿뒗 二쇱옣 寃??|
+| Ontology Guard | 吏?앷렇?섑봽? 異⑸룎 寃??|
+| Style/Policy Guard | ?ъ슜???붽뎄?ы빆쨌?뺤떇 以??寃??|
+
+### Claim-level 寃利?
+```text
+?듬? 珥덉븞
+??claim 遺꾪빐
+??claim蹂?evidence 寃????ontology consistency check
+??怨쇱옣 ?쒗쁽 ?섏젙
+??理쒖쥌 ?듬?
+```
+
+### Guard Score
+
+```text
+GuardScore =
+0.30 횞 EvidenceSupport
++ 0.25 횞 OntologyConsistency
++ 0.20 횞 LogicalValidity
++ 0.15 횞 Safety
++ 0.10 횞 UserIntentFit
+```
+
+---
+
+## 5.12 BakeBoard
+
+### ??븷
+
+?ъ슜?먭? ATANOR????怨쇱젙??蹂대뒗 ????쒕낫?쒕떎.
+
+### ?붾㈃ 援ъ꽦
+
+```text
+1. Factory Overview
+   ?꾩껜 ?뚯씠?꾨씪???곹깭
+
+2. Ingredient Room
+   ?섏쭛 ?곗씠?? ?덉쭏 ?먯닔, ?먭린 ?댁쑀
+
+3. Ontology Lab
+   ???몃뱶, ??愿怨? ?좊ː?? ?쒖꽦 寃쎈줈
+
+4. Oven Room
+   ?숈뒿 loss, checkpoint, GPU ?곹깭
+
+5. Model Brain
+   attention, activation, expert routing
+
+6. GraphRAG Trace
+   吏덈Ц ??洹몃옒???먯깋 ??洹쇨굅 寃??怨쇱젙
+
+7. Guardrail Inspector
+   claim 寃利? ?섍컖 ?섏젙, 洹쇨굅 遺議??쒖떆
+
+8. Final Answer View
+   ?듬?, ?ъ슜???몃뱶, 寃쎈줈, 洹쇨굅 臾몄꽌
+```
+
+---
+
+## 6. 湲곗닠 ?ㅽ깮
+
+### 6.1 Backend
+
+```text
+Python
+FastAPI
+Celery or RQ
+PostgreSQL
+Redis
+```
+
+### 6.2 Training
+
+```text
+PyTorch
+Hugging Face tokenizers
+SentencePiece
+TensorBoard
+Custom trainer
+pynvml
+```
+
+### 6.3 Graph / Ontology
+
+```text
+NetworkX: MVP graph prototype
+Neo4j: 蹂멸꺽 Graph DB
+RDFLib: RDF/OWL ?ㅽ뿕
+PyVis/D3.js: graph visualization
+```
+
+### 6.4 RAG
+
+```text
+FAISS: 濡쒖뺄 踰≫꽣 寃??Qdrant: ?쒕쾭??踰≫꽣 DB ?꾨낫
+BM25: ?ㅼ썙??寃??Graph Search: Neo4j Cypher
+Summary Tree: RAPTOR-style prototype
+```
+
+### 6.5 Monitoring
+
+```text
+nvidia-smi
+pynvml
+NVIDIA DCGM Exporter
+Prometheus
+Grafana ?먮뒗 custom BakeBoard charts
+```
+
+### 6.6 Frontend
+
+```text
+Next.js
+React
+React Flow
+D3.js
+Recharts
+WebSocket
+```
+
+---
+
+## 7. 媛쒕컻 濡쒕뱶留?
+## Phase 0: Repository & Operating System
+
+### 紐⑺몴
+
+AI 怨듭옣 媛쒕컻???꾪븳 repo, 臾몄꽌, handoff 援ъ“瑜?癒쇱? 留뚮뱺??
+
+### ?곗텧臾?
+```text
+README.md
+PROJECT_STATE.md
+ARCHITECTURE.md
+TASK_BOARD.md
+DECISIONS/ADR-0001.md
+HANDOFF_CLAUDE.md
+HANDOFF_CODEX.md
+CONTEXT_CAPSULE.md
+```
+
+### ?꾨즺 湲곗?
+
+- Claude? Codex媛 媛숈? repo 臾몄꽌留?蹂닿퀬 ?ㅼ쓬 ?묒뾽???댄빐?????덈떎.
+- branch, issue, PR, commit convention???뺥빐???덈떎.
+
+---
+
+## Phase 1: BakeBoard Skeleton
+
+### 紐⑺몴
+
+?뱀뿉??怨듭옣 援ъ“瑜?蹂????덈뒗 鍮?猿띾뜲湲곕? 留뚮뱺??
+
+### 湲곕뒫
+
+- Next.js dashboard
+- FastAPI status API
+- WebSocket ?대깽??- GPU mock panel
+- pipeline stage mock panel
+
+### ?꾨즺 湲곗?
+
+- localhost?먯꽌 BakeBoard ?ㅽ뻾
+- 媛?怨듭젙 移대뱶媛 ?쒖떆??- dummy event媛 ?ㅼ떆媛??낅뜲?댄듃??
+---
+
+## Phase 2: DataGate MVP
+
+### 紐⑺몴
+
+臾몄꽌 ?낅줈??URL ?섏쭛 ???덉쭏 ?꾪꽣瑜??듦낵?쒗궎??泥??뚯씠?꾨씪??
+
+### 湲곕뒫
+
+- 濡쒖뺄 ?띿뒪??markdown ?낅줈??- URL fetch prototype
+- ?띿뒪??異붿텧
+- 湲몄씠/以묐났/?뱀닔臾몄옄/?몄뼱 ?꾪꽣
+- ?덉쭏 ?먯닔 ?쒖떆
+- TRAINABLE/RAG_ONLY/REJECTED 遺꾨쪟
+
+### ?꾨즺 湲곗?
+
+- 理쒖냼 100媛?臾몄꽌 泥섎━ 媛??- ?덉쭏 ?먯닔? ?먭린 ?댁쑀媛 BakeBoard???쒖떆??
+---
+
+## Phase 3: Ontology Forge MVP
+
+### 紐⑺몴
+
+臾몄꽌?먯꽌 媛쒕뀗/愿怨??꾨낫瑜?異붿텧?섍퀬 洹몃옒?꾨줈 蹂댁뿬以??
+
+### 湲곕뒫
+
+- keyword/entity extraction
+- simple relation extraction
+- node/edge storage
+- graph visualization
+- confidence score
+
+### ?꾨즺 湲곗?
+
+- 臾몄꽌 100媛쒖뿉???몃뱶/?ｌ? ?먮룞 ?앹꽦
+- ?덈줈 ?앹꽦???몃뱶? 愿怨꾧? Ontology Lab???쒖떆??
+---
+
+## Phase 4: ATANOR-Core-30M
+
+### 紐⑺몴
+
+泥섏쓬遺???숈뒿?섎뒗 ?묒? 紐⑤뜽??留뚮뱺??
+
+### 湲곕뒫
+
+- tokenizer training
+- dataset builder
+- 30M decoder-only model
+- train loop
+- checkpoint save/load
+- loss chart
+- GPU usage chart
+- sample generation
+
+### ?꾨즺 湲곗?
+
+- validation loss媛 ?덉젙?곸쑝濡?媛먯냼
+- checkpoint reload ??generation 媛??- BakeBoard?먯꽌 loss/GPU/checkpoint ?뺤씤 媛??
+---
+
+## Phase 5: Knowledge Bakery + GraphRAG MVP
+
+### 紐⑺몴
+
+Vector search? Graph search瑜??곌껐?쒕떎.
+
+### 湲곕뒫
+
+- FAISS index
+- graph seed node search
+- evidence bundle ?앹꽦
+- query trace ?쒖떆
+
+### ?꾨즺 湲곗?
+
+- 吏덈Ц ?낅젰 ??愿??臾몄꽌 chunk? graph path媛 ?쒖떆??- ATANOR-Core ?듬???context bundle???ｌ쓣 ???덉쓬
+
+---
+
+## Phase 6: ATANOR Guard MVP
+
+### 紐⑺몴
+
+?듬? claim??遺꾪빐?섍퀬 洹쇨굅 遺議?怨쇱옣???쒖떆?쒕떎.
+
+### 湲곕뒫
+
+- claim extraction
+- evidence matching
+- unsupported claim flag
+- overclaim rewrite rule
+
+### ?꾨즺 湲곗?
+
+- ?쒗솚媛곸쓣 ?꾩쟾???쒓굅?쒕떎??媛숈? 怨쇱옣 ?쒗쁽???쒖쨪?????덈떎?앸줈 ?섏젙
+- Guardrail Inspector?먯꽌 ?섏젙 ?댁뿭 ?쒖떆
+
+---
+
+## Phase 7: ATANOR-Core-120M
+
+### 紐⑺몴
+
+湲곕낯 ?ㅻ챸???듬???媛?ν븳 ?뚰삎 紐⑤뜽.
+
+### 湲곕뒫
+
+- 120M model config
+- longer dataset training
+- Korean/English mixed tokenizer
+- evaluation set
+
+### ?꾨즺 湲곗?
+
+- ?쒓뎅??吏㏃? ?ㅻ챸臾??앹꽦 媛??- Eval-100 湲곗? baseline 湲곕줉
+
+---
+
+## Phase 8: ATANOR-Core-180M-Graph
+
+### 紐⑺몴
+
+concept/relation head? graph-gated attention???ㅽ뿕?쒕떎.
+
+### 湲곕뒫
+
+- Concept Head
+- Relation Head
+- Ontology activation logger
+- Graph-Gated Attention prototype
+
+### ?꾨즺 湲곗?
+
+- 紐⑤뜽 異붾줎 以??쒖꽦 ?몃뱶媛 BakeBoard???쒖떆??- concept prediction accuracy 痢≪젙 媛??
+---
+
+## Phase 9: ATANOR-Core-350M-MoE
+
+### 紐⑺몴
+
+Tiny MoE? expert routing???ㅽ뿕?쒕떎.
+
+### 湲곕뒫
+
+- Shared Expert
+- domain expert 4~8媛?- ontology-guided router
+- expert activation panel
+
+### ?꾨즺 湲곗?
+
+- 吏덈Ц ?좏삎???곕씪 expert routing???щ씪吏?- Expert panel???쒖꽦???쒖떆
+
+---
+
+## 8. Claude Fable 5? Codex Pro ?먯썝 諛곕텇
+
+## 8.1 湲곕낯 ?먯튃
+
+```text
+Claude Fable 5 = 鍮꾩떬 ?섏꽍 ?ㅺ퀎??/ ?곌뎄 梨낆엫??/ 理쒖쥌 由щ럭??Codex Pro = repo ?덉뿉???ㅼ젣 援ы쁽?섎뒗 媛쒕컻??/ ?뚯뒪???ㅽ뻾??/ 諛섎났 ?묒뾽??GitHub repo = ???ъ씠???좎씪??怨듭쑀 湲곗뼲
+```
+
+Fable? 鍮⑤━ ?녹쓣 媛?μ꽦???덉쑝誘濡?湲?援ы쁽 ?묒뾽???곗? ?딅뒗?? Fable? ?쒕갑?μ쓣 ?뺥븯怨? 蹂듭옟???ㅺ퀎瑜?寃?좏븯怨? Codex媛 留뚮뱺 寃곌낵瑜?由щ럭?섎뒗 ?⑸룄?앸줈 ?쒗븳?쒕떎.
+
+---
+
+## 8.2 ?먯썝 諛곕텇 鍮꾩쑉
+
+| ?묒뾽 ?좏삎 | Claude Fable 5 | Codex Pro | 湲고?/吏곸젒 |
+|---|---:|---:|---:|
+| ?쒗뭹 鍮꾩쟾/?듭떖 ?섏궗寃곗젙 | 70% | 10% | 20% |
+| ?꾪궎?띿쿂 ?ㅺ퀎 | 60% | 25% | 15% |
+| ?쇰Ц/湲곗닠 由ъ꽌移??뺣━ | 70% | 10% | 20% |
+| ?몃? 肄붾뱶 援ы쁽 | 5% | 85% | 10% |
+| ?뚯뒪???묒꽦/?ㅽ뻾 | 5% | 85% | 10% |
+| 踰꾧렇 ?섏젙 猷⑦봽 | 10% | 80% | 10% |
+| PR 由щ럭/?ㅺ퀎 寃利?| 55% | 35% | 10% |
+| 臾몄꽌??| 30% | 50% | 20% |
+| UI/UX ?꾩씠?붿뼱 | 50% | 30% | 20% |
+| 諛섎났 由ы뙥?곕쭅 | 5% | 90% | 5% |
+
+---
+
+## 8.3 Claude Fable 5 ?ъ슜 洹쒖튃
+
+### Fable???⑥빞 ?섎뒗 寃쎌슦
+
+- 諛⑺뼢???붾뱾由???- ?꾪궎?띿쿂瑜??덈줈 ?≪븘??????- ?곌뎄 ?쇰Ц???쒗뭹 援ъ“濡?踰덉뿭????- Codex媛 留뚮뱺 肄붾뱶媛 援ъ“?곸쑝濡?留욌뒗吏 由щ럭????- 紐⑤뱢 媛?寃쎄퀎媛 ?좊ℓ????- Guardrail ?뺤콉/?⑦넧濡쒖? ?ㅽ궎留덉쿂???κ린 ?곹뼢????寃곗젙??????- PRD, ADR, milestone plan???뺤젙????
+### Fable???곗? 留먯븘???섎뒗 寃쎌슦
+
+- ?⑥닚 肄붾뱶 ?묒꽦
+- ?뚯씪紐?蹂寃?- 諛섎났 CRUD 援ы쁽
+- ?뚯뒪??boilerplate ?묒꽦
+- CSS ?섏젙
+- ?⑥닚 踰꾧렇 濡쒓렇 遺꾩꽍
+- dependency ?ㅼ튂
+- 臾몄꽌 ?щ㎎ ?뺣━
+
+### Fable ?ъ슜???덉빟 洹쒖튃
+
+```text
+1. ?섎（ 3~5???댄븯??怨좊????붿껌留??쒕떎.
+2. 留??붿껌? Context Capsule??泥⑤??쒕떎.
+3. ?꾩껜 repo瑜?遺숈씠吏 ?딅뒗??
+4. 吏덈Ц? 諛섎뱶??寃곗젙???꾩슂???뺥깭濡??대떎.
+5. ?쒕춴 ?좉퉴??앷? ?꾨땲???쏛/B 以?臾댁뾿???リ퀬, ?댁쑀? 由ъ뒪?щ뒗??앸줈 臾삳뒗??
+6. 異쒕젰? Codex?먭쾶 ?섍만 ???덈뒗 Implementation Brief ?뺥깭濡?諛쏅뒗??
+```
+
+---
+
+## 8.4 Codex Pro ?ъ슜 洹쒖튃
+
+### Codex瑜??⑥빞 ?섎뒗 寃쎌슦
+
+- repo scaffold ?앹꽦
+- FastAPI endpoint 援ы쁽
+- Next.js ?붾㈃ 援ы쁽
+- PyTorch training loop 援ы쁽
+- DataGate ?꾪꽣 援ы쁽
+- test ?묒꽦
+- CLI script ?묒꽦
+- refactor
+- lint/test/fix 諛섎났
+- PR ?⑥쐞 援ы쁽
+
+### Codex Goal Mode ?ъ슜 湲곗?
+
+Codex Goal? ?ㅼ쓬 議곌굔??留뚯”?????ъ슜?쒕떎.
+
+```text
+1. 紐⑺몴媛 紐낇솗?섎떎.
+2. ?깃났 議곌굔??寃利?媛?ν븯??
+3. ?섏젙 踰붿쐞媛 ?쒗븳?섏뼱 ?덈떎.
+4. ?뚯뒪??紐낅졊???덈떎.
+5. 以묎컙 checkpoint瑜??④만 ???덈떎.
+```
+
+醫뗭? goal ?덉떆:
+
+```text
+/goal Implement DataGate v0 in packages/datagate with rule-based quality scoring, deduplication stubs, unit tests, and BakeBoard API integration. Stop when `pytest packages/datagate` passes and docs/HANDOFF_CODEX.md is updated.
+```
+
+?섏걶 goal ?덉떆:
+
+```text
+/goal ATANOR ?꾩껜 留뚮뱾?댁쨾.
+```
+
+---
+
+## 9. ?몄뀡 怨듭쑀 臾몄젣 ?닿껐: GitHub 湲곕컲 Context Handoff Protocol
+
+Claude? Codex???몄뀡??怨듭쑀?섏? 紐삵븳?? ?곕씪??**repo ?먯껜媛 湲곗뼲?μ튂**媛 ?섏뼱???쒕떎.
+
+## 9.1 ?⑥씪 Source of Truth
+
+?ㅼ쓬 臾몄꽌????긽 理쒖떊?댁뼱???쒕떎.
+
+```text
+README.md
+PROJECT_STATE.md
+TASK_BOARD.md
+ARCHITECTURE.md
+DECISIONS/*.md
+HANDOFF_CLAUDE.md
+HANDOFF_CODEX.md
+SESSION_LOG.md
+CONTEXT_CAPSULE.md
+```
+
+## 9.2 Context Capsule
+
+紐⑤뜽??諛붽? ?뚮쭏???꾨옒 ?뺤떇?쇰줈 ?꾨떖?쒕떎.
+
+```md
+# Context Capsule
+
+## Current Objective
+
+## Current Branch
+
+## Last Commit
+
+## Relevant Files
+
+## What Changed
+
+## Commands Run
+
+## Test Results
+
+## Current Blockers
+
+## Constraints / Non-goals
+
+## Next 3 Actions
+
+## What I Need From You
+```
+
+## 9.3 Claude ??Codex ?섍?
+
+Claude??援ы쁽?섏? ?딄퀬 ?ㅼ쓬 臾몄꽌瑜?留뚮뱺??
+
+```text
+Implementation Brief
+- 紐⑺몴
+- ?섏젙???뚯씪
+- API 怨꾩빟
+- ?곗씠???ㅽ궎留?- ?뚯뒪??湲곗?
+- non-goals
+- ?꾨즺 議곌굔
+```
+
+Codex????臾몄꽌留?蹂닿퀬 援ы쁽?쒕떎.
+
+## 9.4 Codex ??Claude ?섍?
+
+Codex??援ы쁽 ???ㅼ쓬???④릿??
+
+```text
+Change Report
+- 蹂寃??뚯씪
+- 二쇱슂 援ы쁽 ?댁슜
+- ?뚯뒪??寃곌낵
+- ?⑥? 臾몄젣
+- ?ㅺ퀎?곸쑝濡??섏떖?섎뒗 遺遺?- 由щ럭 ?붿껌 ?ы빆
+```
+
+Claude??Change Report? diff瑜?蹂닿퀬 由щ럭?쒕떎.
+
+## 9.5 Branch ?꾨왂
+
+```text
+main
+  ?덉젙 踰꾩쟾
+
+dev
+  ?듯빀 媛쒕컻
+
+feature/datagate-v0
+feature/bakeboard-shell
+feature/ontology-forge-v0
+feature/atanor-core-30m
+feature/guard-v0
+```
+
+## 9.6 PR 洹쒖튃
+
+```text
+?섎굹??PR = ?섎굹??goal
+PR description?먮뒗 Context Capsule ?ы븿
+?뚯뒪??寃곌낵 ?꾩닔
+Claude review ??merge 湲덉?
+```
+
+## 9.7 留ㅼ씪 ?묒뾽 猷⑦떞
+
+### ?쒖옉
+
+```text
+1. PROJECT_STATE.md ?쎄린
+2. TASK_BOARD.md?먯꽌 ?ㅻ뒛 ?묒뾽 ?좏깮
+3. Claude Fable濡??ㅻ뒛???ㅺ퀎 由ъ뒪??1???먭?
+4. Codex Goal 1~3媛??ㅽ뻾
+```
+
+### 以묎컙
+
+```text
+1. Codex媛 ?뚯뒪??援ы쁽 諛섎났
+2. ?ъ슜?먮뒗 寃곌낵 ?뺤씤
+3. 留됲엺 遺遺꾨쭔 Claude???뺤텞 吏덈Ц
+```
+
+### 醫낅즺
+
+```text
+1. Codex媛 HANDOFF_CODEX.md ?낅뜲?댄듃
+2. ?ъ슜?먭? ?듭떖 寃곗젙??DECISIONS??湲곕줉
+3. Claude媛 ?ㅼ쓬???묒뾽 怨꾪쉷 由щ럭
+4. PROJECT_STATE.md 媛깆떊
+```
+
+---
+
+## 10. Claude Prompt Template
+
+```md
+?덈뒗 ATANOR???섏꽍 ?꾪궎?랁듃??
+?꾨옒 Context Capsule留뚯쓣 洹쇨굅濡??먮떒?섎씪.
+?꾩껜 援ы쁽???섏? 留먭퀬, Codex?먭쾶 ?섍만 ???덈뒗 Implementation Brief瑜??묒꽦?섎씪.
+
+以묒젏:
+- ?κ린 ?꾪궎?띿쿂 ?쇨???- ?묒? 紐⑤뜽/Neuro-Symbolic/GraphRAG/Guardrail 諛⑺뼢 ?좎?
+- 怨쇰룄??踰붿쐞 ?뺤옣 諛⑹?
+- ?뚯뒪??媛?ν븳 ?곗텧臾쇰줈 履쇨컻湲?
+[Context Capsule]
+...
+
+[吏덈Ц]
+A? B 以?臾댁뾿???リ퀬, ?대쾲 milestone?먯꽌??臾댁뾿???댁빞 ?섎뒗媛?
+
+[異쒕젰 ?뺤떇]
+1. 寃곕줎
+2. ?댁쑀
+3. 由ъ뒪??4. Codex Implementation Brief
+5. Acceptance Criteria
+```
+
+---
+
+## 11. Codex Goal Template
+
+```md
+/goal Complete [specific objective] in the ATANOR repo.
+
+Read first:
+- PROJECT_STATE.md
+- ARCHITECTURE.md
+- TASK_BOARD.md
+- docs/implementation_briefs/[brief-name].md
+
+Scope:
+- Modify only [paths]
+- Do not change [non-goals]
+
+Acceptance criteria:
+- [test command] passes
+- [feature behavior]
+- HANDOFF_CODEX.md updated
+- SESSION_LOG.md updated
+
+Stop when:
+- acceptance criteria pass, or
+- you are blocked by missing information.
+
+Work in checkpoints and keep a short progress log.
+```
+
+---
+
+## 12. MVP 踰붿쐞
+
+## ATANOR Alpha
+
+### ?ы븿
+
+- GitHub repo ?댁쁺 泥닿퀎
+- BakeBoard shell
+- DataGate rule-based MVP
+- Ontology Forge simple graph MVP
+- ATANOR-Core-30M from-scratch training
+- GPU/loss dashboard
+- GraphRAG trace mock ?먮뒗 minimal prototype
+- Guardrail rule-based MVP
+- Context Handoff Protocol
+
+### ?쒖쇅
+
+- 1B ?댁긽 紐⑤뜽 ?숈뒿
+- 蹂듭옟??RL
+- ?꾩쟾 ?먮룞 ???洹쒕え ?щ·留?- ?곸슜 ?섏? 梨쀫큸
+- 蹂듭옟???덉쟾 紐⑤뜽
+- ?꾩쟾??OWL/RDF ?⑦넧濡쒖?
+
+---
+
+## 13. ?깃났 湲곗?
+
+## 13.1 Alpha ?깃났 湲곗?
+
+```text
+1. ?뱀뿉??臾몄꽌 ?먮뒗 濡쒖뺄 md ?뚯씪???ｌ쓣 ???덈떎.
+2. DataGate媛 ?덉쭏 ?먯닔? ?먭린 ?댁쑀瑜??쒖떆?쒕떎.
+3. Ontology Forge媛 ?몃뱶/?ｌ?瑜?留뚮뱺??
+4. ATANOR-Core-30M??泥섏쓬遺???숈뒿?쒕떎.
+5. ?숈뒿 loss? GPU ?ъ슜?됱씠 BakeBoard???쒖떆?쒕떎.
+6. 媛꾨떒??吏덈Ц???듬????앹꽦?쒕떎.
+7. ?듬????ъ슜???⑦넧濡쒖? ?몃뱶媛 ?쒖떆?쒕떎.
+8. Guardrail??怨쇱옣 ?쒗쁽 ?섎굹 ?댁긽???섏젙?쒕떎.
+```
+
+## 13.2 Beta ?깃났 湲곗?
+
+```text
+1. ATANOR-Core-120M ?숈뒿 媛??2. GraphRAG evidence bundle ?앹꽦 媛??3. Claim-level verification 媛??4. Context Capsule留뚯쑝濡?Claude/Codex handoff 媛??5. Eval-100?먯꽌 baseline ?鍮?媛쒖꽑 ?뺤씤
+```
+
+---
+
+## 14. ?됯? 吏??
+### 紐⑤뜽 吏??
+- validation loss
+- perplexity
+- tokens/sec
+- VRAM usage
+- training stability
+
+### ?⑦넧濡쒖? 吏??
+- concept extraction precision
+- relation extraction precision
+- edge confidence distribution
+- active node sparsity
+- graph path consistency
+
+### RAG 吏??
+- retrieval precision
+- evidence support rate
+- multi-hop retrieval success
+- graph path relevance
+
+### Guard 吏??
+- unsupported claim rate
+- overclaim correction rate
+- ontology conflict detection
+- false positive rate
+- false negative rate
+
+### ?ъ슜??泥닿컧 吏??
+- ?듬? ?뺥솗??- ?듬? 援ъ“??- 洹쇨굅 ?쒖떆 ?좊ː??- ?쒓컖???댄빐??
+---
+
+## 15. 由ъ뒪?ъ? ???
+| 由ъ뒪??| ?ㅻ챸 | ???|
+|---|---|---|
+| 踰붿쐞 怨쇰? | 怨듭옣 ?꾩껜瑜???踰덉뿉 留뚮뱾?????꾪뿕 | Alpha 踰붿쐞 怨좎젙 |
+| 紐⑤뜽 ?깅뒫 遺議?| from-scratch ?뚰삎 紐⑤뜽? ?듬? ?덉쭏????쓣 ???덉쓬 | GraphRAG/Utterance Engine?쇰줈 蹂댁셿 |
+| ?곗씠???ㅼ뿼 | ?뱁겕濡ㅻ쭅 ?덉쭏 臾몄젣 | DataGate ?곗꽑 媛쒕컻 |
+| ?⑦넧濡쒖? ?ㅼ뿼 | ?섎せ??edge媛 ?볦씪 ???덉쓬 | evidence/confidence/status 遺꾨━ |
+| Fable ?뚯쭊 | Claude Fable ?ъ슜?됱씠 鍮⑤━ ?녹쓬 | ?ㅺ퀎/由щ럭?먮쭔 ?ъ슜 |
+| Codex 而⑦뀓?ㅽ듃 ?⑥젅 | ?몄뀡 怨듭쑀 遺덇? | Context Capsule + repo 臾몄꽌 |
+| GPU 蹂묐ぉ | 16GB VRAM ?쒓퀎 | 30M??20M??80M ?쒖감 ?ㅽ뿕 |
+| 媛쒕컻 遺꾩궛 | Claude/Codex 寃곌낵媛 ?쒕줈 ?닿툔??| PR/ADR/HANDOFF 媛뺤젣 |
+
+---
+
+## 16. 李멸퀬 ?먮즺
+
+### Claude / Codex ?댁쁺 李멸퀬
+
+- Anthropic, Claude Fable 5 and Claude Mythos 5 announcement: https://www.anthropic.com/news/claude-fable-5-mythos-5
+- Anthropic, Claude Fable product page: https://www.anthropic.com/claude/fable
+- Claude Help, Fable context window / training cutoff references: https://support.claude.com
+- OpenAI Codex Goal mode: https://developers.openai.com/codex/use-cases/follow-goals
+- OpenAI Codex app commands: https://developers.openai.com/codex/app/commands
+- OpenAI Codex app features: https://developers.openai.com/codex/app
+- OpenAI Help, Codex usage with ChatGPT plans: https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan
+
+### GraphRAG / RAG / Memory
+
+- Microsoft GraphRAG: https://microsoft.github.io/graphrag/
+- LightRAG: https://arxiv.org/abs/2410.05779
+- HippoRAG: https://arxiv.org/abs/2405.14831
+- Self-RAG: https://arxiv.org/abs/2310.11511
+- RAPTOR: https://arxiv.org/abs/2401.18059
+
+### Small LM / Training Efficiency
+
+- TinyStories: https://arxiv.org/abs/2305.07759
+- MobileLLM: https://arxiv.org/abs/2402.14905
+- Chinchilla Scaling Laws: https://arxiv.org/abs/2203.15556
+- phi-1 / Textbooks Are All You Need: https://arxiv.org/abs/2306.11644
+
+### Guardrails / Hallucination Control
+
+- NeMo Guardrails: https://arxiv.org/abs/2310.10501
+- Llama Guard: https://arxiv.org/abs/2312.06674
+- Self-RAG: https://arxiv.org/abs/2310.11511
+
+---
+
+## 17. ?ㅼ쓬 ?≪뀡
+
+### 諛붾줈 ????
+```text
+1. GitHub repo ?앹꽦
+2. docs/PRD.md ???3. PROJECT_STATE.md ?앹꽦
+4. TASK_BOARD.md ?앹꽦
+5. Codex濡?BakeBoard shell 援ы쁽 ?쒖옉
+6. Claude Fable濡?Alpha architecture review 1???ㅽ뻾
+```
+
+### 泥?Codex Goal
+
+```md
+/goal Create the ATANOR repo skeleton with FastAPI backend, Next.js BakeBoard frontend, shared docs folder, PROJECT_STATE.md, TASK_BOARD.md, HANDOFF_CODEX.md, HANDOFF_CLAUDE.md, and a mock pipeline status API. Stop when both frontend and backend run locally and README.md explains how to start them.
+```
+
+### 泥?Claude Fable ?붿껌
+
+```md
+?덈뒗 ATANOR???섏꽍 ?꾪궎?랁듃??
+?꾨옒 PRD瑜?湲곗??쇰줈 Alpha 踰붿쐞媛 怨쇰룄?쒖? 寃?좏븯怨?
+Codex媛 1二쇱감??援ы쁽?댁빞 ???묒뾽??5媛??댄븯??PR ?⑥쐞濡?履쇨컻??
+媛?PR??acceptance criteria? non-goals瑜?遺숈뿬??
+```
+
+---
+
+# 寃곕줎
+
+ATANOR? **紐⑤뜽 ?섎굹瑜?留뚮뱶???꾨줈?앺듃媛 ?꾨땲?? 紐⑤뜽??留뚮뱾?댁?怨??앷컖?섍퀬 寃利앸릺??怨쇱젙??蹂댁뿬二쇰뒗 ?щ챸 AI 怨듭옣**?대떎.
+
+Claude Fable 5???섏꽍 ?ㅺ퀎?먯쿂???꾧뺨 ?곌퀬, Codex Pro??GitHub repo ?덉뿉???ㅼ젣 媛쒕컻??諛?대텤?대뒗 ?ㅽ뻾 ?붿쭊?쇰줈 ?대떎. ???ъ씠???몄뀡 怨듭쑀 臾몄젣??GitHub, Context Capsule, HANDOFF 臾몄꽌, PR ?⑥쐞 ?묒뾽?쇰줈 ?닿껐?쒕떎.
+
+媛??以묒슂???먯튃? ?닿쾬?대떎.
+
+```text
+Fable? 寃곗젙?쒕떎.
+Codex??留뚮뱺??
+GitHub??湲곗뼲?쒕떎.
+BakeBoard??蹂댁뿬以??
+ATANOR-Core??泥섏쓬遺??諛곗슫??
+```

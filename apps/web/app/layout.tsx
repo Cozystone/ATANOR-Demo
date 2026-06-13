@@ -2,8 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Homage1.0 BakeBoard",
-  description: "Transparent AI factory dashboard skeleton.",
+  title: "ATANOR",
+  description: "Transparent Anomy neuro-symbolic local AI engine.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

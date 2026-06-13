@@ -56,7 +56,7 @@ def _clean_text(value: Any) -> str:
 
 
 def _particle_trim(token: str) -> str:
-    return re.sub(r"(은|는|이|가|을|를|에게|에서|으로|로|와|과|도|만|의)$", "", token)
+    return re.sub(r"(?|????媛|??瑜??먭쾶|?먯꽌|?쇰줈|濡??|怨???留???$", "", token)
 
 
 def _seed_tokens(query: str, active_concepts: list[str]) -> list[str]:
@@ -230,7 +230,7 @@ def build_native_utterance(
         "active_concepts": active_concepts,
         "answer_kind": answer_kind,
         "answer_engine": {
-            "name": "Homage Graph Token Predictor",
+            "name": "ATANOR Graph Token Predictor",
             "mode": mode,
             "external_llm": False,
             "homage_core": "homage-core-30m-scaffold",

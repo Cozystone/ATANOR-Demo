@@ -32,7 +32,7 @@ function demoStabilityPlan(input: Record<string, any> = {}) {
 
   return {
     generated_at: new Date().toISOString(),
-    profile_name: "Homage Sustained Learning Profile",
+    profile_name: "ATANOR Sustained Learning Profile",
     hardware_profile: hardware,
     target_workload: {
       duration_hours: boundedNumber(input.duration_hours, 72, 1, 720),
@@ -77,7 +77,7 @@ function demoStabilityPlan(input: Record<string, any> = {}) {
     },
     backpressure_policy: [
       { condition: "RAM >= soft watermark", action: "pause harvest, flush ontology batches, compact hot graph window, keep RAG read-only" },
-      { condition: "VRAM >= soft watermark", action: "pause Homage Oven batches, keep DataGate/Ontology on CPU, lower microbatch size" },
+      { condition: "VRAM >= soft watermark", action: "pause ATANOR Oven batches, keep DataGate/Ontology on CPU, lower microbatch size" },
       { condition: "graph writer lag > 2 batches", action: "stop creating new relations; only merge known nodes until writer catches up" },
       { condition: "storage free <= reserve", action: "stop harvest, rotate checkpoints, compact graph snapshots, require operator review" },
     ],

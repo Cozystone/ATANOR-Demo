@@ -53,7 +53,7 @@ STATIC_RESULTS = [
         id="web-static-004",
         title="MiroFish",
         url="https://github.com/666ghj/MiroFish",
-        snippet="MiroFish demonstrates a console-style graph growth interface useful as a UI reference for Homage BakeBoard.",
+        snippet="MiroFish demonstrates a console-style graph growth interface useful as a UI reference for ATANOR BakeBoard.",
         provider="static",
         source_type="repository_or_docs",
     ),
@@ -110,7 +110,7 @@ def provider_status(provider: str | None = None) -> dict[str, Any]:
             "configured": _provider_configured("microsoft-grounding"),
             "mode": "foundry_agent_tool",
             "native_homage_default": False,
-            "reason": "Grounding with Bing is an Azure Foundry Agent tool that returns model responses with citations, not raw searchable chunks for Homage native synthesis.",
+            "reason": "Grounding with Bing is an Azure Foundry Agent tool that returns model responses with citations, not raw searchable chunks for ATANOR native synthesis.",
             "required_env": [
                 "FOUNDRY_PROJECT_ENDPOINT",
                 "FOUNDRY_MODEL_DEPLOYMENT_NAME",
@@ -159,7 +159,7 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
         "https://ko.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1"
         f"&srlimit={bounded_count}&srsearch={quote_plus(lookup)}"
     )
-    request = urllib.request.Request(api_url, headers={"User-Agent": "HomageAlpha/0.1 web-search"})
+    request = urllib.request.Request(api_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
     with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public API endpoint
         body = json.loads(response.read().decode("utf-8"))
     results: list[dict[str, Any]] = []
@@ -171,7 +171,7 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
         if index <= 2:
             try:
                 summary_url = f"https://ko.wikipedia.org/api/rest_v1/page/summary/{page_slug}"
-                summary_request = urllib.request.Request(summary_url, headers={"User-Agent": "HomageAlpha/0.1 web-search"})
+                summary_request = urllib.request.Request(summary_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
                 with urllib.request.urlopen(summary_request, timeout=5) as summary_response:  # nosec B310
                     summary = json.loads(summary_response.read().decode("utf-8"))
                 snippet = _strip_html(summary.get("extract") or snippet)
@@ -196,7 +196,7 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
 
 def news_rss_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     url = f"https://news.google.com/rss/search?q={quote_plus(query)}&hl=ko&gl=KR&ceid=KR:ko"
-    request = urllib.request.Request(url, headers={"User-Agent": "HomageAlpha/0.1 web-search"})
+    request = urllib.request.Request(url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
     with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public RSS endpoint
         xml = response.read()
     root = ET.fromstring(xml)
@@ -235,7 +235,7 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
             "configured": _provider_configured("microsoft-grounding"),
             "bing_query_url": f"https://www.bing.com/search?q={quote_plus(clean_query)}",
             "status": "metadata_only",
-            "message": "Grounding with Bing is configured through Azure Foundry Agents and does not expose raw result chunks to this native Homage harvest path.",
+            "message": "Grounding with Bing is configured through Azure Foundry Agents and does not expose raw result chunks to this native ATANOR harvest path.",
             "provider_status": provider_status(selected),
         }
 

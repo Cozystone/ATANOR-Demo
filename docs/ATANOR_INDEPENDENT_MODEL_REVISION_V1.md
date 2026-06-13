@@ -1,14 +1,14 @@
-# Homage Independent Model Revision V1
+# ATANOR Independent Model Revision V1
 
 Date: 2026-06-12
 
 ## Purpose
 
-This revision changes the Homage1.0 target from "GraphRAG plus optional local
+This revision changes the ATANOR target from "GraphRAG plus optional local
 sLLM rendering" to a stricter research goal:
 
 > Build an independent local language system that does not use external LLMs,
-> local quantized LLMs, or pretrained LLM weights. Homage should learn its own
+> local quantized LLMs, or pretrained LLM weights. ATANOR should learn its own
 > graph memory, relation probabilities, activation dynamics, and surface
 > generation behavior from collected text and user experiments.
 
@@ -42,7 +42,7 @@ Design implication:
 - CPU should own graph traversal, ontology updates, hot-memory indexes, and
   relation probability updates.
 - GPU should be used for batched vector math and optional from-scratch small
-  Homage model training, not for serving a pretrained LLM.
+  ATANOR model training, not for serving a pretrained LLM.
 - RAM must keep only the active hot graph and batch buffers.
 - SSD must hold append-only memory events, cold graph storage, text chunks, and
   checkpoints.
@@ -59,7 +59,7 @@ Design implication:
 | Relation learning | Counts and deterministic edges | Conditional probabilities, decay, confidence, recency, source quality, activation weights |
 | Generation | Raw graph-token walk | Graph-conditioned native decoder with learned syntax/phrase memory |
 | LLM use | External LLM false; no local LLM currently | Explicitly no external LLM and no local quantized LLM |
-| Training | Homage Oven dry-run scaffold | Continuous graph-memory learning plus optional from-scratch Homage-Core training |
+| Training | ATANOR Oven dry-run scaffold | Continuous graph-memory learning plus optional from-scratch ATANOR-Core training |
 
 ## Revised Architecture
 
@@ -195,7 +195,7 @@ Example skeleton:
 
 ```json
 {
-  "query": "GraphRAG가 뭐야",
+  "query": "GraphRAG媛 萸먯빞",
   "seeds": ["graphrag"],
   "active_nodes": ["graphrag", "knowledgegraph", "retrieval", "evidence"],
   "active_edges": [
@@ -214,7 +214,7 @@ Example skeleton:
 
 This replaces both external LLMs and local quantized LLM renderers.
 
-The decoder should be native to Homage and trained from the memory store.
+The decoder should be native to ATANOR and trained from the memory store.
 
 V1 options, in increasing difficulty:
 
@@ -228,7 +228,7 @@ V1 options, in increasing difficulty:
      previous generated tokens
    - small enough to train from scratch on the current PC
 
-3. Homage-Core from scratch:
+3. ATANOR-Core from scratch:
    - small decoder-only or state-space/event model trained only on collected
      corpus
    - graph activations are input features
@@ -239,7 +239,7 @@ Recommended V1 path:
 ```text
 Phase 1: probabilistic syntax lattice
 Phase 2: graph-conditioned token decoder
-Phase 3: from-scratch Homage-Core checkpoint
+Phase 3: from-scratch ATANOR-Core checkpoint
 ```
 
 The output may be awkward. That is acceptable and preferable to fake fluency.
@@ -397,7 +397,7 @@ V1 should not be judged by GPT-like fluency. It should be judged by:
 
 ## Revised Product Positioning
 
-Homage should be described as:
+ATANOR should be described as:
 
 > A local, independent, graph-memory language research system that learns
 > symbolic and probabilistic relations from text, traverses activated memory
@@ -448,7 +448,7 @@ Implemented in Alpha:
 - Large-graph activation visibility was browser-verified at a 2,000-node render
   window. If true active memory nodes are outside the current representative
   window, the UI retargets the orange pulse to visible representative nodes and
-  labels the trace as `활성 신호(대표 노드)`.
+  labels the trace as `?쒖꽦 ?좏샇(????몃뱶)`.
 
 Still not implemented:
 
@@ -456,7 +456,7 @@ Still not implemented:
 - Durable persistence of client-side live-synapse growth into the memory event
   log.
 - A separate `/api/native/generate` decoder endpoint.
-- From-scratch Homage-Core training beyond the existing dry-run scaffold.
+- From-scratch ATANOR-Core training beyond the existing dry-run scaffold.
 
 ## Implementation Status - 2026-06-12 Local Long-Run Split
 
@@ -475,9 +475,9 @@ Implemented after the first Knowledge Bakery layer:
 - Deployment fallback returns lab-viewer status only. It does not pretend that
   Vercel is running the long-lived learner.
 - BakeBoard now has two spaces:
-  - `누적학습`: local daemon/runtime/checkpoint/reboot-recovery view
-  - `실험실`: demo and structural experiment workbench
-- `docs/CODEX_GOAL_PROMPT_HOMAGE_RESEARCH.md` records the long-run Codex goal
+  - `?꾩쟻?숈뒿`: local daemon/runtime/checkpoint/reboot-recovery view
+  - `?ㅽ뿕??: demo and structural experiment workbench
+- `docs/CODEX_GOAL_PROMPT_ATANOR_RESEARCH.md` records the long-run Codex goal
   prompt and reboot protocol.
 
 Still not implemented in this layer:

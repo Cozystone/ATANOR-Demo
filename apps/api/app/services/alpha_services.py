@@ -13,8 +13,8 @@ from guard import check_guard
 from knowledge_bakery import activate_memory, build_memory, drift_check, export_graph, memory_status
 from ontology_forge import run_ontology
 from rag_engine import query_graphrag
-from rag_engine.fusion import epistemic_uncertainty, local_density_score, route_ratio, weighted_rrf
-from rag_engine.utterance_engine import build_native_utterance
+from rag_engine.fusion import epistemic_uncertainty, fusion_ratio_from_context, local_density_score, route_ratio, weighted_rrf
+from rag_engine.synthesizer import LocalSynthesizer
 from trainer import run_dry_run
 
 from app.services.web_search import is_fresh_search_query, is_knowledge_lookup_query, search_web, web_results_to_evidence
@@ -136,8 +136,15 @@ class AlphaService:
             if memory_activation is not None:
                 local_nodes.extend(memory_activation.get("active_nodes", []))
                 local_edges.extend(memory_activation.get("active_edges", []))
-            density = local_density_score(local_nodes, local_edges, list(result.get("evidence_docs") or []))
-            ratios = route_ratio(density)
+            local_evidence_docs = list(result.get("evidence_docs") or [])
+            density = local_density_score(local_nodes, local_edges, local_evidence_docs)
+            ratios = fusion_ratio_from_context(
+                query=query,
+                matched_nodes=local_nodes,
+                matched_edges=local_edges,
+                evidence_docs=local_evidence_docs,
+                local_answer_confidence=float(result.get("confidence") or 0.0),
+            )
             should_search = not is_conversation and not is_control and (
                 web_search
                 or is_fresh_search_query(query)
@@ -151,6 +158,7 @@ class AlphaService:
             elif not is_conversation and not is_control:
                 result = {
                     **result,
+                    "fusion_ratio": ratios,
                     "fusion": {
                         "local_density": density,
                         "epistemic_uncertainty": epistemic_uncertainty(density),
@@ -333,26 +341,26 @@ alpha_service = AlphaService()
 
 
 def _is_conversation_result(result: dict[str, Any]) -> bool:
-    return result.get("method") == "homage-conversation-router-v1" or result.get("answer_kind") in {"greeting", "thanks", "conversation"}
+    return result.get("method") == "atanor-conversation-router-v1" or result.get("answer_kind") in {"greeting", "thanks", "conversation"}
 
 
 def _is_control_result(result: dict[str, Any]) -> bool:
     return result.get("answer_kind") == "inspection" or result.get("method") in {
-        "homage-graph-inspection-v1",
-        "homage-graph-legend-v1",
+        "atanor-graph-inspection-v1",
+        "atanor-graph-legend-v1",
     }
 
 
 def _should_web_search(result: dict[str, Any]) -> bool:
     return (
-        result.get("method") in {"homage-native-no-node-utterance-v1", "homage-research-no-evidence-v1"}
+        result.get("method") in {"atanor-native-no-node-utterance-v1", "atanor-research-no-evidence-v1"}
         or not result.get("evidence_docs")
         or float(result.get("confidence") or 0) < 0.42
     )
 
 
 def _make_graph_token_web_utterance(query: str, evidence_docs: list[dict[str, Any]]) -> dict[str, Any]:
-    return build_native_utterance(query, evidence_docs, [], [])
+    return LocalSynthesizer().synthesize(query, evidence_docs, [], [], [])
 
 
 def _merge_web_search_result(
@@ -375,6 +383,7 @@ def _merge_web_search_result(
         return {
             **base,
             "web_search": search_payload,
+            "fusion_ratio": ratios,
             "fusion": {
                 "local_density": local_density,
                 "epistemic_uncertainty": epistemic_uncertainty(local_density),
@@ -392,9 +401,10 @@ def _merge_web_search_result(
     utterance = _make_graph_token_web_utterance(query, evidence_docs)
     return {
         **base,
-        "method": "homage-graph-token-web-rag-v1",
+        "method": "atanor-graph-token-web-rag-v1",
         "answer": utterance["answer"],
         "evidence_docs": evidence_docs,
+        "fusion_ratio": ratios,
         "citations": [
             {
                 "doc_id": doc["chunk_id"],
@@ -418,11 +428,11 @@ def _merge_web_search_result(
         "answer_engine": {
             **base.get("answer_engine", {}),
             **utterance["answer_engine"],
-            "name": "Homage Graph Token Predictor",
-            "mode": "web-ontology-graph-token-prediction-alpha",
+            "name": "ATANOR LocalSynthesizer",
+            "mode": "local-web-evidence-synthesis-alpha",
             "external_llm": False,
-            "surface_generation": "graph_walk",
-            "template_free_surface": True,
+            "surface_generation": "local_autonomous_context_synthesis",
+            "network_barrier": "sealed_for_generation",
         },
         "retrieval_trace": {
             **base.get("retrieval_trace", {}),

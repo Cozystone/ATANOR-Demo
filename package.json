@@ -1,8 +1,8 @@
 {
-  "name": "homage1.0",
+  "name": "atanor",
   "private": true,
-  "version": "0.1.0",
-  "description": "Homage1.0 monorepo skeleton for the BakeBoard AI factory dashboard.",
+  "version": "0.1.1",
+  "description": "ATANOR monorepo for a Transparent Anomy neuro-symbolic local AI engine.",
   "workspaces": [
     "apps/web"
   ],
@@ -12,7 +12,10 @@
     "dev": "concurrently \"npm run api:dev\" \"npm run web:dev\"",
     "desktop:sidecar": "python scripts/build_sidecar.py",
     "tauri": "tauri",
-    "desktop:build": "npm run desktop:sidecar && npm --workspace apps/web run build:desktop && tauri build"
+    "desktop:signing:prepare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_windows_signing.ps1",
+    "desktop:build": "npm run desktop:sidecar && tauri build",
+    "experiment:atanor": "python scripts/atanor_experiment_runner.py",
+    "store:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_store_msix.ps1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

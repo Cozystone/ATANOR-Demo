@@ -35,6 +35,7 @@ async function main() {
       const relative = path.relative(webDir, source).replaceAll("\\", "/");
       if (!relative) return true;
       if (relative === "app/api" || relative.startsWith("app/api/")) return false;
+      if (relative === "app/updater" || relative.startsWith("app/updater/")) return false;
       if (relative === ".next" || relative.startsWith(".next/")) return false;
       if (relative === "out" || relative.startsWith("out/")) return false;
       if (relative === ".vercel" || relative.startsWith(".vercel/")) return false;

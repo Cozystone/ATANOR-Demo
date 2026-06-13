@@ -1770,3 +1770,19 @@ p {
   gap: 8px;
   justify-content: flex-end;
 }
+
+@keyframes atanorStreamSweep {
+  0% {
+    opacity: 0.35;
+    transform: translateX(-120%);
+  }
+
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.45;
+    transform: translateX(260%);
+  }
+}

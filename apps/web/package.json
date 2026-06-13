@@ -1,7 +1,7 @@
 {
-  "name": "@homage/web",
+  "name": "@atanor/web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
     "dev": "next dev",
     "dev:local": "next dev --hostname 127.0.0.1",
@@ -9,7 +9,8 @@
     "build:desktop": "node ../../scripts/build_desktop_web.mjs",
     "start": "next start",
     "start:local": "next start --hostname 127.0.0.1",
-    "lint": "next lint"
+    "lint": "next lint",
+    "tauri": "node ../../scripts/run_tauri_workspace.mjs"
   },
   "dependencies": {
     "@tauri-apps/plugin-process": "^2.0.0",

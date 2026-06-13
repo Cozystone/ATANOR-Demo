@@ -11,7 +11,7 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  HOMAGE_RUST_TOOLCHAIN: "1.88.0"
+  ATANOR_RUST_TOOLCHAIN: "1.88.0"
 
 jobs:
   build:
@@ -40,7 +40,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.HOMAGE_RUST_TOOLCHAIN }}
+          toolchain: ${{ env.ATANOR_RUST_TOOLCHAIN }}
 
       - name: Install frontend dependencies
         run: npm ci

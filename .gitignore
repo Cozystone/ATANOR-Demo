@@ -4,8 +4,15 @@ node_modules/
 apps/web/.next/
 apps/web/out/
 build/
+dist/
+dist-artifacts/
+backups/
+apps/api/data/
+UI/
+Branding/
 src-tauri/target/
 src-tauri/binaries/homage-api-*
+src-tauri/certs/
 __pycache__/
 *.py[cod]
 *.egg-info/

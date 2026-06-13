@@ -19,7 +19,7 @@ DEFAULT_HARDWARE = {
 
 
 def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Plan long-running Homage jobs for one high-end desktop box.
+    """Plan long-running ATANOR jobs for one high-end desktop box.
 
     The plan intentionally treats RAM, VRAM, and graph write amplification as
     hard constraints. CPU/GPU throughput can be high on the target hardware, but
@@ -49,7 +49,7 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "profile_name": "Homage Sustained Learning Profile",
+        "profile_name": "ATANOR Sustained Learning Profile",
         "hardware_profile": hardware,
         "target_workload": {
             "duration_hours": duration_hours,
@@ -107,7 +107,7 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
             },
             {
                 "condition": "VRAM >= soft watermark",
-                "action": "pause Homage Oven batches, keep DataGate/Ontology on CPU, lower microbatch size",
+                "action": "pause ATANOR Oven batches, keep DataGate/Ontology on CPU, lower microbatch size",
             },
             {
                 "condition": "graph writer lag > 2 batches",

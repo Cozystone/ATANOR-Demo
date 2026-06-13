@@ -85,6 +85,9 @@ def _default_state() -> dict[str, Any]:
         "last_input_fingerprint": None,
         "last_round_action": None,
         "last_round_message": "No long-running local learner has been started.",
+        "stream_state": "PAUSED",
+        "queue_state": "WAITING_FOR_START",
+        "ingestion_mode": "persistent_append",
         "last_error": None,
         "interval_seconds": DEFAULT_INTERVAL_SECONDS,
         "decay_interval_seconds": DEFAULT_DECAY_INTERVAL_SECONDS,
@@ -232,6 +235,21 @@ def _init_synaptic_schema(conn: sqlite3.Connection) -> None:
 
 def _worker_alive() -> bool:
     return bool(_worker_thread and _worker_thread.is_alive())
+
+
+def _spawn_worker_locked(memory_dir: str | Path, interval_seconds: int) -> None:
+    global _worker_thread
+    interval_seconds = max(5, min(3600, int(interval_seconds or DEFAULT_INTERVAL_SECONDS)))
+    if _worker_alive():
+        return
+    _stop_event.clear()
+    _worker_thread = threading.Thread(
+        target=_worker_entry,
+        args=(str(memory_dir), interval_seconds),
+        daemon=True,
+        name="homage-hippocampus-daemon",
+    )
+    _worker_thread.start()
 
 
 def _json_set(existing: str | None, additions: list[str] | set[str] | tuple[str, ...]) -> str:
@@ -662,7 +680,17 @@ def ingest_raw_documents(
     if max_files is not None:
         candidates = candidates[:max_files]
     if not candidates:
-        return {"state": "idle", "ingested": 0, "duplicates": 0, "files": [], "nodes": 0, "edges": 0, "neo4j": None}
+        return {
+            "state": "listening_stream",
+            "queue_state": "WAITING_FOR_PAYLOADS",
+            "ingestion_mode": "persistent_append",
+            "ingested": 0,
+            "duplicates": 0,
+            "files": [],
+            "nodes": 0,
+            "edges": 0,
+            "neo4j": None,
+        }
 
     conn = _connect(memory_dir)
     neo4j = _neo4j_sink()
@@ -736,7 +764,10 @@ def ingest_raw_documents(
         build_memory(cleaned_dir=str(cleaned_root), ontology_dir=str(ontology_root), memory_dir=memory_dir)
 
     return {
-        "state": "completed" if ingested_files else "idle",
+        "state": "persistent_append" if ingested_files else "listening_stream",
+        "queue_state": "PERSISTENT_APPEND_APPLIED" if ingested_files else "WAITING_FOR_PAYLOADS",
+        "ingestion_mode": "persistent_append",
+        "projection_refresh": "background_compaction" if ingested_files else "not_required",
         "ingested": len(ingested_files),
         "duplicates": duplicate_count,
         "files": ingested_files,
@@ -792,6 +823,22 @@ def daemon_status(memory_dir: str = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
     with _lock:
         state = _merge_runtime(_read_state(memory_dir))
         alive = _worker_alive()
+        if state.get("desired_running") and not alive and state.get("state") not in {"failed", "stopped"}:
+            interval_seconds = int(state.get("interval_seconds") or DEFAULT_INTERVAL_SECONDS)
+            state.update(
+                {
+                    "state": "running",
+                    "resume_needed": False,
+                    "last_heartbeat_at": utc_now_iso(),
+                    "last_round_action": "self_healing_resume",
+                    "last_round_message": "Self-healing wake-up restarted the continuous ingestion worker.",
+                    "stream_state": "LISTENING_STREAM",
+                    "queue_state": "WAITING_FOR_PAYLOADS",
+                }
+            )
+            _write_state(state, memory_dir)
+            _spawn_worker_locked(memory_dir, interval_seconds)
+            alive = _worker_alive()
         state["worker_alive"] = alive
         if state.get("desired_running") and not alive and state.get("state") not in {"failed"}:
             state["state"] = "resume_needed"
@@ -802,6 +849,12 @@ def daemon_status(memory_dir: str = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
             )
         else:
             state["resume_needed"] = False
+        if state.get("desired_running") and state.get("state") != "failed":
+            state["stream_state"] = "LISTENING_STREAM"
+            if state.get("queue_state") in {None, "WAITING_FOR_START"}:
+                state["queue_state"] = "WAITING_FOR_PAYLOADS"
+        else:
+            state["stream_state"] = "PAUSED" if state.get("state") != "failed" else "STOPPED_BY_GUARD"
         state["resource_snapshot"] = _resource_snapshot(memory_dir)
         state["checkpoint_count"] = len(list(_checkpoint_dir(memory_dir).glob("*.json"))) if _checkpoint_dir(memory_dir).exists() else 0
         state["local_required"] = True
@@ -817,7 +870,7 @@ def daemon_checkpoint(memory_dir: str = DEFAULT_MEMORY_DIR, reason: str = "manua
         state = _read_state(memory_dir)
         conn = _connect(memory_dir)
         conn.commit()
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
         conn.close()
         snapshot = {
             "created_at": utc_now_iso(),
@@ -893,21 +946,24 @@ def tick_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, force: bool = False, run_d
                 ontology_dir=str(state.get("ontology_dir") or DEFAULT_ONTOLOGY_DIR),
                 memory_dir=memory_dir,
             )
-            action = "raw_ingested_and_memory_rebuilt" if ingest_result.get("ingested") else "memory_rebuilt_from_inputs"
+            action = "persistent_append_delta_indexed" if ingest_result.get("ingested") else "append_only_projection_refreshed"
             message = (
-                f"Ingested {ingest_result.get('ingested', 0)} raw files; indexed {fingerprint['file_count']} watched files "
-                f"into {result.get('node_count', 0)} nodes and {result.get('edge_count', 0)} edges."
+                f"Persistent append absorbed {ingest_result.get('ingested', 0)} raw files; "
+                f"projection now exposes {result.get('node_count', 0)} nodes and {result.get('edge_count', 0)} edges."
             )
             state["learned_rounds"] = int(state.get("learned_rounds") or 0) + 1
         else:
             result = memory
-            action = "heartbeat_no_new_input"
-            message = "No new raw/cleaned/ontology input changed; heartbeat and checkpoint state were preserved."
+            action = "listening_stream_no_new_payload"
+            message = "Continuous ingestion stream is awake; no new payloads arrived this tick."
             state["idle_rounds"] = int(state.get("idle_rounds") or 0) + 1
 
         state.update(
             {
                 "state": "running" if state.get("desired_running") else "idle",
+                "stream_state": "LISTENING_STREAM" if state.get("desired_running") else "PAUSED",
+                "queue_state": "PERSISTENT_APPEND_APPLIED" if ingest_result.get("ingested", 0) else "WAITING_FOR_PAYLOADS",
+                "ingestion_mode": "persistent_append",
                 "last_heartbeat_at": now,
                 "last_tick_at": now,
                 "last_input_fingerprint": fingerprint["fingerprint"],
@@ -933,13 +989,23 @@ def tick_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, force: bool = False, run_d
 
 async def _async_worker_loop(memory_dir: str, interval_seconds: int) -> None:
     while not _stop_event.is_set():
-        await asyncio.to_thread(tick_daemon, memory_dir)
+        try:
+            await asyncio.to_thread(tick_daemon, memory_dir)
+        except RuntimeError as exc:
+            if "cannot schedule new futures after shutdown" in str(exc):
+                break
+            raise
         status = daemon_status(memory_dir)
         if status.get("state") == "failed":
             break
         last_checkpoint = _parse_iso(status.get("last_checkpoint_at")) or 0
         if time.time() - last_checkpoint >= 300:
-            await asyncio.to_thread(daemon_checkpoint, memory_dir, "auto")
+            try:
+                await asyncio.to_thread(daemon_checkpoint, memory_dir, "auto")
+            except RuntimeError as exc:
+                if "cannot schedule new futures after shutdown" in str(exc):
+                    break
+                raise
         try:
             await asyncio.wait_for(asyncio.to_thread(_stop_event.wait, interval_seconds), timeout=interval_seconds + 1)
         except asyncio.TimeoutError:
@@ -947,7 +1013,11 @@ async def _async_worker_loop(memory_dir: str, interval_seconds: int) -> None:
 
 
 def _worker_entry(memory_dir: str, interval_seconds: int) -> None:
-    asyncio.run(_async_worker_loop(memory_dir, interval_seconds))
+    try:
+        asyncio.run(_async_worker_loop(memory_dir, interval_seconds))
+    except RuntimeError as exc:
+        if "cannot schedule new futures after shutdown" not in str(exc):
+            raise
 
 
 def start_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, interval_seconds: int = DEFAULT_INTERVAL_SECONDS, resume: bool = True) -> dict[str, Any]:
@@ -968,8 +1038,11 @@ def start_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, interval_seconds: int = D
                 "started_at": state.get("started_at") if resume and state.get("started_at") else now,
                 "last_heartbeat_at": now,
                 "interval_seconds": interval_seconds,
+                "stream_state": "LISTENING_STREAM",
+                "queue_state": "WAITING_FOR_PAYLOADS",
+                "ingestion_mode": "persistent_append",
                 "last_error": None,
-                "last_round_message": "Local Cloud Brain hippocampus daemon is running.",
+                "last_round_message": "Continuous ingestion stream is awake and listening for payloads.",
             }
         )
         state["reboot_resilience"] = {
@@ -980,9 +1053,7 @@ def start_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, interval_seconds: int = D
             "heartbeat_interval_seconds": interval_seconds,
         }
         _write_state(state, memory_dir)
-        _stop_event.clear()
-        _worker_thread = threading.Thread(target=_worker_entry, args=(memory_dir, interval_seconds), daemon=True, name="homage-hippocampus-daemon")
-        _worker_thread.start()
+        _spawn_worker_locked(memory_dir, interval_seconds)
         return daemon_status(memory_dir)
 
 
@@ -1009,7 +1080,7 @@ def stop_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, reason: str = "manual") ->
     return daemon_checkpoint(memory_dir, f"stop-{reason}")
 
 
-if os.environ.get("HOMAGE_AUTOSTART_DAEMON") == "1":
+if os.environ.get("ATANOR_AUTOSTART_DAEMON") == "1" or os.environ.get("HOMAGE_AUTOSTART_DAEMON") == "1":
     saved = _read_state(DEFAULT_MEMORY_DIR)
     if saved.get("desired_running"):
         start_daemon(DEFAULT_MEMORY_DIR, int(saved.get("interval_seconds") or DEFAULT_INTERVAL_SECONDS), resume=True)

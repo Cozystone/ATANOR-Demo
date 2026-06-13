@@ -4,7 +4,7 @@ Date: 2026-06-11
 
 ## Goal
 
-Derive a practical architecture improvement for Homage1.0 from brain-inspired
+Derive a practical architecture improvement for ATANOR from brain-inspired
 AI research: sparse event processing, neuromorphic principles, modular routing,
 continual learning, few-shot memory, self-supervision, and energy-aware
 compression.
@@ -19,7 +19,7 @@ compression.
     measurable workload and training harness.
 - SpikingJelly / Fang et al. (2023): https://pmc.ncbi.nlm.nih.gov/articles/PMC10558124/
   - PyTorch-native SNN tooling makes later ANN-to-SNN or direct SNN experiments
-    plausible. Decision: keep the Homage layer framework-neutral and expose
+    plausible. Decision: keep the ATANOR layer framework-neutral and expose
     event density as a future SNN integration metric.
 - Kirkpatrick et al., "Overcoming catastrophic forgetting in neural networks"
   (EWC, 2017): https://arxiv.org/abs/1612.00796
@@ -50,7 +50,7 @@ compression.
 ## Structural Improvement
 
 The immediate improvement is a new `Neuro-Efficiency Layer`, not a full rewrite
-of Homage-Core into an SNN.
+of ATANOR-Core into an SNN.
 
 The layer computes:
 
@@ -62,7 +62,7 @@ The layer computes:
 - `compression`: pruning, quantization, distillation, and checkpointing levers.
 - `energy_estimate`: dense vs event/modular/compressed scheduled compute units.
 
-This gives Homage1.0 a measurable low-resource control surface while preserving
+This gives ATANOR a measurable low-resource control surface while preserving
 the current deterministic Alpha pipeline.
 
 ## Implementation

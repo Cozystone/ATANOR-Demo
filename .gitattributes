@@ -1,0 +1,8 @@
+* text=auto eol=lf
+*.tsx text eol=lf diff=typescript
+*.ts text eol=lf diff=typescript
+*.rs text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+

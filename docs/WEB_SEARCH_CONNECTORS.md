@@ -1,8 +1,8 @@
 # Web Search Connectors
 
-Homage uses web search as a Harvest evidence source, not as an external answer
+ATANOR uses web search as a Harvest evidence source, not as an external answer
 LLM. Search results are converted into evidence snippets and then read by the
-native Homage GraphRAG/Utterance flow.
+native ATANOR GraphRAG/Utterance flow.
 
 ## Provider Modes
 
@@ -10,7 +10,7 @@ native Homage GraphRAG/Utterance flow.
 - `brave`: raw web result provider, requires `BRAVE_SEARCH_API_KEY`.
 - `serper`: raw web result provider, requires `SERPER_API_KEY`.
 - `tavily`: raw web result provider, requires `TAVILY_API_KEY`.
-- `microsoft-grounding`: metadata/status only in native Homage mode.
+- `microsoft-grounding`: metadata/status only in native ATANOR mode.
 
 ## Microsoft Grounding With Bing
 
@@ -20,7 +20,7 @@ AI Foundry Agents. The older Bing Search APIs are retired as of August 11,
 search execution, synthesis, and citation output inside the Foundry Agent run.
 
 That is useful for a future optional Foundry-agent mode, but it is not the
-default Homage native path because Homage currently avoids external LLM answer
+default ATANOR native path because ATANOR currently avoids external LLM answer
 generation and wants raw evidence chunks for its own RAG/ontology pipeline.
 
 Expected environment variables for a future Foundry mode:
@@ -42,6 +42,6 @@ Expected environment variables for a future Foundry mode:
 
 - Search APIs are optional and disabled unless env vars are configured.
 - The static fallback is deterministic and does not call the network.
-- Homage records URLs and snippets as reference-only evidence.
+- ATANOR records URLs and snippets as reference-only evidence.
 - The app does not perform unrestricted crawling; Build Start samples a bounded
   search/reference set.

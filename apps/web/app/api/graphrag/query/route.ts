@@ -8,7 +8,7 @@ function isRawNoNodeResult(body: any) {
   const answer = String(result.answer ?? "");
   return (
     answer.includes("raw_no_node::")
-    || result.method === "homage-native-raw-no-node-v1"
+    || result.method === "atanor-native-raw-no-node-v1"
     || result.answer_engine?.mode === "native-raw-no-node-alpha"
   );
 }
@@ -16,9 +16,9 @@ function isRawNoNodeResult(body: any) {
 function isLegacySurfaceResult(body: any) {
   const result = body?.result ?? {};
   return (
-    result.method === "homage-native-web-search-rag-v1"
-    || result.method === "homage-native-graphrag-utterance-v1"
-    || result.method === "homage-native-no-node-utterance-v1"
+    result.method === "atanor-native-web-search-rag-v1"
+    || result.method === "atanor-native-graphrag-utterance-v1"
+    || result.method === "atanor-native-no-node-utterance-v1"
     || result.answer_engine?.mode === "native-web-search-grounded-alpha"
     || result.answer_engine?.mode === "native-next-thought-alpha"
     || result.answer_engine?.mode === "native-no-node-sentence-alpha"

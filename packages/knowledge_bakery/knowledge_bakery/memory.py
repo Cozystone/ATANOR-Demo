@@ -91,7 +91,7 @@ def _tokens(text: str) -> list[str]:
 
 
 def _sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.!?。！？])\s+|[\r\n]+", text.strip())
+    parts = re.split(r"(?<=[.!?])\s+|[\r\n]+", text.strip())
     return [part.strip() for part in parts if part.strip()]
 
 
@@ -116,15 +116,13 @@ def _chunk_text(text: str, max_tokens: int = 90, overlap_sentences: int = 1) -> 
 
 
 def _slug(label: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9가-힣_-]+", "-", label.strip()).strip("-").lower()
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", label.strip()).strip("-").lower()
     return cleaned[:96] or "node"
 
 
 def _node_type_for_token(token: str) -> str:
     lowered = token.lower()
     if lowered in ACTION_HINTS or lowered.endswith(("ing", "ed")):
-        return "predicate"
-    if token.endswith(("한다", "된다", "했다", "합니다", "됩니다", "이다", "되다", "하다")):
         return "predicate"
     if any(char.isdigit() for char in token):
         return "quantity"
@@ -295,24 +293,11 @@ def _init_schema(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", ("llm_policy", "no_external_no_local_quantized_no_pretrained"))
 
 
-def _reset_tables(conn: sqlite3.Connection) -> None:
-    for table in [
-        "documents",
-        "chunks",
-        "memory_events",
-        "nodes",
-        "edges",
-        "relation_stats",
-        "token_transitions",
-        "cooccurrence_windows",
-        "activation_events",
-        "vector_rows",
-        "query_traces",
-        "payload_vault",
-        "ghost_nodes",
-        "ghost_edges",
-    ]:
-        conn.execute(f"DELETE FROM {table}")
+def _mark_append_only_projection(conn: sqlite3.Connection) -> None:
+    # ATANOR memory is append-only by contract. This function is intentionally
+    # retained as a compatibility hook for older callers, but it must never
+    # erase projection, Ghost Shell, or Payload Vault tables during ingestion.
+    conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", ("append_only_projection", "true"))
 
 
 def _write_event(event_file, conn: sqlite3.Connection, event_type: str, subject_id: str | None, payload: dict[str, Any]) -> None:
@@ -333,8 +318,11 @@ def _write_event(event_file, conn: sqlite3.Connection, event_type: str, subject_
 def _upsert_payload_vault(conn: sqlite3.Connection, hash_key: str, raw_text: str, metadata: dict[str, Any]) -> None:
     conn.execute(
         """
-        INSERT OR REPLACE INTO payload_vault(hash_key, raw_text, metadata_json)
+        INSERT INTO payload_vault(hash_key, raw_text, metadata_json)
         VALUES (?, ?, ?)
+        ON CONFLICT(hash_key) DO UPDATE SET
+          raw_text = excluded.raw_text,
+          metadata_json = excluded.metadata_json
         """,
         (hash_key, raw_text, json.dumps(metadata, ensure_ascii=False, sort_keys=True)),
     )
@@ -343,8 +331,12 @@ def _upsert_payload_vault(conn: sqlite3.Connection, hash_key: str, raw_text: str
 def _upsert_ghost_node(conn: sqlite3.Connection, node_hash: str, projection: tuple[float, float, float]) -> None:
     conn.execute(
         """
-        INSERT OR REPLACE INTO ghost_nodes(node_hash, dim0, dim1, dim2)
+        INSERT INTO ghost_nodes(node_hash, dim0, dim1, dim2)
         VALUES (?, ?, ?, ?)
+        ON CONFLICT(node_hash) DO UPDATE SET
+          dim0 = excluded.dim0,
+          dim1 = excluded.dim1,
+          dim2 = excluded.dim2
         """,
         (node_hash, projection[0], projection[1], projection[2]),
     )
@@ -395,7 +387,7 @@ def build_memory(
     paths.memory_dir.mkdir(parents=True, exist_ok=True)
     conn = _connect(paths.db_path)
     _init_schema(conn)
-    _reset_tables(conn)
+    _mark_append_only_projection(conn)
 
     documents = sorted([*Path(cleaned_dir).rglob("*.txt"), *Path(cleaned_dir).rglob("*.md")])
     ontology_root = Path(ontology_dir)
@@ -413,7 +405,7 @@ def build_memory(
     pair_totals: Counter[tuple[str, str]] = Counter()
     flush = _AutoFlush(conn)
 
-    with paths.event_path.open("w", encoding="utf-8") as event_file:
+    with paths.event_path.open("a", encoding="utf-8") as event_file:
         for node in ontology_nodes:
             node_id = str(node.get("id") or _slug(str(node.get("label") or "")))
             label = str(node.get("label") or node_id)
@@ -457,7 +449,13 @@ def build_memory(
             doc_id = path.stem
             text = path.read_text(encoding="utf-8", errors="ignore")
             conn.execute(
-                "INSERT OR REPLACE INTO documents(doc_id, path, byte_count, created_at) VALUES (?, ?, ?, ?)",
+                """
+                INSERT INTO documents(doc_id, path, byte_count, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(doc_id) DO UPDATE SET
+                  path = excluded.path,
+                  byte_count = excluded.byte_count
+                """,
                 (doc_id, str(path), len(text.encode("utf-8")), utc_now_iso()),
             )
             _write_event(event_file, conn, "document_imported", doc_id, {"path": str(path), "byte_count": len(text.encode("utf-8"))})
@@ -468,7 +466,14 @@ def build_memory(
                     continue
                 chunk_id = f"{doc_id}#{chunk_index + 1}"
                 conn.execute(
-                    "INSERT OR REPLACE INTO chunks(chunk_id, doc_id, text, token_count) VALUES (?, ?, ?, ?)",
+                    """
+                    INSERT INTO chunks(chunk_id, doc_id, text, token_count)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(chunk_id) DO UPDATE SET
+                      doc_id = excluded.doc_id,
+                      text = excluded.text,
+                      token_count = excluded.token_count
+                    """,
                     (chunk_id, doc_id, chunk, len(tokens)),
                 )
                 chunk_hash = _content_hash(chunk)
@@ -586,7 +591,16 @@ def build_memory(
         )
         confidence = min(0.98, float(meta.get("confidence") or 0.5) + math.log1p(count) * 0.035)
         conn.execute(
-            "INSERT OR REPLACE INTO nodes(node_id, label, type, count, confidence, evidence_doc_ids) VALUES (?, ?, ?, ?, ?, ?)",
+            """
+            INSERT INTO nodes(node_id, label, type, count, confidence, evidence_doc_ids)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(node_id) DO UPDATE SET
+              label = excluded.label,
+              type = excluded.type,
+              count = MAX(nodes.count, excluded.count),
+              confidence = MAX(nodes.confidence, excluded.confidence),
+              evidence_doc_ids = excluded.evidence_doc_ids
+            """,
             (
                 node_id,
                 label,
@@ -607,7 +621,17 @@ def build_memory(
         if source_hash and target_hash:
             ghost_edge_counts[(source_hash, target_hash)] += int(count)
         conn.execute(
-            "INSERT OR REPLACE INTO edges(edge_id, source, relation, target, confidence, count, evidence_doc_ids) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            """
+            INSERT INTO edges(edge_id, source, relation, target, confidence, count, evidence_doc_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(edge_id) DO UPDATE SET
+              source = excluded.source,
+              relation = excluded.relation,
+              target = excluded.target,
+              confidence = MAX(edges.confidence, excluded.confidence),
+              count = MAX(edges.count, excluded.count),
+              evidence_doc_ids = excluded.evidence_doc_ids
+            """,
             (
                 f"{source}:{relation}:{target}",
                 source,
@@ -620,11 +644,19 @@ def build_memory(
         )
         conn.execute(
             """
-            INSERT OR REPLACE INTO relation_stats(
+            INSERT INTO relation_stats(
               source, relation, target, count, p_target_given_source,
               p_relation_given_source_target, recency_weight, source_quality_weight,
               activation_weight, confidence
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source, relation, target) DO UPDATE SET
+              count = MAX(relation_stats.count, excluded.count),
+              p_target_given_source = excluded.p_target_given_source,
+              p_relation_given_source_target = excluded.p_relation_given_source_target,
+              recency_weight = excluded.recency_weight,
+              source_quality_weight = excluded.source_quality_weight,
+              activation_weight = excluded.activation_weight,
+              confidence = MAX(relation_stats.confidence, excluded.confidence)
             """,
             (
                 source,
@@ -649,13 +681,25 @@ def build_memory(
         cooccur_totals[source] += count
     for (source, target), count in transitions.items():
         conn.execute(
-            "INSERT OR REPLACE INTO token_transitions(source, target, count, probability) VALUES (?, ?, ?, ?)",
+            """
+            INSERT INTO token_transitions(source, target, count, probability)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(source, target) DO UPDATE SET
+              count = MAX(token_transitions.count, excluded.count),
+              probability = excluded.probability
+            """,
             (source, target, int(count), round(count / max(1, transition_totals[source]), 6)),
         )
         flush.mark()
     for (source, target), count in cooccurs.items():
         conn.execute(
-            "INSERT OR REPLACE INTO cooccurrence_windows(source, target, count, probability) VALUES (?, ?, ?, ?)",
+            """
+            INSERT INTO cooccurrence_windows(source, target, count, probability)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(source, target) DO UPDATE SET
+              count = MAX(cooccurrence_windows.count, excluded.count),
+              probability = excluded.probability
+            """,
             (source, target, int(count), round(count / max(1, cooccur_totals[source]), 6)),
         )
         flush.mark()
@@ -668,7 +712,16 @@ def build_memory(
     for node_id, count in node_counts.items():
         x, y, z = _projection(node_id, degree_counts[node_id], count)
         conn.execute(
-            "INSERT OR REPLACE INTO vector_rows(node_id, dim0, dim1, dim2, vector_source, trained_on_events) VALUES (?, ?, ?, ?, ?, ?)",
+            """
+            INSERT INTO vector_rows(node_id, dim0, dim1, dim2, vector_source, trained_on_events)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(node_id) DO UPDATE SET
+              dim0 = excluded.dim0,
+              dim1 = excluded.dim1,
+              dim2 = excluded.dim2,
+              vector_source = excluded.vector_source,
+              trained_on_events = MAX(vector_rows.trained_on_events, excluded.trained_on_events)
+            """,
             (node_id, x, y, z, VECTOR_SOURCE, event_count),
         )
         flush.mark()

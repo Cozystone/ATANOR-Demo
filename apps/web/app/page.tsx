@@ -136,7 +136,7 @@ function stableDirection(value: string) {
   };
 }
 
-const codexResearchGoalPrompt = `Homage1.0을 장기 연구 목표로 계속 개선한다.
+const codexResearchGoalPrompt = `ATANOR1.0을 장기 연구 목표로 계속 개선한다.
 
 목표: 외부 LLM과 로컬 양자화 LLM 없이, 로컬 워크스테이션에서 장시간 누적되는 온톨로지/그래프 메모리와 독자 생성기를 연구해 중형 LLM에 가까운 답변 품질을 실험적으로 달성한다.
 
@@ -262,7 +262,7 @@ const traceStepLabels: Record<string, string> = {
   DataGate: "DataGate 정제",
   "Ontology Forge": "온톨로지 생성",
   GraphRAG: "GraphRAG 경로",
-  "Homage Oven": "학습 게이트",
+  "ATANOR Oven": "학습 게이트",
 };
 
 const sourceTypeLabels: Record<string, string> = {
@@ -328,7 +328,7 @@ const memoryTypeDescriptions: Record<string, string> = {
   retrieval: "질문을 근거 문서와 그래프 경로로 연결하는 검색 노드입니다.",
   visualization: "현재 학습 상태를 화면에 투사하는 시각화 노드입니다.",
   guardrail: "답변의 과장, 환각, 근거 부족을 검증하는 안전 노드입니다.",
-  training: "Homage Oven으로 넘어가는 학습/압축 신호입니다.",
+  training: "ATANOR Oven으로 넘어가는 학습/압축 신호입니다.",
   concept: "문서에서 추출된 핵심 개념 노드입니다.",
   keyword: "검색과 관계 확장에 쓰이는 키워드 기억입니다.",
   heading: "문서 구조나 섹션 제목에서 온 문맥 앵커입니다.",
@@ -573,7 +573,7 @@ function graphInventoryStatus(query: string, graph: Rag3DGraph) {
     confidence: nodes.length ? 0.99 : 0.2,
     result: {
       query,
-      method: "homage-graph-inspection-v1",
+      method: "atanor-graph-inspection-v1",
       answer,
       matched_nodes: nodes,
       matched_edges: edges,
@@ -637,7 +637,7 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
     confidence: nodes.length ? 0.98 : 0.25,
     result: {
       query,
-      method: "homage-graph-legend-v1",
+      method: "atanor-graph-legend-v1",
       answer,
       matched_nodes: representativeNodes,
       matched_edges: matchedEdges,
@@ -928,7 +928,7 @@ export default function BakeBoardPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("api") || params.has("backend")) return;
-    const savedUrl = readBrowserStorage("homage.localFastApiUrl");
+    const savedUrl = readBrowserStorage("atanor.localFastApiUrl");
     if (savedUrl) {
       setLocalBackendUrl(savedUrl);
       connectLocalBackend(savedUrl).catch(() => undefined);
@@ -996,7 +996,7 @@ export default function BakeBoardPage() {
       setBenchmark(benchmarkStatus);
       setLocalBackendStatus("connected");
       setLocalBackendMessage("로컬 FastAPI 연결됨");
-      writeBrowserStorage("homage.localFastApiUrl", url);
+      writeBrowserStorage("atanor.localFastApiUrl", url);
       const recommended = benchmarkStatus?.recommended_learning_volume as LearningVolume | undefined;
       let nextVolume = learningVolume;
       let nextTargetNodeCount = targetNodeCount;
@@ -1026,7 +1026,7 @@ export default function BakeBoardPage() {
   function disconnectLocalBackend() {
     setLocalBackendStatus("idle");
     setLocalBackendMessage("배포 fallback 사용 중");
-    removeBrowserStorage("homage.localFastApiUrl");
+    removeBrowserStorage("atanor.localFastApiUrl");
   }
 
   async function refreshAll() {
@@ -1433,7 +1433,7 @@ export default function BakeBoardPage() {
       const apiResult = result?.result;
       const answerKind = String(apiResult?.answer_kind ?? "");
       const isConversationResult =
-        apiResult?.method === "homage-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(answerKind);
+        apiResult?.method === "atanor-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(answerKind);
       if (isConversationResult) {
         clearActiveSignal();
       } else {
@@ -1643,6 +1643,12 @@ export default function BakeBoardPage() {
   const benchmarkDiskScore = benchmark?.probes?.disk_write_mb_s ?? null;
   const benchmarkCpuScore = benchmark?.probes?.cpu_loop_score ?? null;
   const graphResult = graphrag?.result ?? null;
+  const fusionRatio = graphResult?.fusion_ratio ?? graphResult?.retrieval_trace?.fusion_ratio ?? null;
+  const localWeightPct = Math.round(Number(fusionRatio?.local_weight ?? fusionRatio?.local ?? 1) * 100);
+  const cloudWeightPct = Math.round(Number(fusionRatio?.cloud_weight ?? fusionRatio?.cloud ?? 0) * 100);
+  const fusionDisplayText = fusionRatio
+    ? `Local ${localWeightPct}% / Cloud ${cloudWeightPct}%`
+    : "Local 100% / Cloud 0%";
   const losses = oven?.losses ?? oven?.result?.losses ?? [];
   const memoryNodes = useMemo(() => makeMemoryNodes(graph), [graph]);
   const memoryEdges = useMemo(() => makeMemoryEdges(graph, memoryNodes), [graph, memoryNodes]);
@@ -1818,6 +1824,7 @@ export default function BakeBoardPage() {
   ].join(" · ");
   const chatSummaryText = [
     `RAG ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
+    fusionDisplayText,
     `근거 ${graphResult?.evidence_docs?.length ?? 0}`,
     guardScore === null ? "Guard 자동" : `Guard ${guardScore}점`,
   ].join(" · ");
@@ -1873,7 +1880,7 @@ export default function BakeBoardPage() {
       title: "빌드 시작",
       api: "POST /api/factory/build/start",
       state: isBuilding || continuousLearningActive ? "running" : buildRun ? "completed" : "idle",
-      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, Homage Oven 학습 게이트까지 한 번에 흐르게 합니다.",
+      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, ATANOR Oven 학습 게이트까지 한 번에 흐르게 합니다.",
       metrics: [
         `${selectedTargetNodeLabel} 장기 목표`,
         `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 청크`,
@@ -2225,7 +2232,7 @@ export default function BakeBoardPage() {
       <header className="console-header">
         <div className="brand-block">
           <button className="back-button" onClick={resetConsole} title="기본 화면으로 돌아가기" aria-label="기본 화면으로 돌아가기">←</button>
-          <strong>Homage</strong>
+          <strong>ATANOR</strong>
         </div>
         <div className="workspace-switcher" aria-label="작업 공간 전환">
           <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>로컬 브레인 [LOCAL BRAIN]</button>
@@ -2309,6 +2316,7 @@ export default function BakeBoardPage() {
                     activeNodeIds={activeSignalNodeIds}
                     graph={visibleGraph3D}
                     control={rag3dControl}
+                    theme="dark"
                     onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
                   />
                   <div className="rag3d-overlay">
@@ -2757,6 +2765,7 @@ export default function BakeBoardPage() {
                 {chatInfoOpen ? (
                   <div className="chat-status-row">
                     <div><span>RAG 신뢰도</span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
+                    <div><span>Local/Cloud</span><strong>{fusionDisplayText}</strong></div>
                     <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
                     <div><span>생성 방식</span><strong>{graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "준비"}</strong></div>
                     <div><span>Guardrail</span><strong>{guardScore === null ? "자동 대기" : `${guardScore}점 / ${guardClaimCount} 주장`}</strong></div>
@@ -2766,7 +2775,7 @@ export default function BakeBoardPage() {
                 <div className="chat-scroll" ref={chatScrollRef}>
                   {chatMessages.map((message, index) => (
                     <article className="message" data-role={message.role} key={`${message.role}-${index}`}>
-                      <span>{message.role === "user" ? "사용자" : "Homage RAG"}</span>
+                      <span>{message.role === "user" ? "사용자" : "ATANOR RAG"}</span>
                       <p>{message.text}</p>
                       {message.evidence?.length ? (
                         <div className="message-evidence">

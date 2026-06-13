@@ -19,7 +19,7 @@ def test_neuro_plan_api() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["architecture"] == "Homage Neuro-Efficiency Layer"
+    assert body["architecture"] == "ATANOR Neuro-Efficiency Layer"
     assert body["event_gate"]["sparsity"] > 0
     assert len(body["module_routing"]["active_modules"]) <= 4
     assert body["energy_estimate"]["reduction_ratio"] > 0.5
@@ -74,6 +74,9 @@ def test_neuro_benchmark_api() -> None:
     body = response.json()
     assert body["can_read_local_hardware"] is True
     assert body["recommended_learning_volume"] == "max"
+    assert body["execution_tier"] == "tier_1_m"
+    assert body["max_chunk_nodes"] == 5_000
+    assert body["continuous_threading_enabled"] is True
     assert body["recommended_stability_payload"]["target_nodes"] == 500_000
     assert body["recommended_stability_payload"]["target_edges"] == 2_400_000
     assert body["ontology_tuning"]["hot_window_nodes"] == 24_000

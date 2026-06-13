@@ -23,7 +23,7 @@ Reference links:
 ## License Decision
 
 MiroFish is licensed under AGPL-3.0. To avoid importing AGPL obligations into
-this repository, no MiroFish code was copied verbatim. Homage borrows the
+this repository, no MiroFish code was copied verbatim. ATANOR borrows the
 interaction structure and visual hierarchy only:
 
 - top graph/split/workbench switcher
@@ -32,4 +32,4 @@ interaction structure and visual hierarchy only:
 - bottom system dashboard log
 
 The implementation in `apps/web/app/page.tsx` and `apps/web/app/globals.css`
-is original React/CSS tailored to Homage1.0.
+is original React/CSS tailored to ATANOR.

@@ -17,6 +17,10 @@ function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+function shouldSurfaceUpdaterErrors(): boolean {
+  return process.env.NEXT_PUBLIC_ATANOR_SHOW_UPDATER_ERRORS === "1" || process.env.NEXT_PUBLIC_HOMAGE_SHOW_UPDATER_ERRORS === "1";
+}
+
 export function useTauriUpdater() {
   const updateRef = useRef<TauriUpdate | null>(null);
   const [state, setState] = useState<UpdaterState>("idle");
@@ -48,8 +52,15 @@ export function useTauriUpdater() {
         }
       } catch (caught) {
         if (cancelled) return;
-        setError(caught instanceof Error ? caught.message : String(caught));
-        setState("error");
+        const message = caught instanceof Error ? caught.message : String(caught);
+        console.info("[ATANOR updater] update check skipped:", message);
+        if (shouldSurfaceUpdaterErrors()) {
+          setError(message);
+          setState("error");
+        } else {
+          setError(null);
+          setState("unavailable");
+        }
       }
     };
 

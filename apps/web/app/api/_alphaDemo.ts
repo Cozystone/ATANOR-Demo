@@ -135,9 +135,9 @@ export function demoLearningDaemonStatus() {
     latest_edge_count: 0,
     checkpoint_count: demoState.learningDaemon.last_checkpoint_at ? 1 : 0,
     local_required: true,
-    deployment_policy: "Vercel 배포본은 작은 클라우드 브레인 뷰어입니다. 실제 상시 수집/고정/가지치기는 사용자의 로컬 FastAPI와 data/memory 저장소에서만 실행됩니다.",
+    deployment_policy: "Vercel ??????袁⑸즴筌?씛彛???돗????????????썹땟戮녹??諭????????????ъ몥??우뒭亦낆쥋援??룰큿???뉗꽫?? ??? ??????????????숈춻????????????????????????????????ㅻ쑋?????????癲?? ???????嚥???癲??關?쒎첎???????????????嶺??????????쇰뮛????????????????????????????????됰Ŧ????????????癲ル슢??蹂좉슈??????????筌??????????????????????FastAPI?? data/memory ????????????????????????????????????븐뼐?????????",
     last_round_action: "deployment_demo_boundary",
-    last_round_message: "배포본에서는 장기 Cloud Brain worker를 유지하지 않습니다. 로컬 FastAPI를 연결하면 실제 worker 상태를 읽습니다.",
+    last_round_message: "??????袁⑸즴筌?씛彛???돗????????????썹땟戮녹??諭????????????ъ몥??우뒭亦낆쥋援??룰큿???뉗꽫??????????????븐뼐???????????????거???????Cloud Brain worker???????? ????????????????쇨덫櫻? ???????????FastAPI???????????怨뺤떪???????????????嚥???癲??關?쒎첎?????worker ??????癲?????????????????????쇨덫櫻?",
     resource_snapshot: {
       disk_free_gb: null,
       disk_total_gb: null,
@@ -149,7 +149,7 @@ export function demoLearningDaemonStatus() {
       checkpoint_dir: "data/memory/daemon_checkpoints",
       heartbeat_interval_seconds: 30,
       checkpoint_interval_seconds: 300,
-      resume_contract: "PC 재부팅 후 로컬 FastAPI를 다시 켜고 재개 버튼을 누르면 daemon_state.json과 SQLite WAL에서 Cloud Brain worker가 이어갑니다.",
+      resume_contract: "PC ??????????????????FastAPI???????????ш끽紐??????????諛몃마嶺뚮??????????????????????????????????궰????daemon_state.json??SQLite WAL?????Cloud Brain worker??????????? ???????μ떜媛?걫???????????????????",
     },
     llm_policy: {
       external_llm: false,
@@ -328,7 +328,7 @@ export function demoNeuroPlan(input?: { text?: string; task_type?: string; targe
 
   return {
     generated_at: now(),
-    architecture: "Homage Neuro-Efficiency Layer",
+    architecture: "ATANOR Neuro-Efficiency Layer",
     objective: "Run adaptive AI workloads with sparse events, modular routing, compact memory, and explicit compression controls.",
     workload: {
       task_type: input?.task_type ?? "alpha-dashboard",
@@ -396,9 +396,7 @@ function normalizedQuery(query: string) {
 }
 
 function cleanTopicToken(token: string) {
-  return /^[가-힣]{2,}(에게|에서|으로|은|는|이|가|을|를|의|와|과)$/.test(token)
-    ? token.replace(/(에게|에서|으로|은|는|이|가|을|를|의|와|과)$/, "")
-    : token;
+  return token;
 }
 
 function includesAny(query: string, terms: string[]) {
@@ -407,12 +405,12 @@ function includesAny(query: string, terms: string[]) {
 
 function isGreetingQuery(query: string) {
   const normalized = normalizedQuery(query);
-  return /^(안녕|안녕하세요|하이|헬로|반가워|hi|hello|hey|yo)[\s!.?。！？]*$/i.test(normalized);
+  return /^(hi|hello|hey|yo)[\s!.?]*$/i.test(normalized);
 }
 
 function isThanksQuery(query: string) {
   const normalized = normalizedQuery(query);
-  return /^(고마워|감사|감사합니다|땡큐|thanks|thank you)[\s!.?。！？]*$/i.test(normalized);
+  return /^(thanks|thank you)[\s!.?]*$/i.test(normalized);
 }
 
 export function isConversationalQuery(query: string) {
@@ -421,37 +419,35 @@ export function isConversationalQuery(query: string) {
 
 export function isNodeInventoryQuery(query: string) {
   const normalized = normalizedQuery(query);
-  return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
+  return /(node|nodes|inventory)/i.test(normalized) && /(list|all|show|inventory|available)/i.test(normalized);
 }
 
 export function isLegendQuery(query: string) {
   const normalized = normalizedQuery(query);
-  const asksColor = /(색|색깔|색상|컬러|범례|legend|color)/i.test(normalized);
-  const asksMeaning = /(의미|뜻|뭐|설명|구분|차이|meaning|mean|label)/i.test(normalized);
-  const graphContext = /(노드|그래프|rag|온톨로지|메모리|신호|뉴런|node|graph)/i.test(normalized);
-  return asksColor && (asksMeaning || graphContext);
+  const asksColor = /(legend|color)/i.test(normalized);
+  const asksMeaning = /(meaning|mean|label|graph|node)/i.test(normalized);
+  return asksColor && asksMeaning;
 }
-
 function isInternalStructureQuery(query: string) {
   const normalized = normalizedQuery(query);
-  const selfOrSystem = /(너|네|니|너희|homage|bakeboard|rag|graphrag|온톨로지|메모리|파이프라인|엔진|시스템|아키텍처|구조|architecture|system|engine)/i.test(normalized);
-  const asksStructure = /(구조|설명|작동|어떻게|뭐야|무엇|누구|흐름|과정|엔진|아키텍처|structure|explain|architecture|work|flow)/i.test(normalized);
+  const selfOrSystem = /(atanor|rag|graphrag|ghost|shell|payload|vault|architecture|system|engine|structure|graph)/i.test(normalized);
+  const asksStructure = /(structure|explain|architecture|work|flow|how|what|define)/i.test(normalized);
   return selfOrSystem && asksStructure;
 }
 
 function nodeTypeText(type?: string) {
   const labels: Record<string, string> = {
-    concept: "개념",
-    keyword: "키워드",
-    source: "자료",
-    ontology: "온톨로지",
-    retrieval: "검색",
-    guardrail: "가드레일",
-    training: "학습",
-    visualization: "시각화",
-    critique: "비평",
+    concept: "concept",
+    keyword: "keyword",
+    source: "source",
+    ontology: "ontology",
+    retrieval: "retrieval",
+    guardrail: "guardrail",
+    training: "training",
+    visualization: "visualization",
+    critique: "critique",
   };
-  return labels[type ?? ""] ?? type ?? "기억";
+  return labels[type ?? ""] ?? type ?? "node";
 }
 
 function nodeTypeColor(type?: string) {
@@ -477,22 +473,21 @@ function nodeTypeColor(type?: string) {
 
 function nodeTypeDescription(type?: string) {
   const descriptions: Record<string, string> = {
-    source: "외부에서 수집된 원문 자료와 근거 청크",
-    critique: "품질 문제와 반례를 표시하는 비평 신호",
-    ontology: "개념 사이의 관계를 묶는 온톨로지 메모리",
-    retrieval: "질문을 근거 문서와 그래프 경로로 연결하는 검색 노드",
-    visualization: "학습 상태를 화면에 투사하는 시각화 노드",
-    guardrail: "과장, 환각, 근거 부족을 검증하는 안전 노드",
-    training: "Homage Oven으로 넘어가는 학습/압축 신호",
-    concept: "문서에서 추출된 핵심 개념",
-    keyword: "검색과 관계 확장에 쓰이는 키워드 기억",
+    source: "raw source or payload origin",
+    critique: "quality critique or correction signal",
+    ontology: "conceptual ontology memory node",
+    retrieval: "retrieval and GraphRAG routing node",
+    visualization: "3D viewport and signal visualization node",
+    guardrail: "claim validation and safety node",
+    training: "learning, replay, or distillation node",
+    concept: "canonical concept node",
+    keyword: "searchable keyword node",
   };
-  return descriptions[type ?? ""] ?? "현재 그래프에서 관찰된 사용자 정의 기억 노드";
+  return descriptions[type ?? ""] ?? "ATANOR Ghost Shell graph node";
 }
-
 function nativeAnswerEngine(mode = "ontology-graph-token-prediction-alpha") {
   return {
-    name: "Homage Graph Token Predictor",
+    name: "ATANOR Graph Token Predictor",
     mode,
     external_llm: false,
     homage_core: "homage-core-30m-scaffold",
@@ -504,17 +499,17 @@ function nativeAnswerEngine(mode = "ontology-graph-token-prediction-alpha") {
 }
 
 function makeNodeInventoryResult(query: string) {
-  const nodeLines = demoNodes.map((node, index) => `${index + 1}. ${node.label} (${nodeTypeText(node.type)}, id: ${node.id}, 신뢰도 ${Math.round(node.confidence * 100)}%)`);
+  const nodeLines = demoNodes.map((node, index) => `${index + 1}. ${node.label} (${nodeTypeText(node.type)}, id: ${node.id}, confidence ${Math.round(node.confidence * 100)}%)`);
   return {
     query,
-    method: "homage-graph-inspection-v1",
-    answer: `현재 데모 온톨로지 메모리에는 ${demoNodes.length}개 노드와 ${demoEdges.length}개 관계가 있습니다.\n${nodeLines.join("\n")}`,
+    method: "atanor-graph-inspection-v1",
+    answer: `ATANOR Ghost Shell currently exposes ${demoNodes.length} demo nodes and ${demoEdges.length} demo edges.\n${nodeLines.join("\n")}`,
     matched_nodes: demoNodes,
     matched_edges: demoEdges,
     evidence_docs: [],
     citations: [],
     graph_paths: demoEdges.map((edge) => [edge.source, edge.relation, edge.target]),
-    follow_up_questions: ["관계선도 모두 보여줄까요?", "특정 노드의 이웃만 펼쳐볼까요?"],
+    follow_up_questions: ["Show active hashes", "Explain Payload Vault"],
     retrieval_trace: {
       strategy: "graph inventory intent; retrieval skipped",
       query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
@@ -523,7 +518,7 @@ function makeNodeInventoryResult(query: string) {
       matched_node_ids: demoNodes.map((node) => node.id),
     },
     answer_kind: "inspection",
-    answer_engine: { ...nativeAnswerEngine("graph-inspection-control-alpha"), name: "BakeBoard Inspection Router", surface_generation: "disabled" },
+    answer_engine: { ...nativeAnswerEngine("graph-inspection-control-alpha"), name: "ATANOR Inspection Router", surface_generation: "disabled" },
     confidence: 0.99,
   };
 }
@@ -539,17 +534,17 @@ function makeLegendResult(query: string) {
       representatives.push(node);
     }
   });
-  const lines = typeOrder.map((type) => `- ${nodeTypeColor(type)} ${nodeTypeText(type)}: ${nodeTypeDescription(type)}. 현재 ${typeCounts.get(type) ?? 0}개`);
+  const lines = typeOrder.map((type) => `- ${nodeTypeColor(type)} ${nodeTypeText(type)}: ${nodeTypeDescription(type)}. count ${typeCounts.get(type) ?? 0}`);
   return {
     query,
-    method: "homage-graph-legend-v1",
-    answer: `색깔은 노드의 역할을 뜻합니다. 기본 색은 기억 타입이고, 답변 생성 중 주황색 발광은 지금 읽히는 활성 신호입니다.\n${lines.join("\n")}`,
+    method: "atanor-graph-legend-v1",
+    answer: `ATANOR graph colors describe Ghost Shell node classes and active signal states.\n${lines.join("\n")}`,
     matched_nodes: representatives,
     matched_edges: demoEdges,
     evidence_docs: [],
     citations: [],
     graph_paths: demoEdges.map((edge) => [edge.source, edge.relation, edge.target]),
-    follow_up_questions: ["주황색 신호가 어떤 노드를 읽는지 보여줄까요?", "현재 노드 목록도 같이 펼쳐볼까요?"],
+    follow_up_questions: ["Show node inventory", "Explain active signal states"],
     retrieval_trace: {
       strategy: "graph legend intent; retrieval skipped",
       query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
@@ -558,7 +553,7 @@ function makeLegendResult(query: string) {
       matched_node_ids: representatives.map((node) => node.id),
     },
     answer_kind: "inspection",
-    answer_engine: { ...nativeAnswerEngine("graph-legend-control-alpha"), name: "BakeBoard Inspection Router", surface_generation: "disabled" },
+    answer_engine: { ...nativeAnswerEngine("graph-legend-control-alpha"), name: "ATANOR Inspection Router", surface_generation: "disabled" },
     confidence: 0.98,
   };
 }
@@ -566,23 +561,23 @@ function makeLegendResult(query: string) {
 function nodeMatchesQuery(nodeId: string, query: string) {
   const normalized = normalizedQuery(query);
   const termMap: Record<string, string[]> = {
-    graphrag: ["graphrag", "graph rag", "그래프rag", "그래프 rag", "rag", "검색", "질문", "답변", "retrieval"],
-    knowledgegraph: ["knowledgegraph", "knowledge graph", "지식그래프", "지식 그래프", "온톨로지", "그래프", "노드", "관계"],
-    evidence: ["evidence", "근거", "문서", "출처", "citation", "인용", "검증"],
-    guardrail: ["guardrail", "guard rail", "가드레일", "검증", "환각", "과장", "hallucination"],
+    graphrag: ["graphrag", "graph rag", "rag", "retrieval"],
+    knowledgegraph: ["knowledgegraph", "knowledge graph", "ontology", "graph"],
+    evidence: ["evidence", "citation", "source", "grounded"],
+    guardrail: ["guardrail", "guard rail", "hallucination", "safety"],
   };
   return includesAny(normalized, termMap[nodeId] ?? []);
 }
 
 function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "no_match") {
   const answer = kind === "greeting"
-    ? "안녕하세요. Homage 실험실입니다. 지금은 외부 LLM 없이 그래프 메모리와 native 생성기를 실험하는 상태예요."
+    ? "ATANOR online. Local Ghost Shell and Payload Vault are ready for traceable inference."
     : kind === "thanks"
-      ? "천만에요. 이상한 출력이 보이면 그대로 남겨 주세요. 그래프와 생성 경로를 분리해서 확인하겠습니다."
+      ? "Acknowledged. ATANOR will keep synthesis local, traceable, and air-gapped."
       : query;
   return {
     query,
-    method: "homage-conversation-router-v1",
+    method: "atanor-conversation-router-v1",
     answer,
     matched_nodes: [],
     matched_edges: [],
@@ -610,21 +605,21 @@ function makeConversationalResult(query: string, kind: "greeting" | "thanks" | "
 function makeOpenGenerationResult(query: string) {
   const internalDocs = [
     {
-      doc_id: "homage-internal-architecture",
-      chunk_id: "homage-internal-architecture#1",
-      path: "internal://homage-architecture",
+      doc_id: "atanor-internal-architecture",
+      chunk_id: "atanor-internal-architecture#1",
+      path: "internal://atanor-architecture",
       score: 0.32,
       snippet:
-        "Homage1.0은 Harvest, DataGate, Ontology Forge, GraphRAG, Guardrail, Homage Oven, Neuro-Efficiency, Hardware Benchmark, BakeBoard UI로 나뉩니다. DataGate는 입력 품질을 거르고, Ontology Forge는 개념과 관계를 만들고, GraphRAG는 질문 시 활성 노드와 문서 chunk를 모아 context bundle을 만듭니다.",
+        "ATANOR combines DataGate, Ontology Forge, Ghost Shell, Payload Vault, GraphRAG, Guardrail, local synthesis, and hardware adaptation into a local-first transparent inference engine.",
       retrieval_signals: { internal_context: true },
     },
     {
-      doc_id: "homage-internal-architecture",
-      chunk_id: "homage-internal-architecture#2",
-      path: "internal://homage-architecture",
+      doc_id: "atanor-internal-architecture",
+      chunk_id: "atanor-internal-architecture#2",
+      path: "internal://atanor-architecture",
       score: 0.3,
       snippet:
-        "Homage Graph Token Predictor는 외부 LLM을 쓰지 않고 sentence tokens, co-occurrence edges, ontology paths, active concepts를 연결해 다음 토큰열을 걷습니다. 연결이 약하면 답변 품질도 그대로 약하게 드러납니다.",
+        "ATANOR does not rely on external LLM APIs for answer synthesis. It uses traceable graph context, payload evidence, and local deterministic or on-device generation hooks.",
       retrieval_signals: { internal_context: true },
     },
   ];
@@ -632,7 +627,7 @@ function makeOpenGenerationResult(query: string) {
   const utterance = makeNativeDemoUtterance(query, demoNodes, graphPaths, internalDocs);
   return {
     query,
-    method: "homage-graph-token-rag-v1",
+    method: "atanor-graph-token-rag-v1",
     answer: utterance.answer,
     matched_nodes: demoNodes,
     matched_edges: demoEdges,
@@ -643,7 +638,7 @@ function makeOpenGenerationResult(query: string) {
     retrieval_trace: {
       strategy: "internal architecture docs + ontology token transition graph + graph-token prediction",
       query_terms: normalizedQuery(query).split(/\s+/).filter(Boolean),
-      expanded_terms: ["homage", "architecture", "graphrag", "ontology", "guardrail", "oven"],
+      expanded_terms: ["atanor", "architecture", "graphrag", "ontology", "guardrail", "vault"],
       ranked_chunk_ids: internalDocs.map((doc) => doc.chunk_id),
       matched_node_ids: demoNodes.map((node) => node.id),
     },
@@ -655,7 +650,6 @@ function makeOpenGenerationResult(query: string) {
     confidence: 0.64,
   };
 }
-
 function makeNoEvidenceResult(query: string) {
   const queryTerms = normalizedQuery(query).split(/\s+/).filter(Boolean);
   const tokens = queryTerms.slice(0, 4);
@@ -667,7 +661,7 @@ function makeNoEvidenceResult(query: string) {
   ].join("\n");
   return {
     query,
-    method: "homage-research-no-evidence-v1",
+    method: "atanor-research-no-evidence-v1",
     answer,
     matched_nodes: [],
     matched_edges: [],
@@ -701,14 +695,13 @@ function makeNoEvidenceResult(query: string) {
 
 function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, graphPaths: string[][], evidenceDocs: any[]) {
   const activeConcepts = matchedNodes.map((node) => node.label).slice(0, 6);
-  const intent = /(왜|이유|why|줄이는)/i.test(query)
+  const intent = /(why|cause|reason)/i.test(query)
     ? "explain_cause"
-    : /(어떻게|방법|과정|how)/i.test(query)
+    : /(how|process|flow|step)/i.test(query)
       ? "explain_process"
-      : /(뭐|무엇|정의|의미|what)/i.test(query)
+      : /(what|define)/i.test(query)
         ? "define"
-        : "answer_grounded";
-  const graphDocs = graphPaths.map((path, index) => ({
+        : "answer_grounded";  const graphDocs = graphPaths.map((path, index) => ({
     chunk_id: `graph-path#${index + 1}`,
     snippet: path.join(" "),
   }));
@@ -730,7 +723,7 @@ function makeNativeDemoUtterance(query: string, matchedNodes: typeof demoNodes, 
     answer_kind: prediction.answer_kind,
     answer_engine: {
       ...nativeAnswerEngine(prediction.answer_kind === "no_evidence" ? "no-evidence-diagnostic-alpha" : "ontology-graph-token-prediction-alpha"),
-      name: "Homage Graph Token Predictor",
+      name: "ATANOR Graph Token Predictor",
       prediction_basis: "ontology_token_transition_graph",
       surface_generation: "graph_walk",
       diagnostics: prediction.diagnostics,
@@ -749,9 +742,8 @@ function predictionTokens(text: string) {
 }
 
 function trimParticle(token: string) {
-  return token.replace(/(은|는|이|가|을|를|에게|에서|으로|로|와|과|도|만|의)$/u, "");
+  return token;
 }
-
 function makeGraphTokenPrediction(query: string, webEvidenceDocs: any[]) {
   const texts = webEvidenceDocs.map((doc) => cleanWebSnippet(doc.snippet || doc.text)).filter(Boolean);
   const transitions = new Map<string, Map<string, number>>();
@@ -849,14 +841,14 @@ function makeWebSearchResult(query: string, webEvidenceDocs: any[], webSearchPay
   const prediction = makeGraphTokenPrediction(query, webEvidenceDocs);
   return {
     ...base,
-    method: "homage-graph-token-web-rag-v1",
+    method: "atanor-graph-token-web-rag-v1",
     answer: prediction.answer,
     evidence_docs: webEvidenceDocs,
     citations: webEvidenceDocs.map((doc) => ({ doc_id: doc.chunk_id, source_doc_id: doc.doc_id, path: doc.url ?? doc.path, url: doc.url, score: doc.score })),
     web_search: webSearchPayload,
     answer_engine: {
       ...nativeAnswerEngine("web-ontology-graph-token-prediction-alpha"),
-      name: "Homage Graph Token Predictor",
+      name: "ATANOR Graph Token Predictor",
       surface_generation: "graph_walk",
       prediction_basis: "ontology_token_transition_graph",
       diagnostics: prediction.diagnostics,
@@ -892,7 +884,7 @@ export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSear
       chunk_id: "demo-001#1",
       path: "data/cleaned/demo-001.txt",
       score: 1.42,
-      snippet: "GraphRAG는 KnowledgeGraph 구조를 사용해 답변 근거가 되는 Evidence를 검색합니다.",
+      snippet: "GraphRAG??KnowledgeGraph ??????????????????? ????????????? ??????筌띯뫔????????룸챷援?????Evidence??????留⑶뜮??????????????????????쇨덫櫻?",
       retrieval_signals: { lexical: 1.04, coverage: 0.75, graph_boost: 0.31, phrase_bonus: 0.2 },
     },
     {
@@ -900,7 +892,7 @@ export function makeEvidence(query: string, webEvidenceDocs: any[] = [], webSear
       chunk_id: "demo-002#1",
       path: "data/cleaned/demo-002.txt",
       score: 0.96,
-      snippet: "Guardrail은 답변의 주장을 Evidence와 대조하고 과신 표현을 표시합니다.",
+      snippet: "Guardrail?? ????????????袁⑸즴筌?????Evidence?? ??????????????????????????????????????????븐뼐?????????",
       retrieval_signals: { lexical: 0.62, coverage: 0.5, graph_boost: 0.2, phrase_bonus: 0 },
     },
   ].filter((doc) => matchedNodes.some((node) => node.evidence_doc_ids.includes(doc.doc_id)));
@@ -941,7 +933,7 @@ export function demoPipelineStatus() {
       { id: "harvest", name: "Harvest", state: "complete", progress: 100, summary: "Demo local documents are staged.", metric_label: "documents", metric_value: "4 demo" },
       { id: "datagate", name: "DataGate", state: demoState.datagate.state === "completed" ? "complete" : demoState.datagate.state, progress: 100, summary: "DataGate accepted demo documents and rejected one short file.", metric_label: "quality gate", metric_value: "3/4 accepted" },
       { id: "ontology-forge", name: "Ontology Forge", state: "complete", progress: 100, summary: "Concept nodes and candidate edges are available.", metric_label: "graph", metric_value: `${demoNodes.length} nodes / ${demoEdges.length} edges` },
-      { id: "homage-oven", name: "Homage Oven", state: "complete", progress: 100, summary: "Dry-run scaffold produced a short loss trace.", metric_label: "last loss", metric_value: String(demoState.oven.last_loss) },
+      { id: "homage-oven", name: "ATANOR Oven", state: "complete", progress: 100, summary: "Dry-run scaffold produced a short loss trace.", metric_label: "last loss", metric_value: String(demoState.oven.last_loss) },
       { id: "graphrag", name: "GraphRAG", state: "complete", progress: 100, summary: "Demo evidence bundle is ready.", metric_label: "confidence", metric_value: "0.82" },
       { id: "knowledge-bakery", name: "Knowledge Bakery", state: "complete", progress: 100, summary: "Demo sentence components, phrase nodes, and activation index are available.", metric_label: "memory", metric_value: `${demoMemoryStatus().node_count} nodes` },
       { id: "guardrail", name: "Guardrail", state: demoState.guard.state === "idle" ? "idle" : "complete", progress: demoState.guard.state === "idle" ? 0 : 100, summary: "Ready to check draft claims.", metric_label: "guard score", metric_value: String(demoState.guard.overall_guard_score) },
@@ -962,7 +954,7 @@ export function demoOntologyRun() {
 
 export function demoGraphRAGQuery(query: string, webEvidenceDocs: any[] = [], webSearchPayload: any = null) {
   const result: any = makeEvidence(query || "GraphRAG evidence", webEvidenceDocs, webSearchPayload);
-  const isConversationResult = result.method === "homage-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(result.answer_kind);
+  const isConversationResult = result.method === "atanor-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(result.answer_kind);
   if (!isConversationResult) {
     result.memory_activation = demoMemoryActivate(result.query);
     result.answer_engine = {
@@ -975,8 +967,8 @@ export function demoGraphRAGQuery(query: string, webEvidenceDocs: any[] = [], we
 }
 
 export function demoGuardCheck(draft: string) {
-  const hasOverclaim = /always|never|guarantees|completely eliminates|항상|절대|보장/i.test(draft);
-  const hasEvidence = /GraphRAG|Evidence|Guardrail|KnowledgeGraph|근거|문서|가드레일|지식\s*그래프|검증/i.test(draft);
+  const hasOverclaim = /always|never|guarantees|completely eliminates/i.test(draft);
+  const hasEvidence = /GraphRAG|Evidence|Guardrail|KnowledgeGraph|ATANOR|Ghost Shell|Payload Vault/i.test(draft);
   const support = hasEvidence ? "weak_support" : "unsupported";
   const score = Math.max(0, 100 - (support === "unsupported" ? 35 : 15) - (hasOverclaim ? 10 : 0));
   const result = {
@@ -1060,7 +1052,7 @@ export function demoMemoryGraph(limit = 600) {
 }
 
 export function demoMemoryActivate(query: string) {
-  const terms = query.toLowerCase().split(/[^a-z0-9가-힣-]+/i).filter(Boolean);
+  const terms = query.toLowerCase().split(/[^a-z0-9???????????-??]+/i).filter(Boolean);
   const activeNodes = demoMemoryNodes
     .map((node, index) => {
       const haystack = `${node.id} ${node.label} ${node.type}`.toLowerCase();

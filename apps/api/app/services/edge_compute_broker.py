@@ -73,10 +73,10 @@ class EdgeComputeBroker:
         self.capacity_signal = capacity_signal or NullCapacitySignal()
 
     def current_capacity(self) -> EdgeCapacity:
-        tier = self._detect_tier()
+        tier, runtime_nodes, runtime_edges = self._detect_runtime_limits()
         idle = self._is_probably_idle()
-        max_nodes = self.config.max_nodes if tier in {"tier_1", "tier_2"} else min(self.config.max_nodes, 512)
-        max_edges = self.config.max_edges if tier in {"tier_1", "tier_2"} else min(self.config.max_edges, 2048)
+        max_nodes = min(max(self.config.max_nodes, runtime_nodes), runtime_nodes)
+        max_edges = min(max(self.config.max_edges, runtime_edges), runtime_edges)
         task_types = ["graph_indexing", "ontology_batch_extract", "fragment_validation"] if idle else ["fragment_validation"]
         return EdgeCapacity(
             peer_id=self.config.local_peer_id,
@@ -132,18 +132,14 @@ class EdgeComputeBroker:
             }
 
     @staticmethod
-    def _detect_tier() -> str:
+    def _detect_runtime_limits() -> tuple[str, int, int]:
         try:
             from neuro_efficiency.hardware_adapter import get_runtime_config
 
             config = get_runtime_config()
-            if config.tier == "target":
-                return "tier_1"
-            if config.tier == "baseline":
-                return "tier_2"
-            return "tier_3"
+            return str(config.tier), int(config.max_chunk_nodes), int(config.lazy_subgraph_edges)
         except Exception:
-            return "unknown"
+            return "unknown", 512, 2048
 
     @staticmethod
     def _is_probably_idle() -> bool:

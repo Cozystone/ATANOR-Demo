@@ -5,7 +5,7 @@ import math
 from datetime import datetime, timezone
 from pathlib import Path
 
-from model import HomageCoreModel
+from model import AtanorCoreModel
 
 
 def _read_corpus(cleaned_dir: str, sample_dir: str) -> str:
@@ -14,18 +14,18 @@ def _read_corpus(cleaned_dir: str, sample_dir: str) -> str:
         root.mkdir(parents=True, exist_ok=True)
         for path in sorted([*root.rglob("*.txt"), *root.rglob("*.md")]):
             chunks.append(path.read_text(encoding="utf-8", errors="ignore"))
-    return "\n".join(chunks) or "Homage Core learns from transparent evidence traces."
+    return "\n".join(chunks) or "ATANOR Core learns from transparent evidence traces."
 
 
 def run_dry_run(
     cleaned_dir: str = "data/cleaned",
     sample_dir: str = "data/train_sample",
-    checkpoint_dir: str = "checkpoints/homage-core-30m-dev",
+    checkpoint_dir: str = "checkpoints/atanor-core-30m-dev",
     steps: int = 5,
 ) -> dict:
     steps = max(1, min(5, steps))
     corpus = _read_corpus(cleaned_dir, sample_dir)
-    model = HomageCoreModel()
+    model = AtanorCoreModel()
     unique_chars = len(set(corpus))
     losses = []
     for step in range(1, steps + 1):

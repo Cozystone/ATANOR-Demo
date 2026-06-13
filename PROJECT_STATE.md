@@ -1,9 +1,74 @@
 # Project State
 
+## 2026-06-14 ATANOR 0.1.1 Deployment Candidate
+
+Completed:
+
+- Added Adaptive Local-Cloud Ratio Control to `rag_engine.fusion`.
+- `/api/graphrag/query` now exposes `fusion_ratio` diagnostics with:
+  - `local_weight`
+  - `cloud_weight`
+  - `local_brain_strength_score`
+  - stage/reason
+  - bounded Cloud Brain fragment policy
+- Private/local-only queries and invalid cloud fragments force `cloud_weight = 0`.
+- Low-memory and survival modes clamp Cloud Brain fragment size.
+- Weighted RRF now keeps local private memory above cloud context.
+- The main BakeBoard UI displays a small Local/Cloud ratio indicator in the RAG status panel.
+- Bumped deploy candidate version to `0.1.1` to avoid collision with existing Partner Center `0.1.0.0` package.
+- Built final local desktop artifacts:
+  - `dist/ATANOR_0.1.1/ATANOR_0.1.1_x64-setup.exe`
+  - `dist/ATANOR_0.1.1/ATANOR_0.1.1_x64_en-US.msi`
+  - `dist/ATANOR_0.1.1/ATANOR_0.1.1.0_x64.msix`
+  - `dist/ATANOR_0.1.1/ATANOR_0.1.1.0_x64.msixupload`
+  - `dist/ATANOR_0.1.1/SHA256SUMS.txt`
+
+Verification:
+
+- `python -m py_compile ...` passed for the API/RAG/Knowledge Bakery critical files.
+- `python -m pytest apps/api/tests packages/rag_engine/tests packages/model/tests -q` passed with `49 passed`.
+- `npm --workspace apps/web run build` passed.
+- `npm run desktop:build` completed and produced NSIS/MSI bundles.
+- `scripts/build_store_msix.ps1 -SkipDesktopBuild` completed and produced `ATANOR_0.1.1.0_x64.msixupload`.
+
+Deployment note:
+
+- Partner Center package page is reachable for product `9PBN2HNPWQ7V`.
+- Existing uploaded package remains `Homage_0.1.0.0_x64.msixupload`.
+- Automated upload of the new `.msixupload` is blocked by the current browser automation surface because file input upload is not exposed and the Windows file picker did not attach the file. The old package removal marker was reverted; no destructive save was performed.
+
+## 2026-06-13 ATANOR Rebrand State
+
+The project identity has moved to **ATANOR**: **Architecture for Transparent
+Anomy and Networked Ontology in Radical Engines**.
+
+Completed:
+
+- Reframed README and project documentation around ATANOR's Transparent Anomy
+  philosophy: local-first, traceable, air-gapped graph inference rather than
+  imitation of mainstream black-box LLM systems.
+- Added `docs/ATANOR_MANIFESTO.md`.
+- Renamed the main PRD and research/goal documents to ATANOR filenames.
+- Updated the public-facing Next.js metadata, Tauri product names, package names,
+  FastAPI title, local synthesizer identity, GraphRAG method labels, and visible
+  `ATANOR RAG` / `ATANOR Oven` labels.
+- Preserved core DataGate, Ontology Forge, Ghost Shell, Payload Vault, GraphRAG,
+  Knowledge Bakery, and 3D RAG logic.
+- Kept selected legacy strings where changing them would break Alpha installs or
+  current deployment compatibility: live demo URL, GitHub repository URL,
+  SQLite filenames, sidecar binary names, Store package identity, and `HOMAGE_*`
+  environment-variable fallbacks.
+
+Verification:
+
+- `npm --workspace apps/web run build` passed.
+- `python -m pytest apps/api/tests packages/rag_engine/tests packages/model/tests -q`
+  passed with `44 passed`.
+
 ## Current Status
 
-Homage1.0 Alpha is implemented and deployed as an interactive MVP with a
-MiroFish-inspired console UI and research-backed Neuro-Efficiency Layer. The
+ATANOR Alpha is implemented and deployed as an interactive MVP with a
+3D Ghost Shell console UI and research-backed Neuro-Efficiency Layer. The
 deployment is treated as a small lab / Cloud Brain viewer; real Cloud Brain
 learning is run locally through FastAPI and Knowledge Bakery today, with a
 future path for governed shared public ontology fragments.
@@ -800,3 +865,53 @@ Latest 2026-06-12 update:
 5. Replace the deterministic local projection with PPMI/random-indexing or
    graph-walk vectors trained only on the local memory event log.
 6. Add the first native decoder endpoint with unsupported-token diagnostics.
+
+## Distribution Update - Windows/macOS Public Release Tracks
+
+- Windows public distribution should move to Microsoft Store MSIX as the
+  primary route so Microsoft can re-sign the package and reduce SmartScreen /
+  Smart App Control friction for first-time users.
+- Windows EXE/MSI remains useful for local development and power-user testing,
+  but the current self-signed certificate tooling is explicitly dev-only.
+- macOS distribution is now planned as two parallel tracks:
+  - Developer ID signed + notarized DMG for the full local-first Homage desktop
+    runtime, including the FastAPI sidecar, local networking, file watching, and
+    Payload Vault behavior.
+  - Mac App Store candidate packaging for a future sandboxed consumer-facing
+    build, likely with reduced operator capabilities or user-selected file
+    access.
+- Added macOS Tauri distribution configs:
+  - `src-tauri/tauri.macos.conf.json`
+  - `src-tauri/tauri.appstore.conf.json`
+  - `src-tauri/Entitlements.plist`
+  - `src-tauri/Entitlements.appstore.plist`
+  - `src-tauri/Info.macos.plist`
+  - `src-tauri/Info.appstore.plist`
+- Added macOS release helpers:
+  - `scripts/macos/preflight.sh`
+  - `scripts/macos/verify_bundle.sh`
+  - `scripts/macos/package_appstore_pkg.sh`
+  - `.github/workflows/macos-distribution.yml`
+- Added `docs/DESKTOP_DISTRIBUTION_STRATEGY.md` to explain the public trust
+  model across Windows, macOS, and Linux.
+
+## Windows Store MSIX Update - 2026-06-13
+
+- Reserved Microsoft Partner Center product name `Homage`.
+- Store product ID: `9PBN2HNPWQ7V`.
+- Captured Store package identity:
+  - `Package/Identity/Name`: `AnseokKim.Homage`
+  - `Package/Identity/Publisher`: `CN=BAE07AF0-E1EB-4107-96CD-CACBEBF82C23`
+  - `PublisherDisplayName`: `Anseok Kim`
+  - `PFN`: `AnseokKim.Homage_ram6gtk9ph338`
+- Added Store MSIX packaging inputs:
+  - `packaging/windows-msix/store-identity.json`
+  - `packaging/windows-msix/AppxManifest.xml.template`
+  - `scripts/build_store_msix.ps1`
+  - package script `npm run store:msix`
+- Generated current Store upload artifacts:
+  - `dist-artifacts/windows-store/Homage_0.1.0.0_x64.msix`
+  - `dist-artifacts/windows-store/Homage_0.1.0.0_x64.msixupload`
+- Known submission risk: Homage is a packaged Win32/Tauri desktop app and
+  declares `runFullTrust`; Partner Center may require restricted capability
+  approval during package validation.

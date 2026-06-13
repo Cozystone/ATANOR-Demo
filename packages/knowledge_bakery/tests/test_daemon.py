@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from knowledge_bakery import daemon_checkpoint, daemon_status, run_synaptic_decay, stop_daemon, tick_daemon
+from knowledge_bakery import daemon_checkpoint, daemon_status, run_synaptic_decay, start_daemon, stop_daemon, tick_daemon
 
 
 def test_daemon_tick_persists_state_and_memory_counts(tmp_path: Path, monkeypatch) -> None:
@@ -45,8 +45,20 @@ def test_status_marks_resume_needed_when_desired_worker_is_missing(tmp_path: Pat
 
     status = daemon_status("data/memory")
 
-    assert status["state"] == "resume_needed"
-    assert status["resume_needed"] is True
+    assert status["state"] == "running"
+    assert status["resume_needed"] is False
+    assert status["worker_alive"] is True
+    stop_daemon("data/memory", "test")
+
+
+def test_start_daemon_self_heals_worker_alive(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    status = start_daemon("data/memory", interval_seconds=5)
+
+    assert status["state"] == "running"
+    assert status["desired_running"] is True
+    assert status["worker_alive"] is True
+    stop_daemon("data/memory", "test")
 
 
 def test_daemon_ingests_raw_files_and_potentiates_synapses(tmp_path: Path, monkeypatch) -> None:
@@ -60,7 +72,9 @@ def test_daemon_ingests_raw_files_and_potentiates_synapses(tmp_path: Path, monke
 
     status = tick_daemon("data/memory", force=True, run_decay=False)
 
-    assert status["last_round_action"] == "raw_ingested_and_memory_rebuilt"
+    assert status["last_round_action"] == "persistent_append_delta_indexed"
+    assert status["queue_state"] == "PERSISTENT_APPEND_APPLIED"
+    assert status["ingestion_mode"] == "persistent_append"
     assert status["ingested_file_count"] == 1
     assert status["synaptic_edge_count"] > 0
     assert not list(raw.glob("*.md"))

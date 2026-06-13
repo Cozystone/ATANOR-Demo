@@ -37,13 +37,12 @@ SEED_URLS = [
 ]
 
 PRESETS = {
-    "lite": {"chunkBudget": 32, "label": "가볍게", "targetNodes": 3_000, "textBudgetChars": 12_000, "textBudgetLabel": "12k chars", "visualNodeBudget": 12},
-    "standard": {"chunkBudget": 128, "label": "표준", "targetNodes": 10_000, "textBudgetChars": 48_000, "textBudgetLabel": "48k chars", "visualNodeBudget": 24},
-    "deep": {"chunkBudget": 384, "label": "깊게", "targetNodes": 25_000, "textBudgetChars": 160_000, "textBudgetLabel": "160k chars", "visualNodeBudget": 36},
-    "max": {"chunkBudget": 4096, "label": "최대", "targetNodes": 500_000, "textBudgetChars": 4_500_000, "textBudgetLabel": "4.5m chars", "visualNodeBudget": 2000},
-    "infinite": {"chunkBudget": 4096, "label": "∞", "targetNodes": None, "textBudgetChars": 4_800_000, "textBudgetLabel": "continuous", "visualNodeBudget": 2000},
+    "lite": {"chunkBudget": 32, "label": "Lite", "targetNodes": 3_000, "textBudgetChars": 12_000, "textBudgetLabel": "12k chars", "visualNodeBudget": 12},
+    "standard": {"chunkBudget": 128, "label": "Standard", "targetNodes": 10_000, "textBudgetChars": 48_000, "textBudgetLabel": "48k chars", "visualNodeBudget": 24},
+    "deep": {"chunkBudget": 384, "label": "Deep", "targetNodes": 25_000, "textBudgetChars": 160_000, "textBudgetLabel": "160k chars", "visualNodeBudget": 36},
+    "max": {"chunkBudget": 4096, "label": "Max", "targetNodes": 500_000, "textBudgetChars": 4_500_000, "textBudgetLabel": "4.5m chars", "visualNodeBudget": 2000},
+    "infinite": {"chunkBudget": 4096, "label": "Infinite", "targetNodes": None, "textBudgetChars": 4_800_000, "textBudgetLabel": "continuous", "visualNodeBudget": 2000},
 }
-
 MEMORY_TOPICS = [
     ("entity-cache", "Entity Cache", "ontology"),
     ("claim-store", "Claim Store", "guardrail"),
@@ -149,7 +148,7 @@ async def build_start(payload: BuildStartRequest) -> dict[str, Any]:
             {"step": "DataGate", "state": "complete", "detail": f"{preset['textBudgetLabel']} text budget passed through compressed chunk routing"},
             {"step": "Ontology Forge", "state": "running" if continuous else "complete", "detail": f"{len(nodes)} representative nodes and {len(edges)} typed relations created"},
             {"step": "GraphRAG", "state": "complete", "detail": "Anchor traversal path and evidence bundle generated"},
-            {"step": "Homage Oven", "state": "ready" if training_gate["ready"] else "waiting", "detail": training_gate["next_action"]},
+            {"step": "ATANOR Oven", "state": "ready" if training_gate["ready"] else "waiting", "detail": training_gate["next_action"]},
         ],
         "notes": [
             "Alpha stores representative graph samples for the browser; target_nodes is the long-run storage/training budget.",
@@ -195,7 +194,7 @@ def _harvest_doc(url: str, index: int, search_payload: dict[str, Any] | None = N
         "url": url,
         "title": result.get("title") or url.split("//", 1)[-1].split("/", 1)[0],
         "status": "fallback",
-        "snippet": result.get("snippet") or "Reference signal queued for local Homage Factory Build.",
+        "snippet": result.get("snippet") or "Reference signal queued for local ATANOR Factory Build.",
         "source_type": result.get("source_type") or ("discussion" if "reddit" in url else "repository_or_docs"),
         "license_status": result.get("license_status") or "reference_only",
         "search_provider": result.get("provider") or (search_payload or {}).get("provider", "seed"),
@@ -252,7 +251,7 @@ def _graph_for_preset(preset: dict[str, Any]) -> dict[str, Any]:
         {"id": "traversal", "label": "Graph Traversal", "type": "retrieval", "x": 3.1, "y": 0.2, "z": 1.2, "confidence": 0.88},
         {"id": "3d", "label": "3D Triangulation", "type": "visualization", "x": 4.2, "y": -1.5, "z": -0.2, "confidence": 0.81},
         {"id": "guard", "label": "Guarded Evidence", "type": "guardrail", "x": 2.6, "y": -2.4, "z": 1.7, "confidence": 0.78},
-        {"id": "oven", "label": "Homage Oven Gate", "type": "training", "x": 5.4, "y": 0.9, "z": 0.5, "confidence": 0.76},
+        {"id": "oven", "label": "ATANOR Oven Gate", "type": "training", "x": 5.4, "y": 0.9, "z": 0.5, "confidence": 0.76},
     ]
     seed_budget = min(preset["visualNodeBudget"], max(12, round(preset["visualNodeBudget"] * 0.86)))
     extra_count = max(0, seed_budget - len(base_nodes))

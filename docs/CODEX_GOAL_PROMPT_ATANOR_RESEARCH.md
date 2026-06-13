@@ -1,10 +1,10 @@
-# Codex Desktop Goal Prompt: Homage Long-Run Research
+# Codex Desktop Goal Prompt: ATANOR Long-Run Research
 
 Paste this into Codex Desktop goal settings when you want Codex to keep
-researching Homage1.0 as a long-running local AI experiment.
+researching ATANOR as a long-running local AI experiment.
 
 ```text
-Build and improve Homage1.0 as a long-running local research system.
+Build and improve ATANOR as a long-running local research system.
 
 Vision:
 Create an independent graph-memory language architecture that can run on a
@@ -72,11 +72,11 @@ Architectural constraints:
   sparse activation, checkpointable state, and browser-verifiable UI behavior.
 - Keep deployment honest: demo/lab viewer only; real cumulative learning is
   local.
-- Greeting/control utterances such as "안녕" must not be routed through web
+- Greeting/control utterances such as "?덈뀞" must not be routed through web
   search just because the web-search toggle is enabled.
 
 Research target:
-Improve Homage toward an independent workstation-scale system that learns from
+Improve ATANOR toward an independent workstation-scale system that learns from
 random and curated text by splitting sentence components, accumulating typed
 3D ontology relations, learning transition/cooccurrence/phrase probabilities,
 and generating language from graph activation rather than a conventional
@@ -96,8 +96,8 @@ If the PC reboots:
 
 1. Start the FastAPI backend again.
 2. Open BakeBoard locally.
-3. Go to `클라우드 브레인`.
-4. If the state is `재개 필요`, resume the local daemon through the local
+3. Go to `?대씪?곕뱶 釉뚮젅??.
+4. If the state is `?ш컻 ?꾩슂`, resume the local daemon through the local
    FastAPI management API or the backend startup policy. The BakeBoard
    Cloud Brain screen is a viewer and should not pretend to operate the worker
    when it is not actually running.
@@ -105,7 +105,7 @@ If the PC reboots:
 For automatic daemon resume after backend startup, start FastAPI with:
 
 ```powershell
-$env:HOMAGE_AUTOSTART_DAEMON="1"
+$env:ATANOR_AUTOSTART_DAEMON="1"
 npm run api:dev
 ```
 

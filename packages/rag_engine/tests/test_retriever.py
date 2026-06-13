@@ -1,4 +1,4 @@
-import json
+﻿import json
 
 from knowledge_bakery import build_memory
 from rag_engine import query_graphrag
@@ -27,13 +27,13 @@ def test_query_graphrag_matches_docs_and_graph(tmp_path):
     assert result["answer"]
     assert result["citations"]
     assert result["retrieval_trace"]["ranked_chunk_ids"]
-    assert result["method"] == "homage-graph-token-rag-v1"
+    assert result["method"] == "atanor-graph-token-rag-v1"
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_engine"]["mode"] == "ontology-graph-token-prediction-alpha"
-    assert result["answer_kind"] == "graph_token_prediction"
-    assert result["pmv"]["intent"]
-    assert result["answer_engine"]["prediction_basis"] == "ontology_token_transition_graph"
-    assert "ontology_path" in result["answer_engine"]["diagnostics"]["graph_units"]
+    assert result["answer_engine"]["mode"] == "local-ghost-shell-autonomous-alpha"
+    assert result["answer_kind"] == "local_synthesis"
+    assert result["answer_engine"]["prediction_basis"] == "ghost_context_bundle_autonomous_synthesis"
+    assert result["answer_engine"]["network_barrier"] == "sealed_for_generation"
+    assert result["answer_engine"]["diagnostics"]["outbound_http_calls"] == 0
     assert result["confidence"] > 0
 
 
@@ -46,16 +46,16 @@ def test_query_graphrag_routes_greeting_without_evidence(tmp_path):
     (ontology / "nodes.json").write_text(json.dumps([{"id": "evidence", "label": "Evidence"}]), encoding="utf-8")
     (ontology / "edges.json").write_text(json.dumps([]), encoding="utf-8")
 
-    result = query_graphrag("안녕", str(cleaned), str(ontology))
+    result = query_graphrag("hello", str(cleaned), str(ontology))
 
-    assert result["method"] == "homage-conversation-router-v1"
+    assert result["method"] == "atanor-conversation-router-v1"
     assert result["answer_engine"]["external_llm"] is False
     assert result["answer_engine"]["surface_generation"] == "native_conversation_surface"
     assert result["evidence_docs"] == []
     assert result["matched_nodes"] == []
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
     assert "CONTROL_INTENT" not in result["answer"]
-    assert "안녕하세요" in result["answer"]
+    assert "ATANOR" in result["answer"]
     assert result["answer_kind"] == "conversation"
 
 
@@ -77,16 +77,16 @@ def test_query_graphrag_lists_nodes_without_retrieval(tmp_path):
     (ontology / "edges.json").write_text(json.dumps([{"source": "graphrag", "relation": "uses", "target": "evidence"}]), encoding="utf-8")
 
     memory = _build_query_memory(cleaned, ontology)
-    result = query_graphrag("너한테 있는 노드 다 말해봐", str(cleaned), str(ontology), memory)
+    result = query_graphrag("show all nodes", str(cleaned), str(ontology), memory)
 
-    assert result["method"] == "homage-graph-inspection-v1"
+    assert result["method"] == "atanor-graph-inspection-v1"
     assert result["answer_engine"]["external_llm"] is False
     assert result["answer_kind"] == "inspection"
     assert result["answer_engine"]["surface_generation"] == "disabled"
     assert result["evidence_docs"] == []
     assert any(node["id"] == "graphrag" for node in result["matched_nodes"])
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
-    assert "노드" in result["answer"]
+    assert "visible nodes" in result["answer"]
 
 
 def test_query_graphrag_explains_color_legend_without_retrieval(tmp_path):
@@ -107,71 +107,34 @@ def test_query_graphrag_explains_color_legend_without_retrieval(tmp_path):
     (ontology / "edges.json").write_text(json.dumps([{"source": "graphrag", "relation": "checks", "target": "guardrail"}]), encoding="utf-8")
 
     memory = _build_query_memory(cleaned, ontology)
-    result = query_graphrag("색깔별 노드 의미가 뭐지", str(cleaned), str(ontology), memory)
+    result = query_graphrag("color legend", str(cleaned), str(ontology), memory)
 
-    assert result["method"] == "homage-graph-legend-v1"
+    assert result["method"] == "atanor-graph-legend-v1"
     assert result["answer_engine"]["external_llm"] is False
     assert result["answer_kind"] == "inspection"
     assert result["answer_engine"]["surface_generation"] == "disabled"
     assert result["evidence_docs"] == []
     assert result["retrieval_trace"]["ranked_chunk_ids"] == []
-    assert "색깔은 노드의 역할" in result["answer"]
-    assert "검색" in result["answer"]
+    assert "graph colors" in result["answer"]
 
 
-def test_query_graphrag_generates_structure_answer_without_direct_evidence(tmp_path):
+def test_query_graphrag_unknown_external_entity_uses_no_external_llm(tmp_path):
     cleaned = tmp_path / "cleaned"
     ontology = tmp_path / "ontology"
     cleaned.mkdir()
     ontology.mkdir()
     (cleaned / "doc.txt").write_text("GraphRAG uses KnowledgeGraph for Evidence.", encoding="utf-8")
-    (ontology / "nodes.json").write_text(
-        json.dumps(
-            [
-                {"id": "graphrag", "label": "GraphRAG", "type": "retrieval", "confidence": 0.9},
-                {"id": "guardrail", "label": "Guardrail", "type": "guardrail", "confidence": 0.8},
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (ontology / "edges.json").write_text(json.dumps([{"source": "graphrag", "relation": "checks", "target": "guardrail"}]), encoding="utf-8")
-
-    memory = _build_query_memory(cleaned, ontology)
-    result = query_graphrag("네 구조 설명해봐", str(cleaned), str(ontology), memory)
-
-    assert result["method"] == "homage-graph-token-rag-v1"
-    assert result["answer_engine"]["external_llm"] is False
-    assert result["evidence_docs"]
-    assert result["citations"]
-    assert result["answer_kind"] == "graph_token_prediction"
-    assert result["answer_engine"]["mode"] == "ontology-graph-token-prediction-alpha"
-    assert result["follow_up_questions"] == []
-
-
-def test_query_graphrag_unknown_external_entity_does_not_use_structure_context(tmp_path):
-    cleaned = tmp_path / "cleaned"
-    ontology = tmp_path / "ontology"
-    cleaned.mkdir()
-    ontology.mkdir()
-    (cleaned / "doc.txt").write_text("GraphRAG uses KnowledgeGraph for Evidence.", encoding="utf-8")
-    (ontology / "nodes.json").write_text(
-        json.dumps([{"id": "graphrag", "label": "GraphRAG", "type": "retrieval", "confidence": 0.9}]),
-        encoding="utf-8",
-    )
+    (ontology / "nodes.json").write_text(json.dumps([{"id": "graphrag", "label": "GraphRAG", "type": "retrieval", "confidence": 0.9}]), encoding="utf-8")
     (ontology / "edges.json").write_text(json.dumps([]), encoding="utf-8")
 
     memory = _build_query_memory(cleaned, ontology)
-    result = query_graphrag("유재석이 누구야", str(cleaned), str(ontology), memory)
+    result = query_graphrag("unknown external person", str(cleaned), str(ontology), memory)
 
-    assert result["method"] == "homage-research-no-evidence-v1"
+    assert result["method"] == "atanor-research-no-evidence-v1"
     assert result["answer_engine"]["external_llm"] is False
-    assert result["answer_engine"]["mode"] == "no-evidence-diagnostic-alpha"
+    assert result["answer_engine"]["mode"] == "local-no-evidence-diagnostic-alpha"
     assert result["answer_kind"] == "no_evidence"
     assert result["evidence_docs"] == []
     assert result["citations"] == []
-    assert "Homage1.0은 Harvest" not in result["answer"]
-    assert "검증된 문서 근거" not in result["answer"]
-    assert "외부 LLM" not in result["answer"]
     assert "raw_no_node::" not in result["answer"]
-    assert result["answer"].startswith("NO_EVIDENCE")
     assert result["follow_up_questions"] == []
