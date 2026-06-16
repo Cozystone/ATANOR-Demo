@@ -3373,18 +3373,18 @@ export default function BakeBoardPage() {
   ].includes(contributionBackendState);
   const contributionIsActive = contributionEnabled && contributionIsBackendActive && !contributionPaused && !contributionBlockedBySafety;
   const contributionStatusText = !localBackendConnected
-    ? (language === "ko" ? "로컬 연결 대기" : "Waiting for local companion")
+    ? (language === "ko" ? "연결 확인" : "Checking link")
     : contributionBlockedBySafety
-      ? (language === "ko" ? "안전 대기" : "Safety hold")
+      ? (language === "ko" ? "보호 모드" : "Protected")
       : contributionBackendState === "verification_pending"
-        ? (language === "ko" ? "검증 대기" : "Verification pending")
+        ? (language === "ko" ? "검증 준비" : "Verification ready")
         : contributionBackendState === "task_running"
-          ? (language === "ko" ? "공용 작업 처리" : "Running public task")
+          ? (language === "ko" ? "동기화 중" : "Syncing")
           : contributionPaused || contributionBackendState === "paused"
             ? (language === "ko" ? "일시정지" : "Paused")
             : contributionIsActive
-              ? (language === "ko" ? "브레인 링크 작동 중" : "Brain Link active")
-              : (language === "ko" ? "준비됨" : "Ready");
+              ? (language === "ko" ? "연결됨" : "Linked")
+              : (language === "ko" ? "대기 안정" : "Stable idle");
   const contributionTodayCredit = contributionPendingCredit;
   const contributionTotalCredit = contributionConfirmedCredit + contributionPendingCredit;
   const contributionWaitingCredit = contributionPendingCredit;
@@ -3417,8 +3417,8 @@ export default function BakeBoardPage() {
   const contributionSafeSummary = contributionBlockedBySafety
     ? resourceStopReason
     : contributionGpuLimitEffective > 0
-      ? (language === "ko" ? `GPU ${contributionGpuLimitEffective}% 한도까지 브레인 링크 가능` : `GPU Brain Link capped at ${contributionGpuLimitEffective}%`)
-      : (language === "ko" ? "CPU 기반 브레인 링크 대기" : "CPU-only Brain Link ready");
+      ? (language === "ko" ? `GPU ${contributionGpuLimitEffective}% 보호 한도` : `GPU protected cap ${contributionGpuLimitEffective}%`)
+      : (language === "ko" ? "CPU 경량 모드" : "CPU light mode");
   const daemonRuntimeText = formatDuration(daemonCumulativeSeconds * 1000);
   const daemonStateText = learningDaemon?.state === "resume_needed" ? "재개 필요" : learningDaemon?.state === "demo" ? "실험실 뷰어" : statusText(learningDaemon?.state);
   const daemonModeText = daemonCanOperate ? "로컬 클라우드 브레인 워커" : "배포 클라우드 브레인 뷰어";
@@ -5304,15 +5304,15 @@ export default function BakeBoardPage() {
                   <circle cx="60" cy="60" r="48" style={{ strokeDasharray: `${contributionIsActive ? 286 : 72} 302` }} />
                 </svg>
                 <strong>{contributionStatusText}</strong>
-                <span>{contributionIsActive ? (language === "ko" ? "활성" : "Active") : contributionPaused ? (language === "ko" ? "대기" : "Standby") : (language === "ko" ? "준비" : "Ready")}</span>
+                <span>{contributionIsActive ? (language === "ko" ? "활성" : "Active") : contributionPaused ? (language === "ko" ? "정지" : "Paused") : (language === "ko" ? "안정" : "Stable")}</span>
               </div>
               <div className="atanor-contribution-copy">
-                <span>{language === "ko" ? "연결 상태" : "Link State"}</span>
-                <h2>{language === "ko" ? "공용 그래프 연결과 Fragment 검증을 관리합니다." : "Manage public graph links and fragment verification."}</h2>
-                <p>{language === "ko" ? "개인 Payload Vault와 로컬 브레인 데이터는 공유하지 않습니다." : "Private Payload Vault and Local Brain data are never shared."}</p>
+                <span>{language === "ko" ? "보호된 링크" : "Protected Link"}</span>
+                <h2>{language === "ko" ? "공용 검증 채널이 안정적으로 대기 중입니다." : "Public verification channel is standing by."}</h2>
+                <p>{language === "ko" ? "개인 데이터는 장치 안에 남기고, 공개 후보 조각의 신뢰 신호만 확인합니다." : "Private data stays on device; only public candidate trust signals are checked."}</p>
                 <div className="atanor-contribution-badges">
-                  <span>{language === "ko" ? "읽기 전용" : "Read-only"}</span>
-                  <span>Local write false</span>
+                  <span>{language === "ko" ? "개인 금고 보존" : "Private vault sealed"}</span>
+                  <span>{language === "ko" ? "공개 범위" : "Public scope"}</span>
                   <span>{language === "ko" ? `크레딧 x${contributionCreditMultiplier}` : `Credit x${contributionCreditMultiplier}`}</span>
                 </div>
                 <div className="atanor-contribution-actions">
@@ -5323,7 +5323,7 @@ export default function BakeBoardPage() {
                     {contributionIsActive
                       ? (language === "ko" ? "일시정지" : "Pause")
                       : contributionBlockedBySafety
-                        ? (language === "ko" ? "안전 조건 대기" : "Safety hold")
+                        ? (language === "ko" ? "보호 조건 확인" : "Protection check")
                         : (language === "ko" ? "재개" : "Resume")}
                   </button>
                 </div>
@@ -5358,7 +5358,7 @@ export default function BakeBoardPage() {
                 <h2>{language === "ko" ? "현재 공용 작업" : "Current Public Task"}</h2>
                 <div className="atanor-task-orb" />
                 <strong>{String(contributionCurrentTask?.task_type ?? "public_fragment_validation").replace(/_/g, " ")}</strong>
-                <p>{language === "ko" ? "유효성, 중복, 노이즈만 검증합니다." : "Checks validity, duplication, and noise only."}</p>
+                <p>{language === "ko" ? "공개 후보 조각의 중복과 신뢰 신호만 확인합니다." : "Checks only duplicate and trust signals for public candidates."}</p>
                 <small>{contributionCurrentTask?.task_id ?? "local-broker"} · {contributionBackendState}</small>
               </section>
             </aside>
