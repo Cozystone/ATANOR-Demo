@@ -5973,3 +5973,384 @@ p {
     flex-direction: column;
   }
 }
+
+.atanor-graph-hub-card p {
+  display: -webkit-box;
+  min-height: 2.3em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.atanor-graph-hub-card-actions {
+  grid-template-columns: 1fr;
+}
+
+.atanor-graph-hub-card-actions button + button {
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.atanor-user-shell[data-section="contribute"] .atanor-user-main {
+  background: #050506;
+}
+
+.atanor-user-shell[data-section="contribute"] {
+  font-family: Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+.atanor-contribution-grid {
+  align-content: start;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 85, 0, 0.09), transparent 30%),
+    radial-gradient(circle at 82% 6%, rgba(99, 230, 190, 0.08), transparent 28%),
+    #050506;
+  gap: 14px;
+  grid-template-columns: minmax(360px, 1fr) minmax(320px, 0.82fr) clamp(260px, 18vw, 320px);
+  min-height: calc(100vh - 96px);
+  padding: clamp(18px, 2.2vw, 34px);
+}
+
+.atanor-brain-link-header {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 0.62fr) minmax(460px, 1.38fr);
+}
+
+.atanor-brain-link-header h2 {
+  color: #f8f8f8;
+  font: 900 1.05rem/1 Helvetica, Arial, sans-serif;
+  letter-spacing: 0.02em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.atanor-brain-link-header p {
+  color: rgba(255, 255, 255, 0.58);
+  font: 700 0.78rem/1.35 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  margin: 0;
+}
+
+.atanor-brain-link-status {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.atanor-brain-link-status span,
+.atanor-contribution-hero,
+.atanor-contribution-card,
+.atanor-contribution-wide,
+.atanor-contribution-side section {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+}
+
+.atanor-brain-link-status span {
+  display: grid;
+  gap: 5px;
+  min-height: 56px;
+  padding: 10px 12px;
+}
+
+.atanor-brain-link-status small {
+  color: rgba(255, 255, 255, 0.5);
+  font: 800 0.68rem Helvetica, Arial, sans-serif;
+}
+
+.atanor-brain-link-status strong {
+  color: #fff;
+  font: 900 1rem Helvetica, Arial, sans-serif;
+}
+
+.atanor-contribution-hero {
+  grid-template-columns: 104px minmax(0, 1fr) minmax(190px, 0.36fr);
+  min-height: 174px;
+  padding: 18px;
+}
+
+.atanor-contribution-hero::after {
+  display: none;
+}
+
+.atanor-contribution-ring {
+  height: 96px;
+  width: 96px;
+}
+
+.atanor-contribution-ring circle {
+  stroke-width: 7;
+}
+
+.atanor-contribution-ring circle + circle,
+.atanor-routing-donut {
+  filter: none;
+}
+
+.atanor-contribution-ring strong {
+  color: #fff;
+  font: 900 0.95rem Helvetica, Arial, sans-serif;
+}
+
+.atanor-contribution-ring span {
+  color: rgba(255, 255, 255, 0.58);
+  font: 800 0.68rem Helvetica, Arial, sans-serif;
+}
+
+.atanor-contribution-copy {
+  gap: 9px;
+}
+
+.atanor-contribution-copy > span,
+.atanor-contribution-card h2,
+.atanor-contribution-side h2,
+.atanor-contribution-wide summary {
+  color: #fff;
+  font: 900 0.86rem Helvetica, Arial, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.atanor-contribution-copy h2 {
+  font: 800 clamp(1.08rem, 1.18vw, 1.28rem)/1.25 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  max-width: 680px;
+}
+
+.atanor-contribution-copy p,
+.atanor-contribution-side p,
+.atanor-contribution-wide p {
+  color: rgba(255, 255, 255, 0.58);
+  font: 600 0.82rem/1.45 Helvetica, Arial, sans-serif;
+}
+
+.atanor-contribution-badges span {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.78);
+  font: 800 0.7rem Helvetica, Arial, sans-serif;
+  padding: 6px 9px;
+}
+
+.atanor-contribution-badges span:last-child {
+  background: rgba(255, 85, 0, 0.13);
+  color: #ffbc93;
+}
+
+.atanor-contribution-actions button {
+  background: #f4f4f4;
+  border: 0;
+  border-radius: 12px;
+  color: #050506;
+  font: 900 0.82rem Helvetica, Arial, sans-serif;
+  min-height: 40px;
+}
+
+.atanor-contribution-actions button + button {
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.atanor-contribution-credit-summary {
+  align-self: stretch;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.035)),
+    radial-gradient(circle at 78% 18%, rgba(255, 138, 0, 0.16), transparent 48%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: grid;
+  gap: 6px;
+  min-height: 122px;
+  padding: 14px;
+}
+
+.atanor-contribution-credit-summary span {
+  color: rgba(255, 255, 255, 0.62);
+  font: 900 0.7rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+.atanor-contribution-credit-summary strong {
+  color: #fff;
+  font: 900 2rem/1 Helvetica, Arial, sans-serif;
+}
+
+.atanor-contribution-credit-summary small {
+  color: rgba(255, 255, 255, 0.54);
+  font: 700 0.72rem/1.35 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+.atanor-contribution-credit-summary em {
+  align-self: end;
+  background: rgba(255, 138, 0, 0.14);
+  border: 1px solid rgba(255, 138, 0, 0.24);
+  border-radius: 999px;
+  color: #ffc49c;
+  font: 900 0.78rem Helvetica, Arial, sans-serif;
+  font-style: normal;
+  justify-self: start;
+  padding: 5px 8px;
+}
+
+.atanor-contribution-metrics {
+  display: none;
+}
+
+.atanor-contribution-metrics span {
+  min-height: 50px;
+  padding: 10px 14px;
+}
+
+.atanor-contribution-side {
+  gap: 14px;
+}
+
+.atanor-contribution-side section,
+.atanor-contribution-card,
+.atanor-contribution-wide {
+  padding: 16px;
+}
+
+.atanor-routing-donut {
+  background:
+    radial-gradient(circle, #090909 0 54%, transparent 55%),
+    conic-gradient(#f4f4f4 0 var(--local-share), rgba(255, 255, 255, 0.14) var(--local-share) 100%);
+  margin: 10px auto;
+  max-width: 108px;
+}
+
+.atanor-routing-donut strong {
+  font: 900 1.35rem Helvetica, Arial, sans-serif;
+}
+
+.atanor-task-orb {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 85, 0, 0.72), rgba(255, 85, 0, 0.1) 32%, transparent 58%),
+    repeating-conic-gradient(from 45deg, rgba(255, 85, 0, 0.46) 0 8deg, transparent 8deg 32deg);
+  border-color: rgba(255, 85, 0, 0.38);
+  height: 54px;
+  margin: 12px 0 10px;
+  width: 54px;
+}
+
+.atanor-credit-grid span {
+  border-radius: 12px;
+  min-height: 68px;
+}
+
+.atanor-credit-grid em {
+  color: #ffbc93;
+}
+
+.atanor-credit-trend-header {
+  align-items: start;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.atanor-credit-trend-header p {
+  color: rgba(255, 255, 255, 0.52);
+  font: 700 0.72rem/1.35 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  margin: 5px 0 0;
+}
+
+.atanor-credit-trend-header strong {
+  color: #fff;
+  font: 900 1.4rem/1 Helvetica, Arial, sans-serif;
+}
+
+.atanor-credit-chart {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 84% 18%, rgba(255, 138, 0, 0.11), transparent 44%);
+  background-size: 100% 25%, 20% 100%, 100% 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  height: 128px;
+  margin-top: 14px;
+  overflow: hidden;
+  position: relative;
+}
+
+.atanor-credit-chart svg {
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.atanor-credit-chart polygon {
+  fill: rgba(255, 138, 0, 0.13);
+}
+
+.atanor-credit-chart polyline {
+  fill: none;
+  stroke: #ff8a00;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.atanor-credit-chart circle {
+  fill: #ffd0a8;
+  opacity: 0.72;
+}
+
+.atanor-credit-chart[data-active="true"] polyline {
+  filter: drop-shadow(0 0 8px rgba(255, 138, 0, 0.62));
+}
+
+.atanor-credit-chart-axis {
+  align-items: end;
+  bottom: 8px;
+  color: rgba(255, 255, 255, 0.44);
+  display: flex;
+  font: 800 0.64rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  justify-content: space-between;
+  left: 12px;
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+}
+
+.atanor-credit-trend-meta {
+  color: rgba(255, 255, 255, 0.56);
+  display: block;
+  font: 700 0.72rem/1.45 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  margin-top: 10px;
+}
+
+.atanor-safety-list input {
+  accent-color: #ff8a00;
+}
+
+.atanor-contribution-wide details {
+  padding: 10px 0;
+}
+
+@media (max-width: 1180px) {
+  .atanor-contribution-grid,
+  .atanor-brain-link-header {
+    grid-template-columns: 1fr;
+  }
+
+  .atanor-contribution-side,
+  .atanor-contribution-wide,
+  .atanor-contribution-hero {
+    grid-column: auto;
+  }
+
+  .atanor-contribution-hero {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .atanor-contribution-credit-summary {
+    grid-column: 1 / -1;
+  }
+}

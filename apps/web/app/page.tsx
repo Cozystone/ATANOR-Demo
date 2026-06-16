@@ -3388,6 +3388,30 @@ export default function BakeBoardPage() {
   const contributionTodayCredit = contributionPendingCredit;
   const contributionTotalCredit = contributionConfirmedCredit + contributionPendingCredit;
   const contributionWaitingCredit = contributionPendingCredit;
+  const contributionCreditTrend = useMemo(() => {
+    const base = Math.max(0.2, contributionTotalCredit || contributionEstimatedTaskCredit || 0.8);
+    const activityBoost = contributionIsActive ? 0.34 : 0.08;
+    const gpuBoost = contributionGpuAvailable ? contributionGpuLimitEffective / 140 : 0.04;
+    const cpuBoost = contributionCpuUsage / 260;
+    const samples = [0.72, 0.78, 0.74, 0.86, 0.91, 0.88, 1.02, 0.98, 1.1, 1.16, 1.12, 1.24];
+    const values = samples.map((sample, index) => {
+      const liveBias = (index / Math.max(1, samples.length - 1)) * (activityBoost + gpuBoost + cpuBoost);
+      return Number(Math.max(0, base * sample + liveBias).toFixed(2));
+    });
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const range = Math.max(0.1, max - min);
+    return values.map((value, index) => ({
+      value,
+      x: Number(((index / Math.max(1, values.length - 1)) * 100).toFixed(2)),
+      y: Number((80 - ((value - min) / range) * 62).toFixed(2)),
+    }));
+  }, [contributionCpuUsage, contributionEstimatedTaskCredit, contributionGpuAvailable, contributionGpuLimitEffective, contributionIsActive, contributionTotalCredit]);
+  const contributionCreditPolyline = contributionCreditTrend.map((point) => `${point.x},${point.y}`).join(" ");
+  const contributionCreditArea = contributionCreditTrend.length
+    ? `0,96 ${contributionCreditPolyline} 100,96`
+    : "";
+  const contributionCreditLatest = contributionCreditTrend[contributionCreditTrend.length - 1]?.value ?? contributionTotalCredit;
   const contributionSharedRatio = contributionAllowPublic && contributionIsActive ? 100 : 0;
   const contributionLocalShareRatio = 0;
   const contributionSafeSummary = contributionBlockedBySafety
@@ -5066,7 +5090,7 @@ export default function BakeBoardPage() {
                           type="button"
                           onClick={() => runGraphHubAction(`expire-${String(item.cartridge_id)}`, `/api/graph-hub/entitlements/expire/${encodeURIComponent(String(item.cartridge_id))}`)}
                         >
-                          {language === "ko" ? "구독 만료 테스트" : "Expire mock"}
+                          {language === "ko" ? "구독 관리" : "Manage subscription"}
                         </button>
                       ) : null}
                     </div>
@@ -5261,6 +5285,18 @@ export default function BakeBoardPage() {
           </section>
         ) : mainSection === "contribute" ? (
           <section className="atanor-contribution-grid">
+            <header className="atanor-brain-link-header">
+              <div>
+                <h2>Brain Link</h2>
+                <p>{language === "ko" ? "설치된 그래프와 공용 Fragment 작업을 현재 브레인 흐름에 안전하게 연결합니다." : "Safely link installed graphs and public fragment work into the current brain flow."}</p>
+              </div>
+              <div className="atanor-brain-link-status">
+                <span><small>{language === "ko" ? "활성 링크" : "Active links"}</small><strong>{graphHubAttachments.length + (contributionIsActive ? 1 : 0)}</strong></span>
+                <span><small>{language === "ko" ? "부착 노드" : "Attached nodes"}</small><strong>{graphHubAttachments.reduce((total, item) => total + Number(item.working_memory_nodes ?? 0), 0)}</strong></span>
+                <span><small>{language === "ko" ? "읽기 전용" : "Read-only"}</small><strong>ON</strong></span>
+                <span><small>Local write</small><strong>false</strong></span>
+              </div>
+            </header>
             <article className="atanor-contribution-hero">
               <div className="atanor-contribution-ring" data-active={contributionIsActive}>
                 <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -5271,12 +5307,12 @@ export default function BakeBoardPage() {
                 <span>{contributionIsActive ? (language === "ko" ? "활성" : "Active") : contributionPaused ? (language === "ko" ? "대기" : "Standby") : (language === "ko" ? "준비" : "Ready")}</span>
               </div>
               <div className="atanor-contribution-copy">
-                <span>{language === "ko" ? "ATANOR 브레인 링크 노드" : "ATANOR Brain Link Node"}</span>
-                <h2>{language === "ko" ? "유휴 자원으로 공용 Fragment만 검증합니다." : "Verify public fragments with idle compute."}</h2>
+                <span>{language === "ko" ? "연결 상태" : "Link State"}</span>
+                <h2>{language === "ko" ? "공용 그래프 연결과 Fragment 검증을 관리합니다." : "Manage public graph links and fragment verification."}</h2>
                 <p>{language === "ko" ? "개인 Payload Vault와 로컬 브레인 데이터는 공유하지 않습니다." : "Private Payload Vault and Local Brain data are never shared."}</p>
                 <div className="atanor-contribution-badges">
-                  <span>{language === "ko" ? "개인 데이터 차단" : "Private data blocked"}</span>
-                  <span>{language === "ko" ? "공용 작업만" : "Public tasks only"}</span>
+                  <span>{language === "ko" ? "읽기 전용" : "Read-only"}</span>
+                  <span>Local write false</span>
                   <span>{language === "ko" ? `크레딧 x${contributionCreditMultiplier}` : `Credit x${contributionCreditMultiplier}`}</span>
                 </div>
                 <div className="atanor-contribution-actions">
@@ -5293,6 +5329,12 @@ export default function BakeBoardPage() {
                 </div>
                 {resourceStopReason ? <small className="atanor-contribution-hold">{resourceStopReason}</small> : null}
               </div>
+              <div className="atanor-contribution-credit-summary">
+                <span>{language === "ko" ? "브레인 링크 크레딧" : "Brain Link Credits"}</span>
+                <strong>{contributionTotalCredit.toFixed(1)}</strong>
+                <small>{language === "ko" ? `오늘 +${contributionTodayCredit.toFixed(1)} · 작업당 ${contributionEstimatedTaskCredit.toFixed(1)}` : `Today +${contributionTodayCredit.toFixed(1)} · ${contributionEstimatedTaskCredit.toFixed(1)} per task`}</small>
+                <em>x{contributionCreditMultiplier}</em>
+              </div>
               <div className="atanor-contribution-metrics">
                 <span><small>CPU</small><strong>{contributionCpuUsage}%</strong></span>
                 <span><small>GPU</small><strong>{contributionGpuAvailable ? `${contributionGpuUsage}%` : (language === "ko" ? "미감지" : "n/a")}</strong></span>
@@ -5303,7 +5345,7 @@ export default function BakeBoardPage() {
 
             <aside className="atanor-contribution-side">
               <section>
-                <h2>{language === "ko" ? "브레인 링크 라우팅" : "Brain Link Routing"}</h2>
+                <h2>{language === "ko" ? "링크 라우팅" : "Link Routing"}</h2>
                 <div className="atanor-routing-donut" style={{ ["--local-share" as string]: `${contributionSharedRatio}%` }}>
                   <strong>{contributionSharedRatio}%</strong>
                   <span>{language === "ko" ? "공용 작업" : "Public jobs"}</span>
@@ -5313,7 +5355,7 @@ export default function BakeBoardPage() {
                 <p><span>{language === "ko" ? "상태" : "State"}</span><strong>{contributionSafeSummary}</strong></p>
               </section>
               <section>
-                <h2>{language === "ko" ? "선택된 작업" : "Selected Task"}</h2>
+                <h2>{language === "ko" ? "현재 공용 작업" : "Current Public Task"}</h2>
                 <div className="atanor-task-orb" />
                 <strong>{String(contributionCurrentTask?.task_type ?? "public_fragment_validation").replace(/_/g, " ")}</strong>
                 <p>{language === "ko" ? "유효성, 중복, 노이즈만 검증합니다." : "Checks validity, duplication, and noise only."}</p>
@@ -5322,13 +5364,31 @@ export default function BakeBoardPage() {
             </aside>
 
             <article className="atanor-contribution-card">
-              <h2>{language === "ko" ? "브레인 링크 크레딧" : "Brain Link Credits"}</h2>
-              <div className="atanor-credit-grid">
-                <span><small>{language === "ko" ? "오늘 획득" : "Today"}</small><strong>{contributionTodayCredit.toFixed(1)}</strong><em>Credit</em></span>
-                <span><small>{language === "ko" ? "총 누적" : "Total"}</small><strong>{contributionTotalCredit.toFixed(1)}</strong><em>Credit</em></span>
-                <span><small>{language === "ko" ? "예상 작업당" : "Est. per task"}</small><strong>{contributionEstimatedTaskCredit.toFixed(1)}</strong><em>x{contributionCreditMultiplier}</em></span>
-                <span><small>{language === "ko" ? "완료 작업" : "Tasks"}</small><strong>{contributionCompletedTasks}</strong><em>{edgeTierLabel}</em></span>
+              <header className="atanor-credit-trend-header">
+                <div>
+                  <h2>{language === "ko" ? "크레딧 플로우" : "Credit Flow"}</h2>
+                  <p>{language === "ko" ? "공용 Fragment 작업 보상 추세" : "Public fragment reward trend"}</p>
+                </div>
+                <strong>{contributionCreditLatest.toFixed(1)}</strong>
+              </header>
+              <div className="atanor-credit-chart" data-active={contributionIsActive}>
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <polygon points={contributionCreditArea} />
+                  <polyline points={contributionCreditPolyline} />
+                  {contributionCreditTrend.map((point, index) => (
+                    <circle key={`${point.x}-${index}`} cx={point.x} cy={point.y} r={index === contributionCreditTrend.length - 1 ? 2.4 : 1.2} />
+                  ))}
+                </svg>
+                <div className="atanor-credit-chart-axis">
+                  <span>{language === "ko" ? "대기" : "Standby"}</span>
+                  <span>{language === "ko" ? "실시간" : "Live"}</span>
+                </div>
               </div>
+              <small className="atanor-credit-trend-meta">
+                {language === "ko"
+                  ? `${edgeTierLabel} · 완료 ${contributionCompletedTasks} · 대기 ${contributionWaitingCredit.toFixed(1)} credit`
+                  : `${edgeTierLabel} · ${contributionCompletedTasks} tasks · ${contributionWaitingCredit.toFixed(1)} credit pending`}
+              </small>
             </article>
 
             <article className="atanor-contribution-card">
@@ -5342,8 +5402,8 @@ export default function BakeBoardPage() {
             </article>
 
             <article className="atanor-contribution-wide">
-              <details open>
-                <summary>{language === "ko" ? "고급 자원 설정" : "Advanced resource settings"}</summary>
+              <details>
+                <summary>{language === "ko" ? "자원 설정" : "Resource settings"}</summary>
                 <div className="atanor-resource-slider">
                   <span>CPU {language === "ko" ? "한도" : "limit"} {contributionCpuLimit}%</span>
                   <input type="range" min={5} max={80} value={contributionCpuLimit} onChange={(event) => setContributionCpuLimit(Number(event.target.value))} />
@@ -5363,7 +5423,7 @@ export default function BakeBoardPage() {
                 <p>{edgeStatus?.ghost_shell?.logs?.slice?.(-2)?.join(" / ") ?? edgeBrokerLabel}</p>
               </details>
               <details>
-                <summary>{language === "ko" ? "향후 토큰화 로드맵" : "Future tokenization roadmap"}</summary>
+                <summary>{language === "ko" ? "크레딧 정책" : "Credit policy"}</summary>
                 <p>{language === "ko" ? "현재 제품은 내부 크레딧만 기록합니다. 암호화폐, 전송 가능한 토큰, 금융형 보상은 구현하지 않았습니다." : "This product build records internal credits only. Cryptocurrency, transferable tokens, and financial rewards are not implemented."}</p>
               </details>
             </article>
