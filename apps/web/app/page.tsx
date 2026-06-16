@@ -4980,8 +4980,8 @@ export default function BakeBoardPage() {
               </article>
               <article>
                 <h2>{language === "ko" ? "Active Graph Attachments" : "Active Graph Attachments"}</h2>
-                {graphHubAttachments.length ? graphHubAttachments.map((item) => (
-                  <p key={String(item.attachment_id ?? item.cartridge_id)}>
+                {graphHubAttachments.length ? graphHubAttachments.map((item, index) => (
+                  <p key={`${String(item.attachment_id ?? item.cartridge_id)}-${index}`}>
                     <span>{String(item.cartridge_id)}</span>
                     <strong>{String(item.status)} · {String(item.working_memory_nodes ?? 0)}n</strong>
                   </p>
