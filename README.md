@@ -16,6 +16,7 @@ ATANOR is an experimental AI system that treats knowledge as a living graph inst
 - [Why ATANOR Exists](#why-atanor-exists)
 - [What ATANOR Does Today](#what-atanor-does-today)
 - [How It Works](#how-it-works)
+- [Showcase Demo](#showcase-demo)
 - [Product Screenshots](#product-screenshots)
 - [Architecture In One Picture](#architecture-in-one-picture)
 - [Quickstart](#quickstart)
@@ -83,6 +84,16 @@ This is the core difference: ATANOR does not only generate an answer. It builds 
 | CORTEX-G2 | Activation, dream loop, predictive engine, verbalization routing | `packages/cortex_g2` |
 | Proofs | Public proof snapshots and sample catalog artifacts | `data/*/proofs`, `data/*/catalog` |
 | Infra | Cloudflare and AWS broker prototypes | `infra` |
+
+## Showcase Demo
+
+ATANOR also includes a synthetic public demo at `/demo`. It is intentionally mock-driven: the RAG question is fixed, the billion-scale graph is virtualized for presentation, and the forecast report is scripted to show the product narrative without touching private data or requiring the live API.
+
+Run the web workspace and open:
+
+```text
+http://127.0.0.1:3022/demo
+```
 
 ## Product Screenshots
 
