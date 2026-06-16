@@ -1501,7 +1501,8 @@ export default function BakeBoardPage() {
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
   const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base"]);
-  const [cloudBrainGraphLayers, setCloudBrainGraphLayers] = useState<string[]>(["cloud_attached", "graph_cartridge", "working_memory_cloud", "semantic_cloud", "surface_trace_summary"]);
+  const [cloudBrainGraphLayers, setCloudBrainGraphLayers] = useState<string[]>(["cloud_attached", "working_memory_cloud", "semantic_cloud"]);
+  const [cloudDiagnosticsOpen, setCloudDiagnosticsOpen] = useState(false);
   const [controlledGrowthProof, setControlledGrowthProof] = useState<AnyRecord | null>(null);
   const [controlledGrowthRunning, setControlledGrowthRunning] = useState(false);
   const [controlledGrowthError, setControlledGrowthError] = useState<string | null>(null);
@@ -4365,6 +4366,37 @@ export default function BakeBoardPage() {
   const controlledGrowthState = (cloudBrainStatus?.controlled_self_growth_state && typeof cloudBrainStatus.controlled_self_growth_state === "object" && !Array.isArray(cloudBrainStatus.controlled_self_growth_state))
     ? cloudBrainStatus.controlled_self_growth_state as AnyRecord
     : {};
+  const autonomousSelfGrowthActive = Boolean(
+    webFeederEnabled
+    && webFeederCreated > 0
+    && controlledGrowthState.last_ingestion_success
+    && String(controlledGrowthState.provenance_type ?? "").toLowerCase() === "autonomous_growth"
+  );
+  const semanticCloudConcepts = Number(semanticCloudStatus?.concepts ?? 0);
+  const semanticCloudRelations = Number(semanticCloudStatus?.relations ?? 0);
+  const semanticCloudEvidence = Number(semanticCloudStatus?.evidence ?? 0);
+  const cloudTruthRows = [
+    { label: language === "ko" ? "Store" : "Store", value: semanticCloudStatus?.proof_store_only === false ? "external" : "proof only" },
+    { label: language === "ko" ? "Concepts" : "Concepts", value: String(semanticCloudConcepts) },
+    { label: language === "ko" ? "Relations" : "Relations", value: String(semanticCloudRelations) },
+    { label: language === "ko" ? "Evidence" : "Evidence", value: String(semanticCloudEvidence) },
+    { label: language === "ko" ? "Self-growth" : "Self-growth", value: autonomousSelfGrowthActive ? (language === "ko" ? "활성" : "active") : (language === "ko" ? "비활성" : "inactive") },
+    { label: language === "ko" ? "Web feeder" : "Web feeder", value: webFeederEnabled ? webFeederStatus : (language === "ko" ? "비활성" : "inactive") },
+    { label: language === "ko" ? "Source" : "Source", value: semanticCloudConcepts > 0 ? (language === "ko" ? "sample / proof" : "sample / proof") : "empty" },
+    { label: language === "ko" ? "Local write" : "Local write", value: "false" },
+  ];
+  const cloudSourceCompactRows = [
+    { label: language === "ko" ? "Active source" : "Active source", value: activeCloudSourceMode },
+    { label: language === "ko" ? "Remote broker" : "Remote broker", value: remoteBrokerInspector.reachable ? String(remoteBrokerInspector.broker_state ?? "reachable") : "not verified" },
+    { label: language === "ko" ? "Mirror snapshot" : "Mirror snapshot", value: mirrorInspector.source_is_remote ? "remote" : "not live cloud" },
+    { label: language === "ko" ? "Local Brain" : "Local Brain", value: `${Number(sourceInspector.local_brain_state?.local_total_nodes ?? 0)} / ${Number(sourceInspector.local_brain_state?.local_total_edges ?? 0)}` },
+  ];
+  const cloudAttachmentCompactRows = [
+    { label: language === "ko" ? "Cloud attached" : "Cloud attached", value: `${cloudAttachedNodeCount} / ${cloudAttachedEdgeCount}` },
+    { label: language === "ko" ? "Working Memory" : "Working Memory", value: cloudAttachedNodeCount > 0 ? "temporary" : "idle" },
+    { label: language === "ko" ? "Bundles" : "Bundles", value: String(overlayBundleIds.length) },
+    { label: language === "ko" ? "Local write" : "Local write", value: "false" },
+  ];
   const cloudProofGraphState = (cloudBrainStatus?.cloud_graph_state && typeof cloudBrainStatus.cloud_graph_state === "object" && !Array.isArray(cloudBrainStatus.cloud_graph_state))
     ? cloudBrainStatus.cloud_graph_state as AnyRecord
     : {};
@@ -5714,10 +5746,10 @@ export default function BakeBoardPage() {
             ) : isCloudViewerSection ? (
               <>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Cloud Brain Viewer" : "Cloud Brain Viewer"}</h2>
-                  <span className="atanor-user-readonly-badge">{language === "ko" ? "읽기 전용" : "READ ONLY"}</span>
+                  <h2>{language === "ko" ? "Cloud Brain" : "Cloud Brain"}</h2>
+                  <span className="atanor-user-readonly-badge">{language === "ko" ? "PROOF STORE" : "PROOF STORE"}</span>
                   <div className="atanor-user-viewer-grid">
-                    {cloudViewerRows.map((row) => (
+                    {cloudTruthRows.map((row) => (
                       <span key={row.label}>
                         <small>{row.label}</small>
                         <strong>{row.value}</strong>
@@ -5726,25 +5758,15 @@ export default function BakeBoardPage() {
                   </div>
                   <p>
                     {language === "ko"
-                      ? "이 탭은 공용 온톨로지 후보와 엣지 동기화 상태를 관찰하는 화면입니다. 질문 생성과 개인 메모리 검색은 로컬 브레인에서만 실행됩니다."
-                      : "This tab observes shared ontology candidates and edge sync. Answer generation and private memory search run only in Local Brain."}
+                      ? "현재 화면은 live global Cloud Brain이 아니라 로컬 semantic proof store와 임시 Cloud attached 상태를 읽기 전용으로 보여줍니다."
+                      : "This view is a read-only local semantic proof store and temporary Cloud-attached state, not a live global Cloud Brain."}
                   </p>
                 </section>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Cloud Brain Source Inspector" : "Cloud Brain Source Inspector"}</h2>
+                  <h2>{language === "ko" ? "Source Inspector" : "Source Inspector"}</h2>
                   <span className="atanor-user-readonly-badge">{verifiedRemoteCloudBrain ? "REMOTE VERIFIED" : "LOCAL / MIRROR"}</span>
-                  <button
-                    className="atanor-proof-action"
-                    type="button"
-                    onClick={runRemoteCloudBrainProof}
-                    disabled={remoteCloudProofRunning}
-                  >
-                    {remoteCloudProofRunning
-                      ? (language === "ko" ? "원격 검증 중" : "Verifying")
-                      : (language === "ko" ? "원격 Cloud Brain 검증" : "Verify Remote Cloud Brain")}
-                  </button>
                   <div className="atanor-user-viewer-grid">
-                    {sourceInspectorRows.map((row) => (
+                    {cloudSourceCompactRows.map((row) => (
                       <span key={row.label}>
                         <small>{row.label}</small>
                         <strong>{row.value}</strong>
@@ -5758,31 +5780,8 @@ export default function BakeBoardPage() {
                   ) : null}
                 </section>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Semantic Cloud Growth" : "Semantic Cloud Growth"}</h2>
-                  <span className="atanor-user-readonly-badge">{language === "ko" ? "증명 저장소" : "PROOF STORE"}</span>
-                  <div className="atanor-proof-actions-row">
-                    <button
-                      className="atanor-proof-action"
-                      type="button"
-                      onClick={ingestSampleSemanticSource}
-                      disabled={semanticGrowthRunning}
-                    >
-                      {semanticGrowthRunning
-                        ? (language === "ko" ? "처리 중" : "Running")
-                        : (language === "ko" ? "샘플 의미 수집" : "Ingest sample")}
-                    </button>
-                    <button className="atanor-proof-action" type="button" onClick={refreshSemanticCloud}>
-                      {language === "ko" ? "새로고침" : "Refresh"}
-                    </button>
-                    <button
-                      className="atanor-proof-action"
-                      type="button"
-                      onClick={attachSemanticCloudSample}
-                      disabled={semanticGrowthRunning}
-                    >
-                      {language === "ko" ? "작업 메모리 연결" : "Attach"}
-                    </button>
-                  </div>
+                  <h2>{language === "ko" ? "Semantic Cloud Store" : "Semantic Cloud Store"}</h2>
+                  <span className="atanor-user-readonly-badge">{language === "ko" ? "SAMPLE / PROOF" : "SAMPLE / PROOF"}</span>
                   <div className="atanor-user-viewer-grid">
                     {semanticCloudRows.map((row) => (
                       <span key={row.label}>
@@ -5791,32 +5790,29 @@ export default function BakeBoardPage() {
                       </span>
                     ))}
                   </div>
-                  {semanticGrowthRun ? (
-                    <div className="atanor-user-viewer-grid">
-                      {semanticGrowthRows.map((row) => (
-                        <span key={row.label}>
-                          <small>{row.label}</small>
-                          <strong>{row.value}</strong>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {semanticAttachResult ? (
-                    <div className="atanor-user-viewer-grid">
-                      {semanticAttachRows.map((row) => (
-                        <span key={row.label}>
-                          <small>{row.label}</small>
-                          <strong>{row.value}</strong>
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
                   <p>
                     {language === "ko"
-                      ? "문장은 의미 후보로 투영되어 proof store에만 병합됩니다. 중복 근거는 관계를 강화하고, Local Brain에는 기록하지 않습니다."
-                      : "Source text is projected into semantic candidates and merged only into the proof store. Repeated evidence strengthens relations without writing to Local Brain."}
+                      ? "표시 중인 semantic cloud는 proof/sample ingest 기반입니다. 자율 성장 또는 원격 공용 그래프로 과장하지 않습니다."
+                      : "The visible semantic cloud is proof/sample-ingest based. It is not presented as autonomous growth or a verified remote public graph."}
                   </p>
                   {semanticGrowthError ? <p>{semanticGrowthError}</p> : null}
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>{language === "ko" ? "Cloud Attached" : "Cloud Attached"}</h2>
+                  <span className="atanor-user-readonly-badge">{cloudAttachedNodeCount > 0 ? "TEMPORARY" : "IDLE"}</span>
+                  <div className="atanor-user-viewer-grid">
+                    {cloudAttachmentCompactRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>
+                    {language === "ko"
+                      ? "Cloud attached 노드는 임시 Working Memory overlay이며 Local Brain에 저장되지 않습니다."
+                      : "Cloud-attached nodes are temporary Working Memory overlays and are not saved into Local Brain."}
+                  </p>
                 </section>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
                   <h2>Web Seed Feeder</h2>
@@ -5836,9 +5832,21 @@ export default function BakeBoardPage() {
                       : "Cloud Brain counts change only after actual ingestion and verification, not candidate creation."}
                   </p>
                 </section>
+                <button
+                  className="atanor-cloud-diagnostics-toggle"
+                  type="button"
+                  onClick={() => setCloudDiagnosticsOpen((open) => !open)}
+                  aria-expanded={cloudDiagnosticsOpen}
+                >
+                  {cloudDiagnosticsOpen
+                    ? (language === "ko" ? "진단 닫기" : "Close Diagnostics")
+                    : (language === "ko" ? "진단 열기" : "Open Diagnostics")}
+                </button>
+                {cloudDiagnosticsOpen ? (
+                  <>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Controlled Self-Growth Proof" : "Controlled Self-Growth Proof"}</h2>
-                  <span className="atanor-user-readonly-badge">{controlledGrowthProof?.controlled_self_growth ? "PROVED" : "FIXTURE ONLY"}</span>
+                  <h2>{language === "ko" ? "Controlled Fixture Proof" : "Controlled Fixture Proof"}</h2>
+                  <span className="atanor-user-readonly-badge">{controlledGrowthProof?.controlled_self_growth ? "FIXTURE PASSED" : "FIXTURE ONLY"}</span>
                   <button
                     className="atanor-proof-action"
                     type="button"
@@ -5861,7 +5869,7 @@ export default function BakeBoardPage() {
                   {controlledGrowthError ? <p>{controlledGrowthError}</p> : null}
                 </section>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>Trillion Sphere Renderer</h2>
+                  <h2>{language === "ko" ? "Renderer Stress Shell" : "Renderer Stress Shell"}</h2>
                   <span className="atanor-user-readonly-badge">{cloudSphereStats?.actualNodeMode ? "ACTUAL NODES" : "SHELL CHUNKS"}</span>
                   <div className="atanor-user-viewer-grid">
                     {cloudSphereRows.map((row) => (
@@ -6150,6 +6158,8 @@ export default function BakeBoardPage() {
                     </p>
                   ))}
                 </section>
+                  </>
+                ) : null}
               </>
             ) : (
               <>
@@ -6248,7 +6258,7 @@ export default function BakeBoardPage() {
                 </div>
                 <p>
                   {language === "ko"
-                    ? "?대씪?곕뱶 釉뚮젅?몄? ?꾩옱 怨듭쑀 吏???꾨낫? ?ｌ? ?숆린???곹깭瑜?蹂댁뿬二쇰뒗 愿痢〓㈃?낅땲?? ?듬? ?앹꽦怨?媛쒖씤 硫붾え由?寃?됱? 濡쒖뺄 釉뚮젅?몄뿉?쒕쭔 ?ㅽ뻾?⑸땲??"
+                    ? "Cloud Brain은 현재 공용 후보와 proof store 상태를 관찰하는 읽기 전용 화면입니다. 질문 생성과 개인 메모리 검색은 로컬 브레인에서만 실행됩니다."
                     : "Cloud Brain is an observation surface for shared knowledge candidates and edge sync. Answer generation and private memory search run only in Local Brain."}
                 </p>
               </div>

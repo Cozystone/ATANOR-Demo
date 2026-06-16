@@ -233,7 +233,7 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
       }}
     >
       <div className="atanor-cloud-sphere-overlay">
-        <span>Trillion Sphere Renderer</span>
+        <span>Cloud Brain Shell</span>
         <strong>{materialized?.render_mode ?? "shell"}</strong>
       </div>
     </div>

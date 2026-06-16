@@ -97,6 +97,25 @@ class SemanticCloudStore:
         concepts = self.load_concepts()
         relations = self.load_relations()
         evidence = self.load_evidence()
+        provenance_summary = {
+            "semantic_cloud_proof_store": {
+                "concepts": len(concepts),
+                "relations": len(relations),
+                "evidence": len(evidence),
+            },
+            "manual_sample_ingest": {
+                "concepts": len(concepts),
+                "relations": len(relations),
+            },
+            "autonomous_growth": {
+                "concepts": 0,
+                "relations": 0,
+                "active": False,
+            },
+            "mirror_snapshot": {
+                "used_as_live_cloud": False,
+            },
+        }
         return {
             "proof_store_path": str(self.paths["store"]),
             "concepts": len(concepts),
@@ -111,6 +130,11 @@ class SemanticCloudStore:
             "external_llm_used": False,
             "external_sllm_used": False,
             "global_cloud_claim": False,
+            "self_growth_active": False,
+            "web_seed_feeder_active": False,
+            "sample_or_proof_data_visible": bool(concepts or relations),
+            "data_provenance_label": "manual_sample_ingest_or_proof_store",
+            "provenance_summary": provenance_summary,
         }
 
     def graph_sample(self, limit_nodes: int = 1000, limit_edges: int = 3000) -> dict[str, Any]:
@@ -128,6 +152,13 @@ class SemanticCloudStore:
                 "seen_count": row.get("seen_count", 1),
                 "source_scope": "cloud",
                 "proof_store_only": True,
+                "provenance_type": (row.get("metadata", {}).get("provenance_type") if isinstance(row.get("metadata"), dict) else None) or "manual_sample_ingest",
+                "source_run_id": row.get("metadata", {}).get("run_id") if isinstance(row.get("metadata"), dict) else None,
+                "source_text_hash": (row.get("source_hashes") or [None])[0] if isinstance(row.get("source_hashes"), list) else None,
+                "source_label": "Semantic Cloud proof store",
+                "is_demo_sample": True,
+                "is_autonomous_growth": False,
+                "local_brain_write": False,
             }
             for row in concepts[:limit_nodes]
         ]
@@ -143,6 +174,13 @@ class SemanticCloudStore:
                 "seen_count": row.get("seen_count", 1),
                 "source_scope": "cloud",
                 "proof_store_only": True,
+                "provenance_type": (row.get("metadata", {}).get("provenance_type") if isinstance(row.get("metadata"), dict) else None) or "manual_sample_ingest",
+                "source_run_id": row.get("metadata", {}).get("run_id") if isinstance(row.get("metadata"), dict) else None,
+                "source_text_hash": (row.get("source_hashes") or [None])[0] if isinstance(row.get("source_hashes"), list) else None,
+                "source_label": "Semantic Cloud proof store",
+                "is_demo_sample": True,
+                "is_autonomous_growth": False,
+                "local_brain_write": False,
             }
             for row in relations
             if row.get("source_concept_id") in node_ids and row.get("target_concept_id") in node_ids

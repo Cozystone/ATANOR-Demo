@@ -322,6 +322,13 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
                     "concept_id": row.get("concept_id"),
                     "seen_count": row.get("seen_count"),
                     "proof_store_only": True,
+                    "provenance_type": row.get("provenance_type") or "manual_sample_ingest",
+                    "source_run_id": row.get("source_run_id"),
+                    "source_text_hash": row.get("source_text_hash"),
+                    "source_label": row.get("source_label") or "Semantic Cloud proof store",
+                    "is_demo_sample": bool(row.get("is_demo_sample", True)),
+                    "is_autonomous_growth": bool(row.get("is_autonomous_growth", False)),
+                    "local_brain_write": False,
                 },
             )
             for index, row in enumerate(semantic_graph["nodes"])
@@ -343,6 +350,13 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
                     "seen_count": row.get("seen_count"),
                     "proof_store_only": True,
                     "old_mirror_snapshot_used": False,
+                    "provenance_type": row.get("provenance_type") or "manual_sample_ingest",
+                    "source_run_id": row.get("source_run_id"),
+                    "source_text_hash": row.get("source_text_hash"),
+                    "source_label": row.get("source_label") or "Semantic Cloud proof store",
+                    "is_demo_sample": bool(row.get("is_demo_sample", True)),
+                    "is_autonomous_growth": bool(row.get("is_autonomous_growth", False)),
+                    "local_brain_write": False,
                 },
             )
             for index, row in enumerate(semantic_graph["edges"])
@@ -380,7 +394,17 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
             radius=1.18,
             trust_state="seed_aligned",
             verification_state="seed_aligned_pending_verification",
-            metadata={"fragment_id": row.get("fragment_id"), "content_hash": row.get("content_hash")},
+            metadata={
+                "fragment_id": row.get("fragment_id"),
+                "content_hash": row.get("content_hash"),
+                "provenance_type": row.get("provenance_type") or "proof_fixture",
+                "source_run_id": row.get("source_run_id"),
+                "source_text_hash": row.get("content_hash"),
+                "source_label": "Cloud Brain proof fragment store",
+                "is_demo_sample": True,
+                "is_autonomous_growth": False,
+                "local_brain_write": False,
+            },
         )
         for index, row in enumerate(node_rows)
     ]
@@ -407,7 +431,17 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
                 weight=float(row.get("confidence") or 0.7),
                 trust_state="seed_aligned",
                 verification_state="seed_aligned_pending_verification",
-                metadata={"fragment_id": row.get("fragment_id"), "content_hash": row.get("content_hash")},
+                metadata={
+                    "fragment_id": row.get("fragment_id"),
+                    "content_hash": row.get("content_hash"),
+                    "provenance_type": row.get("provenance_type") or "proof_fixture",
+                    "source_run_id": row.get("source_run_id"),
+                    "source_text_hash": row.get("content_hash"),
+                    "source_label": "Cloud Brain proof fragment store",
+                    "is_demo_sample": True,
+                    "is_autonomous_growth": False,
+                    "local_brain_write": False,
+                },
             )
         )
     return LayerResult(
@@ -434,7 +468,17 @@ def materialize_cloud_attached_graph(max_nodes: int, max_edges: int, layer: str 
             radius=1.08,
             trust_state=str(row.get("trust_state") or "seed_aligned"),
             verification_state=str(row.get("verification_state") or "seed_aligned_pending_verification"),
-            metadata={"bundle_temporary": True, "writes_to_local_brain": False},
+            metadata={
+                "bundle_temporary": True,
+                "writes_to_local_brain": False,
+                "provenance_type": "cloud_attached",
+                "source_run_id": row.get("source_run_id") or row.get("bundle_id"),
+                "source_text_hash": row.get("source_hash") or row.get("content_hash"),
+                "source_label": "Temporary Cloud attached Working Memory overlay",
+                "is_demo_sample": False,
+                "is_autonomous_growth": False,
+                "local_brain_write": False,
+            },
         )
         for index, row in enumerate(overlay.get("cloud_attached_nodes") or [])
     ]
@@ -451,7 +495,16 @@ def materialize_cloud_attached_graph(max_nodes: int, max_edges: int, layer: str 
             weight=0.9,
             trust_state="seed_aligned",
             verification_state="temporary_working_memory",
-            metadata={"writes_to_local_brain": False},
+            metadata={
+                "writes_to_local_brain": False,
+                "provenance_type": "cloud_attached",
+                "source_run_id": row.get("source_run_id") or row.get("bundle_id"),
+                "source_text_hash": row.get("source_hash") or row.get("content_hash"),
+                "source_label": "Temporary Cloud attached Working Memory overlay",
+                "is_demo_sample": False,
+                "is_autonomous_growth": False,
+                "local_brain_write": False,
+            },
         )
         for index, row in enumerate(overlay.get("cloud_attached_edges") or [])
         if row.get("source") and row.get("target")
@@ -489,6 +542,12 @@ def materialize_graph_cartridge_graph(max_nodes: int, max_edges: int) -> LayerRe
                 "source_cartridge_id": row.get("source_cartridge_id"),
                 "local_brain_write": False,
                 "temporary": True,
+                "provenance_type": "graph_cartridge",
+                "source_run_id": row.get("source_cartridge_id"),
+                "source_text_hash": row.get("source_hash"),
+                "source_label": "Installed Graph Cartridge attachment",
+                "is_demo_sample": False,
+                "is_autonomous_growth": False,
             },
         )
         for index, row in enumerate(payload.get("nodes") or [])
@@ -506,7 +565,16 @@ def materialize_graph_cartridge_graph(max_nodes: int, max_edges: int) -> LayerRe
             weight=float(row.get("weight") or 0.72),
             trust_state="cartridge_attached",
             verification_state="read_only_working_memory",
-            metadata={"source_cartridge_id": row.get("source_cartridge_id"), "local_brain_write": False},
+            metadata={
+                "source_cartridge_id": row.get("source_cartridge_id"),
+                "local_brain_write": False,
+                "provenance_type": "graph_cartridge",
+                "source_run_id": row.get("source_cartridge_id"),
+                "source_text_hash": row.get("source_hash"),
+                "source_label": "Installed Graph Cartridge attachment",
+                "is_demo_sample": False,
+                "is_autonomous_growth": False,
+            },
         )
         for index, row in enumerate(payload.get("edges") or [])
         if row.get("source") and row.get("target")
