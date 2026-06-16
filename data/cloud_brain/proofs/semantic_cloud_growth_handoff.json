@@ -1,4 +1,4 @@
-{
+﻿{
   "attach_behavior": {
     "attached_edges": 4,
     "attached_nodes": 5,
@@ -12,7 +12,7 @@
   "evidence": 4,
   "external_llm_used": false,
   "external_sllm_used": false,
-  "generated_at": "2026-06-16T04:59:36Z",
+  "generated_at": "2026-06-16T05:05:40Z",
   "global_cloud_claim": false,
   "handoff_id": "semantic_cloud_growth_handoff",
   "known_limitations": [
@@ -35,6 +35,6 @@
   "local_brain_write": false,
   "old_mirror_snapshot_used_as_live_cloud": false,
   "proof_store_only": true,
-  "proof_store_path": "C:\\0.ASKIM ALL-VIN\\24.Homage1.0\\data\\cloud_brain\\store",
+  "proof_store_path": "data/cloud_brain/store",
   "relations": 4
 }

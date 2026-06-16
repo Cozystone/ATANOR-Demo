@@ -1,4 +1,4 @@
-{
+﻿{
   "attachment": {
     "detach": {
       "cartridge_id": "startup_strategy_demo",
@@ -6,7 +6,7 @@
       "status": "detached"
     },
     "startup_attach": {
-      "attached_at": "2026-06-16T04:59:36Z",
+      "attached_at": "2026-06-16T05:05:40Z",
       "attachment_id": "gha_37c73eba86bfc6fff8",
       "cartridge_id": "startup_strategy_demo",
       "local_brain_write": false,
@@ -19,7 +19,7 @@
     },
     "writing_after_expiry": [
       {
-        "attached_at": "2026-06-16T04:59:36Z",
+        "attached_at": "2026-06-16T05:05:40Z",
         "attachment_id": "gha_bb6b71b6fcac0d8a2d",
         "cartridge_id": "korean_writing_demo",
         "local_brain_write": false,
@@ -57,11 +57,11 @@
     "edges": 4,
     "nodes": 5,
     "old_mirror_snapshot_used": false,
-    "path": "C:\\0.ASKIM ALL-VIN\\24.Homage1.0\\data\\graph_hub\\exported\\semantic_cloud_kubernetes_demo.graphpack.json",
+    "path": "data/graph_hub/exported/semantic_cloud_kubernetes_demo.graphpack.json",
     "source_type": "semantic_cloud_proof_store",
     "write_local_brain": false
   },
-  "generated_at": "2026-06-16T04:59:36Z",
+  "generated_at": "2026-06-16T05:05:40Z",
   "passed": true,
   "pricing": {
     "free": "free",
@@ -73,11 +73,11 @@
     "concepts": 5,
     "evidence": 4,
     "old_mirror_snapshot_used_as_live_cloud": false,
-    "path": "C:\\0.ASKIM ALL-VIN\\24.Homage1.0\\data\\cloud_brain\\store",
+    "path": "data/cloud_brain/store",
     "relations": 4
   },
   "status": {
-    "active_attachments": 1,
+    "active_attachments": 0,
     "billing_mode": "local_mock",
     "catalog_items": 7,
     "external_llm_used": false,
@@ -104,10 +104,10 @@
       "local_brain_write": false,
       "old_mirror_snapshot_used_as_live_cloud": false,
       "proof_store_only": true,
-      "proof_store_path": "C:\\0.ASKIM ALL-VIN\\24.Homage1.0\\data\\cloud_brain\\store",
+      "proof_store_path": "data/cloud_brain/store",
       "relations": 4,
       "store_backend": "local_semantic_proof_store",
-      "store_path": "C:\\0.ASKIM ALL-VIN\\24.Homage1.0\\data\\cloud_brain\\store"
+      "store_path": "data/cloud_brain/store"
     },
     "technical_object": "Graph Cartridge"
   }
