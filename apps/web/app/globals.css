@@ -2359,8 +2359,8 @@ p {
 .atanor-atlas-day-night {
   aspect-ratio: 1;
   background:
-    linear-gradient(90deg, rgba(0, 2, 8, 0.68) 0 38%, rgba(0, 2, 8, 0.36) 44%, rgba(255, 174, 70, 0.12) 52%, rgba(255, 196, 118, 0.08) 61%, transparent 74%),
-    radial-gradient(circle at 68% 34%, rgba(255, 196, 96, 0.16), transparent 28%);
+    linear-gradient(90deg, rgba(0, 2, 8, 0.7) 0 42%, rgba(0, 2, 8, 0.38) 52%, transparent 74%),
+    radial-gradient(circle at 68% 34%, rgba(130, 166, 210, 0.08), transparent 28%);
   border-radius: 50%;
   filter: blur(0.2px);
   inset: 50%;
@@ -2376,11 +2376,11 @@ p {
 }
 
 .atanor-atlas-day-night::after {
-  background: linear-gradient(90deg, transparent, rgba(255, 202, 124, 0.24), transparent);
+  background: none;
   border-radius: inherit;
   content: "";
   inset: 0;
-  opacity: 0.54;
+  opacity: 0;
   position: absolute;
   transform: translateX(-4%);
 }

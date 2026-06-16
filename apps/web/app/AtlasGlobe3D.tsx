@@ -164,7 +164,7 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
           float oceanMask = smoothstep(0.14, 0.55, dayColor.b - max(dayColor.r, dayColor.g) * 0.42);
           float specular = pow(max(dot(reflect(-sun, normalLocal), viewDirection), 0.0), 36.0) * oceanMask * smoothstep(0.02, 0.6, sunlight);
           float terminator = 1.0 - smoothstep(0.0, 0.2, abs(sunlight));
-          vec3 twilight = vec3(1.0, 0.52, 0.18) * terminator * 0.2;
+          vec3 twilight = vec3(0.58, 0.70, 0.86) * terminator * 0.06;
           vec3 atmosphere = vec3(0.44, 0.72, 1.0) * fresnel * (0.08 + dayMix * 0.16);
           vec3 color = mix(nightColor, dayColor * (0.98 + max(sunlight, 0.0) * 0.16), dayMix);
           color += twilight + atmosphere + specular * vec3(0.88, 0.96, 1.0);

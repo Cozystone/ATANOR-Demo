@@ -84,7 +84,7 @@ const MAIN_COPY: Record<Language, {
     shellTitle: "ATANOR",
     shellSubtitle: "LOCAL-FIRST HYBRID AI ENGINE",
     graphTitle: "Unified Knowledge Graph",
-    graphSubtitle: "Local memory, Cloud fragments, and working context share one traceable field.",
+    graphSubtitle: "A visual projection of Local, Seed, and Cloud layers. It does not indicate a live bridge.",
     nodes: "Nodes",
     relations: "Relations",
     sparsity: "Sparsity",
@@ -143,7 +143,7 @@ const MAIN_COPY: Record<Language, {
     shellTitle: "ATANOR",
     shellSubtitle: "로컬 우선 하이브리드 AI 엔진",
     graphTitle: "통합 지식 그래프",
-    graphSubtitle: "로컬 기억, Cloud Fragment, 작업 문맥을 하나의 추적 가능한 장으로 봅니다.",
+    graphSubtitle: "로컬, 시드, 클라우드 레이어를 하나의 시각 투영으로 봅니다. 실제 연결 상태를 뜻하지 않습니다.",
     nodes: "노드",
     relations: "관계",
     sparsity: "희소도",
@@ -1500,7 +1500,7 @@ export default function BakeBoardPage() {
   const [brainGraphCloud, setBrainGraphCloud] = useState<AnyRecord | null>(null);
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
-  const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base"]);
+  const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base", "seed"]);
   const [cloudBrainGraphLayers, setCloudBrainGraphLayers] = useState<string[]>(["cloud_attached", "working_memory_cloud", "semantic_cloud"]);
   const [cloudDiagnosticsOpen, setCloudDiagnosticsOpen] = useState(false);
   const [controlledGrowthProof, setControlledGrowthProof] = useState<AnyRecord | null>(null);
@@ -3201,7 +3201,7 @@ export default function BakeBoardPage() {
   const sectionMemoryGraph3D = mainSection === "cloud"
     ? tabBrainGraph3D
     : mainSection === "local"
-      ? (graphPresentationMode === "local_private_memory" && !localBrainInitialized && !localWorkingMemoryOverlayActive
+      ? (graphPresentationMode === "local_private_memory" && !localBrainInitialized && !localWorkingMemoryOverlayActive && tabBrainGraph3D.nodes.length === 0
           ? emptyLocalBrainGraph3D
           : tabBrainGraph3D)
       : memoryGraph3D;
@@ -3278,12 +3278,8 @@ export default function BakeBoardPage() {
 
   const displayMemoryNodeCount = visibleGraph3D.nodes.length;
   const displayMemoryEdgeCount = visibleGraph3D.edges.length;
-  const graphHeaderNodeCount = graphPresentationMode === "local_private_memory" && !localBrainInitialized
-    ? 0
-    : displayMemoryNodeCount;
-  const graphHeaderEdgeCount = graphPresentationMode === "local_private_memory" && !localBrainInitialized
-    ? 0
-    : displayMemoryEdgeCount;
+  const graphHeaderNodeCount = displayMemoryNodeCount;
+  const graphHeaderEdgeCount = displayMemoryEdgeCount;
   const studioGraph3D = useMemo(() => buildStudioTopologyGraph(visibleGraph3D), [visibleGraph3D]);
   const sphereGraph3D = useMemo(() => buildSphericalTopologyGraph(visibleGraph3D, graphPresentationMode), [visibleGraph3D, graphPresentationMode]);
   const usesStudioGraph = mainSection === "home";
@@ -4015,8 +4011,8 @@ export default function BakeBoardPage() {
       graphSubtitle: mainSection === "home"
         ? copy.graphSubtitle
         : (language === "ko"
-          ? "로컬 기억, 공용 Cloud Fragment, Seed Schema가 하나의 통합 graph projection으로 표시됩니다."
-          : "Local memory, public Cloud fragments, and Seed Schema are shown as one unified graph projection."),
+          ? "로컬, 시드, 클라우드 레이어를 하나의 시각 투영으로만 표시합니다. 실제 브리지 연결을 뜻하지 않습니다."
+          : "Local, Seed, and Cloud layers are shown as a visual projection only, not a live bridge."),
       localLabel: copy.localBrain,
       localDetail: "Private Boundary",
       cloudLabel: copy.cloudBrain,
@@ -4123,8 +4119,10 @@ export default function BakeBoardPage() {
   const activeTaskRouteText = graphPresentationMode === "local_private_memory"
     ? (language === "ko" ? "Local private memory only" : "Local private memory only")
     : graphPresentationMode === "cloud_world_knowledge"
-      ? (language === "ko" ? "Cloud Brain 100% / Edge Mirror connected" : "Cloud Brain 100% / Edge mirrors connected")
-      : `${localAssistRatio}% local / ${cloudAssistRatio}% cloud`;
+      ? (language === "ko" ? "클라우드 브레인 뷰어 / 읽기 전용 proof store" : "Cloud Brain viewer / read-only proof store")
+      : graphPresentationMode === "home_unified_overview" || graphPresentationMode === "unified_projection"
+        ? (language === "ko" ? "시각 투영 전용" : "Visual projection only")
+        : `${localAssistRatio}% local / ${cloudAssistRatio}% cloud`;
   const graphFitScale = usesStudioGraph
     ? 1.18
     : graphPresentationMode === "local_private_memory"
@@ -4151,14 +4149,14 @@ export default function BakeBoardPage() {
         { label: language === "ko" ? "공용 Fragment" : "Public Fragments", value: displayMemoryNodeCount.toLocaleString(), tone: "cyan" },
         { label: language === "ko" ? "최신성" : "Freshness", value: learningDaemon?.worker_alive ? copy.listening : copy.ready, tone: "cyan" },
         { label: language === "ko" ? "Source Trust" : "Source Trust", value: "Tracked", tone: "white" },
-        { label: language === "ko" ? "Edge Mirrors" : "Edge Mirrors", value: localBackendConnected ? copy.connected : "Pending", tone: "green" },
+        { label: language === "ko" ? "Edge Mirrors" : "Edge Mirrors", value: language === "ko" ? "읽기 전용" : "Read-only", tone: "green" },
       ]
       : [
-        { label: copy.localBrain, value: `${localAssistRatio}%`, tone: "green" },
-        { label: copy.cloudBrain, value: `${cloudAssistRatio}%`, tone: "blue" },
+        { label: copy.localBrain, value: graphPresentationMode === "home_unified_overview" || graphPresentationMode === "unified_projection" ? (language === "ko" ? "시각 레이어" : "Visual layer") : `${localAssistRatio}%`, tone: "green" },
+        { label: copy.cloudBrain, value: graphPresentationMode === "home_unified_overview" || graphPresentationMode === "unified_projection" ? (language === "ko" ? "시각 레이어" : "Visual layer") : `${cloudAssistRatio}%`, tone: "blue" },
         { label: copy.learningEngine, value: learningDaemon?.worker_alive ? copy.listening : copy.ready, tone: "white" },
         { label: copy.generationEngine, value: isGeneratingAnswer ? copy.running : copy.ready, tone: "white" },
-        { label: copy.fragmentSync, value: copy.synced, tone: "cyan" },
+        { label: copy.fragmentSync, value: graphPresentationMode === "home_unified_overview" || graphPresentationMode === "unified_projection" ? (language === "ko" ? "연출" : "Staged") : copy.synced, tone: "cyan" },
       ];
   const providerStatusRows = [
     { label: "Cloud Provider", value: `${cloudProviderName} / ${cloudEndpointLabel}`, tone: cloudBrokerState === "remote_connected" ? "blue" : "white" },
