@@ -907,6 +907,17 @@ function localBackendErrorMessage(baseUrl: string, caught: unknown) {
   return message;
 }
 
+function localBackendDisplayMessage(message: string, status: "idle" | "checking" | "connected" | "failed", language: Language) {
+  if (language === "ko") return message;
+  if (status === "checking") return "Syncing Local Brain";
+  if (status === "connected") return "Local Brain connected";
+  if (status === "idle") return "Using bundled fallback";
+  if (message.includes("HTTPS") || message.includes("HTTP")) {
+    return "This browser may block an HTTP Local FastAPI companion from an HTTPS deployment. Run the local web app and FastAPI together, or use an HTTPS local companion.";
+  }
+  return "Local FastAPI did not respond";
+}
+
 async function directBackendJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers ?? undefined);
   const method = init?.method?.toUpperCase() ?? "GET";
@@ -1590,6 +1601,7 @@ export default function BakeBoardPage() {
   ]);
   const [error, setError] = useState<string | null>(null);
   const localBackendConnected = localBackendStatus === "connected";
+  const localBackendDisplay = localBackendDisplayMessage(localBackendMessage, localBackendStatus, language);
 
   useEffect(() => {
     writeBrowserStorage("atanor.contribution.enabled", contributionEnabled ? "true" : "false");
@@ -3197,6 +3209,7 @@ export default function BakeBoardPage() {
     : mainSection === "local"
       ? brainGraphLocal
       : null;
+  const tabBrainGraphPending = (mainSection === "local" || mainSection === "cloud") && !activeTabBrainGraphRaw;
   const tabBrainGraph3D = useMemo(() => buildBrainLayerGraph3D(activeTabBrainGraphRaw), [activeTabBrainGraphRaw]);
   const sectionMemoryGraph3D = mainSection === "cloud"
     ? tabBrainGraph3D
@@ -3280,6 +3293,18 @@ export default function BakeBoardPage() {
   const displayMemoryEdgeCount = visibleGraph3D.edges.length;
   const graphHeaderNodeCount = displayMemoryNodeCount;
   const graphHeaderEdgeCount = displayMemoryEdgeCount;
+  const graphHeaderNodeText = tabBrainGraphPending ? "..." : graphHeaderNodeCount.toLocaleString();
+  const graphHeaderEdgeText = tabBrainGraphPending ? "..." : graphHeaderEdgeCount.toLocaleString();
+  const graphEmptyTitle = tabBrainGraphPending
+    ? (language === "ko" ? "그래프 동기화 중" : "Syncing graph")
+    : localBackendDisplay;
+  const graphEmptySubtitle = tabBrainGraphPending
+    ? (mainSection === "local"
+      ? (language === "ko" ? "Seed Graph와 Base Brain 레이어를 불러오고 있습니다" : "Loading Seed Graph and Base Brain layers")
+      : (language === "ko" ? "Semantic Cloud proof store를 확인하고 있습니다" : "Checking Semantic Cloud proof store"))
+    : localBackendStatus === "checking"
+      ? (language === "ko" ? "Ghost Shell 주소록을 깨우고 있습니다" : "Waking Ghost Shell topology")
+      : (language === "ko" ? "로컬 Companion 응답 대기" : "Waiting for local Companion");
   const studioGraph3D = useMemo(() => buildStudioTopologyGraph(visibleGraph3D), [visibleGraph3D]);
   const sphereGraph3D = useMemo(() => buildSphericalTopologyGraph(visibleGraph3D, graphPresentationMode), [visibleGraph3D, graphPresentationMode]);
   const usesStudioGraph = mainSection === "home";
@@ -5278,7 +5303,7 @@ export default function BakeBoardPage() {
                 }}>{language === "ko" ? "기본값" : "Default"}</button>
                 <button onClick={disconnectLocalBackend}>{language === "ko" ? "해제" : "Disconnect"}</button>
               </div>
-              <small>{localBackendMessage}</small>
+              <small>{localBackendDisplay}</small>
             </article>
 
             <article className="atanor-settings-panel">
@@ -5536,8 +5561,8 @@ export default function BakeBoardPage() {
                 <h2>{presentationCopy.graphTitle}</h2>
               </div>
               <div className="atanor-user-stat-stack">
-                <span>{copy.nodes}<strong>{graphHeaderNodeCount.toLocaleString()}</strong></span>
-                <span>{copy.relations}<strong>{graphHeaderEdgeCount.toLocaleString()}</strong></span>
+                <span>{copy.nodes}<strong>{graphHeaderNodeText}</strong></span>
+                <span>{copy.relations}<strong>{graphHeaderEdgeText}</strong></span>
                 <span>{copy.sparsity}<strong>{graphSparsity}%</strong></span>
                 <span>{copy.communities}<strong>{graphCommunities}</strong></span>
               </div>
@@ -5572,12 +5597,8 @@ export default function BakeBoardPage() {
                     <span />
                     <i />
                   </div>
-                  <strong>{localBackendMessage}</strong>
-                  <small>
-                    {localBackendStatus === "checking"
-                      ? (language === "ko" ? "Ghost Shell 주소록을 깨우고 있습니다" : "Waking Ghost Shell topology")
-                      : (language === "ko" ? "로컬 Companion 응답 대기" : "Waiting for local Companion")}
-                  </small>
+                  <strong>{graphEmptyTitle}</strong>
+                  <small>{graphEmptySubtitle}</small>
                 </div>
               )}
               {mainSection !== "local" && mainSection !== "cloud" ? (
@@ -5667,8 +5688,8 @@ export default function BakeBoardPage() {
                   </button>
                 </header>
                 <div className="atanor-brain-layer-summary">
-                  <span><small>{language === "ko" ? "표시 노드" : "Rendered nodes"}</small><strong>{activeBrainRenderedNodes.toLocaleString()}</strong></span>
-                  <span><small>{language === "ko" ? "표시 관계" : "Rendered edges"}</small><strong>{activeBrainRenderedEdges.toLocaleString()}</strong></span>
+                  <span><small>{language === "ko" ? "표시 노드" : "Rendered nodes"}</small><strong>{tabBrainGraphPending ? "..." : activeBrainRenderedNodes.toLocaleString()}</strong></span>
+                  <span><small>{language === "ko" ? "표시 관계" : "Rendered edges"}</small><strong>{tabBrainGraphPending ? "..." : activeBrainRenderedEdges.toLocaleString()}</strong></span>
                   <span><small>Overlay</small><strong>{activeBrainOverlay?.working_memory_active ? "active" : "idle"}</strong></span>
                   <span><small>Local write</small><strong>{String(Boolean(activeBrainOverlay?.local_brain_write)).toLowerCase()}</strong></span>
                 </div>
@@ -5690,7 +5711,7 @@ export default function BakeBoardPage() {
                           onClick={() => toggleBrainGraphLayer(activeBrainView, row.id)}
                         >
                           <span>{row.label}</span>
-                          <strong>{row.enabled ? row.count.toLocaleString() : "off"}</strong>
+                          <strong>{row.enabled ? (tabBrainGraphPending ? "..." : row.count.toLocaleString()) : "off"}</strong>
                           {row.missingReason ? <small>{row.missingReason}</small> : null}
                         </button>
                       ))}
@@ -6609,7 +6630,7 @@ export default function BakeBoardPage() {
                       {localBackendStatus === "checking" ? "?뺤씤 以? : localBackendConnected ? "?ъ뿰寃? : "?곌껐"}
                     </button>
                     {localBackendConnected ? <button onClick={disconnectLocalBackend}>?댁젣</button> : null}
-                    <small>{localBackendMessage}</small>
+                    <small>{localBackendDisplay}</small>
                   </div>
                   <div className="mini-metrics">
                     <span>?먮쫫 {flowHealth}%</span>
