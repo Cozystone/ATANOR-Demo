@@ -1,4 +1,4 @@
-﻿{
+{
   "attachment": {
     "detach": {
       "cartridge_id": "startup_strategy_demo",
@@ -6,7 +6,7 @@
       "status": "detached"
     },
     "startup_attach": {
-      "attached_at": "2026-06-16T05:05:40Z",
+      "attached_at": "2026-06-16T05:59:08Z",
       "attachment_id": "gha_37c73eba86bfc6fff8",
       "cartridge_id": "startup_strategy_demo",
       "local_brain_write": false,
@@ -19,7 +19,7 @@
     },
     "writing_after_expiry": [
       {
-        "attached_at": "2026-06-16T05:05:40Z",
+        "attached_at": "2026-06-16T05:59:08Z",
         "attachment_id": "gha_bb6b71b6fcac0d8a2d",
         "cartridge_id": "korean_writing_demo",
         "local_brain_write": false,
@@ -61,7 +61,7 @@
     "source_type": "semantic_cloud_proof_store",
     "write_local_brain": false
   },
-  "generated_at": "2026-06-16T05:05:40Z",
+  "generated_at": "2026-06-16T05:59:08Z",
   "passed": true,
   "pricing": {
     "free": "free",

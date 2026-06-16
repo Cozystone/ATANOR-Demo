@@ -1,6 +1,6 @@
-﻿# Semantic Cloud Growth Loop Handoff
+# Semantic Cloud Growth Loop Handoff
 
-- Generated: 2026-06-16T05:05:40Z
+- Generated: 2026-06-16T05:59:08Z
 - Proof store: `data/cloud_brain/store`
 - Concepts: 5
 - Relations: 4

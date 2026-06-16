@@ -2124,6 +2124,101 @@ p {
   width: 100%;
 }
 
+.atanor-atlas-fast-preview {
+  aspect-ratio: 1;
+  background:
+    radial-gradient(circle at 31% 36%, rgba(101, 186, 122, 0.42) 0 5%, transparent 5.5%),
+    radial-gradient(circle at 65% 42%, rgba(101, 186, 122, 0.36) 0 6%, transparent 6.5%),
+    radial-gradient(circle at 54% 70%, rgba(101, 186, 122, 0.26) 0 7%, transparent 7.4%),
+    linear-gradient(105deg, rgba(1, 5, 12, 0.72) 0 38%, rgba(255, 159, 28, 0.16) 48%, rgba(66, 151, 207, 0.08) 58%, rgba(255, 255, 255, 0.03) 72%),
+    radial-gradient(circle at 50% 50%, #14324f 0 44%, #06142a 63%, #01040a 100%);
+  border: 1px solid rgba(114, 184, 255, 0.18);
+  border-radius: 50%;
+  box-shadow:
+    inset -24px -8px 48px rgba(0, 0, 0, 0.72),
+    inset 18px 4px 42px rgba(120, 188, 255, 0.12),
+    0 28px 82px rgba(255, 138, 0, 0.18);
+  height: min(670px, 76%);
+  left: 50%;
+  opacity: 1;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-8deg);
+  transition: opacity 0.32s ease;
+  width: min(670px, 76%);
+  z-index: 1;
+}
+
+.atanor-atlas-fast-preview::before,
+.atanor-atlas-fast-preview::after {
+  border-radius: 50%;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.atanor-atlas-fast-preview::before {
+  background:
+    linear-gradient(90deg, rgba(0, 2, 8, 0.74) 0 32%, rgba(0, 2, 8, 0.28) 43%, rgba(255, 184, 92, 0.14) 55%, transparent 72%),
+    radial-gradient(circle at 70% 32%, rgba(255, 205, 117, 0.24), transparent 27%);
+  mix-blend-mode: screen;
+}
+
+.atanor-atlas-fast-preview::after {
+  border: 1px solid rgba(114, 184, 255, 0.22);
+  box-shadow: 0 0 28px rgba(114, 184, 255, 0.16);
+}
+
+.atanor-atlas-fast-preview i {
+  background: #ffad3d;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 999px;
+  box-shadow: 0 0 18px rgba(255, 159, 28, 0.82);
+  height: 9px;
+  position: absolute;
+  width: 9px;
+}
+
+.atanor-atlas-fast-preview i::after {
+  border: 1px solid rgba(255, 159, 28, 0.42);
+  border-radius: 999px;
+  content: "";
+  inset: -8px;
+  position: absolute;
+}
+
+.atanor-atlas-fast-preview i[data-pin="hub"] {
+  background: #fff2cf;
+  left: 64%;
+  top: 43%;
+}
+
+.atanor-atlas-fast-preview i[data-pin="west"] {
+  left: 30%;
+  top: 46%;
+}
+
+.atanor-atlas-fast-preview i[data-pin="north"] {
+  left: 51%;
+  top: 29%;
+}
+
+.atanor-atlas-fast-preview i[data-pin="south"] {
+  left: 45%;
+  top: 68%;
+}
+
+.atanor-atlas-fast-preview i[data-pin="east"] {
+  left: 72%;
+  top: 57%;
+}
+
+.atanor-atlas-webgl[data-ready="true"] .atanor-atlas-fast-preview {
+  opacity: 0;
+}
+
 .atanor-atlas-webgl[data-dragging="true"] {
   cursor: grabbing;
 }
@@ -2131,7 +2226,16 @@ p {
 .atanor-atlas-webgl canvas {
   display: block;
   height: 100% !important;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  transition: opacity 0.42s ease;
   width: 100% !important;
+  z-index: 2;
+}
+
+.atanor-atlas-webgl[data-ready="true"] canvas {
+  opacity: 1;
 }
 
 .atanor-atlas-webgl-badge,
@@ -4523,6 +4627,14 @@ p {
   color: #f9fbff;
   font-size: 1.22rem;
   letter-spacing: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.atanor-cloud-viewer-panel .atanor-user-viewer-grid strong {
+  font-size: clamp(0.9rem, 1.3vw, 1.08rem);
+  line-height: 1.22;
 }
 
 .atanor-proof-action {
@@ -5426,5 +5538,361 @@ p {
 
   .atanor-graph-hub-status {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.atanor-user-shell[data-section="graphhub"] .atanor-user-main {
+  background: #050506;
+}
+
+.atanor-graph-hub {
+  align-content: start;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(73, 90, 132, 0.16), transparent 34%),
+    radial-gradient(circle at 82% 8%, rgba(90, 68, 142, 0.13), transparent 32%),
+    #050506;
+  border: 0;
+  gap: 18px;
+  min-height: calc(100vh - 96px);
+  padding: clamp(18px, 2.2vw, 34px);
+}
+
+.atanor-graph-hub-hero {
+  align-items: end;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 0;
+}
+
+.atanor-graph-hub-hero h2 {
+  color: #f8f8f8;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: clamp(2rem, 3vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+
+.atanor-graph-hub-hero p {
+  color: rgba(255, 255, 255, 0.58);
+  font: 600 0.96rem/1.45 Helvetica, Arial, sans-serif;
+  margin: 0;
+}
+
+.atanor-graph-hub-refresh,
+.atanor-graph-hub-panel-action {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: #f7f7f7;
+  cursor: pointer;
+  font: 800 0.78rem Helvetica, Arial, sans-serif;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.atanor-graph-hub-tabs {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.atanor-graph-hub-tabs button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.58);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: 800 0.78rem Helvetica, Arial, sans-serif;
+  min-height: 38px;
+  padding: 0 15px;
+}
+
+.atanor-graph-hub-tabs button[data-active="true"] {
+  background: #f5f5f5;
+  border-color: #f5f5f5;
+  color: #050506;
+}
+
+.atanor-graph-hub-toolbar {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  padding: 0;
+}
+
+.atanor-graph-hub-toolbar input {
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  color: #fff;
+  font: 700 0.95rem Helvetica, Arial, sans-serif;
+  min-height: 48px;
+  padding: 0 16px;
+}
+
+.atanor-graph-hub-filters {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  display: flex;
+  gap: 4px;
+  min-height: 48px;
+  padding: 5px;
+}
+
+.atanor-graph-hub-toolbar button {
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.58);
+  cursor: pointer;
+  font: 800 0.76rem Helvetica, Arial, sans-serif;
+  min-height: 36px;
+  padding: 0 11px;
+  text-transform: none;
+}
+
+.atanor-graph-hub-toolbar button[data-active="true"] {
+  background: rgba(255, 255, 255, 0.14);
+  border: 0;
+  box-shadow: none;
+  color: #fff;
+}
+
+.atanor-graph-hub-grid {
+  display: grid;
+  gap: clamp(16px, 1.8vw, 24px);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.atanor-graph-hub-card {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  display: grid;
+  gap: 11px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.atanor-graph-hub-card::before {
+  display: none;
+}
+
+.atanor-graph-hub-card[data-attached="true"] {
+  border-color: rgba(99, 230, 190, 0.55);
+}
+
+.atanor-graph-hub-cover {
+  align-items: center;
+  aspect-ratio: 1 / 1;
+  background:
+    radial-gradient(circle at 55% 42%, rgba(255, 255, 255, 0.22), transparent 0 10%, rgba(255, 255, 255, 0.02) 11%),
+    linear-gradient(145deg, rgba(74, 110, 255, 0.38), rgba(118, 75, 162, 0.18) 44%, rgba(18, 22, 34, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  display: grid;
+  justify-items: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.atanor-graph-hub-cover[data-tone="startup"] {
+  background:
+    radial-gradient(circle at 62% 35%, rgba(255, 255, 255, 0.18), transparent 0 10%, rgba(255, 255, 255, 0.02) 11%),
+    linear-gradient(145deg, rgba(255, 116, 67, 0.34), rgba(96, 54, 120, 0.24), rgba(10, 10, 12, 0.9));
+}
+
+.atanor-graph-hub-cover[data-tone="writing"] {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.18), transparent 0 10%, rgba(255, 255, 255, 0.02) 11%),
+    linear-gradient(145deg, rgba(95, 158, 255, 0.34), rgba(110, 75, 150, 0.2), rgba(8, 8, 11, 0.92));
+}
+
+.atanor-graph-hub-cover[data-tone="software"] {
+  background:
+    radial-gradient(circle at 48% 40%, rgba(255, 255, 255, 0.18), transparent 0 10%, rgba(255, 255, 255, 0.02) 11%),
+    linear-gradient(145deg, rgba(81, 220, 177, 0.28), rgba(62, 86, 152, 0.2), rgba(8, 8, 11, 0.92));
+}
+
+.atanor-graph-hub-cover::before {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  content: "";
+  height: 54%;
+  position: absolute;
+  width: 54%;
+}
+
+.atanor-graph-hub-cover::after {
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 18px);
+  content: "";
+  inset: 0;
+  opacity: 0.28;
+  position: absolute;
+}
+
+.atanor-graph-hub-cover span {
+  color: rgba(255, 255, 255, 0.92);
+  font: 900 clamp(3.4rem, 8vw, 5.5rem) Helvetica, Arial, sans-serif;
+  position: relative;
+  z-index: 1;
+}
+
+.atanor-graph-hub-cover i {
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 999px;
+  height: 7px;
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  width: 7px;
+  z-index: 2;
+}
+
+.atanor-graph-hub-card header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.atanor-graph-hub-card header span,
+.atanor-graph-hub-card header strong {
+  color: rgba(255, 255, 255, 0.5);
+  font: 800 0.7rem Helvetica, Arial, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.atanor-graph-hub-card h3 {
+  color: #fff;
+  font: 800 1rem/1.2 Helvetica, Arial, sans-serif;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.atanor-graph-hub-card p {
+  color: rgba(255, 255, 255, 0.56);
+  font: 600 0.82rem/1.4 Helvetica, Arial, sans-serif;
+  margin: 0;
+  min-height: 2.3em;
+}
+
+.atanor-graph-hub-badges {
+  display: flex;
+  gap: 6px;
+  min-height: 25px;
+}
+
+.atanor-graph-hub-badges span {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.78);
+  font: 800 0.7rem Helvetica, Arial, sans-serif;
+  padding: 5px 8px;
+}
+
+.atanor-graph-hub-metrics {
+  display: none;
+}
+
+.atanor-graph-hub-card-actions {
+  display: grid;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+.atanor-graph-hub-card-actions button {
+  background: #f4f4f4;
+  border: 0;
+  border-radius: 12px;
+  color: #050506;
+  cursor: pointer;
+  font: 900 0.82rem Helvetica, Arial, sans-serif;
+  min-height: 42px;
+  padding: 0 13px;
+}
+
+.atanor-graph-hub-card-actions button + button {
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+  min-height: 34px;
+}
+
+.atanor-graph-hub-lower {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 720px);
+}
+
+.atanor-graph-hub-lower article {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  padding: 18px;
+}
+
+.atanor-graph-hub-lower h2 {
+  color: #fff;
+  font: 900 1rem Helvetica, Arial, sans-serif;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: none;
+}
+
+.atanor-graph-hub-lower p {
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.62);
+  display: flex;
+  font: 700 0.86rem Helvetica, Arial, sans-serif;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 0;
+  padding-top: 11px;
+}
+
+.atanor-graph-hub-lower p strong {
+  color: #fff;
+  font: 900 0.82rem Helvetica, Arial, sans-serif;
+}
+
+.atanor-graph-hub-panel-action {
+  border-radius: 12px;
+  justify-self: start;
+  text-transform: none;
+}
+
+@media (max-width: 1180px) {
+  .atanor-graph-hub-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .atanor-graph-hub-hero {
+    align-items: start;
+    flex-direction: column;
   }
 }

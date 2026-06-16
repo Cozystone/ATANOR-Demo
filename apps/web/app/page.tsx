@@ -578,6 +578,29 @@ function buildSphericalTopologyGraph(graph: Rag3DGraph, mode: GraphPresentationM
       sourceType = rank % 53 === 0 ? "cloud_fragment_disabled" : rank % 9 === 0 ? "representative_sample" : "local_memory";
       clusterId = `local:${cluster}`;
     } else if (mode === "cloud_world_knowledge") {
+      if (nodeCount <= 24) {
+        if (rank === 0) {
+          x = 0;
+          y = 0;
+          z = 0.15;
+        } else {
+          const smallAngle = ((rank - 1) / Math.max(1, nodeCount - 1)) * Math.PI * 2 - Math.PI / 2;
+          const smallRadius = 1.55 + (rank % 3) * 0.28;
+          x = Math.cos(smallAngle) * smallRadius * 1.18;
+          y = Math.sin(smallAngle) * smallRadius * 0.82;
+          z = stableUnit(node.id, 824) * 0.88;
+        }
+        sourceType = rank === 0 ? "cloud_fragment" : "cloud_brain";
+        clusterId = "cloud:proof_store";
+        return {
+          ...node,
+          x,
+          y,
+          z,
+          source_type: sourceType,
+          cluster_id: clusterId,
+        };
+      }
       const cluster = cloudClusters[Math.abs(Math.floor((rank * 5 + index) % cloudClusters.length))];
       const clusterIndex = cloudClusters.indexOf(cluster);
       const clusterAngle = (clusterIndex / cloudClusters.length) * Math.PI * 2 + 0.38;
@@ -646,6 +669,73 @@ function buildSphericalTopologyGraph(graph: Rag3DGraph, mode: GraphPresentationM
     return index % stride === 0;
   }).slice(0, targetVisualEdges);
   return { ...graph, nodes, edges: visualEdges };
+}
+
+function brainGraphLayerSourceType(node: AnyRecord) {
+  const layer = String(node.layer ?? node.kind ?? "").toLowerCase();
+  if (layer.includes("semantic_cloud")) return "cloud_brain";
+  if (layer.includes("graph_cartridge")) return "cloud_fragment";
+  if (layer.includes("cloud_attached") || layer.includes("working_memory_cloud")) return "working_memory";
+  if (layer.includes("surface")) return "representative_sample";
+  if (layer.includes("seed")) return "seed_schema";
+  if (layer.includes("base")) return "evidence_source";
+  return String(node.source_scope ?? "").toLowerCase() === "cloud" ? "cloud_brain" : "local_memory";
+}
+
+function buildBrainLayerGraph3D(rawGraph: AnyRecord | null | undefined): Rag3DGraph {
+  const rawNodes = Array.isArray(rawGraph?.nodes) ? rawGraph.nodes as AnyRecord[] : [];
+  const rawEdges = Array.isArray(rawGraph?.edges) ? rawGraph.edges as AnyRecord[] : [];
+  if (!rawNodes.length) return { nodes: [], edges: [], traversal_path: [] };
+
+  const idByLayerAndRawId = new Map<string, string>();
+  const ids = new Set<string>();
+  const nodes: Rag3DNode[] = rawNodes.map((node, index) => {
+    const layer = String(node.layer ?? "graph");
+    const rawId = String(node.id ?? `${layer}:${index}`);
+    const id = `${layer}:${rawId}`;
+    idByLayerAndRawId.set(`${layer}:${rawId}`, id);
+    ids.add(id);
+    const fallbackTheta = index * 2.399963229728653;
+    const fallbackRadius = 1.8 + ((stableUnit(rawId, 271) + 1) / 2) * 1.4;
+    const hasSourcePosition = Number.isFinite(Number(node.x)) && Number.isFinite(Number(node.y)) && Number.isFinite(Number(node.z));
+    return {
+      id,
+      label: String(node.label ?? rawId),
+      type: String(node.kind ?? node.type ?? layer),
+      x: hasSourcePosition ? Number(node.x) * 2.8 : Math.cos(fallbackTheta) * fallbackRadius,
+      y: hasSourcePosition ? Number(node.y) * 2.8 : Math.sin(fallbackTheta) * fallbackRadius * 0.72,
+      z: hasSourcePosition ? Number(node.z) * 2.8 : stableUnit(rawId, 277) * 2.2,
+      confidence: Number(node.weight ?? node.confidence ?? 0.78),
+      source_type: brainGraphLayerSourceType(node),
+      cluster_id: layer,
+    };
+  });
+
+  const edges: Rag3DEdge[] = rawEdges.flatMap((edge) => {
+    const layer = String(edge.layer ?? "graph");
+    const source = idByLayerAndRawId.get(`${layer}:${String(edge.source ?? "")}`)
+      ?? idByLayerAndRawId.get(`semantic_cloud:${String(edge.source ?? "")}`)
+      ?? idByLayerAndRawId.get(`cloud_attached:${String(edge.source ?? "")}`)
+      ?? String(edge.source ?? "");
+    const target = idByLayerAndRawId.get(`${layer}:${String(edge.target ?? "")}`)
+      ?? idByLayerAndRawId.get(`semantic_cloud:${String(edge.target ?? "")}`)
+      ?? idByLayerAndRawId.get(`cloud_attached:${String(edge.target ?? "")}`)
+      ?? String(edge.target ?? "");
+    if (!ids.has(source) || !ids.has(target)) return [];
+    return [{
+      source,
+      target,
+      relation: String(edge.relation ?? "relates_to"),
+      weight: Number(edge.weight ?? edge.confidence ?? 0.7),
+      source_type: layer,
+    }];
+  });
+
+  return {
+    nodes,
+    edges,
+    traversal_path: nodes.slice(0, 32).map((node) => node.id),
+  };
 }
 
 const stateLabels: Record<string, string> = {
@@ -1395,6 +1485,8 @@ export default function BakeBoardPage() {
   const [graphHubExport, setGraphHubExport] = useState<AnyRecord | null>(null);
   const [graphHubProof, setGraphHubProof] = useState<AnyRecord | null>(null);
   const [graphHubPricingFilter, setGraphHubPricingFilter] = useState<string>("all");
+  const [graphHubCategoryFilter, setGraphHubCategoryFilter] = useState<string>("all");
+  const [graphHubTab, setGraphHubTab] = useState<"catalog" | "installed" | "attachments" | "export" | "audit">("catalog");
   const [graphHubSearch, setGraphHubSearch] = useState("");
   const [graphHubRunning, setGraphHubRunning] = useState<string | null>(null);
   const [graphHubError, setGraphHubError] = useState<string | null>(null);
@@ -1409,7 +1501,7 @@ export default function BakeBoardPage() {
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
   const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base"]);
-  const [cloudBrainGraphLayers, setCloudBrainGraphLayers] = useState<string[]>(["cloud_attached", "working_memory_cloud", "semantic_cloud", "surface_trace_summary"]);
+  const [cloudBrainGraphLayers, setCloudBrainGraphLayers] = useState<string[]>(["cloud_attached", "graph_cartridge", "working_memory_cloud", "semantic_cloud", "surface_trace_summary"]);
   const [controlledGrowthProof, setControlledGrowthProof] = useState<AnyRecord | null>(null);
   const [controlledGrowthRunning, setControlledGrowthRunning] = useState(false);
   const [controlledGrowthError, setControlledGrowthError] = useState<string | null>(null);
@@ -3098,9 +3190,19 @@ export default function BakeBoardPage() {
     || Boolean(earlyCloudAttachmentOverlay.active)
     || Number(earlyCloudAttachmentOverlay.cloud_attached_nodes ?? (cloudAttachmentStatus?.cloud_attached_nodes ?? 0)) > 0
     || Number(earlyCloudAttachmentOverlay.seed_anchor_nodes ?? 0) > 0;
-  const sectionMemoryGraph3D = graphPresentationMode === "local_private_memory" && !localBrainInitialized && !localWorkingMemoryOverlayActive
-    ? emptyLocalBrainGraph3D
-    : memoryGraph3D;
+  const activeTabBrainGraphRaw = mainSection === "cloud"
+    ? brainGraphCloud
+    : mainSection === "local"
+      ? brainGraphLocal
+      : null;
+  const tabBrainGraph3D = useMemo(() => buildBrainLayerGraph3D(activeTabBrainGraphRaw), [activeTabBrainGraphRaw]);
+  const sectionMemoryGraph3D = mainSection === "cloud"
+    ? tabBrainGraph3D
+    : mainSection === "local"
+      ? (graphPresentationMode === "local_private_memory" && !localBrainInitialized && !localWorkingMemoryOverlayActive
+          ? emptyLocalBrainGraph3D
+          : tabBrainGraph3D)
+      : memoryGraph3D;
   const displayGraph3D = graphSourceMode === "memory" ? sectionMemoryGraph3D : activeGraph3D ?? sectionMemoryGraph3D;
   const collectionDisplayNodeCount = buildRun ? activeGraph3D?.nodes.length ?? buildRun.graph_3d.nodes.length : displayGraph3D.nodes.length;
   const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
@@ -3124,6 +3226,8 @@ export default function BakeBoardPage() {
     && !buildRun;
   const graphLooksLikeTinyFallback = workspaceMode === "lab"
     && graphSourceMode === "memory"
+    && mainSection !== "cloud"
+    && mainSection !== "local"
     && localBackendStatus !== "failed"
     && !buildRun
     && !localWorkingMemoryOverlayActive
@@ -4123,12 +4227,13 @@ export default function BakeBoardPage() {
   ];
   const cloudBrainLayerCatalog = [
     { id: "semantic_cloud", label: language === "ko" ? "의미 클라우드" : "Semantic Cloud" },
+    { id: "graph_cartridge", label: language === "ko" ? "그래프 카트리지" : "Graph Cartridge" },
     { id: "cloud_attached", label: language === "ko" ? "임시 부착" : "Cloud Attached" },
     { id: "contributor", label: language === "ko" ? "기여 노드" : "Contributor" },
     { id: "working_memory_cloud", label: language === "ko" ? "클라우드 작업 메모리" : "Cloud WM" },
     { id: "surface_trace_summary", label: language === "ko" ? "표현 요약" : "Surface Summary" },
   ];
-  const activeBrainGraph = mainSection === "cloud" ? brainGraphCloud : brainGraphLocal;
+  const activeBrainGraph = activeTabBrainGraphRaw;
   const activeBrainLayerCatalog = mainSection === "cloud" ? cloudBrainLayerCatalog : localBrainLayerCatalog;
   const activeBrainLayerSelection = mainSection === "cloud" ? cloudBrainGraphLayers : localBrainGraphLayers;
   const activeBrainView = mainSection === "cloud" ? "cloud" : "local";
@@ -4683,6 +4788,29 @@ export default function BakeBoardPage() {
     { label: copy.actions.checkpoint, action: () => runAction(checkpointLearningDaemon) },
   ];
 
+  const graphHubCategories = useMemo(() => {
+    const categories = graphHubCatalog
+      .map((item) => String(item.category ?? "general").trim())
+      .filter(Boolean);
+    return ["all", ...Array.from(new Set(categories))];
+  }, [graphHubCatalog]);
+
+  const visibleGraphHubCatalog = useMemo(() => {
+    const query = graphHubSearch.trim().toLowerCase();
+    return graphHubCatalog.filter((item) => {
+      const category = String(item.category ?? "general");
+      const haystack = [
+        item.name,
+        item.subtitle,
+        item.description,
+        item.category,
+        ...(Array.isArray(item.tags) ? item.tags : []),
+      ].join(" ").toLowerCase();
+      return (graphHubCategoryFilter === "all" || category === graphHubCategoryFilter)
+        && (!query || haystack.includes(query));
+    });
+  }, [graphHubCatalog, graphHubCategoryFilter, graphHubSearch]);
+
   return (
     <main className="atanor-user-shell" data-language={language} data-section={mainSection}>
       <aside className="atanor-user-sidebar">
@@ -4846,91 +4974,80 @@ export default function BakeBoardPage() {
           </section>
         ) : mainSection === "graphhub" ? (
           <section className="atanor-graph-hub">
-            <article className="atanor-graph-hub-hero">
+            <header className="atanor-graph-hub-hero">
               <div>
-                <span>GRAPH HUB</span>
-                <h2>{language === "ko" ? "Graph Cartridge 생태계" : "Graph Cartridge Ecosystem"}</h2>
-                <p>
-                  {language === "ko"
-                    ? "Graph Hub는 프롬프트 장터가 아니라, 실제 그래프 데이터를 설치·권한 확인·읽기 전용 연결하는 카트리지 시스템입니다."
-                    : "Graph Hub is not a prompt marketplace. It packages real graph-native intelligence into installable, entitlement-gated, read-only cartridges."}
-                </p>
+                <h2>Graph Hub</h2>
+                <p>{language === "ko" ? "그래프 지식과 사고 회로를 탐색하고 설치하세요." : "Browse and install graph knowledge and reasoning circuits."}</p>
               </div>
-              <div className="atanor-graph-hub-status">
-                <span><small>{language === "ko" ? "카탈로그" : "Catalog"}</small><strong>{graphHubStatus?.catalog_items ?? graphHubCatalog.length}</strong></span>
-                <span><small>{language === "ko" ? "설치됨" : "Installed"}</small><strong>{graphHubInstalled.length}</strong></span>
-                <span><small>{language === "ko" ? "활성 연결" : "Attachments"}</small><strong>{graphHubAttachments.filter((row) => row.status === "attached").length}</strong></span>
-                <span><small>{language === "ko" ? "Local 기록" : "Local write"}</small><strong>{graphHubStatus?.local_brain_write ? "true" : "false"}</strong></span>
-              </div>
-            </article>
+              <button className="atanor-graph-hub-refresh" type="button" onClick={() => refreshGraphHub().catch(() => undefined)}>
+                {language === "ko" ? "새로고침" : "Refresh"}
+              </button>
+            </header>
 
-            <article className="atanor-graph-hub-toolbar">
-              <input
-                value={graphHubSearch}
-                onChange={(event) => setGraphHubSearch(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") refreshGraphHub().catch(() => undefined);
-                }}
-                placeholder={language === "ko" ? "카트리지 검색" : "Search cartridges"}
-              />
-              <div className="atanor-graph-hub-filters">
-                {["all", "free", "one_time", "subscription"].map((filter) => (
-                  <button key={filter} data-active={graphHubPricingFilter === filter} onClick={() => setGraphHubPricingFilter(filter)}>
-                    {filter === "all" ? "All" : filter === "one_time" ? (language === "ko" ? "한 번 구매" : "One-time") : filter === "subscription" ? (language === "ko" ? "구독" : "Subscription") : "Free"}
-                  </button>
-                ))}
-              </div>
-              <button className="atanor-proof-action" type="button" onClick={() => refreshGraphHub().catch(() => undefined)}>
-                {language === "ko" ? "카탈로그 갱신" : "Refresh"}
-              </button>
-              <button
-                className="atanor-proof-action"
-                type="button"
-                disabled={graphHubRunning === "export"}
-                onClick={() => runGraphHubAction("export", "/api/graph-hub/export/semantic-cloud", {
-                  cartridge_id: "semantic_cloud_kubernetes_demo",
-                  name: "Semantic Cloud Kubernetes Demo",
-                  description: "A small real proof-store export from the Semantic Cloud Growth Loop.",
-                  pricing_model: "free",
-                  limit_nodes: 100,
-                  limit_edges: 300,
-                })}
-              >
-                {language === "ko" ? "Semantic Cloud Demo 내보내기" : "Export Semantic Cloud Demo"}
-              </button>
-              <button
-                className="atanor-proof-action"
-                type="button"
-                disabled={graphHubRunning === "proof"}
-                onClick={() => runGraphHubAction("proof", "/api/graph-hub/proof")}
-              >
-                {language === "ko" ? "Graph Hub 증명" : "Run Proof"}
-              </button>
-            </article>
+            <nav className="atanor-graph-hub-tabs" aria-label="Graph Hub views">
+              {[
+                ["catalog", language === "ko" ? "Catalog" : "Catalog"],
+                ["installed", language === "ko" ? "Installed" : "Installed"],
+                ["attachments", language === "ko" ? "Active Attachments" : "Active Attachments"],
+                ["export", "Export"],
+                ["audit", language === "ko" ? "Audit Log" : "Audit Log"],
+              ].map(([id, label]) => (
+                <button key={id} type="button" data-active={graphHubTab === id} onClick={() => setGraphHubTab(id as typeof graphHubTab)}>
+                  {label}
+                </button>
+              ))}
+            </nav>
+
+            {graphHubTab === "catalog" ? (
+              <article className="atanor-graph-hub-toolbar">
+                <input
+                  value={graphHubSearch}
+                  onChange={(event) => setGraphHubSearch(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") refreshGraphHub().catch(() => undefined);
+                  }}
+                  placeholder={language === "ko" ? "카트리지 검색" : "Search cartridges"}
+                />
+                <div className="atanor-graph-hub-filters">
+                  {graphHubCategories.map((filter) => (
+                    <button key={filter} data-active={graphHubCategoryFilter === filter} onClick={() => setGraphHubCategoryFilter(filter)}>
+                      {filter === "all" ? "All" : filter}
+                    </button>
+                  ))}
+                </div>
+                <div className="atanor-graph-hub-filters">
+                  {["all", "free", "one_time", "subscription"].map((filter) => (
+                    <button key={filter} data-active={graphHubPricingFilter === filter} onClick={() => setGraphHubPricingFilter(filter)}>
+                      {filter === "all" ? "All" : filter === "one_time" ? (language === "ko" ? "Buy once" : "Buy once") : filter === "subscription" ? (language === "ko" ? "Subscription" : "Subscription") : "Free"}
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ) : null}
 
             {graphHubError ? <p className="atanor-user-error">{graphHubError}</p> : null}
 
-            <section className="atanor-graph-hub-grid">
-              {graphHubCatalog.map((item) => {
+            {graphHubTab === "catalog" ? (
+              <section className="atanor-graph-hub-grid">
+              {visibleGraphHubCatalog.map((item) => {
                 const attached = graphHubAttachments.some((row) => row.cartridge_id === item.cartridge_id && row.status === "attached");
+                const title = String(item.name ?? "Graph Cartridge");
+                const initial = title.trim().slice(0, 1).toUpperCase();
                 return (
                   <article className="atanor-graph-hub-card" key={String(item.cartridge_id)} data-attached={attached}>
+                    <div className="atanor-graph-hub-cover" data-tone={String(item.category ?? "general")}>
+                      <span>{initial}</span>
+                      <i />
+                    </div>
                     <header>
-                      <span>{String(item.category ?? "general").toUpperCase()}</span>
-                      <strong>{String(item.price_label ?? "Free")}</strong>
+                      <span>{String(item.category ?? "general")}</span>
+                      <strong>{item.verified_author ? (language === "ko" ? "Verified" : "Verified") : (language === "ko" ? "Local" : "Local")}</strong>
                     </header>
-                    <h3>{String(item.name)}</h3>
+                    <h3>{title}</h3>
                     <p>{String(item.subtitle ?? "")}</p>
                     <div className="atanor-graph-hub-badges">
-                      <span>{String(item.pricing_model ?? "free")}</span>
-                      <span>{item.installed ? "Installed" : "Not installed"}</span>
-                      <span>{String(item.entitlement_status ?? "locked")}</span>
-                      <span>{String(item.risk_level ?? "unknown")}</span>
-                    </div>
-                    <div className="atanor-graph-hub-metrics">
-                      <span><small>Nodes</small><strong>{String(item.preview?.semantic_nodes ?? 0)}</strong></span>
-                      <span><small>Edges</small><strong>{String(item.preview?.semantic_edges ?? 0)}</strong></span>
-                      <span><small>Read-only</small><strong>{item.preview?.default_read_only ? "true" : "false"}</strong></span>
+                      <span>{String(item.price_label ?? "Free")}</span>
+                      {item.installed ? <span>{language === "ko" ? "Installed" : "Installed"}</span> : null}
                     </div>
                     <div className="atanor-graph-hub-card-actions">
                       <button disabled={graphHubRunning === item.cartridge_id} onClick={() => handleGraphHubPrimary(item)}>
@@ -4956,19 +5073,26 @@ export default function BakeBoardPage() {
                   </article>
                 );
               })}
-              {!graphHubCatalog.length ? (
+              {!visibleGraphHubCatalog.length ? (
                 <article className="atanor-graph-hub-card">
+                  <div className="atanor-graph-hub-cover">
+                    <span>G</span>
+                    <i />
+                  </div>
                   <header>
                     <span>EMPTY</span>
                     <strong>Graph Hub</strong>
                   </header>
-                  <h3>{language === "ko" ? "카탈로그를 기다리는 중" : "Waiting for catalog"}</h3>
-                  <p>{language === "ko" ? "로컬 Companion이 연결되면 샘플 Graph Cartridge 카탈로그가 표시됩니다." : "Sample Graph Cartridges appear when the local Companion is connected."}</p>
+                  <h3>{language === "ko" ? "검색 결과가 없습니다" : "No cartridges found"}</h3>
+                  <p>{language === "ko" ? "검색어나 필터를 조정해보세요." : "Try adjusting your search or filters."}</p>
                 </article>
               ) : null}
-            </section>
+              </section>
+            ) : null}
 
-            <section className="atanor-graph-hub-lower">
+            {graphHubTab !== "catalog" ? (
+              <section className="atanor-graph-hub-lower">
+              {graphHubTab === "installed" ? (
               <article>
                 <h2>{language === "ko" ? "Installed Graphs" : "Installed Graphs"}</h2>
                 {graphHubInstalled.length ? graphHubInstalled.map((item) => (
@@ -4978,6 +5102,8 @@ export default function BakeBoardPage() {
                   </p>
                 )) : <p>{language === "ko" ? "설치된 Graph Cartridge가 없습니다." : "No installed Graph Cartridges."}</p>}
               </article>
+              ) : null}
+              {graphHubTab === "attachments" ? (
               <article>
                 <h2>{language === "ko" ? "Active Graph Attachments" : "Active Graph Attachments"}</h2>
                 {graphHubAttachments.length ? graphHubAttachments.map((item, index) => (
@@ -4987,18 +5113,50 @@ export default function BakeBoardPage() {
                   </p>
                 )) : <p>{language === "ko" ? "활성 연결이 없습니다." : "No active attachments."}</p>}
               </article>
+              ) : null}
+              {graphHubTab === "export" ? (
               <article>
-                <h2>{language === "ko" ? "Export / Audit" : "Export / Audit"}</h2>
+                <h2>Export</h2>
+                <button
+                  className="atanor-graph-hub-panel-action"
+                  type="button"
+                  disabled={graphHubRunning === "export"}
+                  onClick={() => runGraphHubAction("export", "/api/graph-hub/export/semantic-cloud", {
+                    cartridge_id: "semantic_cloud_kubernetes_demo",
+                    name: "Semantic Cloud Kubernetes Demo",
+                    description: "A small real proof-store export from the Semantic Cloud Growth Loop.",
+                    pricing_model: "free",
+                    limit_nodes: 100,
+                    limit_edges: 300,
+                  })}
+                >
+                  {language === "ko" ? "Semantic Cloud Demo 내보내기" : "Export Semantic Cloud Demo"}
+                </button>
+                <button
+                  className="atanor-graph-hub-panel-action"
+                  type="button"
+                  disabled={graphHubRunning === "proof"}
+                  onClick={() => runGraphHubAction("proof", "/api/graph-hub/proof")}
+                >
+                  {language === "ko" ? "Graph Hub 증명" : "Run Proof"}
+                </button>
                 {graphHubExport ? <p><span>{language === "ko" ? "최근 내보내기" : "Latest export"}</span><strong>{String(graphHubExport.exported_nodes ?? 0)} / {String(graphHubExport.exported_edges ?? 0)}</strong></p> : null}
                 {graphHubProof ? <p><span>{language === "ko" ? "Proof" : "Proof"}</span><strong>{graphHubProof.passed ? "PASS" : "FAIL"}</strong></p> : null}
-                {graphHubAudit.slice(0, 5).map((event) => (
-                  <p key={String(event.event_id)}>
+              </article>
+              ) : null}
+              {graphHubTab === "audit" ? (
+              <article>
+                <h2>{language === "ko" ? "Audit Log" : "Audit Log"}</h2>
+                {graphHubAudit.slice(0, 5).map((event, index) => (
+                  <p key={`${String(event.event_id)}-${index}`}>
                     <span>{String(event.event_type)}</span>
                     <strong>{String(event.cartridge_id ?? "Graph Hub")}</strong>
                   </p>
                 ))}
               </article>
-            </section>
+              ) : null}
+              </section>
+            ) : null}
           </section>
         ) : mainSection === "settings" ? (
           <section className="atanor-settings-grid">
@@ -5286,7 +5444,7 @@ export default function BakeBoardPage() {
               </div>
             </div>
             <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode}>
-              {isCloudViewerSection ? (
+              {isCloudViewerSection && !visibleGraph3D.nodes.length ? (
                 <CloudBrainSphereScene
                   edgeOpacity={graphEdgeOpacity}
                   highEnd={Boolean(benchmark?.hardware_tier === "Tier 1-M" || benchmark?.tier === "Tier 1-M")}
@@ -5294,7 +5452,7 @@ export default function BakeBoardPage() {
                 />
               ) : visibleGraph3D.nodes.length ? (
                 <Rag3DScene
-                  key={usesStudioGraph ? "atanor-home-studio-graph" : `atanor-${graphPresentationMode}-sphere-graph`}
+                  key={usesStudioGraph ? "atanor-home-studio-graph" : `atanor-${mainSection}-${graphPresentationMode}-sphere-graph`}
                   activeEdgeKeys={activeSignalEdgeKeys}
                   activeNodeIds={activeSignalNodeIds}
                   graph={userSceneGraph3D}

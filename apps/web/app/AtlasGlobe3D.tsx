@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 type AtlasGlobeNode = {
@@ -63,6 +63,7 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; rotationX: number; rotationY: number } | null>(null);
   const resetViewRef = useRef<() => void>(() => undefined);
+  const [, setWebglReady] = useState(false);
   const focusNode = useMemo(
     () => nodes.find((node) => node.role === "my_node" || node.key === "anon-region-my-node") ?? { ...hub, key: "hub", activity: 1, source: "local", state: "active", role: "seoul_hub" },
     [hub, nodes],
@@ -88,13 +89,23 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
     if (!host) return undefined;
 
     let disposed = false;
+    let loadedTextureCount = 0;
+    host.dataset.ready = "false";
+    setWebglReady(false);
+    const markTextureReady = () => {
+      loadedTextureCount += 1;
+      if (!disposed && loadedTextureCount >= 3) {
+        host.dataset.ready = "true";
+        setWebglReady(true);
+      }
+    };
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
     camera.position.set(0, 0, 3.55);
     rotationRef.current = initialRotation;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
 
@@ -104,9 +115,9 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
     scene.add(group);
 
     const loader = new THREE.TextureLoader();
-    const dayTexture = loader.load("/atlas/earth_atmos_2048.jpg");
-    const nightTexture = loader.load("/atlas/earth_lights_2048.png");
-    const cloudTexture = loader.load("/atlas/earth_clouds_1024.png");
+    const dayTexture = loader.load("/atlas/earth_atmos_2048.jpg", markTextureReady, undefined, markTextureReady);
+    const nightTexture = loader.load("/atlas/earth_lights_2048.png", markTextureReady, undefined, markTextureReady);
+    const cloudTexture = loader.load("/atlas/earth_clouds_1024.png", markTextureReady, undefined, markTextureReady);
     [dayTexture, nightTexture, cloudTexture].forEach((texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = 8;
@@ -405,6 +416,13 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
 
   return (
     <div className="atanor-atlas-webgl" ref={hostRef} title={language === "ko" ? "마우스로 드래그해 지구를 회전할 수 있습니다." : "Drag to rotate Earth."}>
+      <div className="atanor-atlas-fast-preview" aria-hidden="true">
+        <i data-pin="hub" />
+        <i data-pin="west" />
+        <i data-pin="north" />
+        <i data-pin="south" />
+        <i data-pin="east" />
+      </div>
       <div className="atanor-atlas-webgl-badge">
         <strong>{language === "ko" ? "실시간 태양 경계" : "Live solar terminator"}</strong>
         <span>{remoteConnected ? "REMOTE CONNECTED" : "PREVIEW"}</span>
@@ -417,7 +435,7 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
         {language === "ko" ? "내 노드로 복귀" : "Reset to my node"}
       </button>
       <div className="atanor-atlas-webgl-hint">
-        {language === "ko" ? "드래그 회전 · 익명 지역 신호만 표시" : "Drag to rotate · Anonymous regional signals only"}
+        {language === "ko" ? "드래그 회전 / 익명 지역 신호만 표시" : "Drag to rotate / Anonymous regional signals only"}
       </div>
     </div>
   );

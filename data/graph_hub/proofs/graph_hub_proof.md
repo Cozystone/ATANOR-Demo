@@ -1,6 +1,6 @@
-﻿# Graph Hub Proof
+# Graph Hub Proof
 
-- Generated: 2026-06-16T05:05:40Z
+- Generated: 2026-06-16T05:59:08Z
 - Result: PASS
 - Product name: Graph Hub
 - Exported cartridge: `data/graph_hub/exported/semantic_cloud_kubernetes_demo.graphpack.json`

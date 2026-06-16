@@ -1,4 +1,4 @@
-﻿{
+{
   "after": {
     "concepts": 5,
     "evidence": 2,
@@ -17,10 +17,10 @@
     "local_brain_write": false,
     "old_mirror_snapshot_used_as_live_cloud": false,
     "proof_store_only": true,
-    "proof_store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store",
+    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
     "relations": 4,
     "store_backend": "local_semantic_proof_store",
-    "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
   "attach": {
     "attached_edges": 4,
@@ -39,10 +39,10 @@
     "local_brain_write": false,
     "old_mirror_snapshot_used_as_live_cloud": false,
     "proof_store_only": true,
-    "proof_store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store",
+    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
     "relations": 0,
     "store_backend": "local_semantic_proof_store",
-    "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
   "checks": {
     "attach_temporary_nodes": true,
@@ -101,12 +101,12 @@
       "local_brain_write": false,
       "old_mirror_snapshot_used_as_live_cloud": false,
       "proof_store_only": true,
-      "proof_store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store",
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
       "relations": 4,
       "store_backend": "local_semantic_proof_store",
-      "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
     },
-    "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
   "english_alias_ingest": {
     "concepts_created": 0,
@@ -141,12 +141,12 @@
       "local_brain_write": false,
       "old_mirror_snapshot_used_as_live_cloud": false,
       "proof_store_only": true,
-      "proof_store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store",
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
       "relations": 4,
       "store_backend": "local_semantic_proof_store",
-      "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
     },
-    "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
   "first_ingest": {
     "concepts_created": 5,
@@ -173,14 +173,14 @@
       "local_brain_write": false,
       "old_mirror_snapshot_used_as_live_cloud": false,
       "proof_store_only": true,
-      "proof_store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store",
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
       "relations": 4,
       "store_backend": "local_semantic_proof_store",
-      "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
     },
-    "store_path": "data/cloud_brain/proofs/semantic_growth_fixture/store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
-  "generated_at": "2026-06-16T05:04:26Z",
+  "generated_at": "2026-06-16T05:59:05Z",
   "graph": {
     "edges": 4,
     "nodes": 5,
