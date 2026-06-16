@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.services.alpha_services import alpha_service
 from app.services.ingestion_stream import format_sse, graph_event_hub
+from packages.cloud_brain.cloud_node_attachment import graph_overlay
 
 
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 MAX_GRAPH_STREAM_LIMIT = 50_000
+
+
+def _local_brain_initialized() -> bool:
+    return os.getenv("ATANOR_LOCAL_BRAIN_INITIALIZED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @router.get("/subgraph")
@@ -23,6 +29,7 @@ def graph_subgraph(
     center_y: float | None = Query(default=None),
     center_z: float | None = Query(default=None),
     radius: float | None = Query(default=None, gt=0),
+    include_cloud_attached: bool = Query(default=False),
 ) -> dict:
     """Live graph view for the web UI.
 
@@ -42,6 +49,41 @@ def graph_subgraph(
             "trace": result,
         }
     result = alpha_service.memory_graph(limit=limit)
+    if include_cloud_attached:
+        overlay = graph_overlay()
+        mirror_nodes = list(result.get("nodes") or [])
+        mirror_edges = list(result.get("edges") or [])
+        local_nodes = mirror_nodes if _local_brain_initialized() else []
+        local_edges = mirror_edges if _local_brain_initialized() else []
+        seed_anchor_nodes = list(overlay.get("seed_anchor_nodes") or [])
+        cloud_nodes = list(overlay.get("cloud_attached_nodes") or [])
+        cloud_edges = list(overlay.get("cloud_attached_edges") or [])
+        result = {
+            **result,
+            "nodes": [*local_nodes, *seed_anchor_nodes, *cloud_nodes],
+            "edges": [*local_edges, *cloud_edges],
+            "local_nodes": local_nodes,
+            "local_edges": local_edges,
+            "local_brain_initialized": _local_brain_initialized(),
+            "local_brain_empty": not _local_brain_initialized(),
+            "cloud_mirror_excluded_from_local_brain": not _local_brain_initialized(),
+            "cloud_mirror_snapshot": {
+                "nodes": len(mirror_nodes),
+                "edges": len(mirror_edges),
+                "source": result.get("source") or result.get("store") or "ghost_shell_mirror",
+            },
+            "seed_anchor_nodes": seed_anchor_nodes,
+            "cloud_attached_nodes": cloud_nodes,
+            "cloud_attached_edges": cloud_edges,
+            "working_memory_overlay": overlay["working_memory_overlay"],
+            "counts": {
+                "local_nodes": len(local_nodes),
+                "local_edges": len(local_edges),
+                "seed_anchor_nodes": len(seed_anchor_nodes),
+                "cloud_attached_nodes": len(cloud_nodes),
+                "cloud_attached_edges": len(cloud_edges),
+            },
+        }
     if radius is not None and center_x is not None and center_y is not None and center_z is not None:
         radius_sq = float(radius) * float(radius)
         source_nodes = list(result.get("nodes") or [])
@@ -83,10 +125,48 @@ def graph_subgraph(
 
 
 @router.get("/stream")
-def graph_stream(limit: int = Query(default=900, ge=1, le=MAX_GRAPH_STREAM_LIMIT)) -> dict:
+def graph_stream(
+    limit: int = Query(default=900, ge=1, le=MAX_GRAPH_STREAM_LIMIT),
+    include_cloud_attached: bool = Query(default=False),
+) -> dict:
     """JSON snapshot endpoint kept intentionally lightweight for polling clients."""
 
     result = alpha_service.memory_graph(limit=limit)
+    if include_cloud_attached:
+        overlay = graph_overlay()
+        mirror_nodes = list(result.get("nodes") or [])
+        mirror_edges = list(result.get("edges") or [])
+        local_nodes = mirror_nodes if _local_brain_initialized() else []
+        local_edges = mirror_edges if _local_brain_initialized() else []
+        seed_anchor_nodes = list(overlay.get("seed_anchor_nodes") or [])
+        cloud_nodes = list(overlay.get("cloud_attached_nodes") or [])
+        cloud_edges = list(overlay.get("cloud_attached_edges") or [])
+        result = {
+            **result,
+            "nodes": [*local_nodes, *seed_anchor_nodes, *cloud_nodes],
+            "edges": [*local_edges, *cloud_edges],
+            "local_nodes": local_nodes,
+            "local_edges": local_edges,
+            "local_brain_initialized": _local_brain_initialized(),
+            "local_brain_empty": not _local_brain_initialized(),
+            "cloud_mirror_excluded_from_local_brain": not _local_brain_initialized(),
+            "cloud_mirror_snapshot": {
+                "nodes": len(mirror_nodes),
+                "edges": len(mirror_edges),
+                "source": result.get("source") or result.get("store") or "ghost_shell_mirror",
+            },
+            "seed_anchor_nodes": seed_anchor_nodes,
+            "cloud_attached_nodes": cloud_nodes,
+            "cloud_attached_edges": cloud_edges,
+            "working_memory_overlay": overlay["working_memory_overlay"],
+            "counts": {
+                "local_nodes": len(local_nodes),
+                "local_edges": len(local_edges),
+                "seed_anchor_nodes": len(seed_anchor_nodes),
+                "cloud_attached_nodes": len(cloud_nodes),
+                "cloud_attached_edges": len(cloud_edges),
+            },
+        }
     return {
         **result,
         "state": result.get("state", "completed"),

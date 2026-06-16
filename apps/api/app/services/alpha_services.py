@@ -122,7 +122,16 @@ class AlphaService:
             self.memory = {**self.memory, **report.get("status", {})}
         return report
 
-    async def query_graphrag(self, query: str, web_search: bool = False, web_search_provider: str | None = None) -> dict[str, Any]:
+    async def query_graphrag(
+        self,
+        query: str,
+        web_search: bool = False,
+        web_search_provider: str | None = None,
+        brain_mode: str = "unified",
+        locale: str | None = None,
+        include_trace: bool = True,
+    ) -> dict[str, Any]:
+        normalized_brain_mode = _normalize_brain_mode(brain_mode)
         with self._lock:
             self.graphrag = self.graphrag | {"state": "running", "started_at": utc_now_iso(), "finished_at": None, "error": None, "last_query": query}
         try:
@@ -130,7 +139,7 @@ class AlphaService:
             is_conversation = _is_conversation_result(result)
             is_control = _is_control_result(result)
             memory_activation: dict[str, Any] | None = None
-            if not is_conversation and not is_control and memory_status().get("state") == "completed":
+            if normalized_brain_mode != "cloud" and not is_conversation and not is_control and memory_status().get("state") == "completed":
                 memory_activation = activate_memory(query)
             local_nodes = list(result.get("matched_nodes") or [])
             local_edges = list(result.get("matched_edges") or [])
@@ -146,15 +155,24 @@ class AlphaService:
                 evidence_docs=local_evidence_docs,
                 local_answer_confidence=float(result.get("confidence") or 0.0),
             )
+            if normalized_brain_mode == "local":
+                ratios = {"local": 1.0, "cloud": 0.0}
+            elif normalized_brain_mode == "cloud":
+                ratios = {"local": 0.0, "cloud": 1.0}
             local_only_graph_query = _is_local_operational_query(query)
             low_information_query = _is_low_information_conversation_query(query)
-            should_search = not low_information_query and not local_only_graph_query and not is_conversation and not is_control and (
-                web_search
-                or is_fresh_search_query(query)
-                or is_knowledge_lookup_query(query)
-                or _should_web_search(result)
-                or ratios["cloud"] >= 0.35
-            )
+            if normalized_brain_mode == "local":
+                should_search = False
+            elif normalized_brain_mode == "cloud":
+                should_search = not low_information_query and not is_conversation and not is_control
+            else:
+                should_search = not low_information_query and not local_only_graph_query and not is_conversation and not is_control and (
+                    web_search
+                    or is_fresh_search_query(query)
+                    or is_knowledge_lookup_query(query)
+                    or _should_web_search(result)
+                    or ratios["cloud"] >= 0.35
+                )
             if should_search:
                 search_payload = await search_web(query, 5, web_search_provider)
                 result = _merge_web_search_result(query, result, search_payload, ratios, density)
@@ -187,6 +205,34 @@ class AlphaService:
                         "active_memory_node_ids": [node["id"] for node in memory_activation.get("active_nodes", [])[:16]],
                     },
                 }
+            try:
+                from packages.cloud_brain.cloud_node_attachment import graph_overlay
+
+                overlay = graph_overlay().get("working_memory_overlay", {})
+                if overlay.get("active"):
+                    result = {
+                        **result,
+                        "retrieval_trace": {
+                            **result.get("retrieval_trace", {}),
+                            "working_memory_overlay": {
+                                **overlay,
+                                "enabled": True,
+                                "used_for_retrieval": True,
+                                "source": "contributor_node",
+                            },
+                        },
+                    }
+            except Exception:
+                pass
+            result = _apply_brain_mode_diagnostics(
+                result,
+                normalized_brain_mode,
+                ratios,
+                density,
+                memory_activation,
+                locale=locale,
+                include_trace=include_trace,
+            )
             status = {
                 "state": "completed",
                 "started_at": self.graphrag["started_at"],
@@ -343,6 +389,76 @@ def telemetry_system() -> dict[str, Any]:
 alpha_service = AlphaService()
 
 
+def _normalize_brain_mode(value: str | None) -> str:
+    normalized = (value or "unified").strip().lower()
+    if normalized == "dual":
+        return "unified"
+    if normalized in {"local", "cloud", "unified"}:
+        return normalized
+    return "unified"
+
+
+def _apply_brain_mode_diagnostics(
+    result: dict[str, Any],
+    brain_mode: str,
+    ratios: dict[str, float],
+    local_density: float,
+    memory_activation: dict[str, Any] | None,
+    *,
+    locale: str | None = None,
+    include_trace: bool = True,
+) -> dict[str, Any]:
+    has_cloud_payload = bool(result.get("web_search"))
+    evidence_docs = list(result.get("evidence_docs") or [])
+    route_state = {
+        "local": "local_private_route",
+        "cloud": "cloud_public_route" if has_cloud_payload else "cloud_preview_stub",
+        "unified": "unified_working_memory_route" if ratios.get("cloud", 0) > 0 else "unified_local_route",
+    }[brain_mode]
+    cloud_state = "disabled" if brain_mode == "local" else "connected" if has_cloud_payload else "stub"
+    evidence_state = "enough" if len(evidence_docs) >= 3 else "partial" if evidence_docs else "low"
+    selected_anchor = ""
+    matched_nodes = list(result.get("matched_nodes") or [])
+    if matched_nodes:
+        selected_anchor = str(matched_nodes[0])
+    elif evidence_docs:
+        selected_anchor = str(evidence_docs[0].get("doc_id") or evidence_docs[0].get("chunk_id") or "")
+
+    diagnostics = {
+        "brain_mode": brain_mode,
+        "local_weight": round(float(ratios.get("local", 0.0)), 4),
+        "cloud_weight": round(float(ratios.get("cloud", 0.0)), 4),
+        "working_memory_active": brain_mode == "unified" or bool(memory_activation),
+        "cloud_state": cloud_state,
+        "privacy_boundary": "private_payload_not_shared",
+        "selected_anchor": selected_anchor,
+        "route_state": route_state,
+        "epistemic_state": {
+            "anchor": "stable" if selected_anchor else "unstable",
+            "evidence": evidence_state,
+            "source_noise": 0,
+            "speech_act": "answer" if evidence_docs or matched_nodes else "clarify",
+        },
+    }
+    trace = {
+        **result.get("retrieval_trace", {}),
+        "brain_mode": brain_mode,
+        "route_state": route_state,
+        "local_density": local_density,
+        "privacy_boundary": diagnostics["privacy_boundary"],
+    } if include_trace else {}
+    return {
+        **result,
+        **diagnostics,
+        "locale": locale or "auto",
+        "fusion_ratio": {
+            "local": diagnostics["local_weight"],
+            "cloud": diagnostics["cloud_weight"],
+        },
+        "retrieval_trace": trace,
+    }
+
+
 def _is_conversation_result(result: dict[str, Any]) -> bool:
     return result.get("method") == "atanor-conversation-router-v1" or result.get("answer_kind") in {"greeting", "thanks", "conversation"}
 
@@ -360,7 +476,21 @@ def _is_local_operational_query(query: str) -> bool:
         return False
     graph_terms = {"node", "nodes", "inventory", "legend", "color", "colors", "graph", "edge", "edges"}
     action_terms = {"show", "list", "all", "available", "meaning", "mean", "label"}
+    internal_architecture_terms = {
+        "atanor",
+        "ghost shell",
+        "payload vault",
+        "local brain",
+        "cloud brain",
+        "working memory",
+        "epistemic layer",
+        "native generator",
+        "graphrag",
+        "graph rag",
+    }
     tokens = set(re.findall(r"[a-z0-9_-]+", normalized))
+    if any(term in normalized for term in internal_architecture_terms):
+        return True
     return ({"legend", "color"} <= tokens) or (bool(tokens & graph_terms) and bool(tokens & action_terms))
 
 

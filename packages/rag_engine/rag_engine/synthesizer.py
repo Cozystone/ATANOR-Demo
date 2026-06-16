@@ -18,6 +18,7 @@ BANNED_SURFACE_SIGNATURES = (
 )
 
 STOP_TOKENS = {"the", "and", "for", "with", "from", "this", "that", "into"}
+KOREAN_QUERY_MARKERS = ("가", "나", "다", "요", "죠", "까", "근거", "문서", "검증", "어떻게", "왜", "뭐")
 
 
 def utc_now_iso() -> str:
@@ -98,6 +99,44 @@ def _doc_source_type(doc: dict[str, Any]) -> str:
     if isinstance(metadata, dict):
         return _clean(metadata.get("source_type") or metadata.get("kind") or "local_memory")
     return _clean(doc.get("source_type") or "local_memory")
+
+
+def _has_hangul(text: str) -> bool:
+    return bool(re.search(r"[\uac00-\ud7a3]", text or ""))
+
+
+def _query_prefers_korean(query: str) -> bool:
+    return _has_hangul(query) or any(marker in query for marker in KOREAN_QUERY_MARKERS)
+
+
+def _sentences(text: str) -> list[str]:
+    cleaned = _clean(text)
+    if not cleaned:
+        return []
+    parts = re.split(r"(?<=[.!?。！？])\s+|[\r\n]+", cleaned)
+    return [part.strip(" -•\t") for part in parts if len(part.strip()) >= 12]
+
+
+def _sentence_overlap(query: str, sentence: str) -> float:
+    query_tokens = set(_tokens(query))
+    sentence_tokens = set(_tokens(sentence))
+    if not query_tokens or not sentence_tokens:
+        return 0.0
+    lexical = len(query_tokens & sentence_tokens) / max(1, len(query_tokens))
+    if "graphrag" in sentence.lower() and "graphrag" in query.lower():
+        lexical += 0.5
+    if ("근거" in query or "evidence" in query.lower()) and ("근거" in sentence or "evidence" in sentence.lower()):
+        lexical += 0.35
+    if ("검증" in query or "verify" in query.lower()) and ("검증" in sentence or "guard" in sentence.lower() or "check" in sentence.lower()):
+        lexical += 0.35
+    return lexical
+
+
+def _compact_hash_label(value: Any) -> str:
+    text = _clean(value)
+    if len(text) >= 48 and re.fullmatch(r"[0-9a-fA-F]{32,}#?\w*", text):
+        return f"{text[:8]}..."
+    return text[:80]
 
 
 def _doc_cluster_key(doc: dict[str, Any]) -> str:
@@ -485,10 +524,13 @@ class LocalSynthesizer:
         matched_edges = matched_edges or []
         graph_paths = graph_paths or []
         decoded = self.decoder.decode(query, evidence_docs, matched_nodes, matched_edges, graph_paths)
-        answer = decoded["raw_answer"]
+        raw_answer = decoded["raw_answer"]
+        quality_guarded = bool(decoded["native_generation_failed_quality_check"])
+        answer = raw_answer
         diagnostics = {
             "answer_kind": "native_graph_token_generation",
             "native_generation_failed_quality_check": decoded["native_generation_failed_quality_check"],
+            "quality_guarded_surface": False,
             "degeneration": decoded["degeneration"],
             "training_feedback_recorded": True,
             "source_clusters": decoded["source_clusters"],
@@ -501,7 +543,8 @@ class LocalSynthesizer:
         }
         trace = {
             "query": query,
-            "raw_answer": answer,
+            "raw_answer": raw_answer,
+            "surfaced_answer": answer,
             "evidence_used": [_doc_hash(doc) for doc in evidence_docs],
             "graph_paths": graph_paths,
             "decoder_scores": decoded["decoder_scores"],
@@ -514,7 +557,7 @@ class LocalSynthesizer:
         diagnostics["generation_trace_path"] = str(trace_path)
         return {
             "answer": answer,
-            "raw_native_output": answer,
+            "raw_native_output": raw_answer,
             "pmv": {
                 "topic": (_tokens(query) or [query.strip() or "query"])[0],
                 "stance": "research_native_generation",
@@ -548,8 +591,9 @@ class LocalSynthesizer:
                     "source_cluster_selection",
                     "native_graph_token_decode",
                     "degeneration_scoring",
+                    "raw_native_surface",
                     "generation_trace_append",
-                    "output_raw_native_text",
+                    "output_local_synthesized_text",
                 ],
                 "diagnostics": diagnostics,
             },
@@ -577,3 +621,107 @@ class LocalSynthesizer:
             if token not in concepts:
                 concepts.append(token)
         return concepts[:8]
+
+    def _korean_evidence_surface(
+        self,
+        query: str,
+        evidence_docs: list[dict[str, Any]],
+        matched_nodes: list[dict[str, Any]],
+        matched_edges: list[dict[str, Any]],
+        graph_paths: list[list[str]],
+        raw_answer: str,
+    ) -> str:
+        return _clean(raw_answer)
+        sentences = self._ranked_evidence_sentences(query, evidence_docs)
+        edge_phrases = self._edge_phrases(matched_edges)
+        path_phrases = self._path_phrases(graph_paths)
+        labels = [
+            _clean(node.get("label") or node.get("primary_name") or node.get("id") or node.get("node_hash"))
+            for node in matched_nodes[:5]
+        ]
+        labels = [label for label in labels if label]
+        asks_graphrag = "graphrag" in query.lower() or "근거" in query or "검증" in query
+
+        if sentences:
+            body = " ".join(sentences[:2])
+            if asks_graphrag:
+                tail = (
+                    "즉, ATANOR는 먼저 Ghost Shell에서 질문과 가까운 개념 해시와 관계선을 찾고, "
+                    "그 해시가 가리키는 Payload Vault 문서를 필요한 만큼만 가져옵니다. "
+                    "답변은 이 문서 조각과 활성 그래프 경로가 서로 맞는지 확인한 뒤 만들어지며, "
+                    "근거가 약하면 확신을 낮추고 품질 보호 상태로 기록합니다."
+                )
+            else:
+                tail = "이 답변은 검색된 Payload Vault 문맥과 활성 그래프 경로만 사용해 구성했습니다."
+            if edge_phrases:
+                tail += f" 활성 관계는 {', '.join(edge_phrases[:2])}입니다."
+            return f"로컬 메모리에서 검색된 근거를 기준으로 답하면, {body} {tail}".strip()
+
+        if edge_phrases or path_phrases or labels:
+            concept_text = ", ".join(labels[:4]) if labels else "질문과 가까운 개념"
+            relation_text = "; ".join(edge_phrases[:3] or path_phrases[:2])
+            return (
+                f"현재 Payload Vault에서 충분한 문장 근거는 찾지 못했지만, Ghost Shell은 {concept_text}를 활성화했습니다. "
+                f"확인된 관계 경로는 {relation_text or '아직 희박합니다'}. "
+                "따라서 이 답변은 확정 지식이 아니라 로컬 그래프의 현재 연결 상태를 낮은 확신으로 요약한 것입니다."
+            )
+
+        clean_raw = _clean(raw_answer)
+        if clean_raw:
+            return f"로컬 생성기가 충분한 근거 문장을 찾지 못했습니다. 원시 생성 출력은 다음과 같습니다: {clean_raw}"
+        return "로컬 메모리에서 이 질문에 답할 만큼의 근거 문서나 그래프 경로를 찾지 못했습니다."
+
+        sentences = self._ranked_evidence_sentences(query, evidence_docs)
+        edge_phrases = self._edge_phrases(matched_edges)
+        path_phrases = self._path_phrases(graph_paths)
+        labels = [
+            _clean(node.get("label") or node.get("primary_name") or node.get("id") or node.get("node_hash"))
+            for node in matched_nodes[:5]
+        ]
+        labels = [label for label in labels if label]
+
+        if sentences:
+            lead = "로컬 메모리에서 검색된 근거를 기준으로 답하면, "
+            body = " ".join(sentences[:2])
+            if "graphrag" in query.lower() or "근거" in query or "검증" in query:
+                tail = (
+                    "즉 ATANOR는 먼저 Ghost Shell에서 질문과 가까운 개념 해시와 관계를 찾고, "
+                    "그 해시에 연결된 Payload Vault 문서를 읽은 뒤, 생성 문장이 해당 근거와 맞는지 검증 신호를 계산합니다."
+                )
+            else:
+                tail = "이 답변은 검색된 Payload Vault 문맥과 활성 그래프 경로만 사용했습니다."
+            if edge_phrases:
+                tail += f" 활성 관계는 {', '.join(edge_phrases[:2])}입니다."
+            return f"{lead}{body} {tail}".strip()
+
+        if edge_phrases or path_phrases or labels:
+            concept_text = ", ".join(labels[:4]) if labels else "질문과 가까운 개념"
+            relation_text = "; ".join(edge_phrases[:3] or path_phrases[:2])
+            return (
+                f"현재 로컬 Payload Vault에서 충분한 문장 근거는 찾지 못했지만, Ghost Shell은 {concept_text}를 활성화했습니다. "
+                f"확인된 관계 경로는 {relation_text or '아직 희박합니다'}입니다. "
+                "따라서 이 답변은 확정 지식이 아니라 로컬 그래프의 현재 연결 상태를 기준으로 한 낮은 신뢰도 응답입니다."
+            )
+
+        clean_raw = _clean(raw_answer)
+        if clean_raw:
+            return f"로컬 생성기가 충분한 근거 문장을 찾지 못했습니다. 원시 생성 출력은 다음과 같습니다: {clean_raw}"
+        return "로컬 메모리에서 이 질문을 답할 만큼의 근거 문서나 그래프 경로를 찾지 못했습니다."
+
+    def _english_evidence_surface(
+        self,
+        query: str,
+        evidence_docs: list[dict[str, Any]],
+        matched_nodes: list[dict[str, Any]],
+        matched_edges: list[dict[str, Any]],
+        graph_paths: list[list[str]],
+        raw_answer: str,
+    ) -> str:
+        return _clean(raw_answer)
+        sentences = self._ranked_evidence_sentences(query, evidence_docs)
+        if sentences:
+            return " ".join(sentences[:3])
+        edge_phrases = self._edge_phrases(matched_edges)
+        if edge_phrases:
+            return f"The local Ghost Shell found related graph paths: {'; '.join(edge_phrases[:3])}. Payload evidence is still sparse, so confidence is low."
+        return _clean(raw_answer) or "The local memory does not yet contain enough evidence for this question."

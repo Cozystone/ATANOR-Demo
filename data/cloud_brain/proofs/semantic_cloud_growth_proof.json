@@ -1,0 +1,191 @@
+{
+  "after": {
+    "concepts": 5,
+    "evidence": 2,
+    "external_llm_used": false,
+    "external_sllm_used": false,
+    "global_cloud_claim": false,
+    "last_growth_run": {
+      "concepts_created": 0,
+      "concepts_merged": 5,
+      "evidence_added": 1,
+      "relations_created": 0,
+      "relations_strengthened": 4,
+      "run_id": "scg_e1f5d8abe7c09f17fd",
+      "sentences_processed": 1
+    },
+    "local_brain_write": false,
+    "old_mirror_snapshot_used_as_live_cloud": false,
+    "proof_store_only": true,
+    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "relations": 4,
+    "store_backend": "local_semantic_proof_store",
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+  },
+  "attach": {
+    "attached_edges": 4,
+    "attached_nodes": 5,
+    "cloud_attached_counts_as_local": false,
+    "local_brain_write": false,
+    "temporary": true
+  },
+  "before": {
+    "concepts": 0,
+    "evidence": 0,
+    "external_llm_used": false,
+    "external_sllm_used": false,
+    "global_cloud_claim": false,
+    "last_growth_run": null,
+    "local_brain_write": false,
+    "old_mirror_snapshot_used_as_live_cloud": false,
+    "proof_store_only": true,
+    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "relations": 0,
+    "store_backend": "local_semantic_proof_store",
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+  },
+  "checks": {
+    "attach_temporary_nodes": true,
+    "cross_language_alias_merged": true,
+    "duplicate_strengthened_relations": true,
+    "fresh_ingest_created_concepts": true,
+    "fresh_ingest_created_relations": true,
+    "graph_reads_semantic_store": true,
+    "local_brain_write_false": true
+  },
+  "claims": [
+    "ATANOR can grow a small Semantic Cloud proof store from source sentences.",
+    "Duplicate semantic facts merge and strengthen existing relations.",
+    "Semantic cloud nodes can be attached temporarily to Working Memory.",
+    "Local Brain remains unchanged."
+  ],
+  "does_not_claim": [
+    "global Cloud Brain",
+    "web-scale graph",
+    "unlimited crawling",
+    "perfect semantic extraction",
+    "full cross-lingual entity resolution",
+    "external LLM/sLLM use",
+    "old mirror snapshot as live cloud"
+  ],
+  "duplicate_ingest": {
+    "concepts_created": 0,
+    "concepts_merged": 5,
+    "evidence_added": 0,
+    "honesty": {
+      "external_llm_used": false,
+      "external_sllm_used": false,
+      "global_cloud_claim": false,
+      "local_brain_write": false,
+      "proof_store_only": true
+    },
+    "relations_created": 0,
+    "relations_strengthened": 4,
+    "run_id": "scg_ce19a3ae3b0ddc5b89",
+    "sentences_processed": 1,
+    "status": {
+      "concepts": 5,
+      "evidence": 1,
+      "external_llm_used": false,
+      "external_sllm_used": false,
+      "global_cloud_claim": false,
+      "last_growth_run": {
+        "concepts_created": 5,
+        "concepts_merged": 0,
+        "evidence_added": 1,
+        "relations_created": 4,
+        "relations_strengthened": 0,
+        "run_id": "scg_ce19a3ae3b0ddc5b89",
+        "sentences_processed": 1
+      },
+      "local_brain_write": false,
+      "old_mirror_snapshot_used_as_live_cloud": false,
+      "proof_store_only": true,
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "relations": 4,
+      "store_backend": "local_semantic_proof_store",
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+    },
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+  },
+  "english_alias_ingest": {
+    "concepts_created": 0,
+    "concepts_merged": 5,
+    "evidence_added": 1,
+    "honesty": {
+      "external_llm_used": false,
+      "external_sllm_used": false,
+      "global_cloud_claim": false,
+      "local_brain_write": false,
+      "proof_store_only": true
+    },
+    "relations_created": 0,
+    "relations_strengthened": 4,
+    "run_id": "scg_e1f5d8abe7c09f17fd",
+    "sentences_processed": 1,
+    "status": {
+      "concepts": 5,
+      "evidence": 2,
+      "external_llm_used": false,
+      "external_sllm_used": false,
+      "global_cloud_claim": false,
+      "last_growth_run": {
+        "concepts_created": 0,
+        "concepts_merged": 5,
+        "evidence_added": 0,
+        "relations_created": 0,
+        "relations_strengthened": 4,
+        "run_id": "scg_ce19a3ae3b0ddc5b89",
+        "sentences_processed": 1
+      },
+      "local_brain_write": false,
+      "old_mirror_snapshot_used_as_live_cloud": false,
+      "proof_store_only": true,
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "relations": 4,
+      "store_backend": "local_semantic_proof_store",
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+    },
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+  },
+  "first_ingest": {
+    "concepts_created": 5,
+    "concepts_merged": 0,
+    "evidence_added": 1,
+    "honesty": {
+      "external_llm_used": false,
+      "external_sllm_used": false,
+      "global_cloud_claim": false,
+      "local_brain_write": false,
+      "proof_store_only": true
+    },
+    "relations_created": 4,
+    "relations_strengthened": 0,
+    "run_id": "scg_ce19a3ae3b0ddc5b89",
+    "sentences_processed": 1,
+    "status": {
+      "concepts": 5,
+      "evidence": 1,
+      "external_llm_used": false,
+      "external_sllm_used": false,
+      "global_cloud_claim": false,
+      "last_growth_run": null,
+      "local_brain_write": false,
+      "old_mirror_snapshot_used_as_live_cloud": false,
+      "proof_store_only": true,
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "relations": 4,
+      "store_backend": "local_semantic_proof_store",
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+    },
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-371\\test_semantic_growth_proof_pas0\\cloud\\store"
+  },
+  "generated_at": "2026-06-16T04:59:33Z",
+  "graph": {
+    "edges": 4,
+    "nodes": 5,
+    "proof_store_only": true
+  },
+  "passed": true,
+  "proof_id": "semantic_cloud_growth_proof"
+}

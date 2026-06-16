@@ -33,10 +33,18 @@ def _configure_runtime_data_dir_from_args() -> None:
 
 _configure_runtime_data_dir_from_args()
 
+from app.routers.brain_sync import router as brain_sync_router
+from app.routers.answer_quality import router as answer_quality_router
+from app.routers.base_brain import router as base_brain_router
+from app.routers.brain_graph import router as brain_graph_router
 from app.routers.cloud_brain import router as cloud_brain_router
+from app.routers.contribution import router as contribution_router
+from app.routers.cortex import router as cortex_router
 from app.routers.datagate import router as datagate_router
+from app.routers.dual_brain import router as dual_brain_router
 from app.routers.factory import router as factory_router
 from app.routers.graph import router as graph_router
+from app.routers.graph_hub import router as graph_hub_router
 from app.routers.graphrag import router as graphrag_router
 from app.routers.guard import router as guard_router
 from app.routers.harvest import router as harvest_router
@@ -46,7 +54,11 @@ from app.routers.memory import router as memory_router
 from app.routers.neuro import router as neuro_router
 from app.routers.ontology import router as ontology_router
 from app.routers.oven import router as oven_router
+from app.routers.q_cortex import router as q_cortex_router
+from app.routers.seed_research import router as seed_research_router
+from app.routers.surface_brain import router as surface_brain_router
 from app.routers.telemetry import router as telemetry_router
+from app.routers.working_memory import router as working_memory_router
 from app.services.alpha_services import alpha_service, telemetry_gpu
 from app.services.crash_safety import create_boot_shadow_backups
 from app.services.datagate_service import DataGateStatus, datagate_service
@@ -130,17 +142,29 @@ async def allow_browser_local_companion(request, call_next):
     return response
 
 app.include_router(datagate_router)
+app.include_router(answer_quality_router)
+app.include_router(base_brain_router)
+app.include_router(brain_graph_router)
 app.include_router(harvest_router)
 app.include_router(hybrid_network_router)
+app.include_router(brain_sync_router)
 app.include_router(learning_router)
 app.include_router(cloud_brain_router)
+app.include_router(contribution_router)
+app.include_router(cortex_router)
+app.include_router(dual_brain_router)
 app.include_router(factory_router)
 app.include_router(graph_router)
+app.include_router(graph_hub_router)
 app.include_router(ontology_router)
 app.include_router(graphrag_router)
 app.include_router(guard_router)
 app.include_router(memory_router)
+app.include_router(working_memory_router)
 app.include_router(neuro_router)
+app.include_router(q_cortex_router)
+app.include_router(seed_research_router)
+app.include_router(surface_brain_router)
 app.include_router(telemetry_router)
 app.include_router(oven_router)
 

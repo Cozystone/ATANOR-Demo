@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from knowledge_bakery import build_memory, export_graph, memory_status
+from knowledge_bakery import build_memory, daemon_status, export_graph, memory_status
 
 
 STREAM_STARTED_MONOTONIC = time.monotonic()
@@ -20,7 +20,17 @@ def utc_now_iso() -> str:
 
 
 def cumulative_learning_seconds() -> int:
-    return max(0, int(time.monotonic() - STREAM_STARTED_MONOTONIC))
+    stream_seconds = max(0, int(time.monotonic() - STREAM_STARTED_MONOTONIC))
+    try:
+        daemon = daemon_status()
+    except Exception:
+        return stream_seconds
+    durable_seconds = int(
+        daemon.get("cumulative_learning_seconds")
+        or daemon.get("total_runtime_seconds")
+        or 0
+    )
+    return max(stream_seconds, durable_seconds)
 
 
 def _event_id() -> str:
@@ -180,8 +190,8 @@ class GraphEventHub:
 
     async def heartbeat(self) -> dict[str, Any]:
         status = await asyncio.to_thread(memory_status)
-        node_count = int(status.get("node_count") or 0)
-        edge_count = int(status.get("edge_count") or 0)
+        node_count = int(status.get("ghost_hash_count") or status.get("node_count") or 0)
+        edge_count = int(status.get("ghost_edge_count") or status.get("edge_count") or 0)
         ghost_shell = status.get("ghost_shell") or {
             "system_state": "GHOST SHELL EMPTY",
             "control_plane_hashes": node_count,
@@ -200,7 +210,7 @@ class GraphEventHub:
             "ghost_shell": {
                 **ghost_shell,
                 "logs": [
-                    "[SSE] heartbeat 카운트 동기화",
+                    "[SSE] heartbeat pulsing; listener stream alive",
                     f"CONTROL PLANE: {node_count} hashes / {edge_count} edges",
                 ],
             },

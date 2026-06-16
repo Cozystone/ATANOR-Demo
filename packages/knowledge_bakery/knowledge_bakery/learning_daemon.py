@@ -165,9 +165,23 @@ def _read_state(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
 def _write_state(state: dict[str, Any], memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> None:
     root = _memory_root(memory_dir)
     root.mkdir(parents=True, exist_ok=True)
-    temp = _state_path(memory_dir).with_suffix(".tmp")
+    target = _state_path(memory_dir)
+    temp = target.with_name(f"{target.stem}.{os.getpid()}.{threading.get_ident()}.{time.time_ns()}.tmp")
     temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(_state_path(memory_dir))
+    for attempt in range(5):
+        try:
+            temp.replace(target)
+            return
+        except PermissionError:
+            time.sleep(0.025 * (attempt + 1))
+    pending = target.with_name(f"{target.stem}.pending.{os.getpid()}.{threading.get_ident()}.{time.time_ns()}.json")
+    try:
+        temp.replace(pending)
+    except OSError:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _connect(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> sqlite3.Connection:
@@ -822,6 +836,7 @@ def run_synaptic_decay(
 def daemon_status(memory_dir: str = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
     with _lock:
         state = _merge_runtime(_read_state(memory_dir))
+        state["cumulative_learning_seconds"] = int(state.get("total_runtime_seconds") or 0)
         alive = _worker_alive()
         if state.get("desired_running") and not alive and state.get("state") not in {"failed", "stopped"}:
             interval_seconds = int(state.get("interval_seconds") or DEFAULT_INTERVAL_SECONDS)
@@ -860,6 +875,7 @@ def daemon_status(memory_dir: str = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
         state["local_required"] = True
         state["deployment_policy"] = "The Vercel deployment stays a small viewer; real Cloud Brain learning runs only beside local FastAPI."
         _refresh_counts(state, memory_dir)
+        state["cumulative_learning_seconds"] = int(state.get("total_runtime_seconds") or 0)
         return state
 
 

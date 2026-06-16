@@ -1,0 +1,187 @@
+{
+  "items": [
+    {
+      "cartridge_id": "atanor_base_free",
+      "category": "general",
+      "downloads": 0,
+      "installed": false,
+      "name": "ATANOR Base Free",
+      "owned": true,
+      "preview": {
+        "default_read_only": true,
+        "semantic_edges": 1,
+        "semantic_nodes": 2
+      },
+      "price_label": "Free",
+      "pricing_model": "free",
+      "rating": 4.6,
+      "remote_url": null,
+      "risk_level": "low",
+      "subscription_active": false,
+      "subtitle": "Basic ontology anchors for everyday reasoning.",
+      "tags": [
+        "base",
+        "free",
+        "starter"
+      ],
+      "verified_author": true
+    },
+    {
+      "cartridge_id": "startup_strategy_demo",
+      "category": "startup",
+      "downloads": 0,
+      "installed": false,
+      "name": "Startup Strategy Demo",
+      "owned": false,
+      "preview": {
+        "default_read_only": true,
+        "semantic_edges": 2,
+        "semantic_nodes": 3
+      },
+      "price_label": "USD 19 once",
+      "pricing_model": "one_time",
+      "rating": 4.6,
+      "remote_url": null,
+      "risk_level": "low",
+      "subscription_active": false,
+      "subtitle": "Market, customer, moat, pricing, and investor objection frames.",
+      "tags": [
+        "startup",
+        "strategy",
+        "pitch"
+      ],
+      "verified_author": true
+    },
+    {
+      "cartridge_id": "korean_writing_demo",
+      "category": "writing",
+      "downloads": 0,
+      "installed": false,
+      "name": "Korean Writing Demo",
+      "owned": false,
+      "preview": {
+        "default_read_only": true,
+        "semantic_edges": 1,
+        "semantic_nodes": 2
+      },
+      "price_label": "USD 5/monthly",
+      "pricing_model": "subscription",
+      "rating": 4.8,
+      "remote_url": null,
+      "risk_level": "low",
+      "subscription_active": false,
+      "subtitle": "Natural Korean explanation and transition patterns.",
+      "tags": [
+        "korean",
+        "writing",
+        "surface"
+      ],
+      "verified_author": true
+    },
+    {
+      "cartridge_id": "software_architect_demo",
+      "category": "software",
+      "downloads": 0,
+      "installed": false,
+      "name": "Software Architect Demo",
+      "owned": true,
+      "preview": {
+        "default_read_only": true,
+        "semantic_edges": 2,
+        "semantic_nodes": 3
+      },
+      "price_label": "Free",
+      "pricing_model": "free",
+      "rating": 4.6,
+      "remote_url": null,
+      "risk_level": "low",
+      "subscription_active": false,
+      "subtitle": "API, backend, frontend, deployment, testing, and tradeoff frames.",
+      "tags": [
+        "software",
+        "architecture",
+        "testing"
+      ],
+      "verified_author": true
+    },
+    {
+      "cartridge_id": "semantic_cloud_kubernetes_demo",
+      "category": "general",
+      "downloads": 0,
+      "installed": false,
+      "name": "Semantic Cloud Kubernetes Demo",
+      "owned": true,
+      "preview": {
+        "default_read_only": true,
+        "semantic_edges": 4,
+        "semantic_nodes": 5
+      },
+      "price_label": "Free",
+      "pricing_model": "free",
+      "rating": 4.6,
+      "remote_url": null,
+      "risk_level": "low",
+      "subscription_active": false,
+      "subtitle": "Exported from the Semantic Cloud proof store.",
+      "tags": [
+        "semantic-cloud",
+        "proof-store",
+        "exported"
+      ],
+      "verified_author": true
+    },
+    {
+      "cartridge_id": "semantic_cloud_kubernetes_demo_api",
+      "category": "general",
+      "downloads": 0,
+      "installed": false,
+      "name": "Semantic Cloud Kubernetes API Demo",
+      "owned": true,
+      "preview": {
+        "default_read_only": true,
+        "semantic_edges": 4,
+        "semantic_nodes": 5
+      },
+      "price_label": "Free",
+      "pricing_model": "free",
+      "rating": 4.6,
+      "remote_url": null,
+      "risk_level": "low",
+      "subscription_active": false,
+      "subtitle": "Exported from the Semantic Cloud proof store.",
+      "tags": [
+        "semantic-cloud",
+        "proof-store",
+        "exported"
+      ],
+      "verified_author": true
+    },
+    {
+      "cartridge_id": "semantic_cloud_kubernetes_demo_test",
+      "category": "general",
+      "downloads": 0,
+      "installed": false,
+      "name": "Semantic Cloud Kubernetes Demo Test",
+      "owned": true,
+      "preview": {
+        "default_read_only": true,
+        "semantic_edges": 4,
+        "semantic_nodes": 5
+      },
+      "price_label": "Free",
+      "pricing_model": "free",
+      "rating": 4.6,
+      "remote_url": null,
+      "risk_level": "low",
+      "subscription_active": false,
+      "subtitle": "Exported from the Semantic Cloud proof store.",
+      "tags": [
+        "semantic-cloud",
+        "proof-store",
+        "exported"
+      ],
+      "verified_author": true
+    }
+  ],
+  "product_name": "Graph Hub"
+}

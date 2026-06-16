@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -15,6 +16,10 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     cleaned.mkdir(parents=True)
     (cleaned / "doc1.txt").write_text(
         "# GraphRAG\nGraphRAG uses KnowledgeGraph. Evidence reduces HallucinationRisk. Guardrail requires Evidence.",
+        encoding="utf-8",
+    )
+    (cleaned / "atanor_internal.txt").write_text(
+        "ATANOR Ghost Shell is the lightweight SHA-256 topology map. Payload Vault stores private raw payloads locally with SQLite WAL. Working Memory temporarily fuses Local Brain and Cloud Brain fragments.",
         encoding="utf-8",
     )
     client = TestClient(app)
@@ -135,6 +140,43 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     assert legend_result["answer_engine"]["external_llm"] is False
     assert legend_result["answer_kind"] == "native_graph_token_generation"
     assert "graph colors indicate" not in legend_result["answer"]
+
+    ghost_shell = client.post("/api/graphrag/query", json={"query": "What is Ghost Shell?"})
+    assert ghost_shell.status_code == 200
+    ghost_shell_result = ghost_shell.json()["result"]
+    assert ghost_shell_result["method"] in {"atanor-research-no-evidence-v1", "atanor-graph-token-rag-v1"}
+    assert ghost_shell_result["method"] != "atanor-graph-token-web-rag-v1"
+    assert "web_search" not in ghost_shell_result
+    assert ghost_shell_result["answer_engine"]["external_llm"] is False
+
+    local_mode = client.post("/api/graphrag/query", json={"query": "유재석이 누구야", "brain_mode": "local", "web_search": True})
+    assert local_mode.status_code == 200
+    local_result = local_mode.json()["result"]
+    assert local_result["brain_mode"] == "local"
+    assert local_result["cloud_weight"] == 0
+    assert local_result["route_state"] == "local_private_route"
+    assert "web_search" not in local_result
+
+    cloud_mode = client.post("/api/graphrag/query", json={"query": "유재석이 누구야", "brain_mode": "cloud"})
+    assert cloud_mode.status_code == 200
+    cloud_result = cloud_mode.json()["result"]
+    assert cloud_result["brain_mode"] == "cloud"
+    assert cloud_result["local_weight"] == 0
+    assert cloud_result["cloud_state"] in {"connected", "stub"}
+
+    unified_mode = client.post("/api/graphrag/query", json={"query": "What is Ghost Shell?", "brain_mode": "unified"})
+    assert unified_mode.status_code == 200
+    unified_result = unified_mode.json()["result"]
+    assert unified_result["brain_mode"] == "unified"
+    assert "working_memory_active" in unified_result
+
+    legacy_alias = client.post("/api/graphrag/query", json={"query": "What is Ghost Shell?", "brain_mode": "dual"})
+    assert legacy_alias.status_code == 200
+    alias_result = legacy_alias.json()["result"]
+    assert alias_result["brain_mode"] == "unified"
+    alias_surface = json.dumps(alias_result, ensure_ascii=False)
+    assert "Dual Graph" not in alias_surface
+    assert "dual_graph" not in alias_surface
 
     guard = client.post("/api/guard/check", json={"draft_answer": "GraphRAG always guarantees perfect answers."})
     assert guard.status_code == 200

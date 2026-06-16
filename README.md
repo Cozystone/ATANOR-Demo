@@ -4,11 +4,37 @@
 
 **Local-first neuro-symbolic AI engine powered by the Homage Engine**
 
+> ATANOR is a local-first AI OS where private memory stays on-device, while public knowledge grows through a contributor-powered Cloud Brain.
+
 ATANOR is a local-first neuro-symbolic AI research engine for building,
 inspecting, and evolving knowledge graphs on a workstation. It keeps factual
 memory in traceable graph structures instead of hiding it inside opaque model
 weights, then uses local retrieval and synthesis paths to produce answers from
 inspectable context.
+
+## 30-Second Summary
+
+ATANOR separates private memory from public knowledge. Your Local Brain keeps
+private documents, Payload Vault data, and chat traces on your own machine. The
+Cloud Brain accepts only opt-in, public, content-addressed graph fragments
+through a Cloudflare remote broker. Atlas visualizes this state honestly: real
+broker status when connected, preview relay points until verified remote
+contributors exist.
+
+## Real vs Preview
+
+| State | Item | Current release meaning |
+| --- | --- | --- |
+| REAL | Local FastAPI runtime | Backend APIs, memory endpoints, and tests run locally. |
+| REAL | Cloudflare broker | Direct `/cloud/status` can report `remote_connected` and `active_single_peer` when configured. |
+| REAL | Content-addressed public fragments | Submitted public fragments receive SHA-256 `content_hash` values and can be queried from KV. |
+| REAL | Web build/tests | Current release checks include Python tests and `npm --workspace apps/web run build`. |
+| PARTIAL | Contributor Node runtime | One active peer can register, poll, submit, and receive pending credit; multi-peer verification is not complete. |
+| PARTIAL | Cumulative Cloud Brain learning | Fragment storage/query works; automatic reuse inside every RAG answer path still needs release proof. |
+| PREVIEW | Global Atlas relay points | Overseas relay dots are anonymous preview regions unless real remote contributor aggregates are verified. |
+| NOT YET | Production R2/D1/Queues | Cloudflare Worker currently supports KV fragment storage; R2/D1/Queues are future hardening paths. |
+| NOT YET | Blockchain/token economy | Contribution credit is internal accounting only, not cryptocurrency or a financial asset. |
+| NOT YET | Direct libp2p payload transport | Current release uses brokered Cloudflare coordination, not direct P2P payload transfer. |
 
 ## Naming Boundary
 
@@ -57,12 +83,17 @@ ATANOR starts from a simple question: can a personal workstation become useful
 by storing knowledge as an evolving ontology graph, instead of forcing a model
 to memorize everything inside opaque weights?
 
-The target architecture separates the system into two brains:
+The target architecture separates sources without splitting the graph:
 
-- **Local Brain:** private, persistent, hardware-adaptive memory on the user's
+- **Local Brain:** private, persistent, hardware-adaptive source layer on the user's
   own machine.
-- **Cloud Brain:** shared public graph fragments that can be queried or copied
+- **Cloud Brain:** shared public source layer made of graph fragments that can be queried or copied
   without shipping a giant model around.
+
+ATANOR does not maintain a separate Dual Graph. Local Brain and Cloud Brain are
+source layers inside one Unified Ontology Graph. Unified Brain mode temporarily
+joins local private memory and cloud public fragments inside Working Memory,
+while preserving privacy boundaries and provenance.
 
 The current Alpha does not claim to outperform modern LLMs. It is a transparent
 prototype for testing whether graph lookup, synaptic edge weights, pruning,
@@ -123,12 +154,12 @@ panel for collection, learning, and output.
 
 ![Lab workspace](docs/screenshots/atanor-alpha-freeze-lab.png)
 
-### Cloud Brain Viewer
+### Cloud Brain Monitoring
 
-The deployed version acts as a small viewer. Real long-running workers run next
-to local FastAPI or a future desktop sidecar.
+Cloud Brain monitoring is now folded into the main ATANOR interface. Real
+long-running workers run next to local FastAPI or a future desktop sidecar.
 
-![Cloud Brain viewer](docs/screenshots/atanor-alpha-freeze-admin.png)
+![Cloud Brain monitoring](docs/screenshots/atanor-alpha-freeze-admin.png)
 
 ### Learning Edge Signals
 
@@ -208,7 +239,7 @@ Guard / Drift / Stability
 | Area | Path | Status |
 | --- | --- | --- |
 | FastAPI backend | `apps/api` | Alpha APIs, local telemetry, RAG, daemon control |
-| Next.js UI | `apps/web` | Lab, Cloud Brain viewer, 3D GraphRAG |
+| Next.js UI | `apps/web` | Lab, Cloud Brain monitoring, 3D GraphRAG |
 | DataGate | `packages/datagate` | deterministic source filtering |
 | Ontology Forge | `packages/ontology_forge` | contextual entity resolution and UUID concept schema |
 | Knowledge Bakery | `packages/knowledge_bakery` | local memory DB, daemon, potentiation/decay |
@@ -219,7 +250,7 @@ Guard / Drift / Stability
 ## Current Alpha Capabilities
 
 - Local FastAPI backend for telemetry, GraphRAG, daemon control, and memory APIs.
-- Next.js BakeBoard UI for the lab and Cloud Brain viewer.
+- Next.js BakeBoard UI for the lab and Cloud Brain monitoring.
 - Tauri desktop packaging path with a Python FastAPI sidecar.
 - DataGate filtering and Ontology Forge concept extraction.
 - Knowledge Bakery cumulative memory with SQLite WAL, checkpoints,

@@ -10,6 +10,11 @@ from .fusion import fusion_ratio_from_context
 from .graph_store import query_lazy_chunks, query_lazy_subgraph
 from .synthesizer import LocalSynthesizer
 
+try:
+    from seed_research.runtime_anchor import seed_anchor_trace as _seed_anchor_trace
+except Exception:  # pragma: no cover - optional research package boundary
+    _seed_anchor_trace = None
+
 
 def _tokens(text: str) -> list[str]:
     tokens: list[str] = []
@@ -67,6 +72,36 @@ def _query_seed_terms(query: str) -> list[str]:
     if identity_like:
         return list(dict.fromkeys([*query_terms, "atanor", "architecture", "ghost", "shell", "payload", "vault", "local", "brain", "cloud", "graphrag"]))
     return query_terms
+
+
+def _seed_anchor_trace_for_query(query: str) -> dict[str, Any]:
+    if _seed_anchor_trace is None:
+        return {
+            "enabled": False,
+            "seed_used": False,
+            "matched_concepts": [],
+            "matched_edges": [],
+            "role": "optional_seed_research_package_unavailable",
+            "final_answer_generation_claimed": False,
+            "external_llm_used": False,
+            "external_sllm_used": False,
+            "rule_based_answer_engine": False,
+        }
+    try:
+        return _seed_anchor_trace(query)
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "seed_used": False,
+            "matched_concepts": [],
+            "matched_edges": [],
+            "role": "seed_anchor_trace_error",
+            "error": str(exc),
+            "final_answer_generation_claimed": False,
+            "external_llm_used": False,
+            "external_sllm_used": False,
+            "rule_based_answer_engine": False,
+        }
 
 
 def _lexical_score(query_terms: list[str], chunk: dict[str, Any]) -> float:
@@ -130,6 +165,7 @@ def query_graphrag(
     effective_memory = _effective_memory_dir(cleaned_dir, memory_dir)
     query_terms = _tokens(query)
     seed_terms = _query_seed_terms(query)
+    seed_anchor = _seed_anchor_trace_for_query(query)
 
     subgraph = query_lazy_subgraph(seed_terms or [query], effective_memory, max_depth=3, max_nodes=512, max_edges=2048)
     expanded_terms = set(subgraph.get("expanded_terms") or set(query_terms))
@@ -176,6 +212,7 @@ def query_graphrag(
                 "matched_node_ids": [],
                 "fetch_sequence": subgraph.get("fetch_logs", []),
                 "fusion_ratio": fusion_ratio,
+                "seed_anchor": seed_anchor,
             },
             "fusion_ratio": fusion_ratio,
             "confidence": 0.0,
@@ -224,6 +261,7 @@ def query_graphrag(
             "active_hashes": subgraph.get("active_hashes", []),
             "limits": subgraph.get("limits", {}),
             "fusion_ratio": fusion_ratio,
+            "seed_anchor": seed_anchor,
         },
         "fusion_ratio": fusion_ratio,
         "confidence": confidence,

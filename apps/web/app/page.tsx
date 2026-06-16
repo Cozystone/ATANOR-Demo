@@ -1,7 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle } from "lucide-react";
+import AtlasGlobe3D from "./AtlasGlobe3D";
+import CloudBrainSphereScene, { type CloudBrainSphereStats } from "./CloudBrainSphereScene";
 import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode, type Rag3DVisualState } from "./Rag3DScene";
 import { TauriUpdatePrompt } from "./TauriUpdatePrompt";
 
@@ -12,6 +15,195 @@ type LearningVolume = "lite" | "standard" | "deep" | "max" | "infinite";
 type RightMode = "process" | "chat";
 type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
+type Language = "en" | "ko";
+type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "graphhub" | "contribute" | "chat" | "settings";
+type GraphPresentationMode = "home_unified_overview" | "local_private_memory" | "cloud_world_knowledge" | "unified_projection";
+
+const mainNavIcon = {
+  home: Home,
+  graph: Network,
+  local: Brain,
+  cloud: Cloud,
+  atlas: Globe2,
+  graphhub: Package,
+  contribute: Share2,
+  chat: MessageCircle,
+  settings: Settings,
+} satisfies Record<MainSectionId, typeof Home>;
+
+const MAIN_COPY: Record<Language, {
+  nav: Array<{ id: MainSectionId; key: string; label: string }>;
+  shellTitle: string;
+  shellSubtitle: string;
+  graphTitle: string;
+  graphSubtitle: string;
+  nodes: string;
+  relations: string;
+  sparsity: string;
+  communities: string;
+  systemStatus: string;
+  activeTask: string;
+  quickActions: string;
+  recentActivity: string;
+  chatTitle: string;
+  chatSubtitle: string;
+  send: string;
+  generating: string;
+  placeholder: string;
+  sync: string;
+  localBrain: string;
+  cloudBrain: string;
+  learningEngine: string;
+  generationEngine: string;
+  fragmentSync: string;
+  running: string;
+  connected: string;
+  listening: string;
+  ready: string;
+  synced: string;
+  graphSettled: string;
+  localNode: string;
+  cloudNode: string;
+  fragmentNode: string;
+  graphHint: string;
+  strongRelation: string;
+  weakRelation: string;
+  actions: { newChat: string; graphExplore: string; memorySearch: string; learningTrigger: string; checkpoint: string };
+  activity: { graphUpdate: string; patchSync: string; runtime: string; selected: string };
+}> = {
+  en: {
+    nav: [
+      { id: "home", key: "D", label: "Dashboard" },
+      { id: "local", key: "L", label: "Local Brain" },
+      { id: "cloud", key: "B", label: "Cloud Brain" },
+      { id: "atlas", key: "A", label: "Atlas" },
+      { id: "graphhub", key: "H", label: "Graph Hub" },
+      { id: "contribute", key: "P", label: "Brain Link" },
+      { id: "settings", key: "S", label: "Settings" },
+    ],
+    shellTitle: "ATANOR",
+    shellSubtitle: "LOCAL-FIRST HYBRID AI ENGINE",
+    graphTitle: "Unified Knowledge Graph",
+    graphSubtitle: "Local memory, Cloud fragments, and working context share one traceable field.",
+    nodes: "Nodes",
+    relations: "Relations",
+    sparsity: "Sparsity",
+    communities: "Communities",
+    systemStatus: "System Status",
+    activeTask: "Active Task",
+    quickActions: "Quick Actions",
+    recentActivity: "Recent Activity",
+    chatTitle: "ATANOR RAG",
+    chatSubtitle: "Ask the local graph. Context is resolved through Ghost Shell and Payload Vault.",
+    send: "Send",
+    generating: "Generating",
+    placeholder: "Ask ATANOR about the current memory graph...",
+    sync: "Sync",
+    localBrain: "Local Brain",
+    cloudBrain: "Cloud Brain",
+    learningEngine: "Learning Engine",
+    generationEngine: "Generation Engine",
+    fragmentSync: "Fragment Sync",
+    running: "Running",
+    connected: "Connected",
+    listening: "Listening",
+    ready: "Ready",
+    synced: "Synced",
+    graphSettled: "Graph settled",
+    localNode: "Local Brain Node",
+    cloudNode: "Cloud Brain Node",
+    fragmentNode: "Cloud Fragment",
+    graphHint: "Drag to rotate / Scroll to zoom / Click node to inspect",
+    strongRelation: "Relation Strong",
+    weakRelation: "Relation Weak",
+    actions: {
+      newChat: "New Conversation",
+      graphExplore: "Graph Exploration",
+      memorySearch: "Memory Search",
+      learningTrigger: "Learning Trigger",
+      checkpoint: "Checkpoint",
+    },
+    activity: {
+      graphUpdate: "Graph Update",
+      patchSync: "Patch Sync",
+      runtime: "Runtime",
+      selected: "Selected",
+    },
+  },
+  ko: {
+    nav: [
+      { id: "home", key: "D", label: "대시보드" },
+      { id: "local", key: "L", label: "로컬 브레인" },
+      { id: "cloud", key: "B", label: "클라우드 브레인" },
+      { id: "atlas", key: "A", label: "아틀라스" },
+      { id: "graphhub", key: "H", label: "Graph Hub" },
+      { id: "contribute", key: "P", label: "브레인 링크" },
+      { id: "settings", key: "S", label: "설정" },
+    ],
+    shellTitle: "ATANOR",
+    shellSubtitle: "로컬 우선 하이브리드 AI 엔진",
+    graphTitle: "통합 지식 그래프",
+    graphSubtitle: "로컬 기억, Cloud Fragment, 작업 문맥을 하나의 추적 가능한 장으로 봅니다.",
+    nodes: "노드",
+    relations: "관계",
+    sparsity: "희소도",
+    communities: "커뮤니티",
+    systemStatus: "시스템 상태",
+    activeTask: "활성 작업",
+    quickActions: "빠른 실행",
+    recentActivity: "최근 활동",
+    chatTitle: "ATANOR RAG",
+    chatSubtitle: "로컬 그래프에 질문하세요. Ghost Shell과 Payload Vault 문맥을 읽어 답합니다.",
+    send: "보내기",
+    generating: "생성 중",
+    placeholder: "현재 로컬 메모리에 대해 질문하세요...",
+    sync: "동기화",
+    localBrain: "로컬 브레인",
+    cloudBrain: "클라우드 브레인",
+    learningEngine: "학습 엔진",
+    generationEngine: "생성 엔진",
+    fragmentSync: "프래그먼트 동기화",
+    running: "실행 중",
+    connected: "연결됨",
+    listening: "수신 중",
+    ready: "준비됨",
+    synced: "동기화됨",
+    graphSettled: "그래프 안정화",
+    localNode: "로컬 브레인 노드",
+    cloudNode: "클라우드 브레인 노드",
+    fragmentNode: "클라우드 프래그먼트",
+    graphHint: "드래그 회전 / 스크롤 확대 / 노드 선택",
+    strongRelation: "강한 관계",
+    weakRelation: "약한 관계",
+    actions: {
+      newChat: "새 대화",
+      graphExplore: "그래프 탐색",
+      memorySearch: "메모리 검색",
+      learningTrigger: "학습 시작",
+      checkpoint: "체크포인트",
+    },
+    activity: {
+      graphUpdate: "그래프 업데이트",
+      patchSync: "패치 동기화",
+      runtime: "누적 시간",
+      selected: "선택 노드",
+    },
+  },
+};
+
+const INITIAL_CHAT_PROMPT: Record<Language, string> = {
+  en: "How does GraphRAG verify answers with evidence documents?",
+  ko: "GraphRAG가 근거 문서를 어떻게 사용해서 답변을 검증하나요?",
+};
+
+const INITIAL_ASSISTANT_MESSAGE: Record<Language, string> = {
+  en: "Ask ATANOR through the local memory graph. It resolves Ghost Shell paths, fetches Payload Vault context, and answers through the local generation layer.",
+  ko: "ATANOR에게 로컬 메모리를 기준으로 질문하세요. Ghost Shell 경로와 Payload Vault 문맥을 읽고 로컬 생성 계층에서 답변합니다.",
+};
+
+const EFFECTIVE_MAIN_COPY: typeof MAIN_COPY = MAIN_COPY;
+const EFFECTIVE_INITIAL_CHAT_PROMPT: Record<Language, string> = INITIAL_CHAT_PROMPT;
+const EFFECTIVE_INITIAL_ASSISTANT_MESSAGE: Record<Language, string> = INITIAL_ASSISTANT_MESSAGE;
 
 const labStageOrder: LabStageKey[] = ["collect", "learn", "output"];
 
@@ -84,6 +276,12 @@ type DragState = {
   view: GraphView;
 };
 
+type AtlasDragState = {
+  pointerId: number;
+  startX: number;
+  startRotationDeg: number;
+};
+
 type BuildRun = {
   run_id: string;
   generated_at: string;
@@ -137,21 +335,21 @@ function stableDirection(value: string) {
   };
 }
 
-const codexResearchGoalPrompt = `ATANOR1.0을 장기 연구 목표로 계속 개선한다.
+const codexResearchGoalPrompt = `ATANOR1.0???κ린 ?곌뎄 紐⑺몴濡?怨꾩냽 媛쒖꽑?쒕떎.
 
-목표: 외부 LLM과 로컬 양자화 LLM 없이, 로컬 워크스테이션에서 장시간 누적되는 온톨로지/그래프 메모리와 독자 생성기를 연구해 중형 LLM에 가까운 답변 품질을 실험적으로 달성한다.
+紐⑺몴: ?몃? LLM怨?濡쒖뺄 ?묒옄??LLM ?놁씠, 濡쒖뺄 ?뚰겕?ㅽ뀒?댁뀡?먯꽌 ?μ떆媛??꾩쟻?섎뒗 ?⑦넧濡쒖?/洹몃옒??硫붾え由ъ? ?낆옄 ?앹꽦湲곕? ?곌뎄??以묓삎 LLM??媛源뚯슫 ?듬? ?덉쭏???ㅽ뿕?곸쑝濡??ъ꽦?쒕떎.
 
-반복 루프:
-1. 로컬 FastAPI와 Next BakeBoard를 실행하고 브라우저로 직접 조작한다.
-2. 실험실은 수집 -> 학습 -> 출력 순서로만 진행한다. 수집 100% 전에는 학습하지 않고, 학습 100% 전에는 출력 품질을 평가하지 않는다.
-3. 3D 그래프는 실제 새 노드/관계가 생길 때만 확장/활성 신호를 보여준다. 보여주기식 펄스, 가짜 진행률, fake running 상태를 만들지 않는다.
-4. 클라우드 브레인 뷰는 로컬 FastAPI와 local daemon이 실제로 실행될 때만 그래프를 보여준다. 연결 전이나 worker stopped 상태에서는 빈 관측 화면을 유지한다.
-5. Knowledge Bakery SQLite/JSONL 이벤트, daemon 상태, 체크포인트, 노드/관계/활성 신호를 직접 조회해 UI와 실제 저장 상태가 일치하는지 검증한다.
-6. 생성 결과가 깨지면 그대로 관찰하고, 규칙 기반 포장으로 숨기지 않는다.
-7. 병목이나 자원 경고가 뜨면 실패 실험으로 기록하고 학술/전문 자료를 찾아 새 구조안을 반영한다.
-8. 구현, 테스트, 브라우저 스크린샷, 문서 업데이트, 커밋을 반복한다.
+諛섎났 猷⑦봽:
+1. 濡쒖뺄 FastAPI? Next BakeBoard瑜??ㅽ뻾?섍퀬 釉뚮씪?곗?濡?吏곸젒 議곗옉?쒕떎.
+2. ?ㅽ뿕?ㅼ? ?섏쭛 -> ?숈뒿 -> 異쒕젰 ?쒖꽌濡쒕쭔 吏꾪뻾?쒕떎. ?섏쭛 100% ?꾩뿉???숈뒿?섏? ?딄퀬, ?숈뒿 100% ?꾩뿉??異쒕젰 ?덉쭏???됯??섏? ?딅뒗??
+3. 3D 洹몃옒?꾨뒗 ?ㅼ젣 ???몃뱶/愿怨꾧? ?앷만 ?뚮쭔 ?뺤옣/?쒖꽦 ?좏샇瑜?蹂댁뿬以?? 蹂댁뿬二쇨린???꾩뒪, 媛吏?吏꾪뻾瑜? fake running ?곹깭瑜?留뚮뱾吏 ?딅뒗??
+4. ?대씪?곕뱶 釉뚮젅??酉곕뒗 濡쒖뺄 FastAPI? local daemon???ㅼ젣濡??ㅽ뻾???뚮쭔 洹몃옒?꾨? 蹂댁뿬以?? ?곌껐 ?꾩씠??worker stopped ?곹깭?먯꽌??鍮?愿痢??붾㈃???좎??쒕떎.
+5. Knowledge Bakery SQLite/JSONL ?대깽?? daemon ?곹깭, 泥댄겕?ъ씤?? ?몃뱶/愿怨??쒖꽦 ?좏샇瑜?吏곸젒 議고쉶??UI? ?ㅼ젣 ????곹깭媛 ?쇱튂?섎뒗吏 寃利앺븳??
+6. ?앹꽦 寃곌낵媛 源⑥?硫?洹몃?濡?愿李고븯怨? 洹쒖튃 湲곕컲 ?ъ옣?쇰줈 ?④린吏 ?딅뒗??
+7. 蹂묐ぉ?대굹 ?먯썝 寃쎄퀬媛 ?⑤㈃ ?ㅽ뙣 ?ㅽ뿕?쇰줈 湲곕줉?섍퀬 ?숈닠/?꾨Ц ?먮즺瑜?李얠븘 ??援ъ“?덉쓣 諛섏쁺?쒕떎.
+8. 援ы쁽, ?뚯뒪?? 釉뚮씪?곗? ?ㅽ겕由곗꺑, 臾몄꽌 ?낅뜲?댄듃, 而ㅻ컠??諛섎났?쒕떎.
 
-제약: 답변 엔진에는 외부 LLM, sLLM, 사전학습 생성 가중치를 쓰지 않는다. 웹 검색과 논문 조사는 연구/수집 입력으로만 사용하고, 엔진이 실제로 학습하지 않은 능력을 가진 것처럼 표시하지 않는다.`;
+?쒖빟: ?듬? ?붿쭊?먮뒗 ?몃? LLM, sLLM, ?ъ쟾?숈뒿 ?앹꽦 媛以묒튂瑜??곗? ?딅뒗?? ??寃?됯낵 ?쇰Ц 議곗궗???곌뎄/?섏쭛 ?낅젰?쇰줈留??ъ슜?섍퀬, ?붿쭊???ㅼ젣濡??숈뒿?섏? ?딆? ?λ젰??媛吏?寃껋쿂???쒖떆?섏? ?딅뒗??`;
 
 const learningVolumePresets: Record<LearningVolume, { label: string; textBudget: string; chunkBudget: number; visualNodes: number; targetNodes: number | null; edgeRatio: number; durationHours: number; detail: string }> = {
   lite: { label: "가볍게", textBudget: "12k chars", chunkBudget: 32, visualNodes: 12, targetNodes: 3_000, edgeRatio: 3, durationHours: 12, detail: "응답 확인용" },
@@ -244,13 +442,219 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
   };
 }
 
+function buildStudioTopologyGraph(graph: Rag3DGraph): Rag3DGraph {
+  if (!graph.nodes.length) return graph;
+  const degree = new Map<string, number>();
+  graph.nodes.forEach((node) => degree.set(node.id, 0));
+  graph.edges.forEach((edge) => {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  });
+  const sortedIds = [...graph.nodes]
+    .sort((left, right) => (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0))
+    .map((node) => node.id);
+  const anchorCount = Math.max(5, Math.min(18, Math.round(Math.sqrt(graph.nodes.length) / 2.1)));
+  const anchors = sortedIds.slice(0, anchorCount);
+  const anchorSet = new Set(anchors);
+  const anchorIndex = new Map(anchors.map((id, index) => [id, index]));
+  const neighborAnchors = new Map<string, string>();
+  graph.edges.forEach((edge) => {
+    if (anchorSet.has(edge.source) && !neighborAnchors.has(edge.target)) neighborAnchors.set(edge.target, edge.source);
+    if (anchorSet.has(edge.target) && !neighborAnchors.has(edge.source)) neighborAnchors.set(edge.source, edge.target);
+  });
+  const anchorPosition = (id: string, index: number) => {
+    if (index === 0) return { x: 0, y: 0, z: 0 };
+    const side = index % 2 === 0 ? 1 : -1;
+    const lane = Math.ceil(index / 2);
+    const laneRatio = lane / Math.max(1, Math.ceil(anchorCount / 2));
+    const arc = -0.9 + laneRatio * 1.8;
+    return {
+      x: side * (1.9 + laneRatio * 5.85),
+      y: Math.sin(arc) * 5.35 + stableUnit(id, 501) * 0.42,
+      z: Math.cos(arc) * 2.45 + stableUnit(id, 503) * 0.72,
+    };
+  };
+  const anchorPositions = new Map<string, { x: number; y: number; z: number }>();
+  anchors.forEach((id, index) => anchorPositions.set(id, anchorPosition(id, index)));
+  const nodes = graph.nodes.map((node, index) => {
+    const directAnchor = anchorSet.has(node.id)
+      ? node.id
+      : neighborAnchors.get(node.id) ?? anchors[Math.floor(((stableUnit(node.id, 601) + 1) / 2) * anchors.length) % anchors.length];
+    const anchor = anchorPositions.get(directAnchor) ?? { x: 0, y: 0, z: 0 };
+    const rank = anchorIndex.get(node.id);
+    if (typeof rank === "number") {
+      const type = anchor.x > 1.2 ? "cloud_brain" : anchor.x < -1.2 ? "local_memory" : "representative_sample";
+      return {
+        ...node,
+        x: anchor.x,
+        y: anchor.y,
+        z: anchor.z,
+        source_type: rank % 6 === 0 ? "cloud_fragment" : type,
+      };
+    }
+    const degreeBoost = Math.min(1.7, 0.38 + Math.log1p(degree.get(node.id) ?? 0) * 0.2);
+    const radius = degreeBoost + ((stableUnit(node.id, 607) + 1) / 2) * 1.84;
+    const theta = (stableUnit(node.id, 613) + 1) * Math.PI;
+    const x = anchor.x + Math.cos(theta) * radius * 0.92;
+    const y = anchor.y + Math.sin(theta) * radius * 1.14 + stableUnit(`${node.id}:${index}`, 619) * 0.42;
+    const z = anchor.z + stableUnit(node.id, 617) * 2.18;
+    const sourceType = x > 1.7
+      ? (index % 7 === 0 ? "cloud_fragment" : "cloud_brain")
+      : x < -1.7
+        ? "local_memory"
+        : "representative_sample";
+    return {
+      ...node,
+      x,
+      y,
+      z,
+      source_type: sourceType,
+    };
+  });
+  const targetVisualEdges = Math.min(graph.edges.length, Math.max(420, Math.round(Math.sqrt(graph.nodes.length) * 20)));
+  const stride = Math.max(1, Math.ceil(graph.edges.length / targetVisualEdges));
+  const visualEdges = graph.edges.filter((edge, index) => {
+    if (anchorSet.has(edge.source) || anchorSet.has(edge.target)) return true;
+    if ((degree.get(edge.source) ?? 0) > 8 && (degree.get(edge.target) ?? 0) > 8 && index % Math.max(1, Math.floor(stride / 2)) === 0) return true;
+    return index % stride === 0;
+  }).slice(0, targetVisualEdges);
+  return { ...graph, nodes, edges: visualEdges };
+}
+
+function graphPresentationModeForSection(section: MainSectionId): GraphPresentationMode {
+  if (section === "local" || section === "chat") return "local_private_memory";
+  if (section === "cloud") return "cloud_world_knowledge";
+  if (section === "graph") return "unified_projection";
+  return "home_unified_overview";
+}
+
+function projectAtlasPoint(lat: number, lng: number) {
+  const safeLat = clamp(Number.isFinite(lat) ? lat : 0, -72, 72);
+  const normalizedLng = ((((Number.isFinite(lng) ? lng : 0) + 180) % 360) + 360) % 360 - 180;
+  const safeLng = clamp(normalizedLng, -180, 180);
+  const x = 50 + (safeLng / 180) * 38;
+  const y = 50 - (safeLat / 90) * 32;
+  return { x: clamp(x, 11, 89), y: clamp(y, 12, 88) };
+}
+
+function buildSphericalTopologyGraph(graph: Rag3DGraph, mode: GraphPresentationMode): Rag3DGraph {
+  if (!graph.nodes.length) return graph;
+  const degree = new Map<string, number>();
+  graph.nodes.forEach((node) => degree.set(node.id, 0));
+  graph.edges.forEach((edge) => {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  });
+  const rankedIds = new Map(
+    [...graph.nodes]
+      .sort((left, right) => (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0))
+      .map((node, index) => [node.id, index]),
+  );
+  const nodeCount = graph.nodes.length;
+  const localClusters = ["user_knowledge", "project_memory", "saved_conversations", "documents", "payload_vault", "ghost_shell", "local_evidence"];
+  const cloudClusters = ["world_knowledge", "public_ontology", "source_cluster", "live_fragment", "trust_provenance", "freshness"];
+  const nodes = graph.nodes.map((node, index) => {
+    const rank = rankedIds.get(node.id) ?? index;
+    const theta = index * 2.399963229728653 + stableUnit(node.id, 811) * 0.32;
+    const scatter = 0.45 + ((stableUnit(node.id, 809) + 1) / 2);
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    let sourceType = "local_memory";
+    let clusterId = "local_memory";
+
+    if (mode === "local_private_memory") {
+      const cluster = localClusters[Math.abs(Math.floor((rank * 3 + index) % localClusters.length))];
+      const clusterIndex = localClusters.indexOf(cluster);
+      const clusterAngle = (clusterIndex / localClusters.length) * Math.PI * 2 - Math.PI / 2;
+      const clusterRadius = cluster === "payload_vault" || cluster === "ghost_shell" ? 2.7 : 2.0;
+      const centerX = Math.cos(clusterAngle) * clusterRadius * 0.75;
+      const centerY = Math.sin(clusterAngle) * clusterRadius * 0.52;
+      const centerZ = (clusterIndex - localClusters.length / 2) * 0.18;
+      const nodeRadius = (rank < 28 ? 0.42 : 0.76 + scatter * 0.62) * (cluster === "payload_vault" ? 0.72 : 1);
+      x = centerX + Math.cos(theta) * nodeRadius;
+      y = centerY + Math.sin(theta) * nodeRadius * 0.86;
+      z = centerZ + stableUnit(node.id, 821) * 1.2;
+      sourceType = rank % 53 === 0 ? "cloud_fragment_disabled" : rank % 9 === 0 ? "representative_sample" : "local_memory";
+      clusterId = `local:${cluster}`;
+    } else if (mode === "cloud_world_knowledge") {
+      const cluster = cloudClusters[Math.abs(Math.floor((rank * 5 + index) % cloudClusters.length))];
+      const clusterIndex = cloudClusters.indexOf(cluster);
+      const clusterAngle = (clusterIndex / cloudClusters.length) * Math.PI * 2 + 0.38;
+      const clusterRadius = 3.8 + (clusterIndex % 3) * 0.68;
+      const centerX = Math.cos(clusterAngle) * clusterRadius * 1.32;
+      const centerY = Math.sin(clusterAngle) * clusterRadius * 0.72;
+      const centerZ = stableUnit(cluster, 829) * 2.2;
+      const nodeRadius = rank < 36 ? 0.58 : 1.0 + scatter * 0.92;
+      x = centerX + Math.cos(theta) * nodeRadius * 1.18;
+      y = centerY + Math.sin(theta) * nodeRadius;
+      z = centerZ + stableUnit(node.id, 823) * 2.5;
+      sourceType = rank % 41 === 0 ? "representative_sample_edge_consumer" : rank % 5 === 0 ? "cloud_fragment" : "cloud_brain";
+      clusterId = `cloud:${cluster}`;
+    } else {
+      const band = rank % 10;
+      const isWorking = band >= 8;
+      const isCloud = band >= 4 && band < 8;
+      const side = isWorking ? 0 : isCloud ? 1 : -1;
+      const lobeCenterX = side * 4.7;
+      const lobeCenterY = isWorking ? 0 : stableUnit(`${node.id}:lobe`, 827) * 1.1;
+      const lobeRadius = isWorking ? 1.25 + scatter * 0.45 : 1.55 + scatter * 0.85;
+      x = lobeCenterX + Math.cos(theta) * lobeRadius * (isWorking ? 0.82 : 1.1);
+      y = lobeCenterY + Math.sin(theta) * lobeRadius * 0.86;
+      z = stableUnit(node.id, 831) * (isWorking ? 1.4 : 2.3);
+      sourceType = isWorking ? "cloud_fragment_working_memory" : isCloud ? (rank % 6 === 0 ? "cloud_fragment" : "cloud_brain") : "local_memory";
+      clusterId = isWorking ? "unified:working_memory" : isCloud ? "unified:cloud_brain" : "unified:local_brain";
+    }
+
+    return {
+      ...node,
+      x,
+      y,
+      z,
+      source_type: sourceType,
+      cluster_id: clusterId,
+    };
+  });
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const targetVisualEdges = mode === "local_private_memory"
+    ? Math.min(graph.edges.length, Math.max(260, Math.round(nodeCount * 0.78)))
+    : mode === "cloud_world_knowledge"
+      ? Math.min(graph.edges.length, Math.max(520, Math.round(nodeCount * 1.28)))
+      : Math.min(graph.edges.length, Math.max(420, Math.round(nodeCount * 0.92)));
+  const stride = Math.max(1, Math.ceil(graph.edges.length / targetVisualEdges));
+  const visualEdges = graph.edges.filter((edge, index) => {
+    const sourceRank = rankedIds.get(edge.source) ?? Number.MAX_SAFE_INTEGER;
+    const targetRank = rankedIds.get(edge.target) ?? Number.MAX_SAFE_INTEGER;
+    const sourceNode = nodeById.get(edge.source);
+    const targetNode = nodeById.get(edge.target);
+    const sourceCluster = String(sourceNode?.cluster_id ?? "");
+    const targetCluster = String(targetNode?.cluster_id ?? "");
+    if (mode === "unified_projection") {
+      if (sourceCluster !== targetCluster && index % Math.max(1, Math.floor(stride / 3)) === 0) return true;
+      if (sourceRank < 16 || targetRank < 16) return true;
+      return index % Math.max(stride * 2, 1) === 0;
+    }
+    if (mode === "local_private_memory") {
+      if (/disabled|cloud/i.test(String(sourceNode?.source_type ?? "")) || /disabled|cloud/i.test(String(targetNode?.source_type ?? ""))) return false;
+      if (sourceRank < 14 || targetRank < 14) return true;
+      if (sourceCluster !== targetCluster && index % Math.max(1, stride) === 0) return true;
+      return index % Math.max(1, stride * 2) === 0;
+    }
+    if (sourceRank < 18 || targetRank < 18) return true;
+    if (sourceCluster !== targetCluster && index % Math.max(1, Math.floor(stride / 2)) === 0) return true;
+    if (sourceRank < 80 && targetRank < 80 && index % Math.max(1, Math.floor(stride / 2)) === 0) return true;
+    return index % stride === 0;
+  }).slice(0, targetVisualEdges);
+  return { ...graph, nodes, edges: visualEdges };
+}
+
 const stateLabels: Record<string, string> = {
   idle: "대기",
   running: "진행 중",
   completed: "완료",
   complete: "완료",
   failed: "실패",
-  warning: "점검",
+  warning: "경고",
   ready: "준비",
   waiting: "대기",
   resume_needed: "재개 필요",
@@ -323,24 +727,24 @@ const memoryTypeColors: Record<string, string> = {
 };
 
 const memoryTypeDescriptions: Record<string, string> = {
-  source: "외부에서 수집된 원문 자료와 근거 청크입니다.",
-  critique: "품질 문제, 반례, 경계 조건처럼 학습을 조심시키는 신호입니다.",
+  source: "웹과 문서에서 수집한 원문 자료와 근거 청크입니다.",
+  critique: "품질 문제, 반례, 경계 조건처럼 학습을 조절하는 신호입니다.",
   ontology: "개념 사이의 관계를 묶는 온톨로지 메모리입니다.",
   retrieval: "질문을 근거 문서와 그래프 경로로 연결하는 검색 노드입니다.",
-  visualization: "현재 학습 상태를 화면에 투사하는 시각화 노드입니다.",
-  guardrail: "답변의 과장, 환각, 근거 부족을 검증하는 안전 노드입니다.",
-  training: "ATANOR Oven으로 넘어가는 학습/압축 신호입니다.",
-  concept: "문서에서 추출된 핵심 개념 노드입니다.",
+  visualization: "현재 학습 상태를 화면에 표시하는 시각화 노드입니다.",
+  guardrail: "답변의 과장, 생략, 근거 부족을 검증하는 안전 노드입니다.",
+  training: "ATANOR Oven으로 이어지는 학습 및 압축 신호입니다.",
+  concept: "문서에서 추출한 핵심 개념 노드입니다.",
   keyword: "검색과 관계 확장에 쓰이는 키워드 기억입니다.",
-  heading: "문서 구조나 섹션 제목에서 온 문맥 앵커입니다.",
-  verb: "문장에서 추출된 행위/동작 신호입니다.",
-  phrase: "인접한 단어가 함께 만든 짧은 문장 구입니다.",
-  relation: "공출현, 선후, 행위 대상처럼 문장 요소 사이에서 측정된 관계 신호입니다.",
+  heading: "문서 구조와 섹션 제목에서 온 문맥 앵커입니다.",
+  verb: "문장에서 추출한 행위 또는 동작 신호입니다.",
+  phrase: "인접 단어가 함께 만든 짧은 문장 요소입니다.",
+  relation: "공출현, 행위, 대상 사이에서 측정한 관계 신호입니다.",
   quality: "DataGate가 판단한 품질 게이트 신호입니다.",
   memory: "장기 온톨로지 메모리의 저장 영역입니다.",
   verification: "근거 확인과 검증에 쓰이는 노드입니다.",
   learning: "실시간 학습 과정과 연결되는 노드입니다.",
-  efficiency: "저전력/저사양 실행을 위한 효율화 노드입니다.",
+  efficiency: "저전력 및 저사양 실행을 위한 효율 노드입니다.",
 };
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -368,8 +772,12 @@ function edgeStatusApiPath(baseUrl: string) {
   return `/api/network/edge/status?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}`;
 }
 
+function edgeAdvertiseApiPath(baseUrl: string) {
+  return `/api/network/edge/advertise?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}`;
+}
+
 function graphStreamApiPath(baseUrl: string, limit = 5000) {
-  return `/api/graph/stream?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}&limit=${encodeURIComponent(String(limit))}`;
+  return `/api/graph/stream?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}&limit=${encodeURIComponent(String(limit))}&include_cloud_attached=true`;
 }
 
 function readBrowserStorage(key: string) {
@@ -404,7 +812,7 @@ function removeBrowserStorage(key: string) {
 function localBackendErrorMessage(baseUrl: string, caught: unknown) {
   const message = caught instanceof Error ? caught.message : "로컬 FastAPI 응답 실패";
   if (typeof window !== "undefined" && window.location.protocol === "https:" && normalizeLocalBackendUrl(baseUrl).startsWith("http://")) {
-    return "HTTPS 배포본에서는 브라우저가 HTTP 로컬 FastAPI를 차단할 수 있습니다. 실제 PC 측정은 로컬 웹을 함께 실행하거나 HTTPS 로컬 companion을 사용하세요.";
+    return "HTTPS 배포본에서는 브라우저가 HTTP 로컬 FastAPI를 차단할 수 있습니다. 로컬 웹과 FastAPI를 함께 실행하거나 HTTPS 로컬 companion을 사용하세요.";
   }
   return message;
 }
@@ -470,20 +878,29 @@ function numeric(value: unknown) {
 function resourcePressureReason(system?: AnyRecord | null, gpu?: AnyRecord | null, stability?: AnyRecord | null, benchmark?: AnyRecord | null) {
   if (!isRealTelemetrySource(system, benchmark)) return null;
   const ramSoft = numeric(stability?.runtime_envelope?.ram_soft_gb);
+  const ramHard = numeric(stability?.runtime_envelope?.ram_hard_gb);
   const ramUsed = numeric(system?.ram_used_gb);
-  if (ramSoft !== null && ramUsed !== null && ramUsed >= ramSoft) {
-    return `RAM ${ramUsed.toFixed(1)}GB가 soft watermark ${ramSoft.toFixed(1)}GB를 넘었습니다`;
+  const ramPercent = numeric(system?.ram_used_percent);
+  if (ramHard !== null && ramUsed !== null && ramUsed >= ramHard) {
+    return `RAM ${ramUsed.toFixed(1)}GB가 hard watermark ${ramHard.toFixed(1)}GB를 넘었습니다.`;
+  }
+  if (ramSoft !== null && ramUsed !== null && ramUsed >= ramSoft && ramPercent !== null && ramPercent >= 88) {
+    return `RAM 사용률 ${ramPercent.toFixed(1)}%가 안전 한도를 넘었습니다.`;
   }
   const vramSoft = numeric(stability?.runtime_envelope?.vram_soft_gb);
+  const vramHard = numeric(stability?.runtime_envelope?.vram_hard_gb);
   const vramUsedMb = numeric(gpu?.vram_used);
   const vramUsed = vramUsedMb === null ? null : vramUsedMb / 1024;
-  if (gpu?.available && vramSoft !== null && vramUsed !== null && vramUsed >= vramSoft) {
-    return `VRAM ${vramUsed.toFixed(1)}GB가 soft watermark ${vramSoft.toFixed(1)}GB를 넘었습니다`;
+  if (gpu?.available && vramHard !== null && vramUsed !== null && vramUsed >= vramHard) {
+    return `VRAM ${vramUsed.toFixed(1)}GB가 hard watermark ${vramHard.toFixed(1)}GB를 넘었습니다.`;
+  }
+  if (gpu?.available && vramSoft !== null && vramUsed !== null && vramUsed >= vramSoft && Number(gpu?.utilization ?? 0) >= 92) {
+    return "VRAM 사용량과 GPU 부하가 안전 한도를 넘었습니다.";
   }
   const diskFree = numeric(system?.disk_free_gb);
   const storageReserve = numeric(stability?.runtime_envelope?.storage_reserve_gb);
   if (diskFree !== null && storageReserve !== null && diskFree <= storageReserve) {
-    return `디스크 여유 ${diskFree.toFixed(1)}GB가 reserve ${storageReserve.toFixed(1)}GB 이하입니다`;
+    return `디스크 여유 ${diskFree.toFixed(1)}GB가 reserve ${storageReserve.toFixed(1)}GB 이하입니다.`;
   }
   return null;
 }
@@ -531,27 +948,27 @@ function evidenceSignalText(doc: AnyRecord) {
 
 function buildFrameMessageText(message?: string | null) {
   if (!message) return "수집 그래프를 구성하고 있습니다.";
-  if (/output gate/i.test(message)) return "수집 대표 그래프 구성 완료";
+  if (/output gate/i.test(message)) return "수집 대상 그래프 구성 완료";
   if (/harvest/i.test(message)) return "자료 수집 그래프 구성 중";
   return message;
 }
 
 function isNodeInventoryQuestion(query: string) {
   const normalized = query.trim().toLowerCase();
-  return /(노드|node|nodes)/i.test(normalized) && /(다|전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
+  return /(노드|node|nodes)/i.test(normalized) && /(전체|모두|목록|리스트|말해|알려|보여|보유|있는|list|all|show|inventory|available)/i.test(normalized);
 }
 
 function isLegendQuestion(query: string) {
   const normalized = query.trim().toLowerCase();
-  const asksColor = /(색|색깔|색상|컬러|범례|legend|color)/i.test(normalized);
-  const asksMeaning = /(의미|뜻|뭐|설명|구분|차이|meaning|mean|label)/i.test(normalized);
-  const graphContext = /(노드|그래프|rag|온톨로지|메모리|신호|뉴런|node|graph)/i.test(normalized);
+  const asksColor = /(색깔|색상|컬러|범례|legend|color)/i.test(normalized);
+  const asksMeaning = /(의미|뜻|설명|구분|차이|meaning|mean|label)/i.test(normalized);
+  const graphContext = /(노드|그래프|rag|온톨로지|메모리|신호|이론|node|graph)/i.test(normalized);
   return asksColor && (asksMeaning || graphContext);
 }
 
 function isConversationalQuestion(query: string) {
   const normalized = query.trim().toLowerCase();
-  return /^(안녕|안녕하세요|하이|헬로|반가워|고마워|감사|감사합니다|hi|hello|hey|yo|thanks|thank you)[\s!.?。！？]*$/i.test(normalized);
+  return /^(안녕|안녕하세요|하이|헬로|반가워|고마워|감사|감사합니다|hi|hello|hey|yo|thanks|thank you)[\s!.?]*$/i.test(normalized);
 }
 
 function graphInventoryStatus(query: string, graph: Rag3DGraph) {
@@ -581,7 +998,7 @@ function graphInventoryStatus(query: string, graph: Rag3DGraph) {
       evidence_docs: [],
       citations: [],
       graph_paths: edges.slice(0, 12).map((edge) => [edge.source, edge.relation, edge.target]),
-      follow_up_questions: ["관계선도 모두 보여줄까요?", "특정 노드의 이웃만 펼쳐볼까요?"],
+      follow_up_questions: ["관계선을 모두 보여줄까요?", "특정 노드의 이웃만 펼쳐볼까요?"],
       retrieval_trace: {
         strategy: "graph inventory intent; retrieval skipped",
         query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
@@ -624,8 +1041,8 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
     return `- ${memoryTypeColor(type)} ${memoryTypeText(type)}: ${memoryTypeDescription(type)} 현재 ${count}개`;
   });
   const answer = lines.length
-    ? `색깔은 노드의 역할을 뜻합니다. 현재 3D RAG 그래프에서는 이렇게 읽으면 됩니다.\n${lines.join("\n")}\n\n답변 생성 중 주황색으로 팟팟 켜지는 노드는 “지금 질문을 처리하면서 활성화된 신호”입니다. 기본 색은 역할, 발광은 순간적인 뉴런 활성 상태라고 보면 됩니다.`
-    : "아직 표시된 노드가 없어 색상 범례를 만들 수 없습니다. 빌드 시작을 누르면 수집 자료가 온톨로지 노드로 바뀌고, 노드 타입별 색상이 나타납니다.";
+    ? `색깔은 노드의 역할을 나타냅니다. 현재 3D RAG 그래프에서는 다음처럼 읽으면 됩니다.\n${lines.join("\n")}\n\n질문 중 주황색으로 밝게 켜지는 노드는 실제로 활성화된 신호입니다. 기본 색은 역할과 메모리 상태를 구분하기 위한 시각적 표식입니다.`
+    : "아직 표시된 노드가 없어 색상 범례를 만들 수 없습니다. 빌드 시작을 누르면 수집 자료가 온톨로지 노드로 바뀌고 타입별 색상이 적용됩니다.";
   const representativeIds = new Set(representativeNodes.map((node) => node.id));
   const matchedEdges = edges.filter((edge) => representativeIds.has(edge.source) || representativeIds.has(edge.target)).slice(0, 12);
 
@@ -645,7 +1062,7 @@ function graphLegendStatus(query: string, graph: Rag3DGraph) {
       evidence_docs: [],
       citations: [],
       graph_paths: matchedEdges.map((edge) => [edge.source, edge.relation, edge.target]),
-      follow_up_questions: ["주황색 신호가 어떤 노드를 읽는지 보여줄까요?", "현재 노드 목록도 같이 펼쳐볼까요?"],
+      follow_up_questions: ["주황색 신호가 어떤 노드를 읽는지 보여줄까요?", "현재 노드 목록을 같이 펼쳐볼까요?"],
       retrieval_trace: {
         strategy: "graph legend intent; retrieval skipped",
         query_terms: query.toLowerCase().split(/\s+/).filter(Boolean),
@@ -669,18 +1086,18 @@ function shouldUseWebSearchForQuestion(question: string, webSearchEnabled: boole
   if (!webSearchEnabled) return false;
   const normalized = question.trim().toLowerCase();
   if (!normalized) return false;
-  const compact = normalized.replace(/[\s!.?,。！？~]+/g, "");
+  const compact = normalized.replace(/[\s!.?,]+/g, "");
   if (["hi", "hello", "hey", "yo", "thanks", "thankyou", "안녕", "안녕하세요", "하이", "고마워", "감사", "감사합니다"].includes(compact)) {
     return false;
   }
-  const tokens = normalized.match(/[a-z0-9가-힣_-]+/g) ?? [];
+  const tokens = normalized.match(/[a-z0-9가-힣-]+/g) ?? [];
   if (tokens.length <= 2 && tokens.some((token) => ["hi", "hello", "hey", "안녕", "안녕하세요", "하이"].includes(token))) {
     return false;
   }
   return true;
 }
 
-function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecord | null) {
+function signalTraceForQueryLegacy(query: string, graph: Rag3DGraph, result?: AnyRecord | null) {
   const memoryActiveNodes = (result?.memory_activation?.active_nodes ?? []) as AnyRecord[];
   const memoryActiveEdges = (result?.memory_activation?.active_edges ?? []) as AnyRecord[];
   const memoryNodeIds = new Set(memoryActiveNodes.map((node) => String(node.id ?? "")).filter(Boolean));
@@ -696,11 +1113,11 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
   );
   const terms = query
     .toLowerCase()
-    .split(/[^a-z0-9가-힣_-]+/i)
+    .split(/[^a-z0-9가-힣-]+/i)
     .filter((term) => term.length > 1);
   const activationTerms = [
     ...terms,
-    ...memoryLabels.flatMap((label) => label.split(/[^a-z0-9가-힣-]+/i)),
+    ...memoryLabels.flatMap((label) => label.split(/[^a-z0-9가-힣]+/i)),
   ].filter((term) => term.length > 1);
   const visibleNodeIds = new Set(graph.nodes.map((node) => node.id));
   const visibleMemoryIds = [...memoryNodeIds].filter((id) => visibleNodeIds.has(id));
@@ -718,17 +1135,17 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
     .sort((left, right) => right.score - left.score);
   let activeNodeIds = [...visibleMemoryIds, ...scored.map((item) => item.node.id)]
     .filter((id, index, all) => visibleNodeIds.has(id) && all.indexOf(id) === index)
-    .slice(0, 14);
+    .slice(0, 8);
   let retargeted = Boolean(memoryNodeIds.size && !visibleMemoryIds.length && activeNodeIds.length);
   if (!activeNodeIds.length) {
     const recentLiveIds = graph.nodes
       .filter((node) => node.id.startsWith("live-synapse"))
-      .slice(-10)
+      .slice(-6)
       .map((node) => node.id);
     const traversalIds = (graph.traversal_path ?? [])
       .filter((id) => visibleNodeIds.has(id))
-      .slice(-8);
-    activeNodeIds = Array.from(new Set([...recentLiveIds, ...traversalIds])).slice(0, 14);
+      .slice(-6);
+    activeNodeIds = Array.from(new Set([...recentLiveIds, ...traversalIds])).slice(0, 8);
     retargeted = Boolean(memoryNodeIds.size && activeNodeIds.length);
   }
   const activeNodeSet = new Set(activeNodeIds);
@@ -742,30 +1159,99 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
     ...memoryEdgeKeys,
     ...graph.edges
       .filter((edge) => activeNodeSet.has(edge.source) && activeNodeSet.has(edge.target))
-      .slice(0, 18)
+      .slice(0, 10)
       .map((edge) => `${edge.source}:${edge.target}`),
-  ].filter((key, index, all) => all.indexOf(key) === index).slice(0, 22);
+  ].filter((key, index, all) => all.indexOf(key) === index).slice(0, 12);
   const labels = activeNodeIds
     .map((id) => graph.nodes.find((node) => node.id === id)?.label ?? id)
     .slice(0, 6);
   const signalText = labels.length
-    ? `${retargeted ? "활성 신호(대표 노드)" : "활성 노드"}: ${labels.join(", ")}`
+    ? `${retargeted ? "활성 신호(대체 노드)" : "활성 노드"}: ${labels.join(", ")}`
     : "활성 신호 대기";
   return {
     edgeKeys: activeEdgeKeys,
     nodeIds: activeNodeIds,
     text: signalText,
   };
-  return {
-    edgeKeys: activeEdgeKeys,
-    nodeIds: activeNodeIds,
-    text: labels.length ? `활성 노드: ${labels.join(", ")}` : "활성 신호 대기",
-  };
 }
 
 function edgeKeyFromParts(source: unknown, target: unknown) {
   if (!source || !target) return "";
   return `${String(source)}:${String(target)}`;
+}
+
+function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecord | null) {
+  const visibleNodeIds = new Set(graph.nodes.map((node) => node.id));
+  const visibleEdges = graph.edges;
+  const memoryActiveNodes = (result?.memory_activation?.active_nodes ?? []) as AnyRecord[];
+  const memoryActiveEdges = (result?.memory_activation?.active_edges ?? []) as AnyRecord[];
+  const resultNodeIds = new Set<string>((result?.matched_nodes ?? []).map((node: AnyRecord) => String(node.id ?? "")).filter(Boolean));
+  const graphPathIds = new Set<string>(
+    (result?.graph_paths ?? [])
+      .flatMap((path: AnyRecord) => Array.isArray(path) ? path : [])
+      .filter(Boolean)
+      .map(String),
+  );
+  const queryTerms = query
+    .toLowerCase()
+    .split(/[^a-z0-9가-힣-]+/i)
+    .filter((term) => term.length > 1);
+  const activeCandidates = new Set<string>();
+
+  for (const node of memoryActiveNodes) {
+    const id = String(node.id ?? "");
+    if (visibleNodeIds.has(id)) activeCandidates.add(id);
+  }
+  for (const id of resultNodeIds) {
+    if (visibleNodeIds.has(id)) activeCandidates.add(id);
+  }
+  for (const id of graphPathIds) {
+    if (visibleNodeIds.has(id)) activeCandidates.add(id);
+  }
+
+  if (activeCandidates.size < 3 && queryTerms.length) {
+    graph.nodes
+      .map((node) => {
+        const haystack = `${node.id} ${node.label} ${node.type}`.toLowerCase();
+        const score = queryTerms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+        return { id: node.id, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 8)
+      .forEach((item) => activeCandidates.add(item.id));
+  }
+
+  if (!activeCandidates.size) {
+    for (const id of (graph.traversal_path ?? []).slice(-8)) {
+      if (visibleNodeIds.has(id)) activeCandidates.add(id);
+    }
+  }
+
+  const activeNodeIds = Array.from(activeCandidates).slice(0, 12);
+  const activeNodeSet = new Set(activeNodeIds);
+  const explicitMemoryEdgeKeys = memoryActiveEdges
+    .map((edge) => edgeKeyFromParts(edge.source, edge.target))
+    .filter((key) => {
+      const [source, target] = key.split(":");
+      return visibleNodeIds.has(source) && visibleNodeIds.has(target);
+    });
+  const visibleSignalEdges = visibleEdges
+    .filter((edge) => activeNodeSet.has(edge.source) || activeNodeSet.has(edge.target))
+    .slice(0, 24)
+    .map((edge) => `${edge.source}:${edge.target}`);
+  const activeEdgeKeys = [...explicitMemoryEdgeKeys, ...visibleSignalEdges]
+    .filter((key, index, all) => key && all.indexOf(key) === index)
+    .slice(0, 24);
+  const labels = activeNodeIds
+    .map((id) => graph.nodes.find((node) => node.id === id)?.label ?? id)
+    .slice(0, 6);
+
+  return {
+    edgeKeys: activeEdgeKeys,
+    nodeIds: activeNodeIds,
+    text: labels.length ? `활성 노드: ${labels.join(", ")}` : "활성 신호 대기",
+  };
 }
 
 function fmtClock(date = new Date()) {
@@ -783,7 +1269,7 @@ function formatDuration(ms: number) {
 
 function LossChart({ losses }: { losses: Array<{ step: number; loss: number }> }) {
   if (!losses?.length) {
-    return <div className="chart-empty">학습 dry-run 기록 없음</div>;
+    return <div className="chart-empty">?숈뒿 dry-run 湲곕줉 ?놁쓬</div>;
   }
   const maxLoss = Math.max(...losses.map((loss) => loss.loss));
   const minLoss = Math.min(...losses.map((loss) => loss.loss));
@@ -795,7 +1281,7 @@ function LossChart({ losses }: { losses: Array<{ step: number; loss: number }> }
     })
     .join(" ");
   return (
-    <svg className="loss-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="학습 손실 곡선">
+    <svg className="loss-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="?숈뒿 ?먯떎 怨≪꽑">
       <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
       {losses.map((loss, index) => {
         const x = losses.length === 1 ? 0 : (index / (losses.length - 1)) * 100;
@@ -894,7 +1380,65 @@ export default function BakeBoardPage() {
   const [memoryDrift, setMemoryDrift] = useState<AnyRecord | null>(null);
   const [learningDaemon, setLearningDaemon] = useState<AnyRecord | null>(null);
   const [edgeStatus, setEdgeStatus] = useState<AnyRecord | null>(defaultEdgeBrokerStatus);
+  const [cloudBrainStatus, setCloudBrainStatus] = useState<AnyRecord | null>(null);
+  const [cloudBrainSourceInspector, setCloudBrainSourceInspector] = useState<AnyRecord | null>(null);
+  const [semanticCloudStatus, setSemanticCloudStatus] = useState<AnyRecord | null>(null);
+  const [semanticGrowthRun, setSemanticGrowthRun] = useState<AnyRecord | null>(null);
+  const [semanticAttachResult, setSemanticAttachResult] = useState<AnyRecord | null>(null);
+  const [semanticGrowthRunning, setSemanticGrowthRunning] = useState(false);
+  const [semanticGrowthError, setSemanticGrowthError] = useState<string | null>(null);
+  const [graphHubStatus, setGraphHubStatus] = useState<AnyRecord | null>(null);
+  const [graphHubCatalog, setGraphHubCatalog] = useState<AnyRecord[]>([]);
+  const [graphHubInstalled, setGraphHubInstalled] = useState<AnyRecord[]>([]);
+  const [graphHubAttachments, setGraphHubAttachments] = useState<AnyRecord[]>([]);
+  const [graphHubAudit, setGraphHubAudit] = useState<AnyRecord[]>([]);
+  const [graphHubExport, setGraphHubExport] = useState<AnyRecord | null>(null);
+  const [graphHubProof, setGraphHubProof] = useState<AnyRecord | null>(null);
+  const [graphHubPricingFilter, setGraphHubPricingFilter] = useState<string>("all");
+  const [graphHubSearch, setGraphHubSearch] = useState("");
+  const [graphHubRunning, setGraphHubRunning] = useState<string | null>(null);
+  const [graphHubError, setGraphHubError] = useState<string | null>(null);
+  const [remoteCloudProof, setRemoteCloudProof] = useState<AnyRecord | null>(null);
+  const [remoteCloudProofRunning, setRemoteCloudProofRunning] = useState(false);
+  const [remoteCloudProofError, setRemoteCloudProofError] = useState<string | null>(null);
+  const [cloudAttachmentStatus, setCloudAttachmentStatus] = useState<AnyRecord | null>(null);
+  const [cloudAttachmentRunning, setCloudAttachmentRunning] = useState(false);
+  const [cloudAttachmentError, setCloudAttachmentError] = useState<string | null>(null);
+  const [brainGraphLocal, setBrainGraphLocal] = useState<AnyRecord | null>(null);
+  const [brainGraphCloud, setBrainGraphCloud] = useState<AnyRecord | null>(null);
+  const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
+  const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
+  const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base"]);
+  const [cloudBrainGraphLayers, setCloudBrainGraphLayers] = useState<string[]>(["cloud_attached", "working_memory_cloud", "semantic_cloud", "surface_trace_summary"]);
+  const [controlledGrowthProof, setControlledGrowthProof] = useState<AnyRecord | null>(null);
+  const [controlledGrowthRunning, setControlledGrowthRunning] = useState(false);
+  const [controlledGrowthError, setControlledGrowthError] = useState<string | null>(null);
+  const [cloudSphereStats, setCloudSphereStats] = useState<CloudBrainSphereStats | null>(null);
+  const [cortexStatus, setCortexStatus] = useState<AnyRecord | null>(null);
+  const [qCortexStatus, setQCortexStatus] = useState<AnyRecord | null>(null);
+  const [baseBrainStatus, setBaseBrainStatus] = useState<AnyRecord | null>(null);
+  const [baseBrainAnswer, setBaseBrainAnswer] = useState<AnyRecord | null>(null);
+  const [baseBrainBenchmark, setBaseBrainBenchmark] = useState<AnyRecord | null>(null);
+  const [baseBrainRunning, setBaseBrainRunning] = useState(false);
+  const [baseBrainError, setBaseBrainError] = useState<string | null>(null);
+  const [baseBrainQuery, setBaseBrainQuery] = useState("쿠버네티스가 뭐야?");
+  const [answerQualityStatus, setAnswerQualityStatus] = useState<AnyRecord | null>(null);
+  const [answerQualityRun, setAnswerQualityRun] = useState<AnyRecord | null>(null);
+  const [answerQualityRunning, setAnswerQualityRunning] = useState(false);
+  const [answerQualityError, setAnswerQualityError] = useState<string | null>(null);
+  const [answerRepairComparison, setAnswerRepairComparison] = useState<AnyRecord | null>(null);
+  const [answerRepairRunning, setAnswerRepairRunning] = useState(false);
+  const [answerRepairError, setAnswerRepairError] = useState<string | null>(null);
+  const [repairCandidates, setRepairCandidates] = useState<AnyRecord[]>([]);
+  const [productionRepairRules, setProductionRepairRules] = useState<AnyRecord[]>([]);
+  const [repairAuditEvents, setRepairAuditEvents] = useState<AnyRecord[]>([]);
+  const [repairReviewRunning, setRepairReviewRunning] = useState(false);
+  const [repairReviewError, setRepairReviewError] = useState<string | null>(null);
+  const [brainSyncStatus, setBrainSyncStatus] = useState<AnyRecord | null>(null);
+  const [cloudBudgetStatus, setCloudBudgetStatus] = useState<AnyRecord | null>(null);
+  const [atlasStatus, setAtlasStatus] = useState<AnyRecord | null>(null);
   const [graphSourceMode, setGraphSourceMode] = useState<"build" | "memory">("memory");
+  const [graphEdgeOpacity, setGraphEdgeOpacity] = useState(0.34);
   const [workbenchInfoOpen, setWorkbenchInfoOpen] = useState(false);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
@@ -902,6 +1446,16 @@ export default function BakeBoardPage() {
   const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8500");
   const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
   const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
+  const [language, setLanguage] = useState<Language>("en");
+  const [mainSection, setMainSection] = useState<MainSectionId>("home");
+  const [contributionEnabled, setContributionEnabled] = useState(() => readBrowserStorage("atanor.contribution.enabled") === "true");
+  const [contributionPaused, setContributionPaused] = useState(false);
+  const [contributionSafeMode, setContributionSafeMode] = useState(() => readBrowserStorage("atanor.contribution.safeMode") !== "false");
+  const [contributionCpuLimit, setContributionCpuLimit] = useState(() => Number(readBrowserStorage("atanor.contribution.cpuLimit") ?? 20));
+  const [contributionGpuLimit, setContributionGpuLimit] = useState(() => Number(readBrowserStorage("atanor.contribution.gpuLimit") ?? 0));
+  const [contributionAllowPublic, setContributionAllowPublic] = useState(() => readBrowserStorage("atanor.contribution.publicFragments") !== "false");
+  const [contributionStatus, setContributionStatus] = useState<AnyRecord | null>(null);
+  const [persistedLearningSeconds, setPersistedLearningSeconds] = useState(0);
   const [learningVolume, setLearningVolume] = useState<LearningVolume>("standard");
   const [targetNodeCount, setTargetNodeCount] = useState<number>(defaultTargetNodesForVolume("standard"));
   const [selectedMemory, setSelectedMemory] = useState<AnyRecord | null>(null);
@@ -929,17 +1483,27 @@ export default function BakeBoardPage() {
   const benchmarkAppliedRef = useRef(false);
   const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [atlasRotationDeg, setAtlasRotationDeg] = useState(0);
+  const [atlasDragState, setAtlasDragState] = useState<AtlasDragState | null>(null);
   const [memoryQuery, setMemoryQuery] = useState("");
-  const [chatInput, setChatInput] = useState("GraphRAG가 근거 문서를 어떻게 사용해서 답변을 검증하나요?");
-  const [draft, setDraft] = useState("GraphRAG는 근거 문서를 사용해 답변 근거를 확인하고 Guardrail은 과장 표현을 점검합니다.");
+  const [chatInput, setChatInput] = useState(EFFECTIVE_INITIAL_CHAT_PROMPT.en);
+  const [draft, setDraft] = useState("GraphRAG는 근거 문서와 지식 그래프 경로를 함께 읽어 답변 근거를 확인합니다.");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      text: "학습 dry-run이 완료되면 이 공간은 RAG 채팅 콘솔로 전환됩니다. 질문을 보내면 온톨로지 메모리와 문서 근거를 함께 조회합니다.",
+      text: EFFECTIVE_INITIAL_ASSISTANT_MESSAGE.en,
     },
   ]);
   const [error, setError] = useState<string | null>(null);
   const localBackendConnected = localBackendStatus === "connected";
+
+  useEffect(() => {
+    writeBrowserStorage("atanor.contribution.enabled", contributionEnabled ? "true" : "false");
+    writeBrowserStorage("atanor.contribution.safeMode", contributionSafeMode ? "true" : "false");
+    writeBrowserStorage("atanor.contribution.cpuLimit", String(contributionCpuLimit));
+    writeBrowserStorage("atanor.contribution.gpuLimit", String(contributionGpuLimit));
+    writeBrowserStorage("atanor.contribution.publicFragments", contributionAllowPublic ? "true" : "false");
+  }, [contributionAllowPublic, contributionCpuLimit, contributionEnabled, contributionGpuLimit, contributionSafeMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -948,8 +1512,83 @@ export default function BakeBoardPage() {
     if (savedUrl) {
       setLocalBackendUrl(savedUrl);
       connectLocalBackend(savedUrl).catch(() => undefined);
+    } else {
+      connectLocalBackend("http://127.0.0.1:8500").catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedLanguage = params.get("lang") ?? params.get("language");
+    const initialLanguage = requestedLanguage === "ko" || requestedLanguage === "en"
+      ? requestedLanguage
+      : "en";
+    setLanguage(initialLanguage);
+    const requestedSection = params.get("section");
+    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "graphhub", "contribute", "chat", "settings"];
+    if (requestedSection && sectionIds.includes(requestedSection as MainSectionId)) {
+      const nextSection = requestedSection as MainSectionId;
+      setMainSection(nextSection);
+      if (nextSection === "atlas") setWorkspaceMode("daemon");
+      if (nextSection === "chat") setRightMode("chat");
+      if (nextSection === "graph") setLayoutMode("graph");
+    }
+    const savedSeconds = Number(readBrowserStorage("atanor.cumulativeLearningSeconds") ?? "0");
+    if (Number.isFinite(savedSeconds) && savedSeconds > 0) {
+      setPersistedLearningSeconds(Math.floor(savedSeconds));
+    }
+  }, []);
+
+  useEffect(() => {
+    writeBrowserStorage("atanor.uiLanguage", language);
+  }, [language]);
+
+  useEffect(() => {
+    setChatInput((current) => {
+      if (current === EFFECTIVE_INITIAL_CHAT_PROMPT.en || current === EFFECTIVE_INITIAL_CHAT_PROMPT.ko || current === INITIAL_CHAT_PROMPT.en || current === INITIAL_CHAT_PROMPT.ko) {
+        return EFFECTIVE_INITIAL_CHAT_PROMPT[language];
+      }
+      return current;
+    });
+    setChatMessages((messages) => {
+      if (
+        messages.length === 1
+        && messages[0].role === "assistant"
+        && (
+          messages[0].text === EFFECTIVE_INITIAL_ASSISTANT_MESSAGE.en
+          || messages[0].text === EFFECTIVE_INITIAL_ASSISTANT_MESSAGE.ko
+          || messages[0].text === INITIAL_ASSISTANT_MESSAGE.en
+          || messages[0].text === INITIAL_ASSISTANT_MESSAGE.ko
+          || messages[0].text.includes("dry-run")
+          || messages[0].text.includes("RAG 梨꾪똿 肄섏넄")
+        )
+      ) {
+        return [{ role: "assistant", text: EFFECTIVE_INITIAL_ASSISTANT_MESSAGE[language] }];
+      }
+      return messages;
+    });
+  }, [language]);
+
+  useEffect(() => {
+    const daemonSeconds = Number(
+      learningDaemon?.cumulative_learning_seconds
+        ?? learningDaemon?.total_runtime_seconds
+        ?? 0,
+    );
+    const liveSeconds = Math.floor(learningElapsedMs / 1000);
+    const nextSeconds = Math.max(
+      Number.isFinite(daemonSeconds) ? daemonSeconds : 0,
+      Number.isFinite(liveSeconds) ? liveSeconds : 0,
+    );
+    if (nextSeconds <= 0) return;
+    setPersistedLearningSeconds((current) => Math.max(current, Math.floor(nextSeconds)));
+  }, [learningDaemon?.cumulative_learning_seconds, learningDaemon?.total_runtime_seconds, learningElapsedMs]);
+
+  useEffect(() => {
+    if (persistedLearningSeconds > 0) {
+      writeBrowserStorage("atanor.cumulativeLearningSeconds", String(Math.floor(persistedLearningSeconds)));
+    }
+  }, [persistedLearningSeconds]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -972,6 +1611,17 @@ export default function BakeBoardPage() {
       try {
         return await directBackendJson<T>(localBackendUrl, path, init);
       } catch (caught) {
+        if (options.localOnly) throw caught;
+        try {
+          const fallback = await fetchJson<T>(path, init);
+          if (localBackendConnected) {
+            setLocalBackendStatus("connected");
+            setLocalBackendMessage("로컬 브레인 프록시 연결됨");
+          }
+          return fallback;
+        } catch {
+          // Continue to the existing health check so the user gets a precise status.
+        }
         if (localBackendConnected) {
           const message = localBackendErrorMessage(localBackendUrl, caught);
           try {
@@ -983,36 +1633,149 @@ export default function BakeBoardPage() {
             setLocalBackendMessage(message);
           }
         }
-        if (options.localOnly) throw caught;
       }
     }
     return fetchJson<T>(path, init);
+  }
+
+  async function syncLocalBackendState(url: string, benchmarkForStability?: AnyRecord | null) {
+    const [
+      memoryStatusResult,
+      memoryGraphResult,
+      memoryDriftResult,
+      learningDaemonStatus,
+      edgeBrokerStatus,
+      brainSyncStatusResult,
+      cloudBrainStatusResult,
+      cloudBrainSourceInspectorResult,
+      semanticCloudStatusResult,
+      controlledGrowthProofResult,
+      cloudBudgetStatusResult,
+      atlasStatusResult,
+      cortexStatusResult,
+      qCortexStatusResult,
+      baseBrainStatusResult,
+      answerQualityStatusResult,
+      brainGraphLocalResult,
+      brainGraphCloudResult,
+      brainGraphOverlayResult,
+      brainGraphStatusResult,
+      graphragStatus,
+      guardStatus,
+      ovenStatus,
+      neuroStatus,
+    ] = await Promise.all([
+      directBackendJson<AnyRecord>(url, "/api/memory/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/memory/graph?limit=5000&include_cloud_attached=true").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/memory/drift-check").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/learning/daemon/status").catch(() => null),
+      fetchJson<AnyRecord>(edgeStatusApiPath(url)).catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/brain-sync/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/cloud-brain/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/cloud-brain/source-inspector").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/cloud-brain/semantic/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/cloud-brain/controlled-self-growth-proof").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/neuro/cloud-budget", {
+        method: "POST",
+        body: JSON.stringify({
+          plan: "plus",
+          contribution_active: true,
+          contribution_score: 0.6,
+          local_strength: 0.55,
+          cloud_coverage: 0.72,
+          seed_stability: 0.64,
+          working_memory_capacity: 0.58,
+          epistemic_confidence: 0.7,
+          provider_healthy: true,
+          remaining_budget_ratio: 1,
+        }),
+      }).catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/neuro/atlas").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/cortex/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/q-cortex/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/base-brain/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/answer-quality/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, `/api/brain/graph?view=local&layers=${encodeURIComponent(localBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      directBackendJson<AnyRecord>(url, `/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/brain/overlay-status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/brain/graph/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/graphrag/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/guard/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/oven/status").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/neuro/plan").catch(() => null),
+    ]);
+    if (memoryStatusResult) setMemoryStatus(memoryStatusResult);
+    if (memoryGraphResult && ("nodes" in memoryGraphResult || "working_memory_overlay" in memoryGraphResult)) setGraph(memoryGraphResult);
+    if (memoryDriftResult) setMemoryDrift(memoryDriftResult);
+    if (learningDaemonStatus) setLearningDaemon(learningDaemonStatus);
+    if (edgeBrokerStatus) setEdgeStatus(edgeBrokerStatus);
+    if (brainSyncStatusResult) setBrainSyncStatus(brainSyncStatusResult);
+    if (cloudBrainStatusResult) setCloudBrainStatus(cloudBrainStatusResult);
+    if (cloudBrainSourceInspectorResult) setCloudBrainSourceInspector(cloudBrainSourceInspectorResult);
+    if (semanticCloudStatusResult) setSemanticCloudStatus(semanticCloudStatusResult);
+    if (controlledGrowthProofResult) setControlledGrowthProof(controlledGrowthProofResult);
+    if (cloudBudgetStatusResult) setCloudBudgetStatus(cloudBudgetStatusResult);
+    if (atlasStatusResult) setAtlasStatus(atlasStatusResult);
+    if (cortexStatusResult) {
+      setCortexStatus((current) => ({
+        ...cortexStatusResult,
+        last_cycle: cortexStatusResult.last_cycle ?? current?.last_cycle,
+      }));
+    }
+    if (qCortexStatusResult) setQCortexStatus(qCortexStatusResult);
+    if (baseBrainStatusResult) setBaseBrainStatus(baseBrainStatusResult);
+    if (answerQualityStatusResult) setAnswerQualityStatus(answerQualityStatusResult);
+    if (brainGraphLocalResult) setBrainGraphLocal(brainGraphLocalResult);
+    if (brainGraphCloudResult) setBrainGraphCloud(brainGraphCloudResult);
+    if (brainGraphOverlayResult) setBrainGraphOverlayStatus(brainGraphOverlayResult);
+    if (brainGraphStatusResult) setBrainGraphStatus(brainGraphStatusResult);
+    if (graphragStatus) setGraphRag(graphragStatus);
+    if (guardStatus) setGuard(guardStatus);
+    if (ovenStatus) setOven(ovenStatus);
+    if (neuroStatus) setNeuro(neuroStatus);
+    if (benchmarkForStability?.can_read_local_hardware) {
+      const stabilityStatus = await directBackendJson<AnyRecord>(url, "/api/neuro/stability", {
+        method: "POST",
+        body: JSON.stringify(stabilityPayloadForVolume(
+          learningVolume,
+          targetNodeCount,
+          benchmarkForStability.hardware_profile,
+        )),
+      }).catch(() => null);
+      if (stabilityStatus) setStability(stabilityStatus);
+    }
   }
 
   async function connectLocalBackend(candidateUrl = localBackendUrl) {
     const url = normalizeLocalBackendUrl(candidateUrl);
     setLocalBackendUrl(url);
     setLocalBackendStatus("checking");
-    setLocalBackendMessage("로컬 FastAPI 확인 중");
+    setLocalBackendMessage("로컬 브레인 동기화 중");
     try {
-      await directBackendJson<AnyRecord>(url, "/health");
+      try {
+        await directBackendJson<AnyRecord>(url, "/health");
+      } catch {
+        const proxiedMemoryStatus = await fetchJson<AnyRecord>("/api/memory/status");
+        setMemoryStatus(proxiedMemoryStatus);
+      }
+      setLocalBackendStatus("connected");
+      setLocalBackendMessage("로컬 브레인 연결됨");
+      writeBrowserStorage("atanor.localFastApiUrl", url);
       fetchJson<AnyRecord>(edgeStatusApiPath(url))
         .then((edgeBrokerStatus) => setEdgeStatus(edgeBrokerStatus))
         .catch(() => setEdgeStatus(defaultEdgeBrokerStatus));
       const [systemStatus, gpuStatus, benchmarkStatus] = await Promise.all([
-        directBackendJson<AnyRecord>(url, "/api/telemetry/system"),
-        directBackendJson<AnyRecord>(url, "/api/telemetry/gpu"),
+        directBackendJson<AnyRecord>(url, "/api/telemetry/system").catch(() => null),
+        directBackendJson<AnyRecord>(url, "/api/telemetry/gpu").catch(() => null),
         directBackendJson<AnyRecord>(url, "/api/neuro/benchmark", {
           method: "POST",
           body: JSON.stringify({ run_probes: true }),
-        }),
+        }).catch(() => null),
       ]);
-      setSystem(systemStatus);
-      setGpu(gpuStatus);
-      setBenchmark(benchmarkStatus);
-      setLocalBackendStatus("connected");
-      setLocalBackendMessage("로컬 FastAPI 연결됨");
-      writeBrowserStorage("atanor.localFastApiUrl", url);
+      if (systemStatus) setSystem(systemStatus);
+      if (gpuStatus) setGpu(gpuStatus);
+      if (benchmarkStatus) setBenchmark(benchmarkStatus);
+      await syncLocalBackendState(url, benchmarkStatus);
       const recommended = benchmarkStatus?.recommended_learning_volume as LearningVolume | undefined;
       let nextVolume = learningVolume;
       let nextTargetNodeCount = targetNodeCount;
@@ -1063,6 +1826,20 @@ export default function BakeBoardPage() {
       memoryDriftResult,
       learningDaemonStatus,
       edgeBrokerStatus,
+      cloudBrainStatusResult,
+      cloudBrainSourceInspectorResult,
+      semanticCloudStatusResult,
+      controlledGrowthProofResult,
+      cloudBudgetStatusResult,
+      atlasStatusResult,
+      cortexStatusResult,
+      qCortexStatusResult,
+      baseBrainStatusResult,
+      answerQualityStatusResult,
+      brainGraphLocalResult,
+      brainGraphCloudResult,
+      brainGraphOverlayResult,
+      brainGraphStatusResult,
       graphragStatus,
       guardStatus,
       gpuStatus,
@@ -1070,16 +1847,53 @@ export default function BakeBoardPage() {
       ovenStatus,
       neuroStatus,
       stabilityStatus,
+      contributionStatusResult,
     ] = await Promise.all([
       apiJson<PipelineStatus>("/api/pipeline/status"),
       apiJson<AnyRecord>("/api/datagate/status"),
       apiJson<AnyRecord>("/api/ontology/status"),
       apiJson<AnyRecord>("/api/ontology/graph"),
       apiJson<AnyRecord>("/api/memory/status"),
-      fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000", undefined, localStrict)),
+      fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localStrict)),
       apiJson<AnyRecord>("/api/memory/drift-check"),
       apiJson<AnyRecord>("/api/learning/daemon/status"),
       fetchJson<AnyRecord>(edgeStatusApiPath(localBackendUrl)).catch(() => defaultEdgeBrokerStatus),
+      apiJson<AnyRecord>("/api/cloud-brain/status"),
+      apiJson<AnyRecord>("/api/cloud-brain/source-inspector"),
+      apiJson<AnyRecord>("/api/cloud-brain/semantic/status"),
+      apiJson<AnyRecord>("/api/cloud-brain/controlled-self-growth-proof"),
+      apiJson<AnyRecord>("/api/neuro/cloud-budget", {
+        method: "POST",
+        body: JSON.stringify({
+          plan: "plus",
+          contribution_active: contributionEnabled && !contributionPaused,
+          contribution_score: contributionEnabled && !contributionPaused ? 0.6 : 0,
+          local_strength: contributionEnabled ? 0.55 : 0.78,
+          cloud_coverage: contributionEnabled ? 0.72 : 0.28,
+          seed_stability: 0.64,
+          working_memory_capacity: 0.58,
+          epistemic_confidence: contributionEnabled ? 0.7 : 0.45,
+          provider_healthy: String(cloudBrainStatus?.broker_state ?? "") === "remote_connected",
+          remaining_budget_ratio: 1,
+        }),
+      }),
+      apiJson<AnyRecord>("/api/neuro/atlas"),
+      localBackendConnected
+        ? directBackendJson<AnyRecord>(localBackendUrl, "/api/cortex/status").catch(() => null)
+        : Promise.resolve(null),
+      localBackendConnected
+        ? directBackendJson<AnyRecord>(localBackendUrl, "/api/q-cortex/status").catch(() => null)
+        : apiJson<AnyRecord>("/api/q-cortex/status").catch(() => null),
+      localBackendConnected
+        ? directBackendJson<AnyRecord>(localBackendUrl, "/api/base-brain/status").catch(() => null)
+        : apiJson<AnyRecord>("/api/base-brain/status").catch(() => null),
+      localBackendConnected
+        ? directBackendJson<AnyRecord>(localBackendUrl, "/api/answer-quality/status").catch(() => null)
+        : apiJson<AnyRecord>("/api/answer-quality/status").catch(() => null),
+      fetchJson<AnyRecord>(`/api/brain/graph?view=local&layers=${encodeURIComponent(localBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      fetchJson<AnyRecord>("/api/brain/overlay-status").catch(() => null),
+      fetchJson<AnyRecord>("/api/brain/graph/status").catch(() => null),
       apiJson<AnyRecord>("/api/graphrag/status"),
       apiJson<AnyRecord>("/api/guard/status"),
       apiJson<AnyRecord>("/api/telemetry/gpu"),
@@ -1094,6 +1908,9 @@ export default function BakeBoardPage() {
           benchmarkForRefresh?.can_read_local_hardware ? benchmarkForRefresh.hardware_profile : null,
         )),
       }),
+      localBackendConnected
+        ? directBackendJson<AnyRecord>(localBackendUrl, "/api/contribution/status").catch(() => null)
+        : Promise.resolve(null),
     ]);
     setPipeline(pipelineStatus);
     setDatagate(datagateStatus);
@@ -1102,7 +1919,25 @@ export default function BakeBoardPage() {
     setMemoryDrift(memoryDriftResult);
     setLearningDaemon(learningDaemonStatus);
     setEdgeStatus(edgeBrokerStatus);
-    setGraph(memoryGraphResult?.nodes?.length ? memoryGraphResult : ontologyGraph);
+    setCloudBrainStatus(cloudBrainStatusResult);
+    setCloudBrainSourceInspector(cloudBrainSourceInspectorResult);
+    setSemanticCloudStatus(semanticCloudStatusResult);
+    setControlledGrowthProof(controlledGrowthProofResult);
+    setCloudBudgetStatus(cloudBudgetStatusResult);
+    setAtlasStatus(atlasStatusResult);
+    setCortexStatus((current) => (
+      cortexStatusResult
+        ? { ...cortexStatusResult, last_cycle: cortexStatusResult.last_cycle ?? current?.last_cycle }
+        : current
+    ));
+    setQCortexStatus((current) => qCortexStatusResult ?? current);
+    setBaseBrainStatus((current) => baseBrainStatusResult ?? current);
+    setAnswerQualityStatus((current) => answerQualityStatusResult ?? current);
+    setBrainGraphLocal((current) => brainGraphLocalResult ?? current);
+    setBrainGraphCloud((current) => brainGraphCloudResult ?? current);
+    setBrainGraphOverlayStatus((current) => brainGraphOverlayResult ?? current);
+    setBrainGraphStatus((current) => brainGraphStatusResult ?? current);
+    setGraph(memoryGraphResult && ("nodes" in memoryGraphResult || "working_memory_overlay" in memoryGraphResult) ? memoryGraphResult : ontologyGraph);
     setGraphRag(graphragStatus);
     setGuard(guardStatus);
     setGpu(gpuStatus);
@@ -1111,15 +1946,517 @@ export default function BakeBoardPage() {
     setOven(ovenStatus);
     setNeuro(neuroStatus);
     setStability(stabilityStatus);
+    setContributionStatus(contributionStatusResult);
+  }
+
+  async function runControlledGrowthProof() {
+    setControlledGrowthRunning(true);
+    setControlledGrowthError(null);
+    try {
+      const proof = await apiJson<AnyRecord>("/api/cloud-brain/prove-controlled-self-growth", {
+        method: "POST",
+      }, localBackendConnected ? { localOnly: true } : {});
+      setControlledGrowthProof(proof);
+      const nextCloudStatus = await apiJson<AnyRecord>("/api/cloud-brain/status", undefined, localBackendConnected ? { localOnly: true } : {});
+      setCloudBrainStatus(nextCloudStatus);
+    } catch (caught) {
+      setControlledGrowthError(caught instanceof Error ? caught.message : "Controlled self-growth proof failed.");
+    } finally {
+      setControlledGrowthRunning(false);
+    }
+  }
+
+  async function refreshSemanticCloud() {
+    setSemanticGrowthError(null);
+    const [status, cloudGraph] = await Promise.all([
+      apiJson<AnyRecord>("/api/cloud-brain/semantic/status", undefined, localBackendConnected ? { localOnly: true } : {}),
+      fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+    ]);
+    setSemanticCloudStatus(status);
+    if (cloudGraph) setBrainGraphCloud(cloudGraph);
+  }
+
+  async function ingestSampleSemanticSource() {
+    setSemanticGrowthRunning(true);
+    setSemanticGrowthError(null);
+    try {
+      const summary = await apiJson<AnyRecord>("/api/cloud-brain/semantic/ingest", {
+        method: "POST",
+        body: JSON.stringify({
+          text: "쿠버네티스는 컨테이너화된 애플리케이션을 자동으로 배포하고 관리하는 오픈소스 플랫폼입니다.",
+          source_id: "ui-sample-kubernetes-ko",
+          language: "ko",
+          title: "ATANOR semantic growth sample",
+          usage_allowed: false,
+        }),
+      }, localBackendConnected ? { localOnly: true } : {});
+      setSemanticGrowthRun(summary);
+      await refreshSemanticCloud();
+    } catch (caught) {
+      setSemanticGrowthError(caught instanceof Error ? caught.message : "Semantic Cloud ingest failed.");
+    } finally {
+      setSemanticGrowthRunning(false);
+    }
+  }
+
+  async function attachSemanticCloudSample() {
+    setSemanticGrowthRunning(true);
+    setSemanticGrowthError(null);
+    try {
+      const attach = await apiJson<AnyRecord>("/api/cloud-brain/semantic/attach", {
+        method: "POST",
+        body: JSON.stringify({ query: "쿠버네티스가 뭐야?", limit: 8 }),
+      }, localBackendConnected ? { localOnly: true } : {});
+      setSemanticAttachResult(attach);
+      const [overlay, memoryGraph, cloudGraph] = await Promise.all([
+        fetchJson<AnyRecord>("/api/brain/overlay-status").catch(() => null),
+        apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => null),
+        fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      ]);
+      if (overlay) setBrainGraphOverlayStatus(overlay);
+      if (memoryGraph && ("nodes" in memoryGraph || "working_memory_overlay" in memoryGraph)) setGraph(memoryGraph);
+      if (cloudGraph) setBrainGraphCloud(cloudGraph);
+    } catch (caught) {
+      setSemanticGrowthError(caught instanceof Error ? caught.message : "Semantic Cloud attach failed.");
+    } finally {
+      setSemanticGrowthRunning(false);
+    }
+  }
+
+  async function refreshGraphHub() {
+    setGraphHubError(null);
+    const query = new URLSearchParams();
+    if (graphHubPricingFilter !== "all") query.set("pricing_model", graphHubPricingFilter);
+    if (graphHubSearch.trim()) query.set("query", graphHubSearch.trim());
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const [status, catalog, installed, attachments, audit] = await Promise.all([
+      apiJson<AnyRecord>("/api/graph-hub/status", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => null),
+      apiJson<AnyRecord[]>(`/api/graph-hub/catalog${suffix}`, undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
+      apiJson<AnyRecord[]>("/api/graph-hub/installed", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
+      apiJson<AnyRecord[]>("/api/graph-hub/attachments", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
+      apiJson<AnyRecord[]>("/api/graph-hub/audit?limit=20", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
+    ]);
+    if (status) setGraphHubStatus(status);
+    setGraphHubCatalog(Array.isArray(catalog) ? catalog : []);
+    setGraphHubInstalled(Array.isArray(installed) ? installed : []);
+    setGraphHubAttachments(Array.isArray(attachments) ? attachments : []);
+    setGraphHubAudit(Array.isArray(audit) ? audit : []);
+  }
+
+  async function runGraphHubAction(action: string, path: string, body?: AnyRecord) {
+    setGraphHubRunning(action);
+    setGraphHubError(null);
+    try {
+      const result = await apiJson<AnyRecord>(path, {
+        method: "POST",
+        body: body ? JSON.stringify(body) : undefined,
+      }, localBackendConnected ? { localOnly: true } : {});
+      if (action === "export") setGraphHubExport(result);
+      if (action === "proof") setGraphHubProof(result);
+      await refreshGraphHub();
+      const cloudGraph = await fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null);
+      if (cloudGraph) setBrainGraphCloud(cloudGraph);
+    } catch (caught) {
+      setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub action failed.");
+    } finally {
+      setGraphHubRunning(null);
+    }
+  }
+
+  async function runRemoteCloudBrainProof() {
+    setRemoteCloudProofRunning(true);
+    setRemoteCloudProofError(null);
+    try {
+      const result = await apiJson<AnyRecord>("/api/cloud-brain/prove-remote-cloud-brain", {
+        method: "POST",
+      }, localBackendConnected ? { localOnly: true } : {});
+      const proof = (result.remote_proof && typeof result.remote_proof === "object" && !Array.isArray(result.remote_proof))
+        ? result.remote_proof as AnyRecord
+        : result;
+      setRemoteCloudProof(proof);
+      setCloudBrainSourceInspector(result);
+      const nextCloudStatus = await apiJson<AnyRecord>("/api/cloud-brain/status", undefined, localBackendConnected ? { localOnly: true } : {});
+      setCloudBrainStatus(nextCloudStatus);
+    } catch (caught) {
+      setRemoteCloudProofError(caught instanceof Error ? caught.message : "Remote Cloud Brain proof failed.");
+    } finally {
+      setRemoteCloudProofRunning(false);
+    }
+  }
+
+  async function buildBaseBrainPack() {
+    setBaseBrainRunning(true);
+    setBaseBrainError(null);
+    try {
+      await fetchJson<AnyRecord>("/api/base-brain/build", {
+        method: "POST",
+      });
+      const status = await fetchJson<AnyRecord>("/api/base-brain/status");
+      setBaseBrainStatus(status);
+    } catch (caught) {
+      setBaseBrainError(caught instanceof Error ? caught.message : "Base Brain build failed.");
+    } finally {
+      setBaseBrainRunning(false);
+    }
+  }
+
+  async function askBaseBrain() {
+    setBaseBrainRunning(true);
+    setBaseBrainError(null);
+    try {
+      const result = await fetchJson<AnyRecord>("/api/base-brain/answer", {
+        method: "POST",
+        body: JSON.stringify({
+          query: baseBrainQuery,
+          language,
+          audience_level: "beginner",
+          mode: "default",
+        }),
+      });
+      setBaseBrainAnswer(result);
+    } catch (caught) {
+      setBaseBrainError(caught instanceof Error ? caught.message : "Base Brain answer failed.");
+    } finally {
+      setBaseBrainRunning(false);
+    }
+  }
+
+  async function runBaseBrainBenchmark(limit = 10) {
+    setBaseBrainRunning(true);
+    setBaseBrainError(null);
+    try {
+      const result = await fetchJson<AnyRecord>("/api/base-brain/benchmark", {
+        method: "POST",
+        body: JSON.stringify({ limit }),
+      });
+      setBaseBrainBenchmark(result);
+    } catch (caught) {
+      setBaseBrainError(caught instanceof Error ? caught.message : "Base Brain benchmark failed.");
+    } finally {
+      setBaseBrainRunning(false);
+    }
+  }
+
+  async function runAnswerQualityLab(limit = 8) {
+    setAnswerQualityRunning(true);
+    setAnswerQualityError(null);
+    try {
+      const result = await apiJson<AnyRecord>("/api/answer-quality/run", {
+        method: "POST",
+        body: JSON.stringify({
+          benchmark_set: "core_ko_en_v1",
+          limit,
+        }),
+      }, localBackendConnected ? { localOnly: true } : {});
+      setAnswerQualityRun(result);
+      setAnswerQualityStatus((current) => ({
+        ...(current ?? {}),
+        latest_run: result,
+        state: "active",
+      }));
+    } catch (caught) {
+      setAnswerQualityError(caught instanceof Error ? caught.message : "Answer Quality Lab failed.");
+    } finally {
+      setAnswerQualityRunning(false);
+    }
+  }
+
+  async function runAnswerRepairComparison(limit = 8) {
+    setAnswerRepairRunning(true);
+    setAnswerRepairError(null);
+    try {
+      const result = await fetchJson<AnyRecord>("/api/answer-quality/run-repair-comparison", {
+        method: "POST",
+        body: JSON.stringify({
+          benchmark_set: "core_ko_en_v1",
+          limit,
+        }),
+      });
+      setAnswerRepairComparison(result);
+      writeBrowserStorage("atanor.latestAnswerRepairComparison", JSON.stringify(result));
+    } catch (caught) {
+      setAnswerRepairError(caught instanceof Error ? caught.message : "Repair comparison failed.");
+    } finally {
+      setAnswerRepairRunning(false);
+    }
+  }
+
+  async function refreshRepairReviewQueue() {
+    const [candidateResult, rulesResult, auditResult] = await Promise.all([
+      fetchJson<AnyRecord>("/api/surface-brain/repair-candidates"),
+      fetchJson<AnyRecord>("/api/surface-brain/production-rules"),
+      fetchJson<AnyRecord>("/api/surface-brain/repair-audit?limit=8"),
+    ]);
+    setRepairCandidates(Array.isArray(candidateResult.candidates) ? candidateResult.candidates : []);
+    setProductionRepairRules(Array.isArray(rulesResult.production_rules) ? rulesResult.production_rules : []);
+    setRepairAuditEvents(Array.isArray(auditResult.events) ? auditResult.events : []);
+  }
+
+  async function generateRepairCandidatesFromFeedback() {
+    if (!answerQualityFeedback.length) {
+      setRepairReviewError(language === "ko" ? "먼저 Answer Quality Lab을 실행해 피드백을 생성하세요." : "Run Answer Quality Lab first to create feedback.");
+      return;
+    }
+    setRepairReviewRunning(true);
+    setRepairReviewError(null);
+    try {
+      await fetchJson<AnyRecord>("/api/surface-brain/feedback-to-repair-candidates", {
+        method: "POST",
+        body: JSON.stringify({
+          run_id: String(latestAnswerQualityRun?.run_id ?? "ui-answer-quality-run"),
+          feedback_items: answerQualityFeedback,
+        }),
+      });
+      await refreshRepairReviewQueue();
+    } catch (caught) {
+      setRepairReviewError(caught instanceof Error ? caught.message : "Repair candidate generation failed.");
+    } finally {
+      setRepairReviewRunning(false);
+    }
+  }
+
+  async function reviewCandidateAction(candidateId: string, action: "approve" | "reject") {
+    setRepairReviewRunning(true);
+    setRepairReviewError(null);
+    try {
+      await fetchJson<AnyRecord>(`/api/surface-brain/repair-candidates/${encodeURIComponent(candidateId)}/${action}`, {
+        method: "POST",
+        body: JSON.stringify({
+          reviewer: "local_operator",
+          comment: action === "approve" ? "Approved from ATANOR lab UI." : "Rejected from ATANOR lab UI.",
+        }),
+      });
+      await refreshRepairReviewQueue();
+    } catch (caught) {
+      setRepairReviewError(caught instanceof Error ? caught.message : `Repair candidate ${action} failed.`);
+    } finally {
+      setRepairReviewRunning(false);
+    }
+  }
+
+  async function rollbackProductionRepairRule(ruleId: string) {
+    setRepairReviewRunning(true);
+    setRepairReviewError(null);
+    try {
+      await fetchJson<AnyRecord>(`/api/surface-brain/production-rules/${encodeURIComponent(ruleId)}/rollback`, { method: "POST" });
+      await refreshRepairReviewQueue();
+    } catch (caught) {
+      setRepairReviewError(caught instanceof Error ? caught.message : "Production rule rollback failed.");
+    } finally {
+      setRepairReviewRunning(false);
+    }
   }
 
   useEffect(() => {
-    refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "BakeBoard를 불러오지 못했습니다."));
+    if (workspaceMode !== "lab" || mainSection !== "cloud" || answerRepairComparison || answerRepairRunning) return;
+    let cancelled = false;
+    const saved = readBrowserStorage("atanor.latestAnswerRepairComparison");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as AnyRecord;
+        if (parsed && parsed.run_id) {
+          setAnswerRepairComparison(parsed);
+          return () => {
+            cancelled = true;
+          };
+        }
+      } catch {
+        writeBrowserStorage("atanor.latestAnswerRepairComparison", "");
+      }
+    }
+    fetchJson<AnyRecord>("/api/answer-quality/repair-comparisons?limit=1")
+      .then((result) => {
+        if (cancelled) return;
+        const rows = Array.isArray(result.repair_comparisons) ? result.repair_comparisons : [];
+        if (rows[0]) {
+          setAnswerRepairComparison(rows[0]);
+          writeBrowserStorage("atanor.latestAnswerRepairComparison", JSON.stringify(rows[0]));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [answerRepairComparison, answerRepairRunning, mainSection, workspaceMode]);
+
+  useEffect(() => {
+    if (workspaceMode !== "lab" || mainSection !== "cloud") return;
+    refreshRepairReviewQueue().catch(() => undefined);
+  }, [mainSection, workspaceMode]);
+
+  async function refreshBrainGraphPanels() {
+    const [localResult, cloudResult, overlayResult, statusResult] = await Promise.all([
+      fetchJson<AnyRecord>(`/api/brain/graph?view=local&layers=${encodeURIComponent(localBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      fetchJson<AnyRecord>("/api/brain/overlay-status").catch(() => null),
+      fetchJson<AnyRecord>("/api/brain/graph/status").catch(() => null),
+    ]);
+    if (localResult) setBrainGraphLocal(localResult);
+    if (cloudResult) setBrainGraphCloud(cloudResult);
+    if (overlayResult) setBrainGraphOverlayStatus(overlayResult);
+    if (statusResult) setBrainGraphStatus(statusResult);
+  }
+
+  useEffect(() => {
+    if (mainSection !== "local" && mainSection !== "cloud") return;
+    refreshBrainGraphPanels().catch(() => undefined);
+  }, [mainSection, localBrainGraphLayers, cloudBrainGraphLayers]);
+
+  function toggleBrainGraphLayer(view: "local" | "cloud", layer: string) {
+    const setter = view === "local" ? setLocalBrainGraphLayers : setCloudBrainGraphLayers;
+    setter((current) => (
+      current.includes(layer)
+        ? current.filter((item) => item !== layer)
+        : [...current, layer]
+    ));
+  }
+
+  async function refreshGraphWithCloudOverlay() {
+    const localStrict = localBackendConnected ? { localOnly: true } : {};
+    const attachmentResult = await apiJson<AnyRecord>("/api/working-memory/cloud-attachments", undefined, localStrict).catch(() => null);
+    if (attachmentResult) setCloudAttachmentStatus(attachmentResult);
+    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000))
+      .catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localStrict));
+    if (graphResult && ("nodes" in graphResult || "working_memory_overlay" in graphResult)) setGraph(graphResult);
+    return graphResult;
+  }
+
+  async function attachCloudContext() {
+    setCloudAttachmentRunning(true);
+    setCloudAttachmentError(null);
+    try {
+      const localStrict = localBackendConnected ? { localOnly: true } : {};
+      const created = await apiJson<AnyRecord>("/api/working-memory/cloud-attachments/create", {
+        method: "POST",
+        body: JSON.stringify({ query: chatInput.trim() || memoryQuery.trim() || "GraphRAG evidence" }),
+      }, localStrict);
+      const bundleId = String((created.bundle as AnyRecord | undefined)?.bundle_id ?? "");
+      if (!bundleId) throw new Error(String(created.reason ?? "No Cloud Node Bundle was created."));
+      const attached = await apiJson<AnyRecord>("/api/working-memory/cloud-attachments/attach", {
+        method: "POST",
+        body: JSON.stringify({ bundle_id: bundleId }),
+      }, localStrict);
+      setCloudAttachmentStatus(attached);
+      if (attached.cortex_g2 && typeof attached.cortex_g2 === "object" && !Array.isArray(attached.cortex_g2)) {
+        setCortexStatus((current) => ({
+          ...(current ?? {}),
+          state: "active",
+          last_cycle: attached.cortex_g2 as AnyRecord,
+        }));
+      }
+      await refreshGraphWithCloudOverlay();
+    } catch (caught) {
+      setCloudAttachmentError(caught instanceof Error ? caught.message : "Cloud context attachment failed.");
+    } finally {
+      setCloudAttachmentRunning(false);
+    }
+  }
+
+  async function detachCloudContext() {
+    setCloudAttachmentRunning(true);
+    setCloudAttachmentError(null);
+    try {
+      const localStrict = localBackendConnected ? { localOnly: true } : {};
+      const activeIds = ((cloudAttachmentStatus?.working_memory_overlay as AnyRecord | undefined)?.bundle_ids as string[] | undefined)
+        ?? (cloudAttachmentStatus?.active_bundle_ids as string[] | undefined)
+        ?? ((graph?.working_memory_overlay as AnyRecord | undefined)?.bundle_ids as string[] | undefined)
+        ?? [];
+      for (const bundleId of activeIds) {
+        await apiJson<AnyRecord>("/api/working-memory/cloud-attachments/detach", {
+          method: "POST",
+          body: JSON.stringify({ bundle_id: bundleId }),
+        }, localStrict);
+      }
+      const listed = await apiJson<AnyRecord>("/api/working-memory/cloud-attachments", undefined, localStrict);
+      setCloudAttachmentStatus(listed);
+      await refreshGraphWithCloudOverlay();
+      if (Number(listed.cloud_attached_nodes ?? 0) === 0) {
+        setGraph((current) => ({
+          ...(current ?? {}),
+          nodes: [],
+          edges: [],
+          counts: {
+            local_nodes: 0,
+            local_edges: 0,
+            seed_anchor_nodes: 0,
+            cloud_attached_nodes: 0,
+            cloud_attached_edges: 0,
+          },
+          working_memory_overlay: {
+            active: false,
+            bundle_ids: [],
+            cloud_attached_nodes: 0,
+            cloud_attached_edges: 0,
+            seed_anchor_nodes: 0,
+            writes_to_local_brain: false,
+            detachable: true,
+          },
+          local_brain_empty: true,
+          cloud_mirror_excluded_from_local_brain: true,
+        }));
+      }
+    } catch (caught) {
+      setCloudAttachmentError(caught instanceof Error ? caught.message : "Cloud context detach failed.");
+    } finally {
+      setCloudAttachmentRunning(false);
+    }
+  }
+
+  async function clearCloudOverlay() {
+    setCloudAttachmentRunning(true);
+    setCloudAttachmentError(null);
+    try {
+      const localStrict = localBackendConnected ? { localOnly: true } : {};
+      const cleared = await apiJson<AnyRecord>("/api/working-memory/cloud-attachments/clear", { method: "POST" }, localStrict);
+      setCloudAttachmentStatus(cleared);
+      await refreshGraphWithCloudOverlay();
+      setGraph((current) => ({
+        ...(current ?? {}),
+        nodes: [],
+        edges: [],
+        counts: {
+          local_nodes: 0,
+          local_edges: 0,
+          seed_anchor_nodes: 0,
+          cloud_attached_nodes: 0,
+          cloud_attached_edges: 0,
+        },
+        working_memory_overlay: {
+          active: false,
+          bundle_ids: [],
+          cloud_attached_nodes: 0,
+          cloud_attached_edges: 0,
+          seed_anchor_nodes: 0,
+          writes_to_local_brain: false,
+          detachable: true,
+        },
+        local_brain_empty: true,
+        cloud_mirror_excluded_from_local_brain: true,
+      }));
+    } catch (caught) {
+      setCloudAttachmentError(caught instanceof Error ? caught.message : "Cloud overlay clear failed.");
+    } finally {
+      setCloudAttachmentRunning(false);
+    }
+  }
+
+  useEffect(() => {
+    refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "BakeBoard瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??"));
     const timer = window.setInterval(() => {
       refreshAll().catch(() => undefined);
     }, 10000);
     return () => window.clearInterval(timer);
   }, [learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at, localBackendConnected, localBackendUrl]);
+
+  useEffect(() => {
+    if (mainSection !== "local") return;
+    refreshGraphWithCloudOverlay().catch(() => undefined);
+  }, [mainSection, localBackendConnected, localBackendUrl]);
+
+  useEffect(() => {
+    if (mainSection !== "graphhub") return;
+    refreshGraphHub().catch((caught) => setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub refresh failed."));
+  }, [mainSection, graphHubPricingFilter, localBackendConnected, localBackendUrl]);
 
   useEffect(() => {
     const updateClock = () => setClockNow(new Date());
@@ -1130,7 +2467,7 @@ export default function BakeBoardPage() {
 
   useEffect(() => {
     runHardwareBenchmark({ applyRecommendation: true }).catch((caught) => {
-      setError(caught instanceof Error ? caught.message : "시스템 벤치마크에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "?쒖뒪??踰ㅼ튂留덊겕???ㅽ뙣?덉뒿?덈떎.");
     });
   }, []);
 
@@ -1177,7 +2514,7 @@ export default function BakeBoardPage() {
       await action();
       await refreshAll();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "작업 실행에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "?묒뾽 ?ㅽ뻾???ㅽ뙣?덉뒿?덈떎.");
     }
   }
 
@@ -1215,7 +2552,7 @@ export default function BakeBoardPage() {
         if (labStep === "learn") setActiveLabStage("output");
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "학습 과정 실행에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "?숈뒿 怨쇱젙 ?ㅽ뻾???ㅽ뙣?덉뒿?덈떎.");
     } finally {
       if (progressTimerRef.current !== null) {
         window.clearInterval(progressTimerRef.current);
@@ -1278,7 +2615,7 @@ export default function BakeBoardPage() {
     const previousEdgeCount = Number(memoryStatus?.edge_count ?? graph?.edges?.length ?? 0);
     setMemoryStatus((current) => ({ ...(current ?? {}), state: "running" }));
     const result = await apiJson<AnyRecord>("/api/memory/build", { method: "POST" }, localStrict);
-    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000", undefined, localStrict));
+    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localStrict));
     const driftResult = await apiJson<AnyRecord>("/api/memory/drift-check", undefined, localStrict);
     setMemoryStatus(result);
     setMemoryDrift(driftResult);
@@ -1305,12 +2642,12 @@ export default function BakeBoardPage() {
           edgeKeys: learnedEdges.map((edge) => edgeKeyFromParts(edge.source, edge.target)).filter(Boolean),
           nodeIds: Array.from(new Set(learnedEdges.flatMap((edge) => [String(edge.source), String(edge.target)]))).slice(0, 16),
           text: shouldKeepBuildGraph
-            ? `학습 관계 확인: 대표 그래프 관계 ${learnedEdges.length}개를 활성화했습니다.`
-            : `학습 관계 확정: 새 관계 ${learnedEdges.length}개가 메모리에 저장됐습니다.`,
+            ? `?숈뒿 愿怨??뺤씤: ???洹몃옒??愿怨?${learnedEdges.length}媛쒕? ?쒖꽦?뷀뻽?듬땲??`
+            : `?숈뒿 愿怨??뺤젙: ??愿怨?${learnedEdges.length}媛쒓? 硫붾え由ъ뿉 ??λ릱?듬땲??`,
         };
         window.setTimeout(() => activateSignal(learnedTrace, 12000), 80);
       } else {
-        setSignalTraceText("학습 완료: 새 연결 변화 없음");
+        setSignalTraceText("?숈뒿 ?꾨즺: ???곌껐 蹂???놁쓬");
       }
     }
   }
@@ -1343,7 +2680,7 @@ export default function BakeBoardPage() {
   async function stopLearningDaemon() {
     const result = await apiJson<AnyRecord>("/api/learning/daemon/stop", {
       method: "POST",
-      body: JSON.stringify({ reason: "operator" }),
+      body: JSON.stringify({ reason: "user_request" }),
     });
     setLearningDaemon(result);
     await refreshAll().catch(() => undefined);
@@ -1352,7 +2689,7 @@ export default function BakeBoardPage() {
   async function checkpointLearningDaemon() {
     const result = await apiJson<AnyRecord>("/api/learning/daemon/checkpoint", {
       method: "POST",
-      body: JSON.stringify({ reason: "operator" }),
+      body: JSON.stringify({ reason: "user_request" }),
     });
     setLearningDaemon(result);
     await refreshAll().catch(() => undefined);
@@ -1423,9 +2760,18 @@ export default function BakeBoardPage() {
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
     try {
       const shouldUseWebSearch = shouldUseWebSearchForQuestion(question, webSearchEnabled);
-      const result = await apiJson<AnyRecord>("/api/graphrag/query", {
+      const result = await apiJson<AnyRecord>("/api/chat/atanor", {
         method: "POST",
-        body: JSON.stringify({ query: question, web_search: shouldUseWebSearch }),
+        body: JSON.stringify({
+          question,
+          web_search: shouldUseWebSearch,
+          brain_mode: mainSection === "local" ? "local" : mainSection === "cloud" ? "cloud" : "unified",
+          language,
+          audience_level: "beginner",
+          tone: "clear",
+          mode: "default",
+          include_trace: true,
+        }),
       });
       setGraphRag(result);
       const apiResult = result?.result;
@@ -1460,6 +2806,9 @@ export default function BakeBoardPage() {
           text: answer ?? `NO_ANSWER\nnodes=${nodeText}\nevidence_docs=${evidence.length}`,
           evidence,
           diagnostics: {
+            compact_trace: apiResult?.compact_trace,
+            surface_plan: apiResult?.surface_plan,
+            answer_engine: apiResult?.answer_engine,
             native_generation_failed_quality_check: apiResult?.native_generation_failed_quality_check ?? apiResult?.answer_engine?.diagnostics?.native_generation_failed_quality_check,
             degeneration: apiResult?.degeneration ?? apiResult?.answer_engine?.diagnostics?.degeneration,
             native_stop_reason: apiResult?.native_stop_reason ?? apiResult?.answer_engine?.diagnostics?.native_stop_reason,
@@ -1469,7 +2818,7 @@ export default function BakeBoardPage() {
       ]);
       if (learnComplete) setStageProgress("output", 100);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "RAG 채팅에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "RAG 梨꾪똿???ㅽ뙣?덉뒿?덈떎.");
     } finally {
       setIsGeneratingAnswer(false);
     }
@@ -1484,7 +2833,7 @@ export default function BakeBoardPage() {
       });
       setGuard(result);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "검증에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "寃利앹뿉 ?ㅽ뙣?덉뒿?덈떎.");
     }
   }
 
@@ -1502,7 +2851,7 @@ export default function BakeBoardPage() {
       });
       setNeuro(plan);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "효율 계획 계산에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "?⑥쑉 怨꾪쉷 怨꾩궛???ㅽ뙣?덉뒿?덈떎.");
     }
   }
 
@@ -1555,7 +2904,7 @@ export default function BakeBoardPage() {
       });
       setStability(plan);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "지속 운전 계획 계산에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "吏???댁쟾 怨꾪쉷 怨꾩궛???ㅽ뙣?덉뒿?덈떎.");
     }
   }
 
@@ -1563,12 +2912,12 @@ export default function BakeBoardPage() {
     const elapsed = learningStartedAt ? Date.now() - learningStartedAt : learningElapsedMs;
     setContinuousLearningActive(false);
     setLearningElapsedMs(elapsed);
-    const reasonText = reason ? ` 안전 중지 사유: ${reason}.` : "";
+    const reasonText = reason ? ` ?덉쟾 以묒? ?ъ쑀: ${reason}.` : "";
     setChatMessages((messages) => [
       ...messages,
       {
         role: "assistant",
-        text: `∞ 지속 학습을 멈췄습니다.${reasonText} 누적 학습 시간은 ${formatDuration(elapsed)}이고, 현재 화면에는 대표 온톨로지 노드 ${displayGraph3D.nodes.length}개와 관계 ${displayGraph3D.edges.length}개가 남아 있습니다.`,
+        text: `??吏???숈뒿??硫덉톬?듬땲??${reasonText} ?꾩쟻 ?숈뒿 ?쒓컙? ${formatDuration(elapsed)}?닿퀬, ?꾩옱 ?붾㈃?먮뒗 ????⑦넧濡쒖? ?몃뱶 ${displayGraph3D.nodes.length}媛쒖? 愿怨?${displayGraph3D.edges.length}媛쒓? ?⑥븘 ?덉뒿?덈떎.`,
       },
     ]);
   }
@@ -1576,10 +2925,10 @@ export default function BakeBoardPage() {
   async function startFactoryBuild() {
     setError(null);
     if (learningVolume === "infinite" && resourceStopReason) {
-      setError(`안전 조건 때문에 ∞ 학습을 시작하지 않았습니다: ${resourceStopReason}`);
+      setError(`?덉쟾 議곌굔 ?뚮Ц?????숈뒿???쒖옉?섏? ?딆븯?듬땲?? ${resourceStopReason}`);
       setChatMessages((messages) => [
         ...messages,
-        { role: "assistant", text: `∞ 지속 학습 시작 전 안전 점검에서 멈췄습니다. 사유: ${resourceStopReason}.` },
+        { role: "assistant", text: `??吏???숈뒿 ?쒖옉 ???덉쟾 ?먭??먯꽌 硫덉톬?듬땲?? ?ъ쑀: ${resourceStopReason}.` },
       ]);
       return;
     }
@@ -1626,13 +2975,13 @@ export default function BakeBoardPage() {
           ...messages,
           {
             role: "assistant",
-            text: `∞ 지속 학습이 시작됐습니다. 중지 버튼을 누르기 전까지 수집 라운드와 온톨로지 성장 이벤트를 계속 누적하고, 화면에는 최근/대표 노드를 최대 ${run.training_gate.visual_node_budget ?? run.graph_3d.nodes.length}개까지 안정적으로 표시합니다.`,
+            text: `지속 학습을 시작했습니다. 중지 버튼을 누르기 전까지 수집 라운드와 온톨로지 성장 이벤트를 계속 누적하고, 화면에는 최근/대표 노드를 최대 ${run.training_gate.visual_node_budget ?? run.graph_3d.nodes.length}개까지 안정적으로 표시합니다.`,
           },
         ]);
       }
     } catch (caught) {
       setContinuousLearningActive(false);
-      setError(caught instanceof Error ? caught.message : "빌드 시작에 실패했습니다.");
+      setError(caught instanceof Error ? caught.message : "鍮뚮뱶 ?쒖옉???ㅽ뙣?덉뒿?덈떎.");
     } finally {
       setIsBuilding(false);
     }
@@ -1712,10 +3061,10 @@ export default function BakeBoardPage() {
           edge_count: buildRun.graph_3d.edges.length + growthPulseCount * liveGrowthBatchSize * 2,
           message:
             buildIsInfinite
-              ? `${continuousLearningActive ? "∞ 지속 학습" : "∞ 학습 정지"} ${learningElapsedText}: 수집 라운드 ${growthPulseCount} / 누적 후보 ${accumulatedLearningNodes.toLocaleString()} 노드`
+              ? `${continuousLearningActive ? "??吏???숈뒿" : "???숈뒿 ?뺤?"} ${learningElapsedText}: ?섏쭛 ?쇱슫??${growthPulseCount} / ?꾩쟻 ?꾨낫 ${accumulatedLearningNodes.toLocaleString()} ?몃뱶`
               : rawGrowthPulseCount > growthPulseCount
-              ? `그래프 검사 모드: ${growthPulseCount}개 펄스에서 안정화했습니다.`
-              : `실시간 학습 펄스 ${growthPulseCount}: 새 시냅스가 기억망에 연결되었습니다.`,
+              ? `洹몃옒??寃??紐⑤뱶: ${growthPulseCount}媛??꾩뒪?먯꽌 ?덉젙?뷀뻽?듬땲??`
+              : `?ㅼ떆媛??숈뒿 ?꾩뒪 ${growthPulseCount}: ???쒕깄?ㅺ? 湲곗뼲留앹뿉 ?곌껐?섏뿀?듬땲??`,
         }
       : buildRun.graph_frames?.[Math.min(buildTick, buildRun.graph_frames.length - 1)] ?? null
     : null;
@@ -1731,7 +3080,28 @@ export default function BakeBoardPage() {
     };
   }, [activeBuildFrame?.node_count, buildIsInfinite, buildRun, buildTargetNodes, growthPulseCount, visualNodeCap]);
 
-  const displayGraph3D = graphSourceMode === "memory" ? memoryGraph3D : activeGraph3D ?? memoryGraph3D;
+  const graphPresentationMode = graphPresentationModeForSection(mainSection);
+  const localGraphState = (cloudBrainStatus?.local_graph_state && typeof cloudBrainStatus.local_graph_state === "object" && !Array.isArray(cloudBrainStatus.local_graph_state))
+    ? cloudBrainStatus.local_graph_state as AnyRecord
+    : null;
+  const localBrainInitialized = Boolean(localGraphState?.local_brain_initialized);
+  const emptyLocalBrainGraph3D = useMemo<Rag3DGraph>(() => ({ nodes: [], edges: [], traversal_path: [] }), []);
+  const earlyWorkingMemoryOverlay = (graph?.working_memory_overlay && typeof graph.working_memory_overlay === "object" && !Array.isArray(graph.working_memory_overlay))
+    ? graph.working_memory_overlay as AnyRecord
+    : {};
+  const earlyCloudAttachmentOverlay = (cloudAttachmentStatus?.working_memory_overlay && typeof cloudAttachmentStatus.working_memory_overlay === "object" && !Array.isArray(cloudAttachmentStatus.working_memory_overlay))
+    ? cloudAttachmentStatus.working_memory_overlay as AnyRecord
+    : {};
+  const localWorkingMemoryOverlayActive = Boolean(earlyWorkingMemoryOverlay.active)
+    || Number(earlyWorkingMemoryOverlay.cloud_attached_nodes ?? 0) > 0
+    || Number(earlyWorkingMemoryOverlay.seed_anchor_nodes ?? 0) > 0
+    || Boolean(earlyCloudAttachmentOverlay.active)
+    || Number(earlyCloudAttachmentOverlay.cloud_attached_nodes ?? (cloudAttachmentStatus?.cloud_attached_nodes ?? 0)) > 0
+    || Number(earlyCloudAttachmentOverlay.seed_anchor_nodes ?? 0) > 0;
+  const sectionMemoryGraph3D = graphPresentationMode === "local_private_memory" && !localBrainInitialized && !localWorkingMemoryOverlayActive
+    ? emptyLocalBrainGraph3D
+    : memoryGraph3D;
+  const displayGraph3D = graphSourceMode === "memory" ? sectionMemoryGraph3D : activeGraph3D ?? sectionMemoryGraph3D;
   const collectionDisplayNodeCount = buildRun ? activeGraph3D?.nodes.length ?? buildRun.graph_3d.nodes.length : displayGraph3D.nodes.length;
   const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
   const visibleLiveNodeCount = displayGraph3D.nodes.filter((node) => node.id.startsWith("live-synapse")).length;
@@ -1743,11 +3113,23 @@ export default function BakeBoardPage() {
   const graphOverlayMessage = graphSourceMode === "build"
     ? buildFrameMessageText(activeBuildFrame?.message)
     : buildRun
-      ? "학습 단계가 대표 그래프의 관계를 확인했습니다."
-      : "빌드 시작을 누르면 노드가 파생됩니다.";
+      ? "?숈뒿 ?④퀎媛 ???洹몃옒?꾩쓽 愿怨꾨? ?뺤씤?덉뒿?덈떎."
+      : "鍮뚮뱶 ?쒖옉???꾨Ⅴ硫??몃뱶媛 ?뚯깮?⑸땲??";
   const daemonCanOperate = learningDaemon?.mode === "local-daemon";
   const daemonGraphReady = workspaceMode !== "daemon" || (localBackendConnected && daemonCanOperate && Boolean(learningDaemon?.worker_alive));
-  const visibleGraph3D = daemonGraphReady ? displayGraph3D : { nodes: [], edges: [], traversal_path: [] };
+  const graphSyncPending = workspaceMode === "lab"
+    && graphSourceMode === "memory"
+    && !localBackendConnected
+    && localBackendStatus !== "failed"
+    && !buildRun;
+  const graphLooksLikeTinyFallback = workspaceMode === "lab"
+    && graphSourceMode === "memory"
+    && localBackendStatus !== "failed"
+    && !buildRun
+    && !localWorkingMemoryOverlayActive
+    && displayGraph3D.nodes.length > 0
+    && displayGraph3D.nodes.length <= 12;
+  const visibleGraph3D = daemonGraphReady && !graphSyncPending && !graphLooksLikeTinyFallback ? displayGraph3D : { nodes: [], edges: [], traversal_path: [] };
   const ragVisualState: Rag3DVisualState = !visibleGraph3D.nodes.length
     ? "idle"
     : isBuilding || continuousLearningActive || activeAction === "collect" || activeAction === "learn"
@@ -1790,6 +3172,17 @@ export default function BakeBoardPage() {
 
   const displayMemoryNodeCount = visibleGraph3D.nodes.length;
   const displayMemoryEdgeCount = visibleGraph3D.edges.length;
+  const graphHeaderNodeCount = graphPresentationMode === "local_private_memory" && !localBrainInitialized
+    ? 0
+    : displayMemoryNodeCount;
+  const graphHeaderEdgeCount = graphPresentationMode === "local_private_memory" && !localBrainInitialized
+    ? 0
+    : displayMemoryEdgeCount;
+  const studioGraph3D = useMemo(() => buildStudioTopologyGraph(visibleGraph3D), [visibleGraph3D]);
+  const sphereGraph3D = useMemo(() => buildSphericalTopologyGraph(visibleGraph3D, graphPresentationMode), [visibleGraph3D, graphPresentationMode]);
+  const usesStudioGraph = mainSection === "home";
+  const usesSphereGraph = mainSection === "graph" || mainSection === "local" || mainSection === "cloud" || mainSection === "chat";
+  const userSceneGraph3D = usesStudioGraph ? studioGraph3D : usesSphereGraph ? sphereGraph3D : studioGraph3D;
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const ramSoftGb = stability?.runtime_envelope?.ram_soft_gb ?? 23;
@@ -1797,19 +3190,108 @@ export default function BakeBoardPage() {
   const hotWindowNodes = stability?.graph_policy?.hot_window_nodes ?? 2048;
   const uiRenderNodes = stability?.graph_policy?.ui_render_nodes ?? 240;
   const telemetryLabel = telemetrySourceText(system, benchmark);
-  const edgeTierLabel = String(edgeStatus?.capacity?.tier ?? "unknown").replace("tier_", "T");
+  const edgeTierLabel = String(edgeStatus?.capacity?.tier ?? "unknown").replace(/^tier_/, "T").replace(/_/g, "-").toUpperCase();
   const edgeBrokerState = edgeStatus?.capacity?.idle
     ? "idle"
     : edgeStatus?.state === "viewer_only"
       ? "viewer"
       : edgeStatus?.state ?? "waiting";
-  const edgeBrokerLabel = `Edge ${edgeTierLabel} · Broker ${edgeBrokerState}`;
+  const edgeBrokerLabel = `Edge ${edgeTierLabel} 쨌 Broker ${edgeBrokerState}`;
+  const cloudRemoteConfig = (cloudBrainStatus?.remote_config && typeof cloudBrainStatus.remote_config === "object" && !Array.isArray(cloudBrainStatus.remote_config))
+    ? cloudBrainStatus.remote_config as AnyRecord
+    : null;
+  const cloudRemoteStatus = (cloudBrainStatus?.remote_status && typeof cloudBrainStatus.remote_status === "object" && !Array.isArray(cloudBrainStatus.remote_status))
+    ? cloudBrainStatus.remote_status as AnyRecord
+    : null;
+  const cloudProviderName = String(cloudBrainStatus?.cloud_provider ?? cloudRemoteStatus?.provider ?? "local");
+  const cloudBrokerState = String(cloudBrainStatus?.broker_state ?? "local_broker_mode");
+  const cloudEndpointLabel = String(cloudRemoteConfig?.endpoint ?? "").includes("workers.dev")
+    ? "Cloudflare Workers"
+    : cloudRemoteConfig?.endpoint ? "Remote endpoint" : "Local broker";
+  const cloudBudget = (cloudBudgetStatus?.cloud_budget && typeof cloudBudgetStatus.cloud_budget === "object" && !Array.isArray(cloudBudgetStatus.cloud_budget))
+    ? cloudBudgetStatus.cloud_budget as AnyRecord
+    : null;
+  const cloudBalance = (cloudBudgetStatus?.actual_context_balance && typeof cloudBudgetStatus.actual_context_balance === "object" && !Array.isArray(cloudBudgetStatus.actual_context_balance))
+    ? cloudBudgetStatus.actual_context_balance as AnyRecord
+    : (cloudBudgetStatus?.planned_balance && typeof cloudBudgetStatus.planned_balance === "object" && !Array.isArray(cloudBudgetStatus.planned_balance))
+      ? cloudBudgetStatus.planned_balance as AnyRecord
+      : null;
+  const cloudBudgetPlan = String(cloudBudgetStatus?.plan ?? cloudBudget?.plan ?? "free");
+  const cloudBudgetRequests = Number(cloudBudget?.effective_fragment_requests_per_day ?? cloudBudget?.cloud_fragment_requests_per_day ?? 0);
+  const syncLocalWeight = typeof brainSyncStatus?.local_weight === "number" ? brainSyncStatus.local_weight : null;
+  const syncCloudWeight = typeof brainSyncStatus?.cloud_weight === "number" ? brainSyncStatus.cloud_weight : null;
+  const budgetLocalPct = Math.round(Number(syncLocalWeight ?? cloudBalance?.local ?? 1) * 100);
+  const budgetCloudPct = Math.round(Number(syncCloudWeight ?? cloudBalance?.cloud ?? 0) * 100);
   const resourceStopReason = resourcePressureReason(system, gpu, stability, benchmark);
   const diskFreeGb = numeric(system?.disk_free_gb);
   const ramUsedGb = numeric(system?.ram_used_gb);
   const vramUsedGb = numeric(gpu?.vram_used) === null ? null : (numeric(gpu?.vram_used) ?? 0) / 1024;
   const daemonViewerOnly = !daemonCanOperate;
-  const daemonRuntimeText = formatDuration(Number(learningDaemon?.total_runtime_seconds ?? 0) * 1000);
+  const daemonCumulativeSeconds = Math.max(
+    persistedLearningSeconds,
+    Math.floor(Number(learningDaemon?.cumulative_learning_seconds ?? learningDaemon?.total_runtime_seconds ?? 0)),
+    Math.floor(learningElapsedMs / 1000),
+  );
+  const contributionBackendState = String(contributionStatus?.contributor_state ?? "local_only");
+  const contributionBrokerState = String(contributionStatus?.broker_state ?? (localBackendConnected ? "local_broker_mode" : "viewer_only"));
+  const contributionCurrentTask = contributionStatus?.current_task as AnyRecord | null | undefined;
+  const contributionCompletedTasks = Number(contributionStatus?.total_tasks_completed ?? 0);
+  const contributionPendingCredit = numeric(contributionStatus?.pending_credits) ?? 0;
+  const contributionConfirmedCredit = numeric(contributionStatus?.confirmed_credits) ?? 0;
+  const contributionPreviewDisclaimer = String(
+    contributionStatus?.preview_disclaimer
+      ?? (language === "ko"
+        ? "브레인 링크 노드는 원격 브로커와 안전한 공개 fragment 작업만 교환합니다. 개인 Payload Vault와 로컬 브레인 데이터는 공유하지 않습니다."
+        : "Brain Link Node is running in Local Broker Mode. Private Payload Vault and Local Brain data are never shared."),
+  );
+  const contributionCpuUsage = Math.round(numeric(system?.cpu_percent ?? system?.cpu_usage_percent ?? system?.cpu?.usage_percent) ?? 8);
+  const contributionRamGb = numeric(system?.ram_used_gb ?? system?.memory_used_gb ?? edgeStatus?.capacity?.ram_used_gb) ?? 1.2;
+  const contributionGpuAvailable = Boolean(gpu?.available);
+  const contributionGpuUsage = Math.round(numeric(gpu?.utilization) ?? 0);
+  const contributionGpuLimitEffective = contributionGpuAvailable ? contributionGpuLimit : 0;
+  const contributionCreditMultiplier = Number((1 + Math.min(0.35, Math.max(0, contributionCpuLimit - 20) / 60 * 0.35) + (contributionGpuLimitEffective / 95 * 1.65)).toFixed(2));
+  const contributionEstimatedTaskCredit = Number(((numeric(contributionCurrentTask?.credit_estimate) ?? 1) * contributionCreditMultiplier).toFixed(2));
+  const contributionNetworkLabel = localBackendConnected
+    ? (language === "ko" ? "정상" : "Normal")
+    : (language === "ko" ? "낮음" : "Low");
+  const contributionThermalLabel = resourceStopReason
+    ? (language === "ko" ? "보류" : "Hold")
+    : (language === "ko" ? "정상" : "Normal");
+  const contributionBlockedBySafety = Boolean(resourceStopReason);
+  const contributionIsBackendActive = [
+    "contributor_active",
+    "contributor_registered",
+    "task_polling",
+    "task_running",
+    "task_submitted",
+    "verification_pending",
+    "credit_confirmed",
+  ].includes(contributionBackendState);
+  const contributionIsActive = contributionEnabled && contributionIsBackendActive && !contributionPaused && !contributionBlockedBySafety;
+  const contributionStatusText = !localBackendConnected
+    ? (language === "ko" ? "로컬 연결 대기" : "Waiting for local companion")
+    : contributionBlockedBySafety
+      ? (language === "ko" ? "안전 대기" : "Safety hold")
+      : contributionBackendState === "verification_pending"
+        ? (language === "ko" ? "검증 대기" : "Verification pending")
+        : contributionBackendState === "task_running"
+          ? (language === "ko" ? "공용 작업 처리" : "Running public task")
+          : contributionPaused || contributionBackendState === "paused"
+            ? (language === "ko" ? "일시정지" : "Paused")
+            : contributionIsActive
+              ? (language === "ko" ? "브레인 링크 작동 중" : "Brain Link active")
+              : (language === "ko" ? "준비됨" : "Ready");
+  const contributionTodayCredit = contributionPendingCredit;
+  const contributionTotalCredit = contributionConfirmedCredit + contributionPendingCredit;
+  const contributionWaitingCredit = contributionPendingCredit;
+  const contributionSharedRatio = contributionAllowPublic && contributionIsActive ? 100 : 0;
+  const contributionLocalShareRatio = 0;
+  const contributionSafeSummary = contributionBlockedBySafety
+    ? resourceStopReason
+    : contributionGpuLimitEffective > 0
+      ? (language === "ko" ? `GPU ${contributionGpuLimitEffective}% 한도까지 브레인 링크 가능` : `GPU Brain Link capped at ${contributionGpuLimitEffective}%`)
+      : (language === "ko" ? "CPU 기반 브레인 링크 대기" : "CPU-only Brain Link ready");
+  const daemonRuntimeText = formatDuration(daemonCumulativeSeconds * 1000);
   const daemonStateText = learningDaemon?.state === "resume_needed" ? "재개 필요" : learningDaemon?.state === "demo" ? "실험실 뷰어" : statusText(learningDaemon?.state);
   const daemonModeText = daemonCanOperate ? "로컬 클라우드 브레인 워커" : "배포 클라우드 브레인 뷰어";
   const daemonCheckpointText = learningDaemon?.last_checkpoint_at
@@ -1839,7 +3321,7 @@ export default function BakeBoardPage() {
     `RAG ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
     fusionDisplayText,
     `근거 ${graphResult?.evidence_docs?.length ?? 0}`,
-    guardScore === null ? "Guard 자동" : `Guard ${guardScore}점`,
+    guardScore === null ? "Guard 자동" : `Guard ${guardScore}`,
   ].join(" · ");
   const flowHealth = useMemo(() => {
     const complete = pipeline?.stages.filter((stage) => stage.state === "complete").length ?? 0;
@@ -1854,13 +3336,13 @@ export default function BakeBoardPage() {
     stopContinuousLearning(resourceStopReason);
   }, [continuousLearningActive, resourceStopReason]);
 
-  const advancedProcessSteps = [
+  const advancedProcessSteps: never[] = []; /*
     {
       number: "KB",
       title: "Knowledge Bakery",
       api: "POST /api/memory/build",
       state: activeAction === "KB" ? "running" : memoryStatus?.state ?? "idle",
-      description: "정제 문서와 온톨로지에서 문장 요소, phrase 노드, 전후 토큰 확률, 3D 로컬 벡터를 SQLite 메모리로 굽습니다.",
+      description: "?뺤젣 臾몄꽌? ?⑦넧濡쒖??먯꽌 臾몄옣 ?붿냼, phrase ?몃뱶, ?꾪썑 ?좏겙 ?뺣쪧, 3D 濡쒖뺄 踰≫꽣瑜?SQLite 硫붾え由щ줈 援쎌뒿?덈떎.",
       metrics: [
         `${memoryStatus?.node_count ?? 0} nodes`,
         `${memoryStatus?.edge_count ?? 0} edges`,
@@ -1869,117 +3351,117 @@ export default function BakeBoardPage() {
         `drift ${memoryDrift?.state ?? "waiting"}`,
       ],
       action: () => runProcessAction("KB", runMemoryBuildStep),
-      actionLabel: activeAction === "KB" ? "메모리 구축 중" : "메모리 구축",
+      actionLabel: activeAction === "KB" ? "硫붾え由?援ъ텞 以? : "硫붾え由?援ъ텞",
     },
     {
       number: "HW",
-      title: "시스템 벤치마크",
+      title: "?쒖뒪??踰ㅼ튂留덊겕",
       api: "POST /api/neuro/benchmark",
       state: activeAction === "HW" ? "running" : benchmark ? "completed" : "idle",
-      description: "시작 시 PC의 CPU, RAM, GPU, 디스크를 짧게 측정해 온톨로지 배치와 학습량을 자동으로 조절합니다.",
+      description: "?쒖옉 ??PC??CPU, RAM, GPU, ?붿뒪?щ? 吏㏐쾶 痢≪젙???⑦넧濡쒖? 諛곗튂? ?숈뒿?됱쓣 ?먮룞?쇰줈 議곗젅?⑸땲??",
       metrics: [
-        benchmark?.profile_name ?? "측정 대기",
-        `추천 ${benchmarkVolumeLabel}`,
+        benchmark?.profile_name ?? "痢≪젙 ?湲?,
+        `異붿쿇 ${benchmarkVolumeLabel}`,
         `CPU ${benchmarkCpuThreads}`,
         `RAM ${benchmarkRamGb}GB`,
         telemetryLabel,
-        resourceStopReason ? "안전중지 조건 감지" : "안전 조건 정상",
+        resourceStopReason ? "?덉쟾以묒? 議곌굔 媛먯?" : "?덉쟾 議곌굔 ?뺤긽",
       ],
       action: () => runProcessAction("HW", () => runHardwareBenchmark({ applyRecommendation: true })),
-      actionLabel: activeAction === "HW" ? "측정 중" : "벤치마크 재측정",
+      actionLabel: activeAction === "HW" ? "痢≪젙 以? : "踰ㅼ튂留덊겕 ?ъ륫??,
     },
     {
       number: "00",
-      title: "빌드 시작",
+      title: "鍮뚮뱶 ?쒖옉",
       api: "POST /api/factory/build/start",
       state: isBuilding || continuousLearningActive ? "running" : buildRun ? "completed" : "idle",
-      description: "인터넷 참조를 수집하고 DataGate, Ontology Forge, 3D GraphRAG 탐색, ATANOR Oven 학습 게이트까지 한 번에 흐르게 합니다.",
+      description: "?명꽣??李몄“瑜??섏쭛?섍퀬 DataGate, Ontology Forge, 3D GraphRAG ?먯깋, ATANOR Oven ?숈뒿 寃뚯씠?멸퉴吏 ??踰덉뿉 ?먮Ⅴ寃??⑸땲??",
       metrics: [
-        `${selectedTargetNodeLabel} 장기 목표`,
-        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 청크`,
+        `${selectedTargetNodeLabel} ?κ린 紐⑺몴`,
+        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 泥?겕`,
         `${buildRun?.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}`,
-        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? visualNodeCap : currentLearningPreset.visualNodes} 대표 샘플`,
-        buildRun ? `${buildRun.graph_3d.nodes.length.toLocaleString()} API 앵커` : `${currentLearningPreset.visualNodes} 초기 표시`,
-        representativeCapReached ? "표시 상한 도달" : "표시 여유 있음",
-        buildIsInfinite ? "무제한 지속" : buildRun?.training_gate?.target_realized ? "장기 목표 달성" : buildRun ? "장기 목표 미실현" : "대기",
-        buildIsInfinite ? `누적 ${learningElapsedText}` : `${growthPulseCount} 실시간 펄스`,
-        buildIsInfinite ? `${accumulatedLearningNodes.toLocaleString()} 후보 노드` : buildRun?.training_gate?.ready ? "학습 게이트 준비" : "게이트 대기",
+        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? visualNodeCap : currentLearningPreset.visualNodes} ????섑뵆`,
+        buildRun ? `${buildRun.graph_3d.nodes.length.toLocaleString()} API ?듭빱` : `${currentLearningPreset.visualNodes} 珥덇린 ?쒖떆`,
+        representativeCapReached ? "?쒖떆 ?곹븳 ?꾨떖" : "?쒖떆 ?ъ쑀 ?덉쓬",
+        buildIsInfinite ? "臾댁젣??吏?? : buildRun?.training_gate?.target_realized ? "?κ린 紐⑺몴 ?ъ꽦" : buildRun ? "?κ린 紐⑺몴 誘몄떎?? : "?湲?,
+        buildIsInfinite ? `?꾩쟻 ${learningElapsedText}` : `${growthPulseCount} ?ㅼ떆媛??꾩뒪`,
+        buildIsInfinite ? `${accumulatedLearningNodes.toLocaleString()} ?꾨낫 ?몃뱶` : buildRun?.training_gate?.ready ? "?숈뒿 寃뚯씠??以鍮? : "寃뚯씠???湲?,
       ],
       action: () => continuousLearningActive ? stopContinuousLearning() : runProcessAction("00", startFactoryBuild),
-      actionLabel: continuousLearningActive ? "학습 중지" : isBuilding || activeAction === "00" ? "빌드 진행 중" : "빌드 시작",
+      actionLabel: continuousLearningActive ? "?숈뒿 以묒?" : isBuilding || activeAction === "00" ? "鍮뚮뱶 吏꾪뻾 以? : "鍮뚮뱶 ?쒖옉",
     },
     {
       number: "01",
-      title: "DataGate 정제",
+      title: "DataGate ?뺤젣",
       api: "POST /api/datagate/run",
       state: activeAction === "01" ? "running" : datagate?.state ?? "idle",
-      description: "원천 문서를 통과/거절로 나누고 RAG에 들어갈 깨끗한 입력만 남깁니다.",
-      metrics: [`${datagate?.accepted ?? 0}/${datagate?.total ?? 0} 통과`, `${percent(datagate?.accepted ?? 0, datagate?.total ?? 0)}% 통과율`],
+      description: "?먯쿇 臾몄꽌瑜??듦낵/嫄곗젅濡??섎늻怨?RAG???ㅼ뼱媛?源⑤걮???낅젰留??④퉩?덈떎.",
+      metrics: [`${datagate?.accepted ?? 0}/${datagate?.total ?? 0} ?듦낵`, `${percent(datagate?.accepted ?? 0, datagate?.total ?? 0)}% ?듦낵??],
       action: () => runProcessAction("01", runDataGateStep),
-      actionLabel: activeAction === "01" ? "정제 중" : "정제 실행",
+      actionLabel: activeAction === "01" ? "?뺤젣 以? : "?뺤젣 ?ㅽ뻾",
     },
     {
       number: "02",
-      title: "온톨로지 메모리 생성",
+      title: "?⑦넧濡쒖? 硫붾え由??앹꽦",
       api: "POST /api/ontology/run",
       state: activeAction === "02" ? "running" : ontology?.state ?? "idle",
-      description: "정제된 문서에서 개념과 관계를 추출해 왼쪽 메모리 그래프를 구성합니다.",
-      metrics: [`${ontology?.node_count ?? memoryNodes.length} 노드`, `${ontology?.edge_count ?? memoryEdges.length} 엣지`],
+      description: "?뺤젣??臾몄꽌?먯꽌 媛쒕뀗怨?愿怨꾨? 異붿텧???쇱そ 硫붾え由?洹몃옒?꾨? 援ъ꽦?⑸땲??",
+      metrics: [`${ontology?.node_count ?? memoryNodes.length} ?몃뱶`, `${ontology?.edge_count ?? memoryEdges.length} ?ｌ?`],
       action: () => runProcessAction("02", runOntologyStep),
-      actionLabel: activeAction === "02" ? "생성 중" : "메모리 생성",
+      actionLabel: activeAction === "02" ? "?앹꽦 以? : "硫붾え由??앹꽦",
     },
     {
       number: "03",
-      title: "GraphRAG 검색",
+      title: "GraphRAG 寃??,
       api: "POST /api/graphrag/query",
       state: activeAction === "03" ? "running" : graphrag?.state ?? "idle",
-      description: "질문을 온톨로지 메모리와 문서 근거에 연결합니다. 이 단계가 실제 RAG 작업대입니다.",
-      metrics: [`신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%`, `${graphResult?.evidence_docs?.length ?? 0} 근거`],
+      description: "吏덈Ц???⑦넧濡쒖? 硫붾え由ъ? 臾몄꽌 洹쇨굅???곌껐?⑸땲?? ???④퀎媛 ?ㅼ젣 RAG ?묒뾽??낅땲??",
+      metrics: [`?좊ː??${Math.round((graphrag?.confidence ?? 0) * 100)}%`, `${graphResult?.evidence_docs?.length ?? 0} 洹쇨굅`],
       action: () => runProcessAction("03", async () => {
         setRightMode("chat");
         await sendChat();
       }),
-      actionLabel: activeAction === "03" ? "질문 중" : "RAG 채팅 열기",
+      actionLabel: activeAction === "03" ? "吏덈Ц 以? : "RAG 梨꾪똿 ?닿린",
     },
     {
       number: "04",
-      title: "Guardrail 검증",
+      title: "Guardrail 寃利?,
       api: "POST /api/guard/check",
       state: activeAction === "04" ? "running" : guard?.state ?? "idle",
-      description: "RAG 근거와 답변 초안을 대조해 과장 표현과 미지원 주장을 표시합니다.",
-      metrics: [`${guard?.overall_guard_score ?? 0}점`, `${guard?.result?.claims?.length ?? 0} 주장`],
+      description: "RAG 洹쇨굅? ?듬? 珥덉븞???議고빐 怨쇱옣 ?쒗쁽怨?誘몄???二쇱옣???쒖떆?⑸땲??",
+      metrics: [`${guard?.overall_guard_score ?? 0}??, `${guard?.result?.claims?.length ?? 0} 二쇱옣`],
       action: () => runProcessAction("04", checkGuard),
-      actionLabel: activeAction === "04" ? "검증 중" : "초안 검증",
+      actionLabel: activeAction === "04" ? "寃利?以? : "珥덉븞 寃利?,
     },
     {
       number: "05",
-      title: "학습 dry-run",
+      title: "?숈뒿 dry-run",
       api: "POST /api/oven/dry-run",
       state: activeAction === "05" ? "running" : oven?.state ?? "idle",
-      description: "학습 파이프라인을 짧게 실행하고 완료되면 오른쪽 패널을 RAG 채팅 UI로 전환합니다.",
-      metrics: [`손실 ${oven?.last_loss ?? "대기"}`, `${losses.length} 단계`],
+      description: "?숈뒿 ?뚯씠?꾨씪?몄쓣 吏㏐쾶 ?ㅽ뻾?섍퀬 ?꾨즺?섎㈃ ?ㅻⅨ履??⑤꼸??RAG 梨꾪똿 UI濡??꾪솚?⑸땲??",
+      metrics: [`?먯떎 ${oven?.last_loss ?? "?湲?}`, `${losses.length} ?④퀎`],
       action: () => runProcessAction("05", runTrainingDryRun),
-      actionLabel: activeAction === "05" ? "학습 중" : "학습 실행",
+      actionLabel: activeAction === "05" ? "?숈뒿 以? : "?숈뒿 ?ㅽ뻾",
     },
     {
       number: "06",
-      title: "저전력 효율 계획",
+      title: "??꾨젰 ?⑥쑉 怨꾪쉷",
       api: "POST /api/neuro/plan",
       state: activeAction === "06" ? "running" : "completed",
-      description: "이벤트 희소성, 모듈 라우팅, 압축 설정을 재계산해 저사양 실행 가능성을 봅니다.",
-      metrics: [`${energyReduction}% 절감`, `${eventSparsity}% 희소성`],
+      description: "?대깽???ъ냼?? 紐⑤뱢 ?쇱슦?? ?뺤텞 ?ㅼ젙???ш퀎?고빐 ??ъ뼇 ?ㅽ뻾 媛?μ꽦??遊낅땲??",
+      metrics: [`${energyReduction}% ?덇컧`, `${eventSparsity}% ?ъ냼??],
       action: () => runProcessAction("06", rebalanceNeuro),
-      actionLabel: activeAction === "06" ? "계산 중" : "효율 재계산",
+      actionLabel: activeAction === "06" ? "怨꾩궛 以? : "?⑥쑉 ?ш퀎??,
     },
     {
       number: "07",
-      title: "지속 운전 안전장치",
+      title: "吏???댁쟾 ?덉쟾?μ튂",
       api: "POST /api/neuro/stability",
       state: activeAction === "07" ? "running" : "completed",
-      description: "수천 개 노드/관계가 생겨도 큐, 체크포인트, 그래프 hot window, UI LOD로 시스템이 죽지 않게 제한합니다.",
-      metrics: [`RAM soft ${ramSoftGb}GB`, `VRAM soft ${vramSoftGb}GB`, `hot ${hotWindowNodes} 노드`, `UI ${uiRenderNodes} 노드`],
+      description: "?섏쿇 媛??몃뱶/愿怨꾧? ?앷꺼???? 泥댄겕?ъ씤?? 洹몃옒??hot window, UI LOD濡??쒖뒪?쒖씠 二쎌? ?딄쾶 ?쒗븳?⑸땲??",
+      metrics: [`RAM soft ${ramSoftGb}GB`, `VRAM soft ${vramSoftGb}GB`, `hot ${hotWindowNodes} ?몃뱶`, `UI ${uiRenderNodes} ?몃뱶`],
       action: () => runProcessAction("07", refreshStabilityPlan),
-      actionLabel: activeAction === "07" ? "계산 중" : "안정성 계산",
+      actionLabel: activeAction === "07" ? "怨꾩궛 以? : "?덉젙??怨꾩궛",
     },
   ];
 
@@ -1987,69 +3469,150 @@ export default function BakeBoardPage() {
     {
       key: "collect" as LabStageKey,
       number: "01",
-      title: "수집",
+      title: "?섏쭛",
       api: "POST /api/factory/build/start + DataGate",
       state: isBuilding || continuousLearningActive || activeAction === "collect" ? "running" : collectComplete ? "completed" : "idle",
-      description: "웹/문서 입력을 가져와 문장 단위로 쪼개고, GraphRAG가 읽을 수 있는 후보 청크와 초기 앵커 그래프를 만듭니다.",
+      description: "??臾몄꽌 ?낅젰??媛?몄? 臾몄옣 ?⑥쐞濡?履쇨컻怨? GraphRAG媛 ?쎌쓣 ???덈뒗 ?꾨낫 泥?겕? 珥덇린 ?듭빱 洹몃옒?꾨? 留뚮벊?덈떎.",
       progress: labStageProgress.collect,
       available: true,
       metrics: [
-        `${buildRun?.harvest_docs?.length ?? datagate?.total ?? 0} 자료`,
-        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 청크`,
-        `${collectionDisplayNodeCount.toLocaleString()} 표시 노드`,
-        buildIsInfinite ? `∞ ${learningElapsedText}` : `${selectedTargetNodeLabel} 목표`,
+        `${buildRun?.harvest_docs?.length ?? datagate?.total ?? 0} ?먮즺`,
+        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 泥?겕`,
+        `${collectionDisplayNodeCount.toLocaleString()} ?쒖떆 ?몃뱶`,
+        buildIsInfinite ? `??${learningElapsedText}` : `${selectedTargetNodeLabel} 紐⑺몴`,
       ],
       action: () => continuousLearningActive ? stopContinuousLearning() : runProcessAction("collect", startFactoryBuild),
-      actionLabel: continuousLearningActive ? "수집 중지" : isBuilding || activeAction === "collect" ? "수집 중" : "수집 시작",
+      actionLabel: continuousLearningActive ? "?섏쭛 以묒?" : isBuilding || activeAction === "collect" ? "?섏쭛 以? : "?섏쭛 ?쒖옉",
       blockedText: "",
     },
     {
       key: "learn" as LabStageKey,
       number: "02",
-      title: "학습",
+      title: "?숈뒿",
       api: "POST /api/ontology/run + /api/memory/build",
       state: activeAction === "learn" ? "running" : learnComplete ? "completed" : collectComplete ? "ready" : "idle",
-      description: "분해된 문장 요소를 온톨로지 노드로 누적하고, 공출현/전후/행위 관계를 계산해 그래프 메모리로 굽습니다.",
+      description: "遺꾪빐??臾몄옣 ?붿냼瑜??⑦넧濡쒖? ?몃뱶濡??꾩쟻?섍퀬, 怨듭텧???꾪썑/?됱쐞 愿怨꾨? 怨꾩궛??洹몃옒??硫붾え由щ줈 援쎌뒿?덈떎.",
       progress: labStageProgress.learn,
       available: collectComplete,
       metrics: buildRun
         ? [
-          `${displayGraph3D.nodes.length.toLocaleString()} 대표 노드`,
-          `${displayGraph3D.edges.length.toLocaleString()} 대표 관계`,
-          `${memoryStatus?.node_count ?? 0} 저장 노드`,
-          `${memoryStatus?.edge_count ?? 0} 저장 관계`,
+          `${displayGraph3D.nodes.length.toLocaleString()} ????몃뱶`,
+          `${displayGraph3D.edges.length.toLocaleString()} ???愿怨?,
+          `${memoryStatus?.node_count ?? 0} ????몃뱶`,
+          `${memoryStatus?.edge_count ?? 0} ???愿怨?,
         ]
         : [
-          `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} 노드`,
-          `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} 관계`,
-          `${memoryStatus?.transition_count ?? 0} 전이`,
+          `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} ?몃뱶`,
+          `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} 愿怨?,
+          `${memoryStatus?.transition_count ?? 0} ?꾩씠`,
           `drift ${memoryDrift?.state ?? "waiting"}`,
         ],
       action: () => runProcessAction("learn", runLearningStage),
-      actionLabel: activeAction === "learn" ? "학습 중" : "관계 계산",
-      blockedText: "수집 100% 완료 후 학습할 수 있습니다.",
+      actionLabel: activeAction === "learn" ? "?숈뒿 以? : "愿怨?怨꾩궛",
+      blockedText: "?섏쭛 100% ?꾨즺 ???숈뒿?????덉뒿?덈떎.",
     },
     {
       key: "output" as LabStageKey,
       number: "03",
-      title: "출력",
+      title: "異쒕젰",
       api: "POST /api/graphrag/query + /api/guard/check",
       state: activeAction === "output" || isGeneratingAnswer ? "running" : outputComplete ? "completed" : learnComplete ? "ready" : "idle",
-      description: "질문을 자연어로 넣으면 활성 노드와 그래프 전이를 읽어 답변을 만들고, 같은 근거 묶음으로 Guardrail을 자동 검증합니다.",
+      description: "吏덈Ц???먯뿰?대줈 ?ｌ쑝硫??쒖꽦 ?몃뱶? 洹몃옒???꾩씠瑜??쎌뼱 ?듬???留뚮뱾怨? 媛숈? 洹쇨굅 臾띠쓬?쇰줈 Guardrail???먮룞 寃利앺빀?덈떎.",
       progress: labStageProgress.output,
       available: learnComplete,
       metrics: [
-        `신뢰도 ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
-        `${graphResult?.evidence_docs?.length ?? 0} 근거`,
-        guardScore === null ? "Guard 자동 대기" : `Guard ${guardScore}점`,
-        `웹 ${webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}`,
+        `?좊ː??${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
+        `${graphResult?.evidence_docs?.length ?? 0} 洹쇨굅`,
+        guardScore === null ? "Guard ?먮룞 ?湲? : `Guard ${guardScore}??,
+        `??${webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}`,
       ],
       action: () => runProcessAction("output", async () => {
         setRightMode("chat");
         await sendChat();
       }),
-      actionLabel: activeAction === "output" || isGeneratingAnswer ? "생성 중" : "질문 보내기",
-      blockedText: "학습 100% 완료 후 출력 단계로 넘어갑니다.",
+      actionLabel: activeAction === "output" || isGeneratingAnswer ? "?앹꽦 以? : "吏덈Ц 蹂대궡湲?,
+      blockedText: "?숈뒿 100% ?꾨즺 ??異쒕젰 ?④퀎濡??섏뼱媛묐땲??",
+    },
+  ];
+
+  */
+  const processSteps = [
+    {
+      key: "collect" as LabStageKey,
+      number: "01",
+      title: language === "ko" ? "수집" : "Collect",
+      api: "POST /api/factory/build/start + DataGate",
+      state: isBuilding || continuousLearningActive || activeAction === "collect" ? "running" : collectComplete ? "completed" : "idle",
+      description: language === "ko"
+        ? "원문과 웹 참조를 문장 단위로 분해하고 GraphRAG가 읽을 후보 chunk와 초기 앵커 그래프를 만듭니다."
+        : "Collects raw text and web references, splits them into sentence chunks, and prepares initial GraphRAG anchors.",
+      progress: labStageProgress.collect,
+      available: true,
+      metrics: [
+        `${buildRun?.harvest_docs?.length ?? datagate?.total ?? 0} docs`,
+        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} chunks`,
+        `${collectionDisplayNodeCount.toLocaleString()} visible nodes`,
+        buildIsInfinite ? `∞ ${learningElapsedText}` : `${selectedTargetNodeLabel} target`,
+      ],
+      action: () => continuousLearningActive ? stopContinuousLearning() : runProcessAction("collect", startFactoryBuild),
+      actionLabel: continuousLearningActive
+        ? (language === "ko" ? "수집 중지" : "Stop collect")
+        : isBuilding || activeAction === "collect"
+          ? (language === "ko" ? "수집 중" : "Collecting")
+          : (language === "ko" ? "수집 시작" : "Start collect"),
+      blockedText: "",
+    },
+    {
+      key: "learn" as LabStageKey,
+      number: "02",
+      title: language === "ko" ? "학습" : "Learn",
+      api: "POST /api/ontology/run + /api/memory/build",
+      state: activeAction === "learn" ? "running" : learnComplete ? "completed" : collectComplete ? "ready" : "idle",
+      description: language === "ko"
+        ? "분해된 문장 요소를 온톨로지 노드로 누적하고, 공출현과 전후 관계를 계산해 그래프 메모리로 굽습니다."
+        : "Accumulates extracted sentence elements as ontology nodes and computes relation weights into graph memory.",
+      progress: labStageProgress.learn,
+      available: collectComplete,
+      metrics: buildRun
+        ? [
+          `${displayGraph3D.nodes.length.toLocaleString()} representative nodes`,
+          `${displayGraph3D.edges.length.toLocaleString()} representative edges`,
+          `${memoryStatus?.node_count ?? 0} stored nodes`,
+          `${memoryStatus?.edge_count ?? 0} stored edges`,
+        ]
+        : [
+          `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} nodes`,
+          `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} edges`,
+          `${memoryStatus?.transition_count ?? 0} transitions`,
+          `drift ${memoryDrift?.state ?? "waiting"}`,
+        ],
+      action: () => runProcessAction("learn", runLearningStage),
+      actionLabel: activeAction === "learn" ? (language === "ko" ? "학습 중" : "Learning") : (language === "ko" ? "관계 계산" : "Compute relations"),
+      blockedText: language === "ko" ? "수집이 완료된 뒤 학습할 수 있습니다." : "Collect must complete before learning.",
+    },
+    {
+      key: "output" as LabStageKey,
+      number: "03",
+      title: language === "ko" ? "출력" : "Output",
+      api: "POST /api/graphrag/query + /api/guard/check",
+      state: activeAction === "output" || isGeneratingAnswer ? "running" : outputComplete ? "completed" : learnComplete ? "ready" : "idle",
+      description: language === "ko"
+        ? "질문을 자연어로 입력하면 활성 노드와 그래프 경로를 읽고, 같은 근거 묶음으로 자동 검증합니다."
+        : "Reads active nodes and graph paths for a question, then checks the answer against the same evidence bundle.",
+      progress: labStageProgress.output,
+      available: learnComplete,
+      metrics: [
+        `RAG ${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
+        `${graphResult?.evidence_docs?.length ?? 0} evidence`,
+        guardScore === null ? "Guard waiting" : `Guard ${guardScore}`,
+        `Web ${webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}`,
+      ],
+      action: () => runProcessAction("output", async () => {
+        setRightMode("chat");
+        await sendChat();
+      }),
+      actionLabel: activeAction === "output" || isGeneratingAnswer ? (language === "ko" ? "생성 중" : "Generating") : (language === "ko" ? "질문 보내기" : "Send question"),
+      blockedText: language === "ko" ? "학습이 완료된 뒤 출력 단계로 넘어갑니다." : "Learning must complete before output.",
     },
   ];
 
@@ -2074,29 +3637,31 @@ export default function BakeBoardPage() {
 
   const logTime = clockNow ? fmtClock(clockNow) : "--:--:--";
   const logs = [
-    ...(buildRun ? [{ time: logTime, message: `빌드 ${buildRun.run_id}: ${activeBuildFrame?.message ?? "팩토리 빌드 준비"} / 게이트 ${buildRun.training_gate.ready ? "준비" : "대기"}${buildIsInfinite ? ` / 누적 ${learningElapsedText}` : ""}` }] : []),
-    { time: logTime, message: `브레인 공간: ${daemonModeText} / 상태 ${daemonStateText} / 누적 ${daemonRuntimeText}` },
-    { time: logTime, message: `벤치마크: ${benchmark?.profile_name ?? "대기"} / 추천 ${benchmarkVolumeLabel} / ${benchmarkSourceLabel}` },
-    { time: logTime, message: `메모리 그래프 로드: ${displayMemoryNodeCount} 노드 / ${displayMemoryEdgeCount} 관계` },
-    { time: logTime, message: `RAG 상태: ${statusText(graphrag?.state)} / 신뢰도 ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
-    { time: logTime, message: `학습 상태: ${statusText(oven?.state)} / 마지막 손실 ${oven?.last_loss ?? "없음"}` },
-    { time: logTime, message: `효율 계획: 추정 연산 절감 ${energyReduction}%` },
-    { time: logTime, message: `지속 운전: RAM soft ${ramSoftGb}GB / VRAM soft ${vramSoftGb}GB / hot window ${hotWindowNodes} 노드` },
+    ...(buildRun ? [{ time: logTime, message: `Build ${buildRun.run_id}: ${activeBuildFrame?.message ?? "factory build ready"} / gate ${buildRun.training_gate.ready ? "ready" : "waiting"}${buildIsInfinite ? ` / accumulated ${learningElapsedText}` : ""}` }] : []),
+    { time: logTime, message: `Cloud Brain: ${daemonModeText} / state ${daemonStateText} / runtime ${daemonRuntimeText}` },
+    { time: logTime, message: `Benchmark: ${benchmark?.profile_name ?? "waiting"} / recommended ${benchmarkVolumeLabel} / ${benchmarkSourceLabel}` },
+    { time: logTime, message: `Memory graph loaded: ${displayMemoryNodeCount} nodes / ${displayMemoryEdgeCount} edges` },
+    { time: logTime, message: `Provider: ${cloudProviderName} / broker ${cloudBrokerState} / budget ${cloudBudgetPlan} ${cloudBudgetRequests || 0}/day` },
+    { time: logTime, message: `Brain Balance: Local ${budgetLocalPct}% / Cloud ${budgetCloudPct}%` },
+    { time: logTime, message: `RAG state: ${statusText(graphrag?.state)} / confidence ${Math.round((graphrag?.confidence ?? 0) * 100)}%` },
+    { time: logTime, message: `Learning state: ${statusText(oven?.state)} / last loss ${oven?.last_loss ?? "none"}` },
+    { time: logTime, message: `Efficiency plan: estimated compute reduction ${energyReduction}%` },
+    { time: logTime, message: `Stability: RAM soft ${ramSoftGb}GB / VRAM soft ${vramSoftGb}GB / hot window ${hotWindowNodes} nodes` },
   ];
 
   const headerBuildLabel = continuousLearningActive
-    ? "학습 중지"
+    ? (language === "ko" ? "학습 중지" : "Stop learning")
     : isBuilding || activeAction === "collect"
-      ? "수집 중"
+      ? (language === "ko" ? "수집 중" : "Collecting")
       : activeAction === "learn"
-        ? "학습 중"
+        ? (language === "ko" ? "학습 중" : "Learning")
         : activeAction === "output" || isGeneratingAnswer
-          ? "출력 중"
+          ? (language === "ko" ? "출력 중" : "Generating")
           : !collectComplete
-            ? "빌드 시작"
+            ? (language === "ko" ? "빌드 시작" : "Start build")
             : !learnComplete
-              ? "다음: 학습"
-              : "RAG 채팅";
+              ? (language === "ko" ? "다음: 학습" : "Next: learn")
+              : (language === "ko" ? "RAG 채팅" : "RAG chat");
 
   async function runNextLabStage() {
     if (continuousLearningActive) {
@@ -2227,6 +3792,2296 @@ export default function BakeBoardPage() {
     }
   }
 
+  function handleAtlasPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setAtlasDragState({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startRotationDeg: atlasRotationDeg,
+    });
+  }
+
+  function handleAtlasPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!atlasDragState || atlasDragState.pointerId !== event.pointerId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const deltaRatio = rect.width > 0 ? (event.clientX - atlasDragState.startX) / rect.width : 0;
+    const nextRotation = atlasDragState.startRotationDeg + deltaRatio * 180;
+    setAtlasRotationDeg((((nextRotation % 360) + 360) % 360));
+  }
+
+  function handleAtlasPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (atlasDragState?.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      setAtlasDragState(null);
+    }
+  }
+
+  const copy = EFFECTIVE_MAIN_COPY[language];
+  const graphSparsity = displayMemoryNodeCount > 1
+    ? ((displayMemoryEdgeCount / Math.max(1, displayMemoryNodeCount * (displayMemoryNodeCount - 1))) * 100).toFixed(2)
+    : "0.00";
+  const graphCommunities = Math.max(1, Math.round(Math.sqrt(Math.max(1, displayMemoryNodeCount)) / 2));
+  const rawCloudAssistRatio =
+    graphResult?.fusion?.cloud_ratio
+    ?? graphResult?.fusion_ratio?.cloud_weight
+    ?? graphResult?.retrieval_trace?.fusion_ratio?.cloud_weight
+    ?? graphResult?.cloud_ratio;
+  const generationLowConfidence = Boolean(
+    graphResult?.native_generation_failed_quality_check
+    || graphResult?.answer_engine?.diagnostics?.quality_guarded_surface
+  );
+  const cloudAssistRatio = graphPresentationMode === "local_private_memory"
+    ? 0
+    : graphPresentationMode === "cloud_world_knowledge"
+      ? 100
+      : rawCloudAssistRatio === undefined || rawCloudAssistRatio === null
+        ? 50
+        : Math.max(generationLowConfidence ? 35 : 0, Math.round(Number(rawCloudAssistRatio) * 100));
+  const localAssistRatio = Math.max(0, 100 - cloudAssistRatio);
+  const presentationCopy = (() => {
+    if (graphPresentationMode === "local_private_memory") {
+      return {
+        graphTitle: language === "ko" ? "로컬 브레인 지식 그래프" : "Local Brain Knowledge Graph",
+        graphSubtitle: language === "ko"
+          ? "개인 Ghost Shell과 Payload Vault 안에서만 탐색하고 답합니다."
+          : "Searches and answers only inside the private Ghost Shell and Payload Vault.",
+        localLabel: language === "ko" ? "로컬 브레인" : "Local Brain",
+        localDetail: language === "ko" ? "개인 메모리 / 프로젝트 문맥" : "Private Memory / Project Context",
+        cloudLabel: language === "ko" ? "클라우드 비활성" : "Cloud Disabled",
+        cloudDetail: language === "ko" ? "명시적으로 켜기 전까지 사용하지 않음" : "Not used unless explicitly enabled",
+        centerLabel: "Local Anchor",
+        localNode: language === "ko" ? "개인 메모리" : "Private Memory",
+        cloudNode: language === "ko" ? "비활성 Cloud" : "Disabled Cloud",
+        fragmentNode: "Payload Vault",
+      };
+    }
+    if (graphPresentationMode === "cloud_world_knowledge") {
+      return {
+        graphTitle: language === "ko" ? "클라우드 브레인 지식 그래프" : "Cloud Brain Knowledge Graph",
+        graphSubtitle: language === "ko"
+          ? "공용 온톨로지 후보와 public fragment 흐름을 읽기 전용으로 관찰합니다."
+          : "Observes public ontology candidates and public fragment flow in read-only mode.",
+        localLabel: language === "ko" ? "엣지 미러" : "Edge Mirror",
+        localDetail: language === "ko" ? "읽기 전용 소비자" : "Read-only consumer",
+        cloudLabel: language === "ko" ? "클라우드 브레인" : "Cloud Brain",
+        cloudDetail: "Public Ontology / World Knowledge",
+        centerLabel: "Public Anchor",
+        localNode: language === "ko" ? "엣지 미러" : "Edge Mirror",
+        cloudNode: language === "ko" ? "공용 지식 노드" : "Public Knowledge",
+        fragmentNode: language === "ko" ? "실시간 Fragment" : "Live Fragment",
+      };
+    }
+    return {
+      graphTitle: mainSection === "home" ? copy.graphTitle : (language === "ko" ? "통합 지식 그래프" : "Unified Knowledge Graph"),
+      graphSubtitle: mainSection === "home"
+        ? copy.graphSubtitle
+        : (language === "ko"
+          ? "로컬 기억, 공용 Cloud Fragment, Seed Schema가 하나의 통합 graph projection으로 표시됩니다."
+          : "Local memory, public Cloud fragments, and Seed Schema are shown as one unified graph projection."),
+      localLabel: copy.localBrain,
+      localDetail: "Private Boundary",
+      cloudLabel: copy.cloudBrain,
+      cloudDetail: "Public Fragment",
+      centerLabel: "Working Memory",
+      localNode: copy.localNode,
+      cloudNode: copy.cloudNode,
+      fragmentNode: copy.fragmentNode,
+    };
+  })(); /*
+    ? {
+      graphTitle: language === "ko" ? "濡쒖뺄 釉뚮젅??媛쒖씤 硫붾え由? : "Local Brain Private Memory",
+      graphSubtitle: language === "ko"
+        ? "媛쒖씤 湲곗뼲, ?꾨줈?앺듃 臾몄꽌, ?????? Payload Vault瑜??곗꽑?⑸땲?? Cloud Brain? 湲곕낯?곸쑝濡??ъ슜?섏? ?딆뒿?덈떎."
+        : "Prioritizes private memory, project documents, saved conversations, and Payload Vault. Cloud Brain stays minimal by default.",
+      localLabel: language === "ko" ? "濡쒖뺄 釉뚮젅?? : "Local Brain",
+      localDetail: language === "ko" ? "媛쒖씤 湲곗뼲 / ?꾨줈?앺듃 臾몃㎘" : "Private Memory / Project Context",
+      cloudLabel: language === "ko" ? "Cloud 鍮꾪솢?? : "Cloud Disabled",
+      cloudDetail: language === "ko" ? "?먭꺽 吏?앹? 理쒖냼?? : "Remote knowledge minimized",
+      centerLabel: language === "ko" ? "Local Anchor" : "Local Anchor",
+      localNode: language === "ko" ? "媛쒖씤 硫붾え由? : "Private Memory",
+      cloudNode: language === "ko" ? "鍮꾪솢??Cloud" : "Disabled Cloud",
+      fragmentNode: "Payload Vault",
+    }
+    : graphPresentationMode === "cloud_world_knowledge"
+      ? {
+        graphTitle: language === "ko" ? "?대씪?곕뱶 釉뚮젅??怨듭슜 ?⑦넧濡쒖?" : "Cloud Brain Public Ontology",
+        graphSubtitle: language === "ko"
+          ? "?멸퀎 怨듦컻 吏?? 怨듭슜 source cluster, ?ㅼ떆媛?fragment, ?좊ː?꾩? 理쒖떊?깆쓣 愿李고빀?덈떎."
+          : "Observes world knowledge, public source clusters, live fragments, trust, provenance, and freshness.",
+        localLabel: language === "ko" ? "?ｌ? 誘몃윭" : "Edge Mirror",
+        localDetail: language === "ko" ? "?쎄린 ?꾩슜 ?뚮퉬?? : "Read-only consumer",
+        cloudLabel: language === "ko" ? "?대씪?곕뱶 釉뚮젅?? : "Cloud Brain",
+        cloudDetail: language === "ko" ? "Public Ontology / World Knowledge" : "Public Ontology / World Knowledge",
+        centerLabel: language === "ko" ? "Public Anchor" : "Public Anchor",
+        localNode: language === "ko" ? "?ｌ? 誘몃윭" : "Edge Mirror",
+        cloudNode: language === "ko" ? "怨듭슜 吏???몃뱶" : "Public Knowledge",
+        fragmentNode: language === "ko" ? "?ㅼ떆媛?Fragment" : "Live Fragment",
+      }
+      : {
+        graphTitle: mainSection === "home" ? copy.graphTitle : (language === "ko" ? "통합 지식 그래프" : "Unified Knowledge Graph"),
+        graphSubtitle: mainSection === "home" ? copy.graphSubtitle : (language === "ko"
+          ? "로컬 기억, 공용 Cloud Fragment, Seed Schema가 하나의 통합 graph projection으로 표시됩니다."
+          : "Local memory, public Cloud fragments, and Seed Schema are shown as one unified graph projection."),
+        localLabel: copy.localBrain,
+        localDetail: language === "ko" ? "Private Boundary" : "Private Boundary",
+        cloudLabel: copy.cloudBrain,
+        cloudDetail: language === "ko" ? "Public Fragment" : "Public Fragment",
+        centerLabel: language === "ko" ? "Working Memory" : "Working Memory",
+        localNode: copy.localNode,
+        cloudNode: copy.cloudNode,
+        fragmentNode: copy.fragmentNode,
+      };
+  if (language === "ko") {
+    presentationCopy = graphPresentationMode === "local_private_memory"
+      ? {
+        graphTitle: "濡쒖뺄 釉뚮젅??吏??洹몃옒??,
+        graphSubtitle: "媛쒖씤 Ghost Shell怨?Payload Vault ?덉뿉?쒕쭔 ?먯깋?섍퀬 ?듬??⑸땲??",
+        localLabel: "濡쒖뺄 釉뚮젅??,
+        localDetail: "媛쒖씤 硫붾え由?/ ?꾨줈?앺듃 臾몃㎘",
+        cloudLabel: "?대씪?곕뱶 鍮꾪솢??,
+        cloudDetail: "紐낆떆?곸쑝濡?耳쒓린 ?꾧퉴吏 ?ъ슜?섏? ?딆쓬",
+        centerLabel: "Local Anchor",
+        localNode: "媛쒖씤 硫붾え由?,
+        cloudNode: "鍮꾪솢??Cloud",
+        fragmentNode: "Payload Vault",
+      }
+      : graphPresentationMode === "cloud_world_knowledge"
+        ? {
+          graphTitle: "?대씪?곕뱶 釉뚮젅??吏??洹몃옒??,
+          graphSubtitle: "怨듭슜 ?⑦넧濡쒖? ?꾨낫? public fragment ?먮쫫???쎄린 ?꾩슜?쇰줈 愿李고빀?덈떎.",
+          localLabel: "?ｌ? 誘몃윭",
+          localDetail: "?쎄린 ?꾩슜 ?뚮퉬??,
+          cloudLabel: "?대씪?곕뱶 釉뚮젅??,
+          cloudDetail: "Public Ontology / World Knowledge",
+          centerLabel: "Public Anchor",
+          localNode: "?ｌ? 誘몃윭",
+          cloudNode: "怨듭슜 吏???몃뱶",
+          fragmentNode: "?ㅼ떆媛?Fragment",
+        }
+        : {
+          graphTitle: mainSection === "home" ? copy.graphTitle : "???釉뚮젅???듯빀 洹몃옒??,
+          graphSubtitle: mainSection === "home"
+            ? copy.graphSubtitle
+            : "Local Brain怨?Cloud Brain??Working Memory?먯꽌 留뚮굹??愿怨?寃쎈줈瑜?蹂댁뿬以띾땲??",
+          localLabel: "濡쒖뺄 釉뚮젅??,
+          localDetail: "Private Boundary",
+          cloudLabel: "?대씪?곕뱶 釉뚮젅??,
+          cloudDetail: "Public Fragment",
+          centerLabel: "Working Memory",
+          localNode: "濡쒖뺄 釉뚮젅???몃뱶",
+          cloudNode: "?대씪?곕뱶 釉뚮젅???몃뱶",
+          fragmentNode: "?대씪?곕뱶 ?꾨옒洹몃㉫??,
+        };
+  }
+  */
+  const activeTaskLabel = continuousLearningActive || learningDaemon?.worker_alive
+    ? copy.learningEngine
+    : isGeneratingAnswer
+      ? copy.generationEngine
+      : activeAction
+        ? String(activeAction).toUpperCase()
+        : "Adaptive Local-Cloud Ratio";
+  const activeTaskRouteText = graphPresentationMode === "local_private_memory"
+    ? (language === "ko" ? "Local private memory only" : "Local private memory only")
+    : graphPresentationMode === "cloud_world_knowledge"
+      ? (language === "ko" ? "Cloud Brain 100% / Edge Mirror connected" : "Cloud Brain 100% / Edge mirrors connected")
+      : `${localAssistRatio}% local / ${cloudAssistRatio}% cloud`;
+  const graphFitScale = usesStudioGraph
+    ? 1.18
+    : graphPresentationMode === "local_private_memory"
+      ? 1.58
+      : graphPresentationMode === "cloud_world_knowledge"
+        ? 1.2
+        : 1.34;
+  const activeTaskProgress = continuousLearningActive || learningDaemon?.worker_alive
+    ? 100
+    : isGeneratingAnswer
+      ? 62
+      : Math.max(4, cloudAssistRatio);
+  const statusRows = graphPresentationMode === "local_private_memory"
+    ? [
+      { label: language === "ko" ? "로컬 브레인" : "Local Brain", value: localBrainInitialized ? copy.running : (language === "ko" ? "학습 전" : "Not trained"), tone: localBrainInitialized ? "green" : "orange" },
+      { label: language === "ko" ? "저장 메모리" : "Stored Memories", value: displayMemoryNodeCount.toLocaleString(), tone: "white" },
+      { label: "Payload Vault", value: language === "ko" ? "봉인됨" : "Sealed", tone: "white" },
+      { label: "Ghost Shell", value: localBrainInitialized ? (language === "ko" ? "활성" : "Active") : (language === "ko" ? "비어 있음" : "Empty"), tone: "cyan" },
+      { label: "Cloud Access", value: language === "ko" ? "최소화" : "Minimal", tone: "blue" },
+    ]
+    : graphPresentationMode === "cloud_world_knowledge"
+      ? [
+        { label: language === "ko" ? "클라우드 커버리지" : "Cloud Coverage", value: "100%", tone: "blue" },
+        { label: language === "ko" ? "공용 Fragment" : "Public Fragments", value: displayMemoryNodeCount.toLocaleString(), tone: "cyan" },
+        { label: language === "ko" ? "최신성" : "Freshness", value: learningDaemon?.worker_alive ? copy.listening : copy.ready, tone: "cyan" },
+        { label: language === "ko" ? "Source Trust" : "Source Trust", value: "Tracked", tone: "white" },
+        { label: language === "ko" ? "Edge Mirrors" : "Edge Mirrors", value: localBackendConnected ? copy.connected : "Pending", tone: "green" },
+      ]
+      : [
+        { label: copy.localBrain, value: `${localAssistRatio}%`, tone: "green" },
+        { label: copy.cloudBrain, value: `${cloudAssistRatio}%`, tone: "blue" },
+        { label: copy.learningEngine, value: learningDaemon?.worker_alive ? copy.listening : copy.ready, tone: "white" },
+        { label: copy.generationEngine, value: isGeneratingAnswer ? copy.running : copy.ready, tone: "white" },
+        { label: copy.fragmentSync, value: copy.synced, tone: "cyan" },
+      ];
+  const providerStatusRows = [
+    { label: "Cloud Provider", value: `${cloudProviderName} / ${cloudEndpointLabel}`, tone: cloudBrokerState === "remote_connected" ? "blue" : "white" },
+    { label: "Broker State", value: cloudBrokerState, tone: cloudBrokerState === "remote_connected" ? "green" : "white" },
+    { label: "Cloud Budget", value: `${cloudBudgetPlan.toUpperCase()} ${cloudBudgetRequests || 0}/day`, tone: "cyan" },
+    { label: "Brain Balance", value: `${budgetLocalPct}% local / ${budgetCloudPct}% cloud`, tone: "blue" },
+  ];
+  const displayStatusRows = [...statusRows, ...providerStatusRows];
+  const recentCards = [
+    { title: copy.activity.graphUpdate, value: `${displayMemoryNodeCount.toLocaleString()} nodes / ${displayMemoryEdgeCount.toLocaleString()} relations`, time: logTime },
+    { title: copy.activity.patchSync, value: signalTraceText, time: logTime },
+    { title: copy.activity.runtime, value: daemonRuntimeText, time: logTime },
+    { title: copy.activity.selected, value: selectedMemory?.label ?? "none", time: logTime },
+  ];
+  const sectionFallbackLabel: Record<MainSectionId, string> = {
+    home: language === "ko" ? "대시보드" : "Dashboard",
+    graph: language === "ko" ? "통합 지식 그래프" : "Unified Knowledge Graph",
+    local: copy.localBrain,
+    cloud: copy.cloudBrain,
+    atlas: language === "ko" ? "아틀라스" : "Atlas",
+    graphhub: "Graph Hub",
+    contribute: language === "ko" ? "브레인 링크" : "Brain Link",
+    chat: language === "ko" ? "채팅" : "Chat",
+    settings: language === "ko" ? "설정" : "Settings",
+  };
+  const activeSectionLabel = copy.nav.find((item) => item.id === mainSection)?.label ?? sectionFallbackLabel[mainSection] ?? copy.nav[0].label;
+  const isCloudViewerSection = mainSection === "cloud";
+  const isLocalChatSection = mainSection === "local" || mainSection === "chat";
+  const isOntologyChatSection = mainSection === "graph";
+  const showInlineChatPanel = isOntologyChatSection || isLocalChatSection;
+  const showRightRail = !isLocalChatSection;
+  const showLowerSection = false;
+  let lowerPanelTitle = isCloudViewerSection
+    ? (language === "ko" ? "클라우드 브레인 뷰어" : "Cloud Brain Viewer")
+    : isOntologyChatSection
+      ? (language === "ko" ? "온톨로지 그래프 채팅" : "Ontology Graph Chat")
+      : isLocalChatSection
+      ? (language === "ko" ? "로컬 브레인 채팅" : "Local Brain Chat")
+      : copy.chatTitle;
+  let lowerPanelSubtitle = isCloudViewerSection
+    ? (language === "ko"
+      ? "공용 온톨로지 후보를 읽기 전용으로 관찰합니다. 질문 생성은 로컬 브레인에서만 실행됩니다."
+      : "Read-only view of shared ontology candidates. Generative chat stays inside the Local Brain.")
+    : isOntologyChatSection
+      ? (language === "ko"
+        ? "로컬/클라우드/작업 메모리의 관계를 함께 보며 질문합니다."
+        : "Ask while inspecting Local, Cloud, and Working Memory relationships.")
+      : isLocalChatSection
+      ? (language === "ko"
+        ? "로컬 Ghost Shell과 Payload Vault만 사용해 답변합니다."
+        : "Chat against the local Ghost Shell and Payload Vault only.")
+      : copy.chatSubtitle;
+  if (language === "ko") {
+    lowerPanelTitle = isCloudViewerSection
+      ? "클라우드 브레인 뷰어"
+      : isOntologyChatSection
+        ? "온톨로지 그래프 채팅"
+        : isLocalChatSection
+          ? "로컬 브레인 채팅"
+          : copy.chatTitle;
+    lowerPanelSubtitle = isCloudViewerSection
+      ? "공용 온톨로지 후보를 읽기 전용으로 관찰합니다. 질문 생성은 로컬 브레인에서만 실행됩니다."
+      : isOntologyChatSection
+        ? "그래프를 보면서 활성 노드와 Payload Vault 문맥을 기준으로 질문합니다."
+        : isLocalChatSection
+          ? "로컬 Ghost Shell과 Payload Vault만 사용해 답변합니다."
+          : copy.chatSubtitle;
+  }
+  const ontologyPromptChips = language === "ko"
+    ? ["브레인 라우팅 설명", "관련 메모리 보기", "앵커는 어떻게 선택해?"]
+    : ["Explain unified-brain routing", "Show related memories", "How are anchors selected?"];
+  const localPromptChips = language === "ko"
+    ? ["내 로컬 메모리 구조 설명", "Payload Vault에는 뭐가 저장돼?", "최근 학습한 개념 보여줘"]
+    : ["Explain my local memory", "What is stored in Payload Vault?", "Show recently learned concepts"];
+  const activePromptChips = isLocalChatSection ? localPromptChips : ontologyPromptChips;
+  const cloudViewerRows = [
+    {
+      label: language === "ko" ? "표시 노드" : "Visible nodes",
+      value: displayMemoryNodeCount.toLocaleString(),
+    },
+    {
+      label: language === "ko" ? "표시 관계" : "Visible relations",
+      value: displayMemoryEdgeCount.toLocaleString(),
+    },
+    {
+      label: language === "ko" ? "클라우드 보조" : "Cloud assist",
+      value: `${cloudAssistRatio}%`,
+    },
+    {
+      label: language === "ko" ? "조작 권한" : "Interaction",
+      value: language === "ko" ? "읽기 전용" : "Viewer only",
+    },
+  ];
+  const localBrainLayerCatalog = [
+    { id: "local_user", label: language === "ko" ? "개인 로컬" : "Local User" },
+    { id: "working_memory_local", label: language === "ko" ? "작업 메모리" : "Working Memory" },
+    { id: "local_base", label: language === "ko" ? "기본 지식" : "Base Brain" },
+    { id: "seed", label: language === "ko" ? "시드 앵커" : "Seed" },
+    { id: "local_memory_candidate", label: language === "ko" ? "승격 후보" : "Candidates" },
+  ];
+  const cloudBrainLayerCatalog = [
+    { id: "semantic_cloud", label: language === "ko" ? "의미 클라우드" : "Semantic Cloud" },
+    { id: "cloud_attached", label: language === "ko" ? "임시 부착" : "Cloud Attached" },
+    { id: "contributor", label: language === "ko" ? "기여 노드" : "Contributor" },
+    { id: "working_memory_cloud", label: language === "ko" ? "클라우드 작업 메모리" : "Cloud WM" },
+    { id: "surface_trace_summary", label: language === "ko" ? "표현 요약" : "Surface Summary" },
+  ];
+  const activeBrainGraph = mainSection === "cloud" ? brainGraphCloud : brainGraphLocal;
+  const activeBrainLayerCatalog = mainSection === "cloud" ? cloudBrainLayerCatalog : localBrainLayerCatalog;
+  const activeBrainLayerSelection = mainSection === "cloud" ? cloudBrainGraphLayers : localBrainGraphLayers;
+  const activeBrainView = mainSection === "cloud" ? "cloud" : "local";
+  const activeBrainLayerCounts = (activeBrainGraph?.stats as AnyRecord | undefined)?.layer_counts as AnyRecord | undefined;
+  const activeBrainMissing = Array.isArray(activeBrainGraph?.layers_missing) ? activeBrainGraph.layers_missing as AnyRecord[] : [];
+  const activeBrainRenderedNodes = Number((activeBrainGraph?.stats as AnyRecord | undefined)?.rendered_nodes ?? 0);
+  const activeBrainRenderedEdges = Number((activeBrainGraph?.stats as AnyRecord | undefined)?.rendered_edges ?? 0);
+  const activeBrainOverlay = brainGraphOverlayStatus ?? ((activeBrainGraph?.stats as AnyRecord | undefined)?.overlay as AnyRecord | undefined) ?? {};
+  const activeBrainGraphRows = activeBrainLayerCatalog.map((item) => {
+    const count = Number(activeBrainLayerCounts?.[item.id] ?? 0);
+    const missing = activeBrainMissing.find((entry) => entry.layer === item.id);
+    return {
+      ...item,
+      enabled: activeBrainLayerSelection.includes(item.id),
+      count,
+      missingReason: missing ? String(missing.reason ?? "unavailable") : "",
+    };
+  });
+  const sourceInspector = (cloudBrainSourceInspector && typeof cloudBrainSourceInspector === "object" && !Array.isArray(cloudBrainSourceInspector))
+    ? cloudBrainSourceInspector as AnyRecord
+    : {};
+  const remoteBrokerInspector = (sourceInspector.remote_cloudflare_broker && typeof sourceInspector.remote_cloudflare_broker === "object" && !Array.isArray(sourceInspector.remote_cloudflare_broker))
+    ? sourceInspector.remote_cloudflare_broker as AnyRecord
+    : {};
+  const localProofInspector = (sourceInspector.local_proof_store && typeof sourceInspector.local_proof_store === "object" && !Array.isArray(sourceInspector.local_proof_store))
+    ? sourceInspector.local_proof_store as AnyRecord
+    : {};
+  const mirrorInspector = (sourceInspector.cloud_mirror_snapshot && typeof sourceInspector.cloud_mirror_snapshot === "object" && !Array.isArray(sourceInspector.cloud_mirror_snapshot))
+    ? sourceInspector.cloud_mirror_snapshot as AnyRecord
+    : {};
+  const activeCloudSourceMode = String(sourceInspector.active_source_mode ?? "local_broker_mode");
+  const verifiedRemoteCloudBrain = activeCloudSourceMode === "remote_cloudflare_broker";
+  const remoteProofStatus = String(remoteCloudProof?.result ?? (remoteBrokerInspector.remote_persistence ? "PASS" : "UNVERIFIED"));
+  const sourceInspectorRows = [
+    { label: language === "ko" ? "활성 소스" : "Active source", value: activeCloudSourceMode },
+    { label: language === "ko" ? "Local proof" : "Local proof", value: `${Number(localProofInspector.fragments ?? 0)} / ${Number(localProofInspector.nodes ?? 0)}n` },
+    { label: language === "ko" ? "Mirror snapshot" : "Mirror snapshot", value: `${Number(mirrorInspector.nodes ?? 0).toLocaleString()} / ${Number(mirrorInspector.edges ?? 0).toLocaleString()}` },
+    { label: language === "ko" ? "Remote broker" : "Remote broker", value: remoteBrokerInspector.reachable ? String(remoteBrokerInspector.broker_state ?? "reachable") : "not verified" },
+    { label: language === "ko" ? "Storage" : "Storage", value: String(remoteBrokerInspector.storage_backend ?? "unknown") },
+    { label: language === "ko" ? "Read-back" : "Read-back", value: remoteBrokerInspector.fragment_readback_success ? "ok" : "not proven" },
+  ];
+  const sourceInspectorWarning = verifiedRemoteCloudBrain
+    ? (language === "ko" ? "검증된 원격 Cloud Brain 브로커를 보고 있습니다." : "You are viewing a verified remote Cloud Brain broker.")
+    : (language === "ko" ? "현재 화면은 실시간 원격 Cloud Brain이 아닙니다. 로컬 proof, 로컬 브로커 또는 미러 스냅샷입니다." : "You are not viewing the live remote Cloud Brain. This view is local proof, local broker, or mirror snapshot.");
+  const semanticCloudRows = [
+    { label: language === "ko" ? "개념" : "Concepts", value: String(semanticCloudStatus?.concepts ?? 0) },
+    { label: language === "ko" ? "관계" : "Relations", value: String(semanticCloudStatus?.relations ?? 0) },
+    { label: language === "ko" ? "근거" : "Evidence", value: String(semanticCloudStatus?.evidence ?? 0) },
+    { label: language === "ko" ? "저장소" : "Store", value: semanticCloudStatus?.proof_store_only === false ? "external" : "proof only" },
+  ];
+  const semanticGrowthRows = [
+    { label: language === "ko" ? "생성 개념" : "Concepts created", value: String(semanticGrowthRun?.concepts_created ?? 0) },
+    { label: language === "ko" ? "병합 개념" : "Concepts merged", value: String(semanticGrowthRun?.concepts_merged ?? 0) },
+    { label: language === "ko" ? "생성 관계" : "Relations created", value: String(semanticGrowthRun?.relations_created ?? 0) },
+    { label: language === "ko" ? "강화 관계" : "Relations strengthened", value: String(semanticGrowthRun?.relations_strengthened ?? 0) },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: semanticGrowthRun?.honesty?.local_brain_write ? "true" : "false" },
+    { label: language === "ko" ? "외부 LLM" : "External LLM", value: semanticGrowthRun?.honesty?.external_llm_used ? "true" : "false" },
+  ];
+  const semanticAttachRows = [
+    { label: language === "ko" ? "임시 노드" : "Attached nodes", value: String((semanticAttachResult?.attached_nodes as AnyRecord[] | undefined)?.length ?? 0) },
+    { label: language === "ko" ? "임시 관계" : "Attached edges", value: String((semanticAttachResult?.attached_edges as AnyRecord[] | undefined)?.length ?? 0) },
+    { label: language === "ko" ? "임시성" : "Temporary", value: semanticAttachResult?.temporary ? "true" : "-" },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: semanticAttachResult?.local_brain_write ? "true" : "false" },
+  ];
+  const graphOverlay = (graph?.working_memory_overlay && typeof graph.working_memory_overlay === "object" && !Array.isArray(graph.working_memory_overlay))
+    ? graph.working_memory_overlay as AnyRecord
+    : ((cloudAttachmentStatus?.working_memory_overlay && typeof cloudAttachmentStatus.working_memory_overlay === "object" && !Array.isArray(cloudAttachmentStatus.working_memory_overlay))
+      ? cloudAttachmentStatus.working_memory_overlay as AnyRecord
+      : {});
+  const cloudAttachedNodeCount = Number(graphOverlay.cloud_attached_nodes ?? (cloudAttachmentStatus?.cloud_attached_nodes ?? 0));
+  const cloudAttachedEdgeCount = Number(graphOverlay.cloud_attached_edges ?? (cloudAttachmentStatus?.cloud_attached_edges ?? 0));
+  const overlayBundleIds = Array.isArray(graphOverlay.bundle_ids) ? graphOverlay.bundle_ids as string[] : [];
+  const webFeederState = (cloudBrainStatus?.web_feeder_state && typeof cloudBrainStatus.web_feeder_state === "object" && !Array.isArray(cloudBrainStatus.web_feeder_state))
+    ? cloudBrainStatus.web_feeder_state as AnyRecord
+    : {};
+  const webFeederEnabled = Boolean(webFeederState.enabled);
+  const webFeederStatus = String(webFeederState.status ?? webFeederState.last_status ?? "idle");
+  const webFeederLastRun = String(webFeederState.last_run_at ?? "-");
+  const webFeederCreated = Number(webFeederState.fragments_created ?? 0);
+  const webFeederRejected = Number(webFeederState.fragments_rejected ?? 0);
+  const webFeederRows = [
+    { label: language === "ko" ? "상태" : "State", value: webFeederEnabled ? (language === "ko" ? "활성" : "Enabled") : (language === "ko" ? "비활성" : "Disabled") },
+    { label: language === "ko" ? "최근 실행" : "Last run", value: webFeederLastRun },
+    { label: language === "ko" ? "확인 소스" : "Sources checked", value: String(webFeederState.sources_checked ?? 0) },
+    { label: language === "ko" ? "후보 생성" : "Candidates", value: String(webFeederCreated) },
+    { label: language === "ko" ? "거절" : "Rejected", value: String(webFeederRejected) },
+    { label: language === "ko" ? "마지막 상태" : "Last status", value: webFeederStatus },
+  ];
+  const webFeederMessage = !webFeederEnabled
+    ? (language === "ko" ? "Web Seed Feeder는 비활성 상태입니다." : "Web Seed Feeder is disabled.")
+    : webFeederCreated > 0
+      ? (language === "ko" ? "새 공개 후보 fragment가 생성되었습니다. 검증/수집 대기 중입니다." : "New public candidate fragments were created. Waiting for verification/ingestion.")
+      : webFeederStatus === "no_new_payload" || webFeederStatus === "listening"
+        ? (language === "ko" ? "새 공개 seed payload를 대기 중입니다." : "Listening for new public seed payloads.")
+        : (language === "ko" ? "Cloud Brain 카운트는 수집과 검증 이후에만 갱신됩니다." : "Cloud Brain counts update only after ingestion and verification.");
+  const controlledGrowthState = (cloudBrainStatus?.controlled_self_growth_state && typeof cloudBrainStatus.controlled_self_growth_state === "object" && !Array.isArray(cloudBrainStatus.controlled_self_growth_state))
+    ? cloudBrainStatus.controlled_self_growth_state as AnyRecord
+    : {};
+  const cloudProofGraphState = (cloudBrainStatus?.cloud_graph_state && typeof cloudBrainStatus.cloud_graph_state === "object" && !Array.isArray(cloudBrainStatus.cloud_graph_state))
+    ? cloudBrainStatus.cloud_graph_state as AnyRecord
+    : {};
+  const controlledGrowthRows = [
+    { label: language === "ko" ? "검증 방식" : "Proof mode", value: String(controlledGrowthProof?.mode ?? controlledGrowthState.mode ?? "controlled_fixture_only") },
+    { label: language === "ko" ? "후보 fragment" : "Candidate fragment", value: String(controlledGrowthProof?.fragment_id ?? controlledGrowthState.last_ingested_fragment_id ?? "-") },
+    { label: language === "ko" ? "정렬" : "Alignment", value: controlledGrowthProof?.alignment_success ? (language === "ko" ? "seed 정렬" : "seed aligned") : (language === "ko" ? "대기" : "waiting") },
+    { label: language === "ko" ? "수집 상태" : "Ingestion", value: controlledGrowthProof?.ingestion_success || controlledGrowthState.last_ingestion_success ? "ingested" : "pending" },
+    { label: language === "ko" ? "신뢰 상태" : "Trust", value: controlledGrowthProof?.trust_state ? String(controlledGrowthProof.trust_state) : (controlledGrowthProof?.ingestion_success ? "seed_aligned" : "unverified") },
+    { label: language === "ko" ? "읽기 검증" : "Read-back", value: controlledGrowthProof?.query_readback_success ? "ok" : "-" },
+    { label: language === "ko" ? "추가 노드" : "Nodes added", value: String(controlledGrowthProof?.nodes_added ?? 0) },
+    { label: language === "ko" ? "추가 관계" : "Edges added", value: String(controlledGrowthProof?.edges_added ?? 0) },
+    { label: language === "ko" ? "Cloud 노드" : "Cloud nodes", value: String(controlledGrowthProof?.new_cloud_nodes ?? cloudProofGraphState.proof_store_nodes ?? 0) },
+    { label: language === "ko" ? "Cloud 관계" : "Cloud edges", value: String(controlledGrowthProof?.new_cloud_edges ?? cloudProofGraphState.proof_store_edges ?? 0) },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: "0 / 0" },
+    { label: language === "ko" ? "광역 크롤링" : "Broad crawl", value: "false" },
+  ];
+  const controlledGrowthMessage = controlledGrowthProof?.controlled_self_growth
+    ? (language === "ko"
+      ? "공개 fixture fragment가 Seed Graph에 정렬된 뒤 Cloud Brain proof store에만 수집되고, fragment query로 다시 읽혔습니다."
+      : "The public fixture fragment aligned to the Seed Graph, entered only the Cloud Brain proof store, and was read back through fragment query.")
+    : (language === "ko"
+      ? "아직 controlled self-growth proof를 실행하지 않았습니다. 이 검증은 제한된 fixture만 사용하며 광역 크롤링을 주장하지 않습니다."
+      : "Controlled self-growth proof has not run yet. This uses a bounded fixture only and does not claim broad crawling.");
+  const cloudSphereRows = [
+    { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: cloudSphereStats?.logicalNodes ?? "0" },
+    { label: language === "ko" ? "Actual materialized" : "Actual materialized", value: String(cloudSphereStats?.actualMaterializedNodes ?? 0) },
+    { label: language === "ko" ? "Rendered nodes" : "Rendered nodes", value: String(cloudSphereStats?.renderedNodes ?? 0) },
+    { label: language === "ko" ? "Active tiles" : "Active tiles", value: String(cloudSphereStats?.activeTiles ?? 0) },
+    { label: language === "ko" ? "Zoom level" : "Zoom level", value: String(cloudSphereStats?.zoomLevel ?? 0) },
+    { label: language === "ko" ? "Render budget" : "Render budget", value: `${cloudSphereStats?.renderBudgetNodes ?? 5000} / ${cloudSphereStats?.renderBudgetEdges ?? 10000}` },
+    { label: language === "ko" ? "Compression" : "Compression", value: String(Boolean(cloudSphereStats?.compressionUsed)) },
+    { label: language === "ko" ? "Aggregate nodes" : "Aggregate nodes", value: String(Boolean(cloudSphereStats?.semanticAggregateNodesUsed)) },
+    { label: language === "ko" ? "Shell mode" : "Shell mode", value: String(Boolean(cloudSphereStats?.shellMode)) },
+    { label: language === "ko" ? "Actual-node mode" : "Actual-node mode", value: String(Boolean(cloudSphereStats?.actualNodeMode)) },
+  ];
+  const cortexLastCycle = (cortexStatus?.last_cycle && typeof cortexStatus.last_cycle === "object" && !Array.isArray(cortexStatus.last_cycle))
+    ? cortexStatus.last_cycle as AnyRecord
+    : {};
+  const cortexRows = [
+    { label: language === "ko" ? "활성 노드" : "Active nodes", value: String(cortexLastCycle.activated_nodes ?? 0) },
+    { label: language === "ko" ? "억제 노드" : "Inhibited nodes", value: String(cortexLastCycle.inhibited_nodes ?? 0) },
+    { label: language === "ko" ? "작업공간" : "Workspace", value: String(cortexLastCycle.salience_nodes ?? 0) },
+    { label: language === "ko" ? "예측 경로" : "Prediction paths", value: String(cortexLastCycle.prediction_paths ?? 0) },
+    { label: language === "ko" ? "오차" : "Error", value: `${Math.round(Number(cortexLastCycle.prediction_error ?? 0) * 100)}%` },
+    { label: language === "ko" ? "Crystal 후보" : "Crystal candidate", value: cortexLastCycle.knowledge_crystal_candidate ? "true" : "false" },
+    { label: language === "ko" ? "Dream 질문" : "Dream questions", value: String(cortexStatus?.dream_questions ?? 0) },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: cortexLastCycle.local_brain_write ? "true" : "false" },
+  ];
+  const cortexPanelState = cortexLastCycle.enabled
+    ? (language === "ko" ? "활성 trace" : "TRACE ACTIVE")
+    : (language === "ko" ? "대기" : "READY");
+  const qCortexLastRun = (qCortexStatus?.last_run && typeof qCortexStatus.last_run === "object" && !Array.isArray(qCortexStatus.last_run))
+    ? qCortexStatus.last_run as AnyRecord
+    : {};
+  const qCortexTrace = (qCortexLastRun.trace && typeof qCortexLastRun.trace === "object" && !Array.isArray(qCortexLastRun.trace))
+    ? qCortexLastRun.trace as AnyRecord
+    : {};
+  const qCortexRows = [
+    { label: language === "ko" ? "문제 유형" : "Problem", value: String(qCortexLastRun.problem_type ?? "idle") },
+    { label: language === "ko" ? "Solver" : "Solver", value: String(qCortexLastRun.solver_name ?? "local") },
+    { label: language === "ko" ? "입력" : "Inputs", value: String(qCortexLastRun.input_count ?? 0) },
+    { label: language === "ko" ? "선택" : "Selected", value: String(qCortexLastRun.selected_count ?? 0) },
+    { label: language === "ko" ? "목적값" : "Objective", value: Number.isFinite(Number(qCortexLastRun.objective_value)) ? Number(qCortexLastRun.objective_value).toFixed(2) : "0.00" },
+    { label: language === "ko" ? "Baseline Δ" : "Baseline delta", value: Number.isFinite(Number(qCortexTrace.baseline_delta)) ? Number(qCortexTrace.baseline_delta).toFixed(2) : "0.00" },
+    { label: language === "ko" ? "양자 HW" : "Quantum HW", value: qCortexStatus?.real_quantum_hardware_used ? "true" : "false" },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: qCortexStatus?.local_brain_write ? "true" : "false" },
+  ];
+  const qCortexPanelState = qCortexStatus?.state === "active"
+    ? (language === "ko" ? "고전 최적화" : "CLASSICAL OPTIMIZER")
+    : (language === "ko" ? "대기" : "READY");
+  const baseBrainPct = (value: unknown) => Number.isFinite(Number(value)) ? `${Math.round(Number(value) * 100)}%` : "-";
+  const baseBrainRows = [
+    { label: language === "ko" ? "팩" : "Pack", value: baseBrainStatus?.pack_exists ? "true" : "false" },
+    { label: language === "ko" ? "Seed 관계" : "Seed relations", value: String(baseBrainStatus?.seed_relation_primitive_count ?? 0) },
+    { label: language === "ko" ? "Semantic" : "Semantic", value: String(baseBrainStatus?.semantic_node_count ?? 0) },
+    { label: language === "ko" ? "Relations" : "Relations", value: String(baseBrainStatus?.semantic_relation_count ?? 0) },
+    { label: language === "ko" ? "Surface" : "Surface", value: String(baseBrainStatus?.surface_construction_count ?? 0) },
+    { label: language === "ko" ? "Bench" : "Bench", value: String(baseBrainStatus?.benchmark_prompt_count ?? 0) },
+    { label: "LLM", value: baseBrainStatus?.external_llm_used ? "true" : "false" },
+    { label: "sLLM", value: baseBrainStatus?.external_sllm_used ? "true" : "false" },
+  ];
+  const baseBrainBenchmarkRows = [
+    { label: language === "ko" ? "실행" : "Run", value: String(baseBrainBenchmark?.total_prompts ?? 0) },
+    { label: language === "ko" ? "유용 답변" : "Useful", value: String(baseBrainBenchmark?.useful_answer_count ?? 0) },
+    { label: language === "ko" ? "Trace hygiene" : "Trace hygiene", value: baseBrainPct(baseBrainBenchmark?.trace_hygiene_rate) },
+    { label: language === "ko" ? "평균 품질" : "Avg quality", value: baseBrainPct(baseBrainBenchmark?.average_answer_quality) },
+  ];
+  const baseBrainPanelState = baseBrainRunning
+    ? (language === "ko" ? "실행 중" : "RUNNING")
+    : baseBrainStatus?.pack_exists
+      ? (language === "ko" ? "팩 준비됨" : "PACK READY")
+      : (language === "ko" ? "팩 대기" : "READY");
+  const latestAnswerQualityRun = answerQualityRun ?? (
+    answerQualityStatus?.latest_run && typeof answerQualityStatus.latest_run === "object" && !Array.isArray(answerQualityStatus.latest_run)
+      ? answerQualityStatus.latest_run as AnyRecord
+      : null
+  );
+  const answerQualityScores = (latestAnswerQualityRun?.average_scores && typeof latestAnswerQualityRun.average_scores === "object" && !Array.isArray(latestAnswerQualityRun.average_scores))
+    ? latestAnswerQualityRun.average_scores as AnyRecord
+    : {};
+  const answerQualityCategories = (latestAnswerQualityRun?.category_scores && typeof latestAnswerQualityRun.category_scores === "object" && !Array.isArray(latestAnswerQualityRun.category_scores))
+    ? latestAnswerQualityRun.category_scores as AnyRecord
+    : {};
+  const answerQualityFeedback = Array.isArray(latestAnswerQualityRun?.surface_feedback)
+    ? latestAnswerQualityRun.surface_feedback as AnyRecord[]
+    : [];
+  const answerQualityWorstCases = Array.isArray(latestAnswerQualityRun?.worst_cases)
+    ? latestAnswerQualityRun.worst_cases as AnyRecord[]
+    : [];
+  const answerQualityPct = (value: unknown) => Number.isFinite(Number(value)) ? `${Math.round(Number(value) * 100)}%` : "-";
+  const answerQualityRows = [
+    { label: language === "ko" ? "Overall" : "Overall", value: answerQualityPct(answerQualityScores.overall) },
+    { label: language === "ko" ? "한국어 자연도" : "Korean naturalness", value: answerQualityPct((answerQualityCategories.korean_natural as AnyRecord | undefined)?.naturalness ?? answerQualityScores.naturalness) },
+    { label: language === "ko" ? "영어 자연도" : "English naturalness", value: answerQualityPct((answerQualityCategories.english_answer as AnyRecord | undefined)?.naturalness ?? answerQualityScores.naturalness) },
+    { label: language === "ko" ? "Trace hygiene" : "Trace hygiene", value: answerQualityPct(answerQualityScores.trace_hygiene) },
+    { label: language === "ko" ? "Template score" : "Template score", value: answerQualityPct(answerQualityScores.template_smell) },
+    { label: language === "ko" ? "Grounding" : "Grounding", value: answerQualityPct(answerQualityScores.grounding) },
+    { label: language === "ko" ? "피드백" : "Feedback", value: String(answerQualityFeedback.length) },
+    { label: language === "ko" ? "프롬프트" : "Prompts", value: String(latestAnswerQualityRun?.total_prompts ?? answerQualityStatus?.benchmark_prompts ?? 0) },
+  ];
+  const answerRepairRows = [
+    { label: language === "ko" ? "Trace before" : "Trace before", value: answerQualityPct(answerRepairComparison?.trace_hygiene_before) },
+    { label: language === "ko" ? "Trace after" : "Trace after", value: answerQualityPct(answerRepairComparison?.trace_hygiene_after) },
+    { label: language === "ko" ? "Trace delta" : "Trace delta", value: Number.isFinite(Number(answerRepairComparison?.trace_hygiene_delta)) ? `${Math.round(Number(answerRepairComparison?.trace_hygiene_delta) * 100)}pt` : "-" },
+    { label: language === "ko" ? "Overall delta" : "Overall delta", value: Number.isFinite(Number(answerRepairComparison?.overall_delta)) ? `${Math.round(Number(answerRepairComparison?.overall_delta) * 100)}pt` : "-" },
+    { label: language === "ko" ? "수리 적용" : "Repairs", value: String(answerRepairComparison?.repairs_applied ?? 0) },
+    { label: language === "ko" ? "남은 누출" : "Remaining leaks", value: String(Array.isArray(answerRepairComparison?.remaining_leakages) ? answerRepairComparison.remaining_leakages.length : 0) },
+  ];
+  const pendingRepairCandidates = repairCandidates.filter((item) => item.status === "pending");
+  const approvedRepairCandidates = repairCandidates.filter((item) => item.status === "approved");
+  const rejectedRepairCandidates = repairCandidates.filter((item) => item.status === "rejected");
+  const enabledProductionRepairRules = productionRepairRules.filter((item) => item.enabled);
+  const disabledProductionRepairRules = productionRepairRules.filter((item) => !item.enabled);
+  const reviewQueueRows = [
+    { label: language === "ko" ? "대기 후보" : "Pending", value: String(pendingRepairCandidates.length) },
+    { label: language === "ko" ? "승인 후보" : "Approved", value: String(approvedRepairCandidates.length) },
+    { label: language === "ko" ? "거절 후보" : "Rejected", value: String(rejectedRepairCandidates.length) },
+    { label: language === "ko" ? "활성 규칙" : "Enabled rules", value: String(enabledProductionRepairRules.length) },
+    { label: language === "ko" ? "비활성 규칙" : "Disabled rules", value: String(disabledProductionRepairRules.length) },
+    { label: language === "ko" ? "감사 이벤트" : "Audit events", value: String(repairAuditEvents.length) },
+  ];
+  const answerQualityPanelState = answerQualityRunning
+    ? (language === "ko" ? "측정 중" : "RUNNING")
+    : answerRepairRunning
+      ? (language === "ko" ? "수리 비교 중" : "REPAIR CHECK")
+    : latestAnswerQualityRun
+      ? (language === "ko" ? "최근 측정" : "LATEST RUN")
+      : (language === "ko" ? "대기" : "READY");
+  const atlasHub = (atlasStatus?.hub && typeof atlasStatus.hub === "object" && !Array.isArray(atlasStatus.hub))
+    ? atlasStatus.hub as AnyRecord
+    : { label: "Seoul Hub", lat: 37.5665, lng: 126.978 };
+  const atlasNodes = Array.isArray(atlasStatus?.nodes) ? atlasStatus.nodes as AnyRecord[] : [];
+  const atlasStats = (atlasStatus?.stats && typeof atlasStatus.stats === "object" && !Array.isArray(atlasStatus.stats))
+    ? atlasStatus.stats as AnyRecord
+    : {};
+  const atlasRelay = (atlasStatus?.relay && typeof atlasStatus.relay === "object" && !Array.isArray(atlasStatus.relay))
+    ? atlasStatus.relay as AnyRecord
+    : { active_region: "East Asia", sequence: ["East Asia", "Europe", "North America", "Pacific"], status: "local_preview" };
+  const atlasMyNode = (atlasStatus?.my_node && typeof atlasStatus.my_node === "object" && !Array.isArray(atlasStatus.my_node))
+    ? atlasStatus.my_node as AnyRecord
+    : {};
+  const atlasPrivacy = (atlasStatus?.privacy && typeof atlasStatus.privacy === "object" && !Array.isArray(atlasStatus.privacy))
+    ? atlasStatus.privacy as AnyRecord
+    : {};
+  const atlasMode = String(atlasStatus?.mode ?? "preview");
+  const atlasProvider = String(atlasStatus?.provider ?? cloudProviderName ?? "local");
+  const atlasBrokerState = String(atlasStatus?.broker_state ?? cloudBrokerState ?? "local_broker_mode");
+  const atlasRemoteConnected = atlasBrokerState === "remote_connected";
+  const atlasStatusCopy = atlasRemoteConnected
+    ? (language === "ko" ? "Cloud Brain 원격 브로커에 연결되었습니다. 표시된 해외 릴레이 점은 실제 사용자 위치가 아니라 프리뷰 지역 신호입니다." : "Connected to the Cloud Brain remote broker. Overseas relay points are preview regional signals, not verified user locations.")
+    : (language === "ko" ? "현재는 로컬/프리뷰 모드입니다. 글로벌 브레인 링크 네트워크는 아직 완전 활성화되지 않았습니다." : "Local/preview mode. The global Brain Link Network is not fully live yet.");
+  const atlasRelaySequence = Array.isArray(atlasRelay.sequence) && atlasRelay.sequence.length
+    ? atlasRelay.sequence.map((item) => String(item))
+    : ["East Asia", "Europe", "North America", "Pacific"];
+  const atlasUtcHour = clockNow ? clockNow.getUTCHours() : new Date().getUTCHours();
+  const atlasComputedRelayRegion = atlasUtcHour <= 5
+    ? "East Asia"
+    : atlasUtcHour <= 11
+      ? "Europe"
+      : atlasUtcHour <= 18
+        ? "North America"
+        : "Pacific";
+  const atlasActiveRelayRegion = String(atlasRelay.active_region ?? atlasComputedRelayRegion);
+  const atlasRelayRegionLabel = (region: string) => {
+    if (language !== "ko") return region;
+    const labels: Record<string, string> = {
+      "East Asia": "동아시아",
+      Europe: "유럽",
+      "North America": "북미",
+      Pacific: "태평양",
+    };
+    return labels[region] ?? region;
+  };
+  const atlasDayNightAngle = Math.round((atlasUtcHour / 24) * 360 - 90);
+  const atlasFragmentStore = String(
+    cloudRemoteStatus?.storage && typeof cloudRemoteStatus.storage === "object" && !Array.isArray(cloudRemoteStatus.storage)
+      ? (cloudRemoteStatus.storage as AnyRecord).fragment_store ?? "unknown"
+      : atlasStatus?.fragment_store ?? "unknown",
+  );
+  const atlasHubPoint = projectAtlasPoint(
+    Number(atlasHub.lat ?? 37.5665),
+    Number(atlasHub.lng ?? 126.978) + atlasRotationDeg,
+  );
+  const atlasNodePoints = atlasNodes.map((node, index) => {
+    const projected = projectAtlasPoint(Number(node.approximate_lat ?? 0), Number(node.approximate_lng ?? 0) + atlasRotationDeg);
+    return {
+      ...node,
+      x: projected.x,
+      y: projected.y,
+      activity: Math.max(0.12, Math.min(1, Number(node.activity_level ?? 0.3))),
+      state: String(node.state ?? "idle"),
+      source: String(node.source ?? "preview"),
+      key: String(node.display_id ?? `atlas-node-${index}`),
+    };
+  });
+  const atlasGlobeNodes = useMemo(
+    () => atlasNodes.map((node, index) => ({
+      key: String(node.display_id ?? `atlas-node-${index}`),
+      lat: Number(node.approximate_lat ?? 0),
+      lng: Number(node.approximate_lng ?? 0),
+                    activity: Math.max(0.12, Math.min(1, Number(node.activity_level ?? 0.3))),
+                    state: String(node.state ?? "idle"),
+                    source: String(node.source ?? "preview"),
+                    role: String(node.role ?? ""),
+                  })),
+    [atlasNodes],
+  );
+  const atlasStatusCards = [
+    { label: "Provider", value: atlasProvider },
+    { label: "Broker", value: atlasBrokerState },
+    { label: language === "ko" ? "Fragment Store" : "Fragment Store", value: atlasFragmentStore },
+    { label: language === "ko" ? "활성 브레인 링크 노드" : "Active Brain Link Nodes", value: String(atlasStats.active_contributor_nodes ?? 0) },
+    { label: language === "ko" ? "검증된 원격 노드" : "Verified Remote Nodes", value: String(atlasStats.verified_remote_contributor_nodes ?? 0) },
+    { label: language === "ko" ? "공용 작업 / 분" : "Public Tasks / min", value: String(atlasStats.public_tasks_per_min ?? 0) },
+  ];
+  const atlasPrivacyRows = [
+    { label: language === "ko" ? "Raw IP 저장" : "Raw IP stored", value: atlasPrivacy.raw_ip_stored ? "YES" : "NO" },
+    { label: language === "ko" ? "정확 위치 표시" : "Exact location shown", value: atlasPrivacy.exact_location_shown ? "YES" : "NO" },
+    { label: language === "ko" ? "개인 데이터 공유" : "Private data shared", value: atlasPrivacy.private_data_shared ? "YES" : "NO" },
+    { label: language === "ko" ? "표시 정밀도" : "Display precision", value: String(atlasPrivacy.display_precision ?? "coarse_region_jittered") },
+  ];
+  const selectedMemoryTitle = selectedMemory
+    ? String(selectedMemory.label ?? selectedMemory.id ?? "Selected Memory")
+    : (language === "ko" ? "선택 대기" : "No node selected");
+  const selectedMemoryDetail = selectedMemory
+    ? String(selectedMemory.type ? memoryTypeText(String(selectedMemory.type)) : selectedMemory.id ?? "Graph node")
+    : "";
+  const epistemicRows = language === "ko"
+    ? [
+      { label: "Anchor", value: "Stable", tone: "green" },
+      { label: "Evidence", value: cloudAssistRatio > 8 ? "Mixed" : "Partial", tone: "orange" },
+      { label: "Noise Rejected", value: String(Math.max(1, Math.round(displayMemoryEdgeCount / Math.max(2200, displayMemoryNodeCount * 5)))), tone: "white" },
+    ]
+    : [
+      { label: "Anchor", value: "Stable", tone: "green" },
+      { label: "Evidence", value: cloudAssistRatio > 8 ? "Mixed" : "Partial", tone: "orange" },
+      { label: "Noise Rejected", value: String(Math.max(1, Math.round(displayMemoryEdgeCount / Math.max(2200, displayMemoryNodeCount * 5)))), tone: "white" },
+    ];
+  const ontologyGuideTitle = language === "ko"
+    ? "ATANOR에 오신 것을 환영합니다.\n당신의 통합 온톨로지 파트너."
+    : "Welcome to ATANOR.\nYour unified ontology partner.";
+  const ontologyGuideBody = language === "ko"
+    ? "로컬 지식의 정확성과 Cloud Brain의 확장성을 함께 읽고, 연결하고, 검증합니다."
+    : "It combines private precision with public breadth to reason, connect, and generate with confidence.";
+  const activeSectionDetail: Record<MainSectionId, string> = {
+    home: language === "ko" ? "그래프, 런타임, 생성 상태를 한 화면에서 봅니다." : "Overview of graph, runtime, and generation state.",
+    graph: language === "ko" ? "통합 온톨로지 그래프를 탐색합니다." : "3D ontology graph exploration mode.",
+    local: language === "ko" ? "로컬 기억과 Payload Vault를 기준으로 대화합니다." : "Prioritizing local memory and Payload Vault.",
+    cloud: language === "ko" ? "공용 Cloud Fragment와 브로커 상태를 읽기 전용으로 봅니다." : "Viewing Cloud Brain bridge status.",
+    atlas: language === "ko" ? "익명 지역 단위로 Cloud Brain 브레인 링크 신호를 시각화합니다." : "Visualizing anonymous regional Cloud Brain Link signals.",
+    graphhub: language === "ko" ? "Graph Cartridge를 설치하고 읽기 전용으로 연결합니다." : "Install and attach Graph Cartridges read-only.",
+    contribute: language === "ko" ? "유휴 자원을 안전하게 Cloud Brain 검증에 연결합니다." : "Link safe idle compute to the Cloud Brain.",
+    chat: language === "ko" ? "로컬 브레인과 대화합니다." : "Chat with the Local Brain.",
+    settings: language === "ko" ? "언어와 로컬 Companion 동기화 상태를 조정합니다." : "Language and local companion sync controls.",
+  };
+
+  function setMainLanguage(nextLanguage: Language) {
+    setLanguage(nextLanguage);
+    writeBrowserStorage("atanor.uiLanguage", nextLanguage);
+    const url = new URL(window.location.href);
+    url.searchParams.set("lang", nextLanguage);
+    window.history.replaceState(null, "", url);
+  }
+
+  function openMainSection(id: MainSectionId) {
+    setMainSection(id);
+    setSelectedMemory(null);
+    if (id === "home") {
+      changeWorkspaceMode("lab");
+      changeLayoutMode("split");
+      setRightMode("process");
+      resetGraph();
+      return;
+    }
+    if (id === "graph") {
+      changeWorkspaceMode("lab");
+      changeLayoutMode("graph");
+      setRightMode("process");
+      resetGraph();
+      return;
+    }
+    if (id === "local") {
+      changeWorkspaceMode("lab");
+      changeLayoutMode("split");
+      setRightMode("process");
+      setGraphSourceMode("memory");
+      resetGraph();
+      return;
+    }
+    if (id === "cloud") {
+      changeWorkspaceMode("lab");
+      changeLayoutMode("split");
+      setRightMode("process");
+      setGraphSourceMode("memory");
+      resetGraph();
+      return;
+    }
+    if (id === "atlas") {
+      changeWorkspaceMode("daemon");
+      changeLayoutMode("split");
+      setRightMode("process");
+      return;
+    }
+    if (id === "contribute") {
+      changeWorkspaceMode("lab");
+      changeLayoutMode("split");
+      setRightMode("process");
+      return;
+    }
+    if (id === "chat") {
+      changeWorkspaceMode("lab");
+      changeLayoutMode("split");
+      setRightMode("chat");
+      return;
+    }
+    changeLayoutMode("workbench");
+    setRightMode("process");
+  }
+
+  async function enableContribution() {
+    setContributionEnabled(true);
+    setContributionPaused(false);
+    if (!localBackendConnected) {
+      setError(language === "ko" ? "로컬 Companion 연결 후 브레인 링크 노드를 시작할 수 있습니다." : "Connect the local companion before starting Brain Link Node.");
+      return;
+    }
+    await directBackendJson<AnyRecord>(localBackendUrl, "/api/contribution/settings", {
+      method: "POST",
+      body: JSON.stringify({
+        cpu_limit_percent: contributionCpuLimit,
+        gpu_enabled: contributionGpuLimit > 0,
+        gpu_limit_percent: contributionGpuLimit,
+        ram_limit_gb: 2,
+        battery_pause: true,
+        thermal_pause: true,
+      }),
+    });
+    await directBackendJson<AnyRecord>(localBackendUrl, "/api/contribution/register", { method: "POST" });
+    const response = await directBackendJson<AnyRecord>(localBackendUrl, "/api/contribution/run-once", { method: "POST" });
+    setContributionStatus(response);
+    await refreshAll();
+  }
+
+  async function pauseContribution() {
+    setContributionPaused(true);
+    if (localBackendConnected) {
+      const response = await directBackendJson<AnyRecord>(localBackendUrl, "/api/contribution/pause", { method: "POST" }).catch(() => null);
+      if (response) setContributionStatus(response);
+    }
+  }
+
+  async function resumeContribution() {
+    setContributionEnabled(true);
+    setContributionPaused(false);
+    if (localBackendConnected) {
+      const response = await directBackendJson<AnyRecord>(localBackendUrl, "/api/contribution/resume", { method: "POST" }).catch(() => null);
+      if (response) setContributionStatus(response);
+    }
+  }
+
+  async function handleGraphHubPrimary(item: AnyRecord) {
+    const cartridgeId = String(item.cartridge_id);
+    const pricingModel = String(item.pricing_model ?? "free");
+    const entitlementStatus = String(item.entitlement_status ?? "locked");
+    const installed = Boolean(item.installed);
+    const attached = graphHubAttachments.some((row) => row.cartridge_id === cartridgeId && row.status === "attached");
+    setGraphHubRunning(cartridgeId);
+    setGraphHubError(null);
+    try {
+      if (attached) {
+        await apiJson<AnyRecord>(`/api/graph-hub/detach/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+      } else if (pricingModel === "free" && entitlementStatus === "locked") {
+        await apiJson<AnyRecord>(`/api/graph-hub/entitlements/free/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+        await apiJson<AnyRecord>(`/api/graph-hub/install/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+      } else if (pricingModel === "one_time" && entitlementStatus !== "owned") {
+        await apiJson<AnyRecord>(`/api/graph-hub/entitlements/mock-purchase/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+      } else if (pricingModel === "subscription" && entitlementStatus !== "active_subscription") {
+        await apiJson<AnyRecord>(`/api/graph-hub/entitlements/mock-subscribe/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+      } else if (!installed) {
+        await apiJson<AnyRecord>(`/api/graph-hub/install/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+      } else {
+        await apiJson<AnyRecord>(`/api/graph-hub/attach/${encodeURIComponent(cartridgeId)}`, {
+          method: "POST",
+          body: JSON.stringify({ scope: "session", read_only: true }),
+        }, localBackendConnected ? { localOnly: true } : {});
+      }
+      await refreshGraphHub();
+      const cloudGraph = await fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null);
+      if (cloudGraph) setBrainGraphCloud(cloudGraph);
+    } catch (caught) {
+      setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub action failed.");
+    } finally {
+      setGraphHubRunning(null);
+    }
+  }
+
+  function graphHubPrimaryLabel(item: AnyRecord) {
+    const pricingModel = String(item.pricing_model ?? "free");
+    const entitlementStatus = String(item.entitlement_status ?? "locked");
+    const installed = Boolean(item.installed);
+    const attached = graphHubAttachments.some((row) => row.cartridge_id === item.cartridge_id && row.status === "attached");
+    if (attached) return language === "ko" ? "분리" : "Detach";
+    if (pricingModel === "free" && entitlementStatus === "locked") return language === "ko" ? "무료 설치" : "Install Free";
+    if (pricingModel === "one_time" && entitlementStatus !== "owned") return language === "ko" ? "한 번 구매" : "Buy once";
+    if (pricingModel === "subscription" && entitlementStatus !== "active_subscription") return entitlementStatus === "expired_subscription" ? (language === "ko" ? "구독 갱신" : "Renew subscription") : (language === "ko" ? "구독 시작" : "Start subscription");
+    if (!installed) return language === "ko" ? "설치" : "Install";
+    return language === "ko" ? "읽기 전용 연결" : "Attach read-only";
+  }
+
+  function isMainSectionActive(id: MainSectionId) {
+    return mainSection === id;
+  }
+
+  function startNewConversation() {
+    setMainSection("local");
+    changeWorkspaceMode("lab");
+    changeLayoutMode("split");
+    setRightMode("chat");
+    setChatInput("");
+    setChatMessages([{ role: "assistant", text: EFFECTIVE_INITIAL_ASSISTANT_MESSAGE[language] }]);
+  }
+
+  const quickActions = [
+    { label: copy.actions.newChat, action: startNewConversation },
+    { label: copy.actions.graphExplore, action: () => openMainSection("graph") },
+    { label: copy.actions.memorySearch, action: () => {
+      openMainSection("local");
+      setMemoryQuery("GraphRAG");
+      activateSignal(signalTraceForQuery("GraphRAG", visibleGraph3D), 6000);
+      focusSearchResult();
+    } },
+    { label: copy.actions.learningTrigger, action: () => runAction(startLearningDaemon) },
+    { label: copy.actions.checkpoint, action: () => runAction(checkpointLearningDaemon) },
+  ];
+
+  return (
+    <main className="atanor-user-shell" data-language={language} data-section={mainSection}>
+      <aside className="atanor-user-sidebar">
+        <div className="atanor-user-brand">
+          <img
+            src="/atanor-logo-header-white.png"
+            alt="ATANOR"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+          />
+          <span>0.1.2</span>
+        </div>
+        <nav className="atanor-user-nav" aria-label="ATANOR sections">
+          {copy.nav.map((item) => {
+            const Icon = mainNavIcon[item.id];
+            return (
+              <button key={item.id} data-active={isMainSectionActive(item.id)} onClick={() => openMainSection(item.id)}>
+                <span aria-hidden="true"><Icon size={17} strokeWidth={1.8} /></span>
+                <strong>{item.label}</strong>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="atanor-user-connection">
+          <span><i data-tone="green" />{copy.localBrain}</span>
+          <strong>{localBackendConnected ? copy.connected : language === "ko" ? "대기" : "Fallback"}</strong>
+          <span><i data-tone="blue" />{copy.cloudBrain}</span>
+          <strong>{workspaceMode === "daemon" ? copy.connected : language === "ko" ? "뷰어" : "Viewer"}</strong>
+        </div>
+      </aside>
+
+      <section className="atanor-user-main">
+        <header className="atanor-user-topbar">
+          <div className="atanor-user-topbar-spacer" aria-hidden="true" />
+          <div className="atanor-user-top-actions">
+            <span className="atanor-user-clock">{clockNow ? clockNow.toLocaleTimeString(language === "ko" ? "ko-KR" : "en-US") : "--:--:--"}</span>
+            <div className="atanor-user-language" aria-label="Language">
+              <button data-active={language === "en"} onClick={() => setMainLanguage("en")}>EN</button>
+              <button data-active={language === "ko"} onClick={() => setMainLanguage("ko")}>KO</button>
+            </div>
+            <span className="atanor-user-settled-badge"><i />{copy.graphSettled}</span>
+            <button
+              className="atanor-user-icon-button"
+              onClick={() => runAction(refreshAll)}
+              aria-label={language === "ko" ? "상태 새로고침" : "Refresh status alerts"}
+              title={language === "ko" ? "상태 새로고침" : "Refresh status alerts"}
+            >
+              <Bell size={16} strokeWidth={1.8} />
+            </button>
+            <button
+              className="atanor-user-icon-button"
+              data-active={mainSection === "settings"}
+              onClick={() => openMainSection("settings")}
+              aria-label={language === "ko" ? "설정 열기" : "Open settings"}
+              title={language === "ko" ? "설정 열기" : "Open settings"}
+            >
+              <UserCircle size={18} strokeWidth={1.8} />
+            </button>
+            <button className="atanor-user-sync-button" onClick={() => runAction(refreshAll)} aria-label={copy.sync}>
+              <RefreshCw size={14} strokeWidth={1.8} />
+              <span>{copy.sync}</span>
+            </button>
+          </div>
+        </header>
+
+        {error ? (
+          <p className="atanor-user-error" title={error}>
+            {language === "ko" ? "로컬 엔진 동기화 대기" : "Local engine sync pending"}
+          </p>
+        ) : null}
+
+        {mainSection === "atlas" ? (
+          <section className="atanor-atlas-grid">
+            <article className="atanor-atlas-hero">
+              <header>
+                <div>
+                  <span>{language === "ko" ? "Cloud Brain Relay Preview" : "Cloud Brain Relay Preview"}</span>
+                  <h2>ATANOR Atlas</h2>
+                  <p>
+                    {language === "ko"
+                      ? "원격 브로커 연결 상태와 익명 지역 릴레이 프리뷰를 개인정보 없이 시각화합니다."
+                      : "Privacy-safe visualization of remote broker state and anonymous regional relay preview."}
+                  </p>
+                </div>
+                <strong data-remote={atlasRemoteConnected}>
+                  <i />
+                  {atlasRemoteConnected ? "REMOTE CONNECTED" : atlasMode.toUpperCase()}
+                </strong>
+              </header>
+              <div
+                className="atanor-atlas-stage"
+                aria-label={language === "ko" ? "익명 지역 단위 Cloud Brain 동기화 지도" : "Anonymous regional Cloud Brain sync map"}
+              >
+                <AtlasGlobe3D
+                  hub={{
+                    lat: Number(atlasHub.lat ?? 37.5665),
+                    lng: Number(atlasHub.lng ?? 126.978),
+                  }}
+                  language={language}
+                  remoteConnected={atlasRemoteConnected}
+                  nodes={atlasGlobeNodes}
+                />
+                <div className="atanor-atlas-caption">
+                  <strong>{language === "ko" ? "서울 허브 릴레이" : "Seoul Hub Relay"}</strong>
+                  <span>
+                    {language === "ko"
+                      ? "실제 WebGL 지구 · 공용 Fragment 검증 신호는 프리뷰 지역 점으로 표시됩니다. Raw IP, 정확 위치, 기기명, 개인 데이터는 표시하지 않습니다."
+                      : "Real WebGL Earth · Public fragment verification signals are shown as preview regional points. No raw IP, exact location, device name, or private data is displayed."}
+                  </span>
+                </div>
+              </div>
+            </article>
+
+            <aside className="atanor-atlas-side">
+              <section className="atanor-atlas-panel">
+                <h2>{language === "ko" ? "아틀라스 상태" : "Atlas Status"}</h2>
+                <p className="atanor-atlas-state-copy">{atlasStatusCopy}</p>
+                <div className="atanor-atlas-stat-grid">
+                  {atlasStatusCards.map((card) => (
+                    <span key={card.label}>
+                      <small>{card.label}</small>
+                      <strong>{card.value}</strong>
+                    </span>
+                  ))}
+                </div>
+              </section>
+
+              <section className="atanor-atlas-panel">
+                <h2>{language === "ko" ? "내 노드" : "My Node"}</h2>
+                <p><span>{language === "ko" ? "상태" : "State"}</span><strong>{String(atlasMyNode.state ?? "Idle")}</strong></p>
+                <p><span>{language === "ko" ? "모드" : "Mode"}</span><strong>{String(atlasMyNode.mode ?? "Brain Link Preview")}</strong></p>
+                <p><span>CPU</span><strong>{String(atlasMyNode.cpu_limit_percent ?? 20)}%</strong></p>
+                <p><span>RAM</span><strong>{String(atlasMyNode.ram_limit_gb ?? 2)}GB</strong></p>
+                <p><span>{language === "ko" ? "개인 데이터" : "Private Data"}</span><strong>{String(atlasMyNode.private_data ?? "Not Shared")}</strong></p>
+              </section>
+
+              <section className="atanor-atlas-panel">
+                <h2>Time-Zone Relay</h2>
+                <p><span>{language === "ko" ? "태양 경계" : "Solar Terminator"}</span><strong>{language === "ko" ? "실시간" : "Live"}</strong></p>
+                <p><span>{language === "ko" ? "시각 레이어" : "Visual Layer"}</span><strong>{language === "ko" ? "낮/밤 지구" : "Day/Night Earth"}</strong></p>
+                <p><span>{language === "ko" ? "노드 신호" : "Node Signal"}</span><strong>{atlasStats.verified_remote_contributor_nodes ? "Mixed" : "Preview"}</strong></p>
+                <p><span>{language === "ko" ? "원격 브로커" : "Remote Broker"}</span><strong>{atlasRemoteConnected ? "Connected" : atlasBrokerState}</strong></p>
+                <p className="atanor-atlas-state-copy">
+                  {language === "ko"
+                    ? "지구의 낮과 밤 경계가 움직이면 깨어 있는 지역의 유휴 연산 노드가 Cloud Brain 작업을 이어받는 구조를 시각화합니다."
+                    : "As Earth's day-night boundary moves, idle compute from awake regions can relay Cloud Brain work."}
+                </p>
+              </section>
+
+              <section className="atanor-atlas-panel">
+                <h2>{language === "ko" ? "개인정보 경계" : "Privacy Boundary"}</h2>
+                {atlasPrivacyRows.map((row) => (
+                  <p key={row.label}>
+                    <span>{row.label}</span>
+                    <strong>{row.value}</strong>
+                  </p>
+                ))}
+              </section>
+            </aside>
+          </section>
+        ) : mainSection === "graphhub" ? (
+          <section className="atanor-graph-hub">
+            <article className="atanor-graph-hub-hero">
+              <div>
+                <span>GRAPH HUB</span>
+                <h2>{language === "ko" ? "Graph Cartridge 생태계" : "Graph Cartridge Ecosystem"}</h2>
+                <p>
+                  {language === "ko"
+                    ? "Graph Hub는 프롬프트 장터가 아니라, 실제 그래프 데이터를 설치·권한 확인·읽기 전용 연결하는 카트리지 시스템입니다."
+                    : "Graph Hub is not a prompt marketplace. It packages real graph-native intelligence into installable, entitlement-gated, read-only cartridges."}
+                </p>
+              </div>
+              <div className="atanor-graph-hub-status">
+                <span><small>{language === "ko" ? "카탈로그" : "Catalog"}</small><strong>{graphHubStatus?.catalog_items ?? graphHubCatalog.length}</strong></span>
+                <span><small>{language === "ko" ? "설치됨" : "Installed"}</small><strong>{graphHubInstalled.length}</strong></span>
+                <span><small>{language === "ko" ? "활성 연결" : "Attachments"}</small><strong>{graphHubAttachments.filter((row) => row.status === "attached").length}</strong></span>
+                <span><small>{language === "ko" ? "Local 기록" : "Local write"}</small><strong>{graphHubStatus?.local_brain_write ? "true" : "false"}</strong></span>
+              </div>
+            </article>
+
+            <article className="atanor-graph-hub-toolbar">
+              <input
+                value={graphHubSearch}
+                onChange={(event) => setGraphHubSearch(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") refreshGraphHub().catch(() => undefined);
+                }}
+                placeholder={language === "ko" ? "카트리지 검색" : "Search cartridges"}
+              />
+              <div className="atanor-graph-hub-filters">
+                {["all", "free", "one_time", "subscription"].map((filter) => (
+                  <button key={filter} data-active={graphHubPricingFilter === filter} onClick={() => setGraphHubPricingFilter(filter)}>
+                    {filter === "all" ? "All" : filter === "one_time" ? (language === "ko" ? "한 번 구매" : "One-time") : filter === "subscription" ? (language === "ko" ? "구독" : "Subscription") : "Free"}
+                  </button>
+                ))}
+              </div>
+              <button className="atanor-proof-action" type="button" onClick={() => refreshGraphHub().catch(() => undefined)}>
+                {language === "ko" ? "카탈로그 갱신" : "Refresh"}
+              </button>
+              <button
+                className="atanor-proof-action"
+                type="button"
+                disabled={graphHubRunning === "export"}
+                onClick={() => runGraphHubAction("export", "/api/graph-hub/export/semantic-cloud", {
+                  cartridge_id: "semantic_cloud_kubernetes_demo",
+                  name: "Semantic Cloud Kubernetes Demo",
+                  description: "A small real proof-store export from the Semantic Cloud Growth Loop.",
+                  pricing_model: "free",
+                  limit_nodes: 100,
+                  limit_edges: 300,
+                })}
+              >
+                {language === "ko" ? "Semantic Cloud Demo 내보내기" : "Export Semantic Cloud Demo"}
+              </button>
+              <button
+                className="atanor-proof-action"
+                type="button"
+                disabled={graphHubRunning === "proof"}
+                onClick={() => runGraphHubAction("proof", "/api/graph-hub/proof")}
+              >
+                {language === "ko" ? "Graph Hub 증명" : "Run Proof"}
+              </button>
+            </article>
+
+            {graphHubError ? <p className="atanor-user-error">{graphHubError}</p> : null}
+
+            <section className="atanor-graph-hub-grid">
+              {graphHubCatalog.map((item) => {
+                const attached = graphHubAttachments.some((row) => row.cartridge_id === item.cartridge_id && row.status === "attached");
+                return (
+                  <article className="atanor-graph-hub-card" key={String(item.cartridge_id)} data-attached={attached}>
+                    <header>
+                      <span>{String(item.category ?? "general").toUpperCase()}</span>
+                      <strong>{String(item.price_label ?? "Free")}</strong>
+                    </header>
+                    <h3>{String(item.name)}</h3>
+                    <p>{String(item.subtitle ?? "")}</p>
+                    <div className="atanor-graph-hub-badges">
+                      <span>{String(item.pricing_model ?? "free")}</span>
+                      <span>{item.installed ? "Installed" : "Not installed"}</span>
+                      <span>{String(item.entitlement_status ?? "locked")}</span>
+                      <span>{String(item.risk_level ?? "unknown")}</span>
+                    </div>
+                    <div className="atanor-graph-hub-metrics">
+                      <span><small>Nodes</small><strong>{String(item.preview?.semantic_nodes ?? 0)}</strong></span>
+                      <span><small>Edges</small><strong>{String(item.preview?.semantic_edges ?? 0)}</strong></span>
+                      <span><small>Read-only</small><strong>{item.preview?.default_read_only ? "true" : "false"}</strong></span>
+                    </div>
+                    <div className="atanor-graph-hub-card-actions">
+                      <button disabled={graphHubRunning === item.cartridge_id} onClick={() => handleGraphHubPrimary(item)}>
+                        {graphHubRunning === item.cartridge_id ? (language === "ko" ? "처리 중" : "Working") : graphHubPrimaryLabel(item)}
+                      </button>
+                      {item.installed ? (
+                        <button
+                          type="button"
+                          onClick={() => runGraphHubAction(`uninstall-${String(item.cartridge_id)}`, `/api/graph-hub/uninstall/${encodeURIComponent(String(item.cartridge_id))}`)}
+                        >
+                          {language === "ko" ? "설치 해제" : "Uninstall"}
+                        </button>
+                      ) : null}
+                      {item.pricing_model === "subscription" && item.entitlement_status === "active_subscription" ? (
+                        <button
+                          type="button"
+                          onClick={() => runGraphHubAction(`expire-${String(item.cartridge_id)}`, `/api/graph-hub/entitlements/expire/${encodeURIComponent(String(item.cartridge_id))}`)}
+                        >
+                          {language === "ko" ? "구독 만료 테스트" : "Expire mock"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+              {!graphHubCatalog.length ? (
+                <article className="atanor-graph-hub-card">
+                  <header>
+                    <span>EMPTY</span>
+                    <strong>Graph Hub</strong>
+                  </header>
+                  <h3>{language === "ko" ? "카탈로그를 기다리는 중" : "Waiting for catalog"}</h3>
+                  <p>{language === "ko" ? "로컬 Companion이 연결되면 샘플 Graph Cartridge 카탈로그가 표시됩니다." : "Sample Graph Cartridges appear when the local Companion is connected."}</p>
+                </article>
+              ) : null}
+            </section>
+
+            <section className="atanor-graph-hub-lower">
+              <article>
+                <h2>{language === "ko" ? "Installed Graphs" : "Installed Graphs"}</h2>
+                {graphHubInstalled.length ? graphHubInstalled.map((item) => (
+                  <p key={String(item.cartridge_id)}>
+                    <span>{String(item.cartridge_id)}</span>
+                    <strong>{String(item.entitlement_status ?? "unknown")}</strong>
+                  </p>
+                )) : <p>{language === "ko" ? "설치된 Graph Cartridge가 없습니다." : "No installed Graph Cartridges."}</p>}
+              </article>
+              <article>
+                <h2>{language === "ko" ? "Active Graph Attachments" : "Active Graph Attachments"}</h2>
+                {graphHubAttachments.length ? graphHubAttachments.map((item) => (
+                  <p key={String(item.attachment_id ?? item.cartridge_id)}>
+                    <span>{String(item.cartridge_id)}</span>
+                    <strong>{String(item.status)} · {String(item.working_memory_nodes ?? 0)}n</strong>
+                  </p>
+                )) : <p>{language === "ko" ? "활성 연결이 없습니다." : "No active attachments."}</p>}
+              </article>
+              <article>
+                <h2>{language === "ko" ? "Export / Audit" : "Export / Audit"}</h2>
+                {graphHubExport ? <p><span>{language === "ko" ? "최근 내보내기" : "Latest export"}</span><strong>{String(graphHubExport.exported_nodes ?? 0)} / {String(graphHubExport.exported_edges ?? 0)}</strong></p> : null}
+                {graphHubProof ? <p><span>{language === "ko" ? "Proof" : "Proof"}</span><strong>{graphHubProof.passed ? "PASS" : "FAIL"}</strong></p> : null}
+                {graphHubAudit.slice(0, 5).map((event) => (
+                  <p key={String(event.event_id)}>
+                    <span>{String(event.event_type)}</span>
+                    <strong>{String(event.cartridge_id ?? "Graph Hub")}</strong>
+                  </p>
+                ))}
+              </article>
+            </section>
+          </section>
+        ) : mainSection === "settings" ? (
+          <section className="atanor-settings-grid">
+            <article className="atanor-settings-hero">
+              <div>
+                <span>SYSTEM SETTINGS</span>
+                <h2>{language === "ko" ? "ATANOR 실행 환경" : "ATANOR Runtime Control"}</h2>
+                <p>
+                  {language === "ko"
+                    ? "ATANOR 앱의 언어, 로컬 Companion, 안전 모드, 브레인 라우팅 상태를 한 곳에서 관리합니다."
+                    : "Manage language, local Companion, safety mode, and brain routing for the user-facing ATANOR app."}
+                </p>
+              </div>
+              <div className="atanor-settings-metrics">
+                <span><small>{language === "ko" ? "로컬 Companion" : "Local Companion"}</small><strong>{localBackendConnected ? copy.connected : language === "ko" ? "대기" : "Fallback"}</strong></span>
+                <span><small>{language === "ko" ? "하드웨어 티어" : "Hardware Tier"}</small><strong>{edgeTierLabel}</strong></span>
+                <span><small>{language === "ko" ? "학습 런타임" : "Learning Runtime"}</small><strong>{daemonRuntimeText}</strong></span>
+                <span><small>{language === "ko" ? "라우팅" : "Routing"}</small><strong>{localAssistRatio}% / {cloudAssistRatio}%</strong></span>
+              </div>
+            </article>
+
+            <article className="atanor-settings-panel">
+              <header>
+                <h2>{language === "ko" ? "언어와 표시" : "Language and Display"}</h2>
+                <p>{language === "ko" ? "기본 UI 언어를 전환합니다. URL에 lang 파라미터가 있으면 그 값을 우선합니다." : "Switch the UI language. A lang URL parameter takes priority when present."}</p>
+              </header>
+              <div className="atanor-settings-segment" aria-label="Language">
+                <button data-active={language === "en"} onClick={() => setMainLanguage("en")}>English</button>
+                <button data-active={language === "ko"} onClick={() => setMainLanguage("ko")}>한국어</button>
+              </div>
+              <label className="atanor-settings-toggle">
+                <span>{language === "ko" ? "웹 검색 보조" : "Web search assist"}</span>
+                <input type="checkbox" checked={webSearchEnabled} onChange={(event) => setWebSearchEnabled(event.target.checked)} />
+              </label>
+            </article>
+
+            <article className="atanor-settings-panel">
+              <header>
+                <h2>{language === "ko" ? "로컬 Companion" : "Local Companion"}</h2>
+                <p>{language === "ko" ? "FastAPI Companion 주소를 지정하고 로컬 그래프와 동기화합니다." : "Point the app to the FastAPI Companion and sync the local graph."}</p>
+              </header>
+              <label className="atanor-settings-field">
+                <span>{language === "ko" ? "API 주소" : "API URL"}</span>
+                <input
+                  value={localBackendUrl}
+                  onChange={(event) => setLocalBackendUrl(event.currentTarget.value)}
+                  spellCheck={false}
+                />
+              </label>
+              <div className="atanor-settings-actions">
+                <button onClick={() => runAction(() => connectLocalBackend(localBackendUrl))}>{language === "ko" ? "재연결" : "Reconnect"}</button>
+                <button onClick={() => {
+                  const defaultUrl = "http://127.0.0.1:8500";
+                  setLocalBackendUrl(defaultUrl);
+                  void runAction(() => connectLocalBackend(defaultUrl));
+                }}>{language === "ko" ? "기본값" : "Default"}</button>
+                <button onClick={disconnectLocalBackend}>{language === "ko" ? "해제" : "Disconnect"}</button>
+              </div>
+              <small>{localBackendMessage}</small>
+            </article>
+
+            <article className="atanor-settings-panel">
+              <header>
+                <h2>{language === "ko" ? "브레인 링크 안전장치" : "Brain Link Safety"}</h2>
+                <p>{language === "ko" ? "공용 fragment 작업은 허용하되 개인 Payload Vault와 로컬 데이터는 기본적으로 보호합니다." : "Allow public fragment jobs while keeping private Payload Vault and local data protected by default."}</p>
+              </header>
+              <label className="atanor-settings-toggle">
+                <span>{language === "ko" ? "안전 모드" : "Safe mode"}</span>
+                <input type="checkbox" checked={contributionSafeMode} onChange={(event) => setContributionSafeMode(event.target.checked)} />
+              </label>
+              <label className="atanor-settings-toggle">
+                <span>{language === "ko" ? "공용 fragment 작업 허용" : "Allow public fragment jobs"}</span>
+                <input type="checkbox" checked={contributionAllowPublic} onChange={(event) => setContributionAllowPublic(event.target.checked)} />
+              </label>
+              <label className="atanor-settings-toggle">
+                <span>{language === "ko" ? "로컬 데이터 공유 금지" : "Local data sharing blocked"}</span>
+                <input type="checkbox" checked readOnly disabled />
+              </label>
+              <label className="atanor-settings-slider">
+                <span>CPU {language === "ko" ? "한도" : "limit"} {contributionCpuLimit}%</span>
+                <input type="range" min={5} max={80} value={contributionCpuLimit} onChange={(event) => setContributionCpuLimit(Number(event.target.value))} />
+              </label>
+            </article>
+
+            <article className="atanor-settings-panel atanor-settings-wide">
+              <header>
+                <h2>{language === "ko" ? "진단과 유지관리" : "Diagnostics and Maintenance"}</h2>
+                <p>{language === "ko" ? "현재 세션의 그래프, 학습 데몬, Payload Vault 체크포인트를 수동으로 정리합니다." : "Manually refresh graph state, learning daemon state, and Payload Vault checkpoints."}</p>
+              </header>
+              <div className="atanor-settings-actions">
+                <button onClick={() => runAction(refreshAll)}>{copy.sync}</button>
+                <button onClick={() => runAction(startLearningDaemon)}>{copy.actions.learningTrigger}</button>
+                <button onClick={() => runAction(checkpointLearningDaemon)}>{copy.actions.checkpoint}</button>
+              </div>
+              <div className="atanor-settings-status-list">
+                <p><span>{language === "ko" ? "브레인 작업" : "Brain task"}</span><strong>{activeTaskLabel}</strong></p>
+                <p><span>{language === "ko" ? "데몬 상태" : "Daemon"}</span><strong>{daemonStateText}</strong></p>
+                <p><span>{language === "ko" ? "엣지 브로커" : "Edge broker"}</span><strong>{edgeBrokerLabel}</strong></p>
+                <p><span>{language === "ko" ? "메모리" : "Memory"}</span><strong>{displayMemoryNodeCount.toLocaleString()} / {displayMemoryEdgeCount.toLocaleString()}</strong></p>
+              </div>
+            </article>
+          </section>
+        ) : mainSection === "contribute" ? (
+          <section className="atanor-contribution-grid">
+            <article className="atanor-contribution-hero">
+              <div className="atanor-contribution-ring" data-active={contributionIsActive}>
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <circle cx="60" cy="60" r="48" />
+                  <circle cx="60" cy="60" r="48" style={{ strokeDasharray: `${contributionIsActive ? 286 : 72} 302` }} />
+                </svg>
+                <strong>{contributionStatusText}</strong>
+                <span>{contributionIsActive ? (language === "ko" ? "활성" : "Active") : contributionPaused ? (language === "ko" ? "대기" : "Standby") : (language === "ko" ? "준비" : "Ready")}</span>
+              </div>
+              <div className="atanor-contribution-copy">
+                <span>{language === "ko" ? "ATANOR 브레인 링크 노드" : "ATANOR Brain Link Node"}</span>
+                <h2>{language === "ko" ? "유휴 자원으로 공용 Fragment만 검증합니다." : "Verify public fragments with idle compute."}</h2>
+                <p>{language === "ko" ? "개인 Payload Vault와 로컬 브레인 데이터는 공유하지 않습니다." : "Private Payload Vault and Local Brain data are never shared."}</p>
+                <div className="atanor-contribution-badges">
+                  <span>{language === "ko" ? "개인 데이터 차단" : "Private data blocked"}</span>
+                  <span>{language === "ko" ? "공용 작업만" : "Public tasks only"}</span>
+                  <span>{language === "ko" ? `크레딧 x${contributionCreditMultiplier}` : `Credit x${contributionCreditMultiplier}`}</span>
+                </div>
+                <div className="atanor-contribution-actions">
+                  <button onClick={() => runAction(enableContribution)}>
+                    {contributionEnabled && !contributionPaused ? (language === "ko" ? "브레인 링크 갱신" : "Refresh Brain Link") : (language === "ko" ? "브레인 링크 연결" : "Connect Brain Link")}
+                  </button>
+                  <button disabled={contributionBlockedBySafety} onClick={contributionIsActive ? pauseContribution : resumeContribution}>
+                    {contributionIsActive
+                      ? (language === "ko" ? "일시정지" : "Pause")
+                      : contributionBlockedBySafety
+                        ? (language === "ko" ? "안전 조건 대기" : "Safety hold")
+                        : (language === "ko" ? "재개" : "Resume")}
+                  </button>
+                </div>
+                {resourceStopReason ? <small className="atanor-contribution-hold">{resourceStopReason}</small> : null}
+              </div>
+              <div className="atanor-contribution-metrics">
+                <span><small>CPU</small><strong>{contributionCpuUsage}%</strong></span>
+                <span><small>GPU</small><strong>{contributionGpuAvailable ? `${contributionGpuUsage}%` : (language === "ko" ? "미감지" : "n/a")}</strong></span>
+                <span><small>RAM</small><strong>{contributionRamGb.toFixed(1)}GB</strong></span>
+                <span><small>{language === "ko" ? "네트워크" : "Network"}</small><strong>{contributionNetworkLabel}</strong></span>
+              </div>
+            </article>
+
+            <aside className="atanor-contribution-side">
+              <section>
+                <h2>{language === "ko" ? "브레인 링크 라우팅" : "Brain Link Routing"}</h2>
+                <div className="atanor-routing-donut" style={{ ["--local-share" as string]: `${contributionSharedRatio}%` }}>
+                  <strong>{contributionSharedRatio}%</strong>
+                  <span>{language === "ko" ? "공용 작업" : "Public jobs"}</span>
+                </div>
+                <p><span>{language === "ko" ? "로컬 데이터 공유" : "Local data share"}</span><strong>{contributionLocalShareRatio}%</strong></p>
+                <p><span>{language === "ko" ? "브로커" : "Broker"}</span><strong>{contributionBrokerState.replace(/_/g, " ")}</strong></p>
+                <p><span>{language === "ko" ? "상태" : "State"}</span><strong>{contributionSafeSummary}</strong></p>
+              </section>
+              <section>
+                <h2>{language === "ko" ? "선택된 작업" : "Selected Task"}</h2>
+                <div className="atanor-task-orb" />
+                <strong>{String(contributionCurrentTask?.task_type ?? "public_fragment_validation").replace(/_/g, " ")}</strong>
+                <p>{language === "ko" ? "유효성, 중복, 노이즈만 검증합니다." : "Checks validity, duplication, and noise only."}</p>
+                <small>{contributionCurrentTask?.task_id ?? "local-broker"} · {contributionBackendState}</small>
+              </section>
+            </aside>
+
+            <article className="atanor-contribution-card">
+              <h2>{language === "ko" ? "브레인 링크 크레딧" : "Brain Link Credits"}</h2>
+              <div className="atanor-credit-grid">
+                <span><small>{language === "ko" ? "오늘 획득" : "Today"}</small><strong>{contributionTodayCredit.toFixed(1)}</strong><em>Credit</em></span>
+                <span><small>{language === "ko" ? "총 누적" : "Total"}</small><strong>{contributionTotalCredit.toFixed(1)}</strong><em>Credit</em></span>
+                <span><small>{language === "ko" ? "예상 작업당" : "Est. per task"}</small><strong>{contributionEstimatedTaskCredit.toFixed(1)}</strong><em>x{contributionCreditMultiplier}</em></span>
+                <span><small>{language === "ko" ? "완료 작업" : "Tasks"}</small><strong>{contributionCompletedTasks}</strong><em>{edgeTierLabel}</em></span>
+              </div>
+            </article>
+
+            <article className="atanor-contribution-card">
+              <h2>{language === "ko" ? "안전 및 개인정보" : "Safety and Privacy"}</h2>
+              <div className="atanor-safety-list">
+                <label><span>{language === "ko" ? "개인 데이터 공유 안 함" : "Do not share private data"}</span><input type="checkbox" checked readOnly /></label>
+                <label><span>{language === "ko" ? "로컬 브레인 데이터 공유 금지" : "Local Brain sharing blocked"}</span><input type="checkbox" checked readOnly disabled /></label>
+                <label><span>{language === "ko" ? "공용 fragment 작업 허용" : "Allow public fragment jobs"}</span><input type="checkbox" checked={contributionAllowPublic} onChange={(event) => setContributionAllowPublic(event.target.checked)} /></label>
+                <label><span>{language === "ko" ? "안전 모드" : "Safe mode"}</span><input type="checkbox" checked={contributionSafeMode} onChange={(event) => setContributionSafeMode(event.target.checked)} /></label>
+              </div>
+            </article>
+
+            <article className="atanor-contribution-wide">
+              <details open>
+                <summary>{language === "ko" ? "고급 자원 설정" : "Advanced resource settings"}</summary>
+                <div className="atanor-resource-slider">
+                  <span>CPU {language === "ko" ? "한도" : "limit"} {contributionCpuLimit}%</span>
+                  <input type="range" min={5} max={80} value={contributionCpuLimit} onChange={(event) => setContributionCpuLimit(Number(event.target.value))} />
+                </div>
+                <div className="atanor-resource-slider">
+                  <span>GPU {language === "ko" ? "한도" : "limit"} {contributionGpuLimitEffective}% · {language === "ko" ? `크레딧 x${contributionCreditMultiplier}` : `credit x${contributionCreditMultiplier}`}</span>
+                  <input type="range" min={0} max={95} value={contributionGpuLimit} disabled={!contributionGpuAvailable} onChange={(event) => setContributionGpuLimit(Number(event.target.value))} />
+                  {!contributionGpuAvailable ? <small>{language === "ko" ? "GPU 텔레메트리가 연결되면 활성화됩니다." : "Enabled when GPU telemetry is available."}</small> : null}
+                </div>
+              </details>
+              <details>
+                <summary>{language === "ko" ? "브레인 링크 작업" : "Brain Link tasks"}</summary>
+                <p>Public Fragment verification · Ghost hash dedupe · Source noise check · Public alias review</p>
+              </details>
+              <details>
+                <summary>{language === "ko" ? "실시간 작동 로그" : "Live operation log"}</summary>
+                <p>{edgeStatus?.ghost_shell?.logs?.slice?.(-2)?.join(" / ") ?? edgeBrokerLabel}</p>
+              </details>
+              <details>
+                <summary>{language === "ko" ? "향후 토큰화 로드맵" : "Future tokenization roadmap"}</summary>
+                <p>{language === "ko" ? "현재 제품은 내부 크레딧만 기록합니다. 암호화폐, 전송 가능한 토큰, 금융형 보상은 구현하지 않았습니다." : "This product build records internal credits only. Cryptocurrency, transferable tokens, and financial rewards are not implemented."}</p>
+              </details>
+            </article>
+          </section>
+        ) : (
+        <>
+        <section className="atanor-user-grid">
+          {showInlineChatPanel ? (
+            <article className={`atanor-user-chat-card atanor-user-ontology-chat-card ${isLocalChatSection ? "atanor-user-local-chat-card" : ""}`}>
+              <header>
+                <div>
+                  <h2>{lowerPanelTitle}</h2>
+                </div>
+                <button data-active={webSearchEnabled} onClick={() => setWebSearchEnabled((enabled) => !enabled)}>
+                  {language === "ko" ? `웹 ${webSearchEnabled ? "켜짐" : "꺼짐"}` : `Web ${webSearchEnabled ? "On" : "Off"}`}
+                </button>
+              </header>
+              {isOntologyChatSection ? (
+                <div className="atanor-ontology-guide">
+                  <h3>{ontologyGuideTitle.split("\n").map((line) => <span key={line}>{line}</span>)}</h3>
+                  <p>{ontologyGuideBody}</p>
+                </div>
+              ) : (
+                <div className="atanor-local-chat-scope">
+                  <span>{language === "ko" ? "로컬 전용" : "LOCAL ONLY"}</span>
+                  <strong>{language === "ko" ? "개인 Ghost Shell과 Payload Vault 안에서만 답변합니다." : "Answers only from private Ghost Shell and Payload Vault."}</strong>
+                </div>
+              )}
+              <div className="atanor-user-chat-scroll" ref={chatScrollRef}>
+                {chatMessages.slice(-5).map((message, index) => (
+                  <article key={`${message.role}-${index}`} data-role={message.role}>
+                    <span>{message.role === "user" ? "User" : "ATANOR"}</span>
+                    <p>{message.text}</p>
+                    {message.evidence?.length ? (
+                      <details className="atanor-trace-details">
+                        <summary>{language === "ko" ? "근거 / Brain path" : "Evidence / Brain path"}</summary>
+                        <small>{message.evidence.slice(0, 2).map((doc) => doc.chunk_id ?? doc.doc_id ?? "evidence").join(" · ")}</small>
+                      </details>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+              <div className="atanor-user-prompt-chips">
+                {activePromptChips.map((chip) => (
+                  <button key={chip} onClick={() => setChatInput(chip)}>{chip}</button>
+                ))}
+              </div>
+              <div className="atanor-user-composer">
+                <textarea
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendChat();
+                    }
+                  }}
+                  placeholder={copy.placeholder}
+                  aria-label={copy.placeholder}
+                />
+                <button disabled={isGeneratingAnswer} onClick={sendChat}>
+                  {isGeneratingAnswer ? copy.generating : copy.send}
+                </button>
+              </div>
+            </article>
+          ) : null}
+
+          <article className="atanor-user-graph-card" data-presentation={graphPresentationMode}>
+            <div className="atanor-user-graph-meta">
+              <div>
+                <h2>{presentationCopy.graphTitle}</h2>
+              </div>
+              <div className="atanor-user-stat-stack">
+                <span>{copy.nodes}<strong>{graphHeaderNodeCount.toLocaleString()}</strong></span>
+                <span>{copy.relations}<strong>{graphHeaderEdgeCount.toLocaleString()}</strong></span>
+                <span>{copy.sparsity}<strong>{graphSparsity}%</strong></span>
+                <span>{copy.communities}<strong>{graphCommunities}</strong></span>
+              </div>
+            </div>
+            <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode}>
+              {isCloudViewerSection ? (
+                <CloudBrainSphereScene
+                  edgeOpacity={graphEdgeOpacity}
+                  highEnd={Boolean(benchmark?.hardware_tier === "Tier 1-M" || benchmark?.tier === "Tier 1-M")}
+                  onStats={setCloudSphereStats}
+                />
+              ) : visibleGraph3D.nodes.length ? (
+                <Rag3DScene
+                  key={usesStudioGraph ? "atanor-home-studio-graph" : `atanor-${graphPresentationMode}-sphere-graph`}
+                  activeEdgeKeys={activeSignalEdgeKeys}
+                  activeNodeIds={activeSignalNodeIds}
+                  graph={userSceneGraph3D}
+                  control={rag3dControl}
+                  preserveSourceCoordinates={usesStudioGraph || usesSphereGraph}
+                  theme="dark"
+                  visualState={ragVisualState}
+                  fitScale={graphFitScale}
+                  showLabels={mainSection !== "local"}
+                  edgeOpacity={graphEdgeOpacity}
+                  onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
+                />
+              ) : (
+                <div className="atanor-user-empty-graph" data-status={localBackendStatus}>
+                  <div className="atanor-empty-loader" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                    <i />
+                  </div>
+                  <strong>{localBackendMessage}</strong>
+                  <small>
+                    {localBackendStatus === "checking"
+                      ? (language === "ko" ? "Ghost Shell 주소록을 깨우고 있습니다" : "Waking Ghost Shell topology")
+                      : (language === "ko" ? "로컬 Companion 응답 대기" : "Waiting for local Companion")}
+                  </small>
+                </div>
+              )}
+              {mainSection !== "local" && mainSection !== "cloud" ? (
+                <>
+                  <div className="atanor-user-graph-label local">{presentationCopy.localLabel}<span>{presentationCopy.localDetail}</span></div>
+                  <div className="atanor-user-graph-label cloud">{presentationCopy.cloudLabel}<span>{presentationCopy.cloudDetail}</span></div>
+                </>
+              ) : null}
+              {mainSection !== "local" && mainSection !== "cloud" ? (
+                <div className="atanor-user-graph-mini-legend" aria-label="Graph legend">
+                  <span><i data-kind="local" />{presentationCopy.localNode}</span>
+                  <span><i data-kind="cloud" />{presentationCopy.cloudNode}</span>
+                  <span><i data-kind="fragment" />{presentationCopy.fragmentNode}</span>
+                  <span><i data-kind="line" />{copy.strongRelation}</span>
+                </div>
+              ) : null}
+              {mainSection !== "local" && mainSection !== "cloud" ? (
+                <div className="atanor-user-graph-hint">{copy.graphHint}</div>
+              ) : null}
+              <div className="atanor-user-graph-tools">
+                {mainSection === "local" || mainSection === "cloud" ? (
+                  <label className="atanor-edge-opacity-control">
+                    <span>{language === "ko" ? "연결선" : "Lines"}</span>
+                    <input
+                      aria-label={language === "ko" ? "연결선 선명도" : "Line clarity"}
+                      max="0.86"
+                      min="0.04"
+                      step="0.02"
+                      type="range"
+                      value={graphEdgeOpacity}
+                      onChange={(event) => setGraphEdgeOpacity(Number(event.target.value))}
+                    />
+                    <strong>{Math.round(graphEdgeOpacity * 100)}%</strong>
+                  </label>
+                ) : null}
+                {mainSection === "local" ? (
+                  <button
+                    type="button"
+                    onClick={attachCloudContext}
+                    disabled={cloudAttachmentRunning}
+                    aria-label={language === "ko" ? "Cloud Context 부착" : "Attach Cloud Context"}
+                  >
+                    {cloudAttachmentRunning
+                      ? (language === "ko" ? "부착 중" : "Attaching")
+                      : (language === "ko" ? "Cloud 부착" : "Attach Cloud")}
+                  </button>
+                ) : null}
+                <button onClick={() => zoomGraph(-0.18)} aria-label="Zoom out">-</button>
+                <button onClick={() => zoomGraph(0.18)} aria-label="Zoom in">+</button>
+                <button onClick={resetGraph} aria-label={language === "ko" ? "그래프 초기화" : "Reset graph"}>
+                  {language === "ko" ? "초기화" : "Reset"}
+                </button>
+              </div>
+              {mainSection === "local" && (cloudAttachedNodeCount > 0 || Number(graphOverlay.seed_anchor_nodes ?? 0) > 0) ? (
+                <div className="atanor-local-overlay-badge">
+                  <span>{language === "ko" ? "Working Memory Overlay Active" : "Working Memory Overlay Active"}</span>
+                  <strong>{`Cloud attached nodes: ${cloudAttachedNodeCount}`}</strong>
+                  <small>{`Seed anchors: ${Number(graphOverlay.seed_anchor_nodes ?? 0)}`}</small>
+                  <small>{`Local write: ${String(Boolean(graphOverlay.writes_to_local_brain)).toLowerCase()}`}</small>
+                  <small>{language === "ko" ? "임시 부착 · Local Brain 저장 안 함" : "Temporary attachment · not saved to Local Brain"}</small>
+                  {cortexLastCycle.enabled ? (
+                    <small>CORTEX-G2 · {language === "ko" ? "활성" : "active"} {String(cortexLastCycle.activated_nodes ?? 0)} · error {Math.round(Number(cortexLastCycle.prediction_error ?? 0) * 100)}%</small>
+                  ) : null}
+                  <button type="button" onClick={detachCloudContext} disabled={cloudAttachmentRunning || cloudAttachedNodeCount === 0}>
+                    Detach
+                  </button>
+                </div>
+              ) : null}
+              <small className="atanor-user-graph-state">{ragVisualState === "completed" ? copy.graphSettled : signalTraceText}</small>
+            </div>
+            <div className="atanor-user-legend">
+              <span><i data-kind="local" />{presentationCopy.localNode}</span>
+              <span><i data-kind="cloud" />{presentationCopy.cloudNode}</span>
+              <span><i data-kind="fragment" />{presentationCopy.fragmentNode}</span>
+              <span><i data-kind="line" />{copy.strongRelation}</span>
+              <span><i data-kind="line-weak" />{copy.weakRelation}</span>
+            </div>
+            {mainSection === "local" || mainSection === "cloud" ? (
+              <section className="atanor-brain-layer-panel">
+                <header>
+                  <div>
+                    <span>{mainSection === "local" ? "LOCAL VIEW" : "CLOUD VIEW"}</span>
+                    <h3>{mainSection === "local" ? (language === "ko" ? "로컬 브레인 레이어" : "Local Brain Layers") : (language === "ko" ? "클라우드 브레인 레이어" : "Cloud Brain Layers")}</h3>
+                  </div>
+                  <button type="button" onClick={refreshBrainGraphPanels}>
+                    {language === "ko" ? "레이어 갱신" : "Refresh layers"}
+                  </button>
+                </header>
+                <div className="atanor-brain-layer-summary">
+                  <span><small>{language === "ko" ? "표시 노드" : "Rendered nodes"}</small><strong>{activeBrainRenderedNodes.toLocaleString()}</strong></span>
+                  <span><small>{language === "ko" ? "표시 관계" : "Rendered edges"}</small><strong>{activeBrainRenderedEdges.toLocaleString()}</strong></span>
+                  <span><small>Overlay</small><strong>{activeBrainOverlay?.working_memory_active ? "active" : "idle"}</strong></span>
+                  <span><small>Local write</small><strong>{String(Boolean(activeBrainOverlay?.local_brain_write)).toLowerCase()}</strong></span>
+                </div>
+                <div className="atanor-brain-layer-list">
+                  {activeBrainGraphRows.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      data-enabled={row.enabled}
+                      data-missing={Boolean(row.missingReason)}
+                      onClick={() => toggleBrainGraphLayer(activeBrainView, row.id)}
+                    >
+                      <span>{row.label}</span>
+                      <strong>{row.enabled ? row.count.toLocaleString() : "off"}</strong>
+                      {row.missingReason ? <small>{row.missingReason}</small> : null}
+                    </button>
+                  ))}
+                </div>
+                <p>
+                  {mainSection === "local"
+                    ? (language === "ko" ? "Cloud attached 노드는 로컬 브레인 카운트에 포함하지 않습니다." : "Cloud-attached nodes are not counted as Local Brain memory.")
+                    : (language === "ko" ? "Surface Graph는 전체 렌더링하지 않고 표현 계획 요약만 표시합니다." : "Surface Graph is summarized, not fully rendered.")}
+                </p>
+                {brainGraphStatus?.pipeline ? <small>{String(brainGraphStatus.pipeline)}</small> : null}
+              </section>
+            ) : null}
+          </article>
+
+          {showRightRail ? (
+          <aside className="atanor-user-right-rail" data-variant={isOntologyChatSection ? "ontology" : isCloudViewerSection ? "cloud" : "default"}>
+            {isOntologyChatSection ? (
+              <>
+                <section className="atanor-user-panel atanor-brain-routing-panel">
+                  <h2>{language === "ko" ? "브레인 라우팅" : "Brain Routing"}</h2>
+                  <div className="atanor-brain-routing-core" style={{ ["--cloud-share" as string]: `${cloudAssistRatio}%` }}>
+                    <strong>{localAssistRatio}%</strong>
+                    <span>Local</span>
+                    <em>{cloudAssistRatio}% Cloud</em>
+                  </div>
+                  <p><span>{language === "ko" ? "Working Memory" : "Working Memory"}</span><strong>{continuousLearningActive ? "Active" : "Ready"}</strong></p>
+                </section>
+                <section className="atanor-user-panel atanor-epistemic-panel">
+                  <h2>{language === "ko" ? "인식 상태" : "Epistemic State"}</h2>
+                  {epistemicRows.map((row) => (
+                    <p key={row.label}>
+                      <span>{row.label}</span>
+                      <strong data-tone={row.tone}>{row.value}</strong>
+                    </p>
+                  ))}
+                </section>
+                <section className="atanor-user-panel atanor-selected-memory-panel">
+                  <h2>{language === "ko" ? "선택 메모리" : "Selected Memory"}</h2>
+                  <div className="atanor-selected-memory-card">
+                    <Network className="atanor-selected-memory-icon" size={22} strokeWidth={1.7} />
+                    <div>
+                      <strong>{selectedMemoryTitle}</strong>
+                      <small>{selectedMemory ? memoryTypeText(String(selectedMemory.type ?? "concept")) : (language === "ko" ? "노드를 선택하세요" : "Select a node")}</small>
+                    </div>
+                  </div>
+                  {selectedMemory ? (
+                    <>
+                      <p>{selectedMemoryDetail}</p>
+                      <small>Type <strong>{String(selectedMemory.type ?? "Concept")}</strong></small>
+                    </>
+                  ) : null}
+                </section>
+              </>
+            ) : isCloudViewerSection ? (
+              <>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>{language === "ko" ? "Cloud Brain Viewer" : "Cloud Brain Viewer"}</h2>
+                  <span className="atanor-user-readonly-badge">{language === "ko" ? "읽기 전용" : "READ ONLY"}</span>
+                  <div className="atanor-user-viewer-grid">
+                    {cloudViewerRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>
+                    {language === "ko"
+                      ? "이 탭은 공용 온톨로지 후보와 엣지 동기화 상태를 관찰하는 화면입니다. 질문 생성과 개인 메모리 검색은 로컬 브레인에서만 실행됩니다."
+                      : "This tab observes shared ontology candidates and edge sync. Answer generation and private memory search run only in Local Brain."}
+                  </p>
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>{language === "ko" ? "Cloud Brain Source Inspector" : "Cloud Brain Source Inspector"}</h2>
+                  <span className="atanor-user-readonly-badge">{verifiedRemoteCloudBrain ? "REMOTE VERIFIED" : "LOCAL / MIRROR"}</span>
+                  <button
+                    className="atanor-proof-action"
+                    type="button"
+                    onClick={runRemoteCloudBrainProof}
+                    disabled={remoteCloudProofRunning}
+                  >
+                    {remoteCloudProofRunning
+                      ? (language === "ko" ? "원격 검증 중" : "Verifying")
+                      : (language === "ko" ? "원격 Cloud Brain 검증" : "Verify Remote Cloud Brain")}
+                  </button>
+                  <div className="atanor-user-viewer-grid">
+                    {sourceInspectorRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>{sourceInspectorWarning}</p>
+                  {remoteCloudProofError ? <p>{remoteCloudProofError}</p> : null}
+                  {remoteCloudProof ? (
+                    <p>{language === "ko" ? "마지막 검증" : "Last proof"}: {remoteProofStatus}</p>
+                  ) : null}
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>{language === "ko" ? "Semantic Cloud Growth" : "Semantic Cloud Growth"}</h2>
+                  <span className="atanor-user-readonly-badge">{language === "ko" ? "증명 저장소" : "PROOF STORE"}</span>
+                  <div className="atanor-proof-actions-row">
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={ingestSampleSemanticSource}
+                      disabled={semanticGrowthRunning}
+                    >
+                      {semanticGrowthRunning
+                        ? (language === "ko" ? "처리 중" : "Running")
+                        : (language === "ko" ? "샘플 의미 수집" : "Ingest sample")}
+                    </button>
+                    <button className="atanor-proof-action" type="button" onClick={refreshSemanticCloud}>
+                      {language === "ko" ? "새로고침" : "Refresh"}
+                    </button>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={attachSemanticCloudSample}
+                      disabled={semanticGrowthRunning}
+                    >
+                      {language === "ko" ? "작업 메모리 연결" : "Attach"}
+                    </button>
+                  </div>
+                  <div className="atanor-user-viewer-grid">
+                    {semanticCloudRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  {semanticGrowthRun ? (
+                    <div className="atanor-user-viewer-grid">
+                      {semanticGrowthRows.map((row) => (
+                        <span key={row.label}>
+                          <small>{row.label}</small>
+                          <strong>{row.value}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {semanticAttachResult ? (
+                    <div className="atanor-user-viewer-grid">
+                      {semanticAttachRows.map((row) => (
+                        <span key={row.label}>
+                          <small>{row.label}</small>
+                          <strong>{row.value}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p>
+                    {language === "ko"
+                      ? "문장은 의미 후보로 투영되어 proof store에만 병합됩니다. 중복 근거는 관계를 강화하고, Local Brain에는 기록하지 않습니다."
+                      : "Source text is projected into semantic candidates and merged only into the proof store. Repeated evidence strengthens relations without writing to Local Brain."}
+                  </p>
+                  {semanticGrowthError ? <p>{semanticGrowthError}</p> : null}
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>Web Seed Feeder</h2>
+                  <span className="atanor-user-readonly-badge">{webFeederEnabled ? (language === "ko" ? "대기 중" : "LISTENING") : (language === "ko" ? "비활성" : "DISABLED")}</span>
+                  <div className="atanor-user-viewer-grid">
+                    {webFeederRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>{webFeederMessage}</p>
+                  <p>
+                    {language === "ko"
+                      ? "Cloud Brain 카운트는 후보 생성이 아니라 실제 수집과 검증 이후에만 갱신됩니다."
+                      : "Cloud Brain counts change only after actual ingestion and verification, not candidate creation."}
+                  </p>
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>{language === "ko" ? "Controlled Self-Growth Proof" : "Controlled Self-Growth Proof"}</h2>
+                  <span className="atanor-user-readonly-badge">{controlledGrowthProof?.controlled_self_growth ? "PROVED" : "FIXTURE ONLY"}</span>
+                  <button
+                    className="atanor-proof-action"
+                    type="button"
+                    onClick={runControlledGrowthProof}
+                    disabled={controlledGrowthRunning}
+                  >
+                    {controlledGrowthRunning
+                      ? (language === "ko" ? "검증 중" : "Running")
+                      : (language === "ko" ? "제한 fixture 검증 실행" : "Run bounded fixture proof")}
+                  </button>
+                  <div className="atanor-user-viewer-grid">
+                    {controlledGrowthRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>{controlledGrowthMessage}</p>
+                  {controlledGrowthError ? <p>{controlledGrowthError}</p> : null}
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>Trillion Sphere Renderer</h2>
+                  <span className="atanor-user-readonly-badge">{cloudSphereStats?.actualNodeMode ? "ACTUAL NODES" : "SHELL CHUNKS"}</span>
+                  <div className="atanor-user-viewer-grid">
+                    {cloudSphereRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>
+                    {language === "ko"
+                      ? "Cloud Brain 노드는 개별 주소를 유지합니다. ATANOR는 가짜 aggregate 노드로 압축하지 않고, 현재 카메라에 필요한 shell chunk와 zoom 영역만 물질화합니다."
+                      : "Cloud Brain nodes remain individually addressable. ATANOR does not compress nodes into fake aggregate nodes; it materializes only camera-visible shell chunks and zoom-focused regions."}
+                  </p>
+                  <p>
+                    {language === "ko"
+                      ? "이것은 trillion-scale logical node 전체가 동시에 RAM에 로드되거나 렌더링된다는 뜻이 아닙니다."
+                      : "This does not mean all trillion-scale logical nodes are loaded or rendered simultaneously."}
+                  </p>
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>CORTEX-G2</h2>
+                  <span className="atanor-user-readonly-badge">{cortexPanelState}</span>
+                  <div className="atanor-user-viewer-grid">
+                    {cortexRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>
+                    {language === "ko"
+                      ? "Seed, Cloud attached, Working Memory 노드를 작은 작업공간으로 활성화하고 예측 오차를 기록합니다. 의식이나 무제한 자기학습을 주장하지 않습니다."
+                      : "Activates Seed, Cloud-attached, and Working Memory nodes into a bounded workspace and records prediction error. It does not claim consciousness or unrestricted self-learning."}
+                  </p>
+                </section>
+                <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                  <h2>Q-Cortex</h2>
+                  <span className="atanor-user-readonly-badge">{qCortexPanelState}</span>
+                  <div className="atanor-user-viewer-grid">
+                    {qCortexRows.map((row) => (
+                      <span key={row.label}>
+                        <small>{row.label}</small>
+                        <strong>{row.value}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  <p>
+                    {language === "ko"
+                      ? "QUBO/Ising 형식으로 salience, evidence, creative path, planning 선택을 고전적으로 최적화합니다. 실제 양자 하드웨어나 양자 가속을 주장하지 않습니다."
+                      : "Optimizes salience, evidence, creative paths, and planning as classical QUBO/Ising-style routing. It does not claim real quantum hardware or quantum speedup."}
+                  </p>
+                </section>
+                {workspaceMode === "lab" ? (
+                  <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                    <h2>Base Brain Lab</h2>
+                    <span className="atanor-user-readonly-badge">{baseBrainPanelState}</span>
+                    <div className="atanor-user-viewer-grid">
+                      {baseBrainRows.map((row) => (
+                        <span key={row.label}>
+                          <small>{row.label}</small>
+                          <strong>{row.value}</strong>
+                        </span>
+                      ))}
+                    </div>
+                    <input
+                      className="atanor-base-brain-input"
+                      value={baseBrainQuery}
+                      onChange={(event) => setBaseBrainQuery(event.target.value)}
+                      aria-label="Ask Base Brain without user data"
+                    />
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={() => buildBaseBrainPack()}
+                      disabled={baseBrainRunning}
+                    >
+                      {language === "ko" ? "Base Pack 빌드" : "Build Base Pack"}
+                    </button>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={() => askBaseBrain()}
+                      disabled={baseBrainRunning || !baseBrainQuery.trim()}
+                    >
+                      {language === "ko" ? "사용자 데이터 없이 질문" : "Ask without user data"}
+                    </button>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={() => runBaseBrainBenchmark(10)}
+                      disabled={baseBrainRunning}
+                    >
+                      {language === "ko" ? "Zero-user 벤치마크" : "Zero-user benchmark"}
+                    </button>
+                    {baseBrainBenchmark ? (
+                      <div className="atanor-user-viewer-grid">
+                        {baseBrainBenchmarkRows.map((row) => (
+                          <span key={row.label}>
+                            <small>{row.label}</small>
+                            <strong>{row.value}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {baseBrainAnswer?.answer ? (
+                      <div className="atanor-mini-log">
+                        <strong>{language === "ko" ? "응답" : "Answer"}</strong>
+                        <span>{String(baseBrainAnswer.answer)}</span>
+                        <small>
+                          {`semantic ${String(baseBrainAnswer.semantic_context_count ?? 0)} / surface ${String(baseBrainAnswer.surface_candidate_count ?? 0)} / LLM ${String(Boolean(baseBrainAnswer.external_llm_used))}`}
+                        </small>
+                      </div>
+                    ) : null}
+                    <p>
+                      {language === "ko"
+                        ? "사용자 문서, 외부 LLM, 외부 sLLM, 웹 호출 없이 Seed/Semantic/Surface Pack만으로 제한된 일반 질문을 검증합니다."
+                        : "Verifies limited general answers using only Seed, Semantic, and Surface packs: no user documents, external LLM, external sLLM, or web calls."}
+                    </p>
+                    {baseBrainError ? <p>{baseBrainError}</p> : null}
+                  </section>
+                ) : null}
+                {workspaceMode === "lab" ? (
+                  <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                    <h2>Answer Quality Lab</h2>
+                    <span className="atanor-user-readonly-badge">{answerQualityPanelState}</span>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={() => runAnswerQualityLab(8)}
+                      disabled={answerQualityRunning || answerRepairRunning}
+                    >
+                      {answerQualityRunning
+                        ? (language === "ko" ? "소형 벤치마크 실행 중" : "Running mini benchmark")
+                        : (language === "ko" ? "소형 벤치마크 실행" : "Run mini benchmark")}
+                    </button>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={() => runAnswerRepairComparison(8)}
+                      disabled={answerQualityRunning || answerRepairRunning}
+                    >
+                      {answerRepairRunning
+                        ? (language === "ko" ? "수리 비교 실행 중" : "Running repair comparison")
+                        : (language === "ko" ? "수리 비교 실행" : "Run Repair Comparison")}
+                    </button>
+                    <div className="atanor-user-viewer-grid">
+                      {answerQualityRows.map((row) => (
+                        <span key={row.label}>
+                          <small>{row.label}</small>
+                          <strong>{row.value}</strong>
+                        </span>
+                      ))}
+                    </div>
+                    {answerQualityWorstCases.length ? (
+                      <div className="atanor-user-viewer-grid">
+                        {answerQualityWorstCases.slice(0, 4).map((item, index) => (
+                          <span key={`${item.prompt_id ?? index}-${item.generator ?? "case"}`}>
+                            <small>{String(item.generator ?? "case")}</small>
+                            <strong>{answerQualityPct(item.overall)}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {answerRepairComparison ? (
+                      <div className="atanor-user-viewer-grid">
+                        {answerRepairRows.map((row) => (
+                          <span key={row.label}>
+                            <small>{row.label}</small>
+                            <strong>{row.value}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <p>
+                      {language === "ko"
+                        ? "로컬 휴리스틱으로 자연도와 trace 숨김을 측정하고, 수리 후보는 검토 가능한 파일로만 남깁니다. 외부 LLM judge와 자동 승격은 없습니다."
+                        : "Measures naturalness and trace hygiene locally. Repair candidates stay reviewable; no external LLM judge and no auto-promotion."}
+                    </p>
+                    {answerQualityError ? <p>{answerQualityError}</p> : null}
+                    {answerRepairError ? <p>{answerRepairError}</p> : null}
+                  </section>
+                ) : null}
+                {workspaceMode === "lab" ? (
+                  <section className="atanor-user-panel atanor-cloud-viewer-panel">
+                    <h2>Surface Repair Review Queue</h2>
+                    <span className="atanor-user-readonly-badge">
+                      {repairReviewRunning
+                        ? (language === "ko" ? "검토 처리 중" : "REVIEWING")
+                        : (language === "ko" ? "수동 승인 필요" : "MANUAL REVIEW")}
+                    </span>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={() => generateRepairCandidatesFromFeedback()}
+                      disabled={repairReviewRunning || !answerQualityFeedback.length}
+                    >
+                      {language === "ko" ? "피드백 후보 생성" : "Generate candidates"}
+                    </button>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={() => refreshRepairReviewQueue()}
+                      disabled={repairReviewRunning}
+                    >
+                      {language === "ko" ? "큐 새로고침" : "Refresh queue"}
+                    </button>
+                    <div className="atanor-user-viewer-grid">
+                      {reviewQueueRows.map((row) => (
+                        <span key={row.label}>
+                          <small>{row.label}</small>
+                          <strong>{row.value}</strong>
+                        </span>
+                      ))}
+                    </div>
+                    {pendingRepairCandidates.slice(0, 3).map((candidate) => {
+                      const proposedRule = (candidate.proposed_rule && typeof candidate.proposed_rule === "object" && !Array.isArray(candidate.proposed_rule))
+                        ? candidate.proposed_rule as AnyRecord
+                        : {};
+                      return (
+                        <div className="atanor-mini-log" key={String(candidate.candidate_id)}>
+                          <strong>{String(proposedRule.name ?? candidate.candidate_id)}</strong>
+                          <small>{String(candidate.severity ?? "medium")} · {String(candidate.source_run_id ?? "manual")}</small>
+                          <span>{String(candidate.reason ?? proposedRule.description ?? "")}</span>
+                          <button
+                            className="atanor-proof-action"
+                            type="button"
+                            onClick={() => reviewCandidateAction(String(candidate.candidate_id), "approve")}
+                            disabled={repairReviewRunning}
+                          >
+                            {language === "ko" ? "승인" : "Approve"}
+                          </button>
+                          <button
+                            className="atanor-proof-action"
+                            type="button"
+                            onClick={() => reviewCandidateAction(String(candidate.candidate_id), "reject")}
+                            disabled={repairReviewRunning}
+                          >
+                            {language === "ko" ? "거절" : "Reject"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {productionRepairRules.slice(0, 3).map((rule) => (
+                      <div className="atanor-mini-log" key={String(rule.rule_id)}>
+                        <strong>{String(rule.name ?? rule.rule_id)}</strong>
+                        <small>{rule.enabled ? "enabled" : "disabled"} · usage {String(rule.usage_count ?? 0)}</small>
+                        <button
+                          className="atanor-proof-action"
+                          type="button"
+                          onClick={() => rollbackProductionRepairRule(String(rule.rule_id))}
+                          disabled={repairReviewRunning || !rule.enabled}
+                        >
+                          {language === "ko" ? "롤백" : "Rollback"}
+                        </button>
+                      </div>
+                    ))}
+                    {repairAuditEvents.slice(0, 3).map((event) => (
+                      <p key={String(event.event_id)}>
+                        <span>{String(event.event_type)}</span>
+                        <strong>{String(event.rule_id ?? event.candidate_id ?? "")}</strong>
+                      </p>
+                    ))}
+                    <p>
+                      {language === "ko"
+                        ? "후보는 자동으로 운영 규칙이 되지 않습니다. 승인, 거절, 롤백, 사용 기록은 로컬 감사 로그에 남습니다."
+                        : "Candidates never become production rules automatically. Approval, rejection, rollback, and usage are written to the local audit log."}
+                    </p>
+                    {repairReviewError ? <p>{repairReviewError}</p> : null}
+                  </section>
+                ) : null}
+                <section className="atanor-user-panel atanor-user-task">
+                  <h2>{copy.activeTask}</h2>
+                  <strong>{activeTaskLabel}</strong>
+                  <span>{activeTaskRouteText}</span>
+                  <div><i style={{ width: `${Math.min(100, activeTaskProgress)}%` }} /></div>
+                  <small>{daemonRuntimeText}</small>
+                </section>
+                <section className="atanor-user-panel">
+                  <h2>{copy.systemStatus}</h2>
+                  {displayStatusRows.map((row) => (
+                    <p key={row.label}>
+                      <span><i data-tone={row.tone} />{row.label}</span>
+                      <strong>{row.value}</strong>
+                    </p>
+                  ))}
+                </section>
+              </>
+            ) : (
+              <>
+                <section className="atanor-user-panel atanor-cloud-attachment-panel">
+                  <h2>{language === "ko" ? "Working Memory Overlay" : "Working Memory Overlay"}</h2>
+                  <span className="atanor-user-readonly-badge">{cloudAttachedNodeCount > 0 ? "CLOUD ATTACHED" : "DETACHED"}</span>
+                  <div className="atanor-user-viewer-grid">
+                    <span>
+                      <small>{language === "ko" ? "Cloud nodes" : "Cloud nodes"}</small>
+                      <strong>{cloudAttachedNodeCount}</strong>
+                    </span>
+                    <span>
+                      <small>{language === "ko" ? "Cloud edges" : "Cloud edges"}</small>
+                      <strong>{cloudAttachedEdgeCount}</strong>
+                    </span>
+                    <span>
+                      <small>{language === "ko" ? "Bundles" : "Bundles"}</small>
+                      <strong>{overlayBundleIds.length}</strong>
+                    </span>
+                    <span>
+                      <small>{language === "ko" ? "Local write" : "Local write"}</small>
+                      <strong>false</strong>
+                    </span>
+                  </div>
+                  <div className="atanor-proof-actions-row">
+                    <button className="atanor-proof-action" type="button" onClick={attachCloudContext} disabled={cloudAttachmentRunning}>
+                      {cloudAttachmentRunning ? (language === "ko" ? "연결 중" : "Attaching") : (language === "ko" ? "Cloud Context 붙이기" : "Attach Cloud Context")}
+                    </button>
+                    <button className="atanor-proof-action" type="button" onClick={detachCloudContext} disabled={cloudAttachmentRunning || cloudAttachedNodeCount === 0}>
+                      {language === "ko" ? "Detach" : "Detach"}
+                    </button>
+                    <button className="atanor-proof-action" type="button" onClick={clearCloudOverlay} disabled={cloudAttachmentRunning || cloudAttachedNodeCount === 0}>
+                      {language === "ko" ? "Clear" : "Clear"}
+                    </button>
+                  </div>
+                  <p>
+                    {language === "ko"
+                      ? "Cloud attached 노드는 임시 Working Memory overlay입니다. Local Brain에 저장되지 않습니다."
+                      : "Cloud attached nodes are temporary Working Memory overlays. They are not saved into Local Brain."}
+                  </p>
+                  {cloudAttachmentError ? <p>{cloudAttachmentError}</p> : null}
+                </section>
+                <section className="atanor-user-panel">
+                  <h2>{copy.systemStatus}</h2>
+                  {displayStatusRows.map((row) => (
+                    <p key={row.label}>
+                      <span><i data-tone={row.tone} />{row.label}</span>
+                      <strong>{row.value}</strong>
+                    </p>
+                  ))}
+                </section>
+                <section className="atanor-user-panel atanor-user-task">
+                  <h2>{copy.activeTask}</h2>
+                  <strong>{activeTaskLabel}</strong>
+                  <span>{activeTaskRouteText}</span>
+                  <div><i style={{ width: `${Math.min(100, activeTaskProgress)}%` }} /></div>
+                  <small>{daemonRuntimeText}</small>
+                </section>
+                <section className="atanor-user-panel atanor-user-actions">
+                  <h2>{copy.quickActions}</h2>
+                  {quickActions.map((action) => (
+                    <button key={action.label} onClick={action.action}>{action.label}<span aria-hidden="true">{">"}</span></button>
+                  ))}
+                </section>
+              </>
+            )}
+          </aside>
+          ) : null}
+        </section>
+
+        {showLowerSection ? (
+        <section className="atanor-user-lower">
+          <article className="atanor-user-chat-card">
+            <header>
+              <div>
+                <h2>{lowerPanelTitle}</h2>
+                <p>{lowerPanelSubtitle}</p>
+              </div>
+              {isCloudViewerSection ? (
+                <span className="atanor-user-readonly-badge">{language === "ko" ? "보기 전용" : "READ ONLY"}</span>
+              ) : (
+                <button data-active={webSearchEnabled} onClick={() => setWebSearchEnabled((enabled) => !enabled)}>
+                  {language === "ko" ? `웹 ${webSearchEnabled ? "켜짐" : "꺼짐"}` : `Web ${webSearchEnabled ? "On" : "Off"}`}
+                </button>
+              )}
+            </header>
+            {isCloudViewerSection ? (
+              <div className="atanor-user-viewer-stack">
+                <div className="atanor-user-viewer-grid">
+                  {cloudViewerRows.map((row) => (
+                    <span key={row.label}>
+                      <small>{row.label}</small>
+                      <strong>{row.value}</strong>
+                    </span>
+                  ))}
+                </div>
+                <p>
+                  {language === "ko"
+                    ? "?대씪?곕뱶 釉뚮젅?몄? ?꾩옱 怨듭쑀 吏???꾨낫? ?ｌ? ?숆린???곹깭瑜?蹂댁뿬二쇰뒗 愿痢〓㈃?낅땲?? ?듬? ?앹꽦怨?媛쒖씤 硫붾え由?寃?됱? 濡쒖뺄 釉뚮젅?몄뿉?쒕쭔 ?ㅽ뻾?⑸땲??"
+                    : "Cloud Brain is an observation surface for shared knowledge candidates and edge sync. Answer generation and private memory search run only in Local Brain."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="atanor-user-chat-scroll" ref={chatScrollRef}>
+                  {chatMessages.slice(-5).map((message, index) => (
+                    <article key={`${message.role}-${index}`} data-role={message.role}>
+                      <span>{message.role === "user" ? "User" : "ATANOR"}</span>
+                      <p>{message.text}</p>
+                      {message.evidence?.length ? (
+                        <details className="atanor-trace-details">
+                          <summary>{language === "ko" ? "근거 / Brain path" : "Evidence / Brain path"}</summary>
+                          <small>{message.evidence.slice(0, 2).map((doc) => doc.chunk_id ?? doc.doc_id ?? "evidence").join(" · ")}</small>
+                        </details>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+                <div className="atanor-user-composer">
+                  <textarea
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        sendChat();
+                      }
+                    }}
+                    placeholder={copy.placeholder}
+                    aria-label={copy.placeholder}
+                  />
+                  <button disabled={isGeneratingAnswer} onClick={sendChat}>
+                    {isGeneratingAnswer ? copy.generating : copy.send}
+                  </button>
+                </div>
+              </>
+            )}
+          </article>
+
+          <article className="atanor-user-activity">
+            <header>
+              <h2>{copy.recentActivity}</h2>
+              <span>{localBackendConnected ? "stream connected" : "local companion pending"}</span>
+            </header>
+            <div>
+              {recentCards.map((card) => (
+                <section key={card.title}>
+                  <time>{card.time}</time>
+                  <strong>{card.title}</strong>
+                  <span>{card.value}</span>
+                </section>
+              ))}
+            </div>
+          </article>
+        </section>
+        ) : null}
+        </>
+        )}
+      </section>
+      <TauriUpdatePrompt />
+    </main>
+  );
+
+  /*
   const leftStyle =
     layoutMode === "graph"
       ? { width: "100%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const }
@@ -2244,18 +6099,18 @@ export default function BakeBoardPage() {
     <main className="console-shell">
       <header className="console-header">
         <div className="brand-block">
-          <button className="back-button" onClick={resetConsole} title="기본 화면으로 돌아가기" aria-label="기본 화면으로 돌아가기">←</button>
+          <button className="back-button" onClick={resetConsole} title="湲곕낯 ?붾㈃?쇰줈 ?뚯븘媛湲? aria-label="湲곕낯 ?붾㈃?쇰줈 ?뚯븘媛湲?>??/button>
           <strong>ATANOR</strong>
         </div>
-        <div className="workspace-switcher" aria-label="작업 공간 전환">
-          <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>로컬 브레인 [LOCAL BRAIN]</button>
-          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>클라우드 브레인 [CLOUD BRAIN]</button>
+        <div className="workspace-switcher" aria-label="?묒뾽 怨듦컙 ?꾪솚">
+          <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>濡쒖뺄 釉뚮젅??[LOCAL BRAIN]</button>
+          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>?대씪?곕뱶 釉뚮젅??[CLOUD BRAIN]</button>
         </div>
-        <div className="layout-switcher" aria-label="레이아웃 전환">
+        <div className="layout-switcher" aria-label="?덉씠?꾩썐 ?꾪솚">
           {[
-            ["graph", "그래프"],
-            ["split", "분할"],
-            ["workbench", "워크벤치"],
+            ["graph", "洹몃옒??],
+            ["split", "遺꾪븷"],
+            ["workbench", "?뚰겕踰ㅼ튂"],
           ].map(([mode, label]) => (
             <button key={mode} data-active={layoutMode === mode} onClick={() => changeLayoutMode(mode as LayoutMode)}>
               {label}
@@ -2272,29 +6127,29 @@ export default function BakeBoardPage() {
               {headerBuildLabel}
             </button>
           ) : (
-            <span className="viewer-pill">읽기 전용</span>
+            <span className="viewer-pill">?쎄린 ?꾩슜</span>
           )}
-          <span>{workspaceMode === "lab" ? `단계 ${processSteps.length}` : "브레인 뷰어"}</span>
-          <strong>{workspaceMode === "daemon" ? "클라우드 브레인 상태" : rightMode === "chat" ? "RAG 채팅" : "학습 과정"}</strong>
+          <span>{workspaceMode === "lab" ? `?④퀎 ${processSteps.length}` : "釉뚮젅??酉곗뼱"}</span>
+          <strong>{workspaceMode === "daemon" ? "?대씪?곕뱶 釉뚮젅???곹깭" : rightMode === "chat" ? "RAG 梨꾪똿" : "?숈뒿 怨쇱젙"}</strong>
           <StatusDot state={headerStatusState} />
         </div>
       </header>
 
-      {error ? <p className="error-banner">작업 실패: {error}</p> : null}
+      {error ? <p className="error-banner">?묒뾽 ?ㅽ뙣: {error}</p> : null}
 
       <section className="console-content">
         <aside className="panel-wrap left" style={leftStyle}>
           <section className="memory-panel">
             <div className="memory-header">
               <div>
-                <h1>온톨로지 메모리</h1>
-                <p>RAG가 참조하는 개념 기억망</p>
+                <h1>?⑦넧濡쒖? 硫붾え由?/h1>
+                <p>RAG媛 李몄“?섎뒗 媛쒕뀗 湲곗뼲留?/p>
               </div>
               <div className="memory-tools">
-                <span>{displayMemoryNodeCount} 노드</span>
-                <span>{displayMemoryEdgeCount} 관계</span>
-                <button onClick={() => runAction(refreshAll)}>새로고침</button>
-                <button onClick={() => changeLayoutMode(layoutMode === "graph" ? "split" : "graph")}>확대</button>
+                <span>{displayMemoryNodeCount} ?몃뱶</span>
+                <span>{displayMemoryEdgeCount} 愿怨?/span>
+                <button onClick={() => runAction(refreshAll)}>?덈줈怨좎묠</button>
+                <button onClick={() => changeLayoutMode(layoutMode === "graph" ? "split" : "graph")}>?뺣?</button>
               </div>
             </div>
             <div className="graph-control-strip">
@@ -2305,19 +6160,19 @@ export default function BakeBoardPage() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter") focusSearchResult();
                   }}
-                  placeholder="노드 검색"
-                  aria-label="온톨로지 노드 검색"
+                  placeholder="?몃뱶 寃??
+                  aria-label="?⑦넧濡쒖? ?몃뱶 寃??
                 />
-                <button onClick={focusSearchResult}>찾기</button>
+                <button onClick={focusSearchResult}>李얘린</button>
               </div>
-              <div className="graph-nav" aria-label="그래프 이동 및 확대">
-                <button onClick={() => zoomGraph(-0.18)} title="축소">−</button>
-                <button onClick={() => zoomGraph(0.18)} title="확대">＋</button>
-                <button onClick={() => panGraph(0, -8)} title="위로 이동">↑</button>
-                <button onClick={() => panGraph(-8, 0)} title="왼쪽 이동">←</button>
-                <button onClick={() => panGraph(8, 0)} title="오른쪽 이동">→</button>
-                <button onClick={() => panGraph(0, 8)} title="아래로 이동">↓</button>
-                <button onClick={resetGraph} title="그래프 초기화" aria-label="그래프 초기화">↺</button>
+              <div className="graph-nav" aria-label="洹몃옒???대룞 諛??뺣?">
+                <button onClick={() => zoomGraph(-0.18)} title="異뺤냼">??/button>
+                <button onClick={() => zoomGraph(0.18)} title="?뺣?">竊?/button>
+                <button onClick={() => panGraph(0, -8)} title="?꾨줈 ?대룞">??/button>
+                <button onClick={() => panGraph(-8, 0)} title="?쇱そ ?대룞">??/button>
+                <button onClick={() => panGraph(8, 0)} title="?ㅻⅨ履??대룞">??/button>
+                <button onClick={() => panGraph(0, 8)} title="?꾨옒濡??대룞">??/button>
+                <button onClick={resetGraph} title="洹몃옒??珥덇린?? aria-label="洹몃옒??珥덇린??>??/button>
               </div>
               <span className="zoom-readout">{Math.round(graphView.scale * 100)}%</span>
             </div>
@@ -2334,33 +6189,33 @@ export default function BakeBoardPage() {
                     onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
                   />
                   <div className="rag3d-overlay">
-                    <strong>3D GraphRAG 탐색</strong>
-                    <span>{visibleGraph3D.nodes.length} 노드 / {visibleGraph3D.edges.length} 관계</span>
+                    <strong>3D GraphRAG ?먯깋</strong>
+                    <span>{visibleGraph3D.nodes.length} ?몃뱶 / {visibleGraph3D.edges.length} 愿怨?/span>
                     <span>{graphOverlayMessage}</span>
                     {buildRun && graphSourceMode === "build" && visibleLiveNodeCount > 0 ? (
                       <span>
-                        기존 앵커 {preservedAnchorNodeCount} 유지 / 새 노드 {visibleLiveNodeCount} 전체 누적 표시
+                        湲곗〈 ?듭빱 {preservedAnchorNodeCount} ?좎? / ???몃뱶 {visibleLiveNodeCount} ?꾩껜 ?꾩쟻 ?쒖떆
                       </span>
                     ) : null}
                     {buildRun && graphSourceMode === "build" && visibleLiveNodeCount === 0 ? (
-                      <span>대표 앵커 {preservedAnchorNodeCount}개 구성</span>
+                      <span>????듭빱 {preservedAnchorNodeCount}媛?援ъ꽦</span>
                     ) : null}
-                    {newestLiveNodeId && graphSourceMode === "build" ? <span>최신 새 노드 {newestLiveNodeId} / 전체 live 노드 표시 중</span> : null}
+                    {newestLiveNodeId && graphSourceMode === "build" ? <span>理쒖떊 ???몃뱶 {newestLiveNodeId} / ?꾩껜 live ?몃뱶 ?쒖떆 以?/span> : null}
                     <span className="signal-trace" data-active={activeSignalNodeIds.length > 0 || isGeneratingAnswer}>{signalTraceText}</span>
                   </div>
                 </>
               ) : workspaceMode === "daemon" && !daemonGraphReady ? (
                 <div className="memory-empty-state">
-                  <strong>클라우드 브레인 그래프 대기</strong>
-                  <p>로컬 FastAPI와 브레인 워커가 실제로 실행되면 이 영역에 공유 온톨로지 후보 그래프가 나타납니다.</p>
-                  <span>{localBackendConnected ? "로컬 API 연결됨 · worker not alive" : "로컬 API 연결 전 · 빈 화면 유지"}</span>
+                  <strong>?대씪?곕뱶 釉뚮젅??洹몃옒???湲?/strong>
+                  <p>濡쒖뺄 FastAPI? 釉뚮젅???뚯빱媛 ?ㅼ젣濡??ㅽ뻾?섎㈃ ???곸뿭??怨듭쑀 ?⑦넧濡쒖? ?꾨낫 洹몃옒?꾧? ?섑??⑸땲??</p>
+                  <span>{localBackendConnected ? "濡쒖뺄 API ?곌껐??쨌 worker not alive" : "濡쒖뺄 API ?곌껐 ??쨌 鍮??붾㈃ ?좎?"}</span>
                 </div>
               ) : (
               <svg
                 ref={graphRef}
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
-                aria-label="온톨로지 메모리 그래프"
+                aria-label="?⑦넧濡쒖? 硫붾え由?洹몃옒??
                 onWheel={handleGraphWheel}
                 onPointerDown={handleGraphPointerDown}
                 onPointerMove={handleGraphPointerMove}
@@ -2408,10 +6263,10 @@ export default function BakeBoardPage() {
               </div>
               {selectedMemory ? (
                 <div className="memory-detail">
-                  <button onClick={() => setSelectedMemory(null)}>×</button>
-                  <span>{selectedMemory.relation ? "관계" : "메모리 노드"}</span>
+                  <button onClick={() => setSelectedMemory(null)}>횞</button>
+                  <span>{selectedMemory.relation ? "愿怨? : "硫붾え由??몃뱶"}</span>
                   <strong>{selectedMemory.label ?? selectedMemory.relation}</strong>
-                  <p>{selectedMemory.type ? memoryTypeText(selectedMemory.type) : `${selectedMemory.source} → ${selectedMemory.target}`}</p>
+                  <p>{selectedMemory.type ? memoryTypeText(selectedMemory.type) : `${selectedMemory.source} ??${selectedMemory.target}`}</p>
                 </div>
               ) : null}
             </div>
@@ -2423,24 +6278,24 @@ export default function BakeBoardPage() {
             <div className="right-toolbar">
               {workspaceMode === "lab" ? (
                 <div className="mode-tabs">
-                  <button data-active={rightMode === "process"} onClick={() => setRightMode("process")}>학습 과정</button>
-                  <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 채팅</button>
+                  <button data-active={rightMode === "process"} onClick={() => setRightMode("process")}>?숈뒿 怨쇱젙</button>
+                  <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 梨꾪똿</button>
                 </div>
               ) : (
-                <span className="toolbar-title">클라우드 브레인 뷰어</span>
+                <span className="toolbar-title">?대씪?곕뱶 釉뚮젅??酉곗뼱</span>
               )}
               <button className="toolbar-toggle" onClick={() => setWorkbenchInfoOpen((open) => !open)}>
-                {workbenchInfoOpen ? "정보 접기" : "설정/상태"}
+                {workbenchInfoOpen ? "?뺣낫 ?묎린" : "?ㅼ젙/?곹깭"}
               </button>
               {!workbenchInfoOpen ? (
                 <div className="compact-toolbar-summary">
-                  <span>{workspaceMode === "daemon" ? `${daemonStateText} · worker ${learningDaemon?.worker_alive ? "alive" : "not alive"}` : compactInfoSummary}</span>
+                  <span>{workspaceMode === "daemon" ? `${daemonStateText} 쨌 worker ${learningDaemon?.worker_alive ? "alive" : "not alive"}` : compactInfoSummary}</span>
                 </div>
               ) : (
                 <div className="toolbar-details">
                   {workspaceMode === "lab" ? (
-                  <div className="learning-volume-switcher" aria-label="학습량 선택">
-                    <span>학습량</span>
+                  <div className="learning-volume-switcher" aria-label="?숈뒿???좏깮">
+                    <span>?숈뒿??/span>
                     {(Object.keys(learningVolumePresets) as LearningVolume[]).map((volume) => (
                       <button
                         data-active={learningVolume === volume}
@@ -2451,24 +6306,24 @@ export default function BakeBoardPage() {
                           setLearningVolume(volume);
                           setTargetNodeCount(defaultTargetNodesForVolume(volume));
                         }}
-                        title={`${learningVolumePresets[volume].textBudget} / ${learningVolumePresets[volume].chunkBudget} 청크`}
+                        title={`${learningVolumePresets[volume].textBudget} / ${learningVolumePresets[volume].chunkBudget} 泥?겕`}
                       >
                         {learningVolumePresets[volume].label}
                       </button>
                     ))}
                     <label className="node-target-input">
-                      <span>장기 목표</span>
+                      <span>?κ린 紐⑺몴</span>
                       {learningVolume === "infinite" ? (
                         <input
-                          aria-label="장기 목표 노드 수"
+                          aria-label="?κ린 紐⑺몴 ?몃뱶 ??
                           disabled={isBuilding || continuousLearningActive}
                           readOnly
                           type="text"
-                          value="∞"
+                          value="??
                         />
                       ) : (
                         <input
-                          aria-label="장기 목표 노드 수"
+                          aria-label="?κ린 紐⑺몴 ?몃뱶 ??
                           disabled={isBuilding || continuousLearningActive}
                           inputMode="numeric"
                           max={maxTargetNodes}
@@ -2489,21 +6344,21 @@ export default function BakeBoardPage() {
                         type="checkbox"
                         onChange={(event) => setWebSearchEnabled(event.currentTarget.checked)}
                       />
-                      <span>웹 검색</span>
+                      <span>??寃??/span>
                     </label>
                   </div>
                   ) : null}
                   <div className="local-backend-control" data-state={localBackendStatus}>
-                    <span>로컬 FastAPI</span>
+                    <span>濡쒖뺄 FastAPI</span>
                     <input
-                      aria-label="로컬 FastAPI 주소"
+                      aria-label="濡쒖뺄 FastAPI 二쇱냼"
                       disabled={localBackendStatus === "checking"}
                       value={localBackendUrl}
                       onChange={(event) => {
                         setLocalBackendUrl(event.currentTarget.value);
                         if (localBackendConnected) {
                           setLocalBackendStatus("idle");
-                          setLocalBackendMessage("주소가 바뀌었습니다. 다시 연결하세요.");
+                          setLocalBackendMessage("二쇱냼媛 諛붾뚯뿀?듬땲?? ?ㅼ떆 ?곌껐?섏꽭??");
                         }
                       }}
                     />
@@ -2511,13 +6366,13 @@ export default function BakeBoardPage() {
                       disabled={localBackendStatus === "checking"}
                       onClick={() => connectLocalBackend()}
                     >
-                      {localBackendStatus === "checking" ? "확인 중" : localBackendConnected ? "재연결" : "연결"}
+                      {localBackendStatus === "checking" ? "?뺤씤 以? : localBackendConnected ? "?ъ뿰寃? : "?곌껐"}
                     </button>
-                    {localBackendConnected ? <button onClick={disconnectLocalBackend}>해제</button> : null}
+                    {localBackendConnected ? <button onClick={disconnectLocalBackend}>?댁젣</button> : null}
                     <small>{localBackendMessage}</small>
                   </div>
                   <div className="mini-metrics">
-                    <span>흐름 {flowHealth}%</span>
+                    <span>?먮쫫 {flowHealth}%</span>
                     <span>{edgeBrokerLabel}</span>
                     <span>GPU {gpu?.utilization ?? 0}%</span>
                     <span>RAM soft {ramSoftGb}GB</span>
@@ -2532,10 +6387,10 @@ export default function BakeBoardPage() {
                 <section className="daemon-hero" data-viewer-only={daemonViewerOnly}>
                   <div>
                     <span>{daemonModeText}</span>
-                    <h2>클라우드 브레인 공유 온톨로지</h2>
+                    <h2>?대씪?곕뱶 釉뚮젅??怨듭쑀 ?⑦넧濡쒖?</h2>
                     <p>
-                      장시간 웹 기반 학습을 돌려 공용 온톨로지 후보를 키우는 브레인 공간입니다. 배포본에서는
-                      구조와 상태만 보여주고, 실제 상시 수집과 고정/가지치기는 로컬 FastAPI와 저장소에서 실행합니다.
+                      ?μ떆媛???湲곕컲 ?숈뒿???뚮젮 怨듭슜 ?⑦넧濡쒖? ?꾨낫瑜??ㅼ슦??釉뚮젅??怨듦컙?낅땲?? 諛고룷蹂몄뿉?쒕뒗
+                      援ъ“? ?곹깭留?蹂댁뿬二쇨퀬, ?ㅼ젣 ?곸떆 ?섏쭛怨?怨좎젙/媛吏移섍린??濡쒖뺄 FastAPI? ??μ냼?먯꽌 ?ㅽ뻾?⑸땲??
                     </p>
                   </div>
                   <strong>{daemonStateText}</strong>
@@ -2543,39 +6398,39 @@ export default function BakeBoardPage() {
 
                 {daemonViewerOnly ? (
                   <div className="viewer-notice">
-                    배포본은 작은 클라우드 브레인 뷰어입니다. 실제 장기 운전, 체크포인트, 재부팅 복구는 로컬에서
-                    FastAPI를 실행한 뒤 이 화면을 로컬 앱으로 열었을 때 활성화됩니다.
+                    諛고룷蹂몄? ?묒? ?대씪?곕뱶 釉뚮젅??酉곗뼱?낅땲?? ?ㅼ젣 ?κ린 ?댁쟾, 泥댄겕?ъ씤?? ?щ???蹂듦뎄??濡쒖뺄?먯꽌
+                    FastAPI瑜??ㅽ뻾???????붾㈃??濡쒖뺄 ?깆쑝濡??댁뿀?????쒖꽦?붾맗?덈떎.
                   </div>
                 ) : null}
 
                 <div className="daemon-metrics">
-                  <div><span>누적 시간</span><strong>{daemonRuntimeText}</strong></div>
-                  <div><span>라운드</span><strong>{learningDaemon?.total_rounds ?? 0}</strong></div>
-                  <div><span>학습 반영</span><strong>{learningDaemon?.learned_rounds ?? 0}</strong></div>
+                  <div><span>?꾩쟻 ?쒓컙</span><strong>{daemonRuntimeText}</strong></div>
+                  <div><span>?쇱슫??/span><strong>{learningDaemon?.total_rounds ?? 0}</strong></div>
+                  <div><span>?숈뒿 諛섏쁺</span><strong>{learningDaemon?.learned_rounds ?? 0}</strong></div>
                   <div><span>HW Tier</span><strong>{edgeTierLabel}</strong></div>
                   <div><span>Broker</span><strong>{edgeBrokerState}</strong></div>
-                  <div><span>노드</span><strong>{learningDaemon?.latest_node_count ?? memoryStatus?.node_count ?? 0}</strong></div>
-                  <div><span>관계</span><strong>{learningDaemon?.latest_edge_count ?? memoryStatus?.edge_count ?? 0}</strong></div>
-                  <div><span>이벤트</span><strong>{learningDaemon?.latest_event_count ?? memoryStatus?.event_count ?? 0}</strong></div>
+                  <div><span>?몃뱶</span><strong>{learningDaemon?.latest_node_count ?? memoryStatus?.node_count ?? 0}</strong></div>
+                  <div><span>愿怨?/span><strong>{learningDaemon?.latest_edge_count ?? memoryStatus?.edge_count ?? 0}</strong></div>
+                  <div><span>?대깽??/span><strong>{learningDaemon?.latest_event_count ?? memoryStatus?.event_count ?? 0}</strong></div>
                 </div>
 
                 <div className="daemon-readonly">
-                  <span>읽기 전용 관측</span>
-                  <strong>{localBackendConnected ? "로컬 API 연결됨" : "로컬 API 연결 대기"}</strong>
+                  <span>?쎄린 ?꾩슜 愿痢?/span>
+                  <strong>{localBackendConnected ? "濡쒖뺄 API ?곌껐?? : "濡쒖뺄 API ?곌껐 ?湲?}</strong>
                   <p>
-                    이 화면은 클라우드 브레인 워커를 직접 조작하지 않습니다. 로컬 FastAPI가 연결되면 워커 상태,
-                    체크포인트, 자원 스냅샷, 공용 후보 그래프 누적량만 받아서 보여줍니다.
+                    ???붾㈃? ?대씪?곕뱶 釉뚮젅???뚯빱瑜?吏곸젒 議곗옉?섏? ?딆뒿?덈떎. 濡쒖뺄 FastAPI媛 ?곌껐?섎㈃ ?뚯빱 ?곹깭,
+                    泥댄겕?ъ씤?? ?먯썝 ?ㅻ깄?? 怨듭슜 ?꾨낫 洹몃옒???꾩쟻?됰쭔 諛쏆븘??蹂댁뿬以띾땲??
                   </p>
                 </div>
 
                 <section className="daemon-section">
                   <div>
-                    <h3>로컬 브레인 복구</h3>
+                    <h3>濡쒖뺄 釉뚮젅??蹂듦뎄</h3>
                     <p>
-                      상태 파일은 {learningDaemon?.reboot_resilience?.state_file ?? "data/memory/daemon_state.json"}에 저장됩니다.
-                      마지막 체크포인트는 {daemonCheckpointText}입니다. PC 재부팅 후 로컬 FastAPI를 다시 켜면
-                      상태가 `resume_needed`로 뜹니다. 재개는 로컬 브레인 워커 명령 또는 FastAPI 관리 API에서 수행하고,
-                      이 화면은 이어진 상태를 관측합니다.
+                      ?곹깭 ?뚯씪? {learningDaemon?.reboot_resilience?.state_file ?? "data/memory/daemon_state.json"}????λ맗?덈떎.
+                      留덉?留?泥댄겕?ъ씤?몃뒗 {daemonCheckpointText}?낅땲?? PC ?щ?????濡쒖뺄 FastAPI瑜??ㅼ떆 耳쒕㈃
+                      ?곹깭媛 `resume_needed`濡??밸땲?? ?ш컻??濡쒖뺄 釉뚮젅???뚯빱 紐낅졊 ?먮뒗 FastAPI 愿由?API?먯꽌 ?섑뻾?섍퀬,
+                      ???붾㈃? ?댁뼱吏??곹깭瑜?愿痢≫빀?덈떎.
                     </p>
                   </div>
                   <div className="daemon-lines">
@@ -2591,7 +6446,7 @@ export default function BakeBoardPage() {
                     <h3>연구 목표 프롬프트</h3>
                     <p>
                       Codex Desktop 목표 설정에 넣을 장기 연구 지시문입니다. 생성 결과가 깨지면 그대로 관찰하고,
-                      자원 한계 경고가 뜨면 실패 실험으로 간주해 새 연구안을 찾아 반영하는 루프를 명시했습니다.
+                      자원 한계 경고가 뜨면 실패 실험으로 기록한 뒤 새로운 연구책을 찾아 반영하는 루프를 명시합니다.
                     </p>
                   </div>
                   <textarea className="goal-prompt-box" readOnly value={codexResearchGoalPrompt} />
@@ -2599,18 +6454,17 @@ export default function BakeBoardPage() {
 
                 <section className="daemon-section">
                   <div>
-                    <h3>실험실 연동 경계</h3>
+                    <h3>?ㅽ뿕???곕룞 寃쎄퀎</h3>
                     <p>
-                      실험실이 웹검색 한계나 근거 부족에 막히면, 클라우드 브레인은 검증된 공용 노드 조각만
-                      임시 컨텍스트로 빌려줍니다. 로컬 개인 그래프에 영구 고정하려면 출처, 반복 빈도, Guardrail
-                      통과, 자원 여유 조건을 모두 만족해야 합니다.
+                      ?ㅽ뿕?ㅼ씠 ?밴????쒓퀎??洹쇨굅 遺議깆뿉 留됲엳硫? ?대씪?곕뱶 釉뚮젅?몄? 寃利앸맂 怨듭슜 ?몃뱶 議곌컖留?                      ?꾩떆 而⑦뀓?ㅽ듃濡?鍮뚮젮以띾땲?? 濡쒖뺄 媛쒖씤 洹몃옒?꾩뿉 ?곴뎄 怨좎젙?섎젮硫?異쒖쿂, 諛섎났 鍮덈룄, Guardrail
+                      ?듦낵, ?먯썝 ?ъ쑀 議곌굔??紐⑤몢 留뚯”?댁빞 ?⑸땲??
                     </p>
                   </div>
                 </section>
               </div>
             ) : rightMode === "process" ? (
               <div className="process-view process-stage-screen">
-                <div className="process-stage-switcher" aria-label="실험실 단계 전환">
+                <div className="process-stage-switcher" aria-label="?ㅽ뿕???④퀎 ?꾪솚">
                   {processSteps.map((step, index) => (
                     <button
                       aria-current={step.key === activeLabStage ? "step" : undefined}
@@ -2641,7 +6495,7 @@ export default function BakeBoardPage() {
                     <div className="process-metrics">
                       {step.metrics.map((metric, metricIndex) => <span key={`${step.number}-${metricIndex}-${metric}`}>{metric}</span>)}
                     </div>
-                    <div className="process-progress" aria-label={`${step.title} 진행도 ${step.progress}%`}>
+                    <div className="process-progress" aria-label={`${step.title} 吏꾪뻾??${step.progress}%`}>
                       <span style={{ width: `${step.progress}%` }} />
                       <em>{step.progress}%</em>
                     </div>
@@ -2660,47 +6514,46 @@ export default function BakeBoardPage() {
                             <span key={trace.step} data-state={trace.state}>{traceStepText(trace.step)}: {statusText(trace.state)}</span>
                           ))}
                           {growthPulseCount > 0 ? (
-                            <span data-state="running">실시간 성장 +{growthPulseCount}</span>
+                            <span data-state="running">?ㅼ떆媛??깆옣 +{growthPulseCount}</span>
                           ) : null}
                           {buildIsInfinite ? (
-                            <span data-state={continuousLearningActive ? "running" : "complete"}>∞ 누적 {learningElapsedText}</span>
+                            <span data-state={continuousLearningActive ? "running" : "complete"}>???꾩쟻 {learningElapsedText}</span>
                           ) : null}
                           {buildRun ? (
-                            <span data-state="complete">기존 앵커 {preservedAnchorNodeCount} 유지</span>
+                            <span data-state="complete">湲곗〈 ?듭빱 {preservedAnchorNodeCount} ?좎?</span>
                           ) : null}
                           {representativeCapReached ? (
-                            <span data-state="running">대표 기준 {visualNodeCap} 초과, 숨김 없음</span>
+                            <span data-state="running">???湲곗? {visualNodeCap} 珥덇낵, ?④? ?놁쓬</span>
                           ) : null}
                           {buildIsInfinite ? (
-                            <span data-state="running">새 노드 표시 {visibleLiveNodeCount} / 숨김 없음</span>
+                            <span data-state="running">???몃뱶 ?쒖떆 {visibleLiveNodeCount} / ?④? ?놁쓬</span>
                           ) : null}
                           {resourceStopReason ? (
-                            <span data-state="running">안전중지 대기: {resourceStopReason}</span>
+                            <span data-state="running">?덉쟾以묒? ?湲? {resourceStopReason}</span>
                           ) : null}
                         </div>
                         <div className="learning-budget-summary">
                           <span>{buildRun.learning_profile?.label ?? currentLearningPreset.label}</span>
-                          <strong>웹 검색 {buildRun.web_search?.provider ?? (webSearchEnabled ? "static" : "off")}</strong>
-                          <strong>{buildRun.training_gate.chunk_count ?? buildRun.training_units?.length ?? currentLearningPreset.chunkBudget} 청크</strong>
+                          <strong>??寃??{buildRun.web_search?.provider ?? (webSearchEnabled ? "static" : "off")}</strong>
+                          <strong>{buildRun.training_gate.chunk_count ?? buildRun.training_units?.length ?? currentLearningPreset.chunkBudget} 泥?겕</strong>
                           <strong>{buildRun.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}</strong>
                           {buildRun.web_search?.bing_query_url ? (
-                            <small>검색 query: {buildRun.web_search.query} / Bing 표시 URL: {buildRun.web_search.bing_query_url}</small>
+                            <small>寃??query: {buildRun.web_search.query} / Bing ?쒖떆 URL: {buildRun.web_search.bing_query_url}</small>
                           ) : null}
                           <small>
-                            대표 노드 최대 {buildRun.training_gate.visual_node_budget ?? buildRun.graph_3d.nodes.length}개
-                            {buildIsInfinite ? ` / 누적 표시 ${accumulatedLearningNodes.toLocaleString()}개 / 전체 표시` : ""}
+                            ????몃뱶 理쒕? {buildRun.training_gate.visual_node_budget ?? buildRun.graph_3d.nodes.length}媛?                            {buildIsInfinite ? ` / ?꾩쟻 ?쒖떆 ${accumulatedLearningNodes.toLocaleString()}媛?/ ?꾩껜 ?쒖떆` : ""}
                           </small>
                           <small>
-                            장기 목표 {buildTargetNodeLabel}{buildIsInfinite ? "" : "개"}는 저장/학습 예산이고, API graph_3d는 대표 앵커 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}개를 보냅니다.
+                            ?κ린 紐⑺몴 {buildTargetNodeLabel}{buildIsInfinite ? "" : "媛?}??????숈뒿 ?덉궛?닿퀬, API graph_3d??????듭빱 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}媛쒕? 蹂대깄?덈떎.
                           </small>
                           <small>
-                            현재 화면은 {displayGraph3D.nodes.length}개 노드를 렌더링 중입니다. 수집 단계에서는 API가 보낸 대표 앵커를 표시하고, 학습 단계에서는 그 대표 그래프의 관계를 확인합니다.
+                            ?꾩옱 ?붾㈃? {displayGraph3D.nodes.length}媛??몃뱶瑜??뚮뜑留?以묒엯?덈떎. ?섏쭛 ?④퀎?먯꽌??API媛 蹂대궦 ????듭빱瑜??쒖떆?섍퀬, ?숈뒿 ?④퀎?먯꽌??洹????洹몃옒?꾩쓽 愿怨꾨? ?뺤씤?⑸땲??
                           </small>
                           <small>
-                            {buildIsInfinite ? "API 대표 앵커는 무제한 학습의 현재 샘플입니다." : `API 대표 앵커만 보면 장기 목표의 약 ${representativeTargetPercent}%입니다.`} 장기 목표 전체를 실제 저장하려면 append-only 온톨로지 이벤트 로그와 SQLite hot index가 계속 누적되어야 합니다.
+                            {buildIsInfinite ? "API ????듭빱??臾댁젣???숈뒿???꾩옱 ?섑뵆?낅땲??" : `API ????듭빱留?蹂대㈃ ?κ린 紐⑺몴????${representativeTargetPercent}%?낅땲??`} ?κ린 紐⑺몴 ?꾩껜瑜??ㅼ젣 ??ν븯?ㅻ㈃ append-only ?⑦넧濡쒖? ?대깽??濡쒓렇? SQLite hot index媛 怨꾩냽 ?꾩쟻?섏뼱???⑸땲??
                           </small>
                           {buildIsInfinite ? (
-                            <small>Alpha 경계: 수집 문서와 앵커 그래프는 API 결과, live-synapse는 저장 전 지속 성장 이벤트입니다.</small>
+                            <small>?댁쁺 寃쎄퀎: ?섏쭛 臾몄꽌? ?듭빱 洹몃옒?꾨뒗 API 寃곌낵, live-synapse???????吏???깆옣 ?대깽?몄엯?덈떎.</small>
                           ) : null}
                         </div>
                         <div className="build-sources">
@@ -2722,50 +6575,50 @@ export default function BakeBoardPage() {
                           <span data-state={isRealTelemetrySource(system, benchmark) ? "complete" : "running"}>{telemetryLabel}</span>
                           {ramUsedGb !== null ? <span data-state="complete">RAM used {ramUsedGb.toFixed(1)}GB</span> : null}
                           {vramUsedGb !== null && gpu?.available ? <span data-state="complete">VRAM used {vramUsedGb.toFixed(1)}GB</span> : null}
-                          {diskFreeGb !== null ? <span data-state={resourceStopReason?.includes("디스크") ? "running" : "complete"}>Disk free {diskFreeGb.toFixed(1)}GB</span> : null}
+                          {diskFreeGb !== null ? <span data-state={resourceStopReason?.includes("?붿뒪??) ? "running" : "complete"}>Disk free {diskFreeGb.toFixed(1)}GB</span> : null}
                         </div>
                         <div className="learning-budget-summary">
                           <span>{benchmark.profile_name ?? "Hardware Benchmark"}</span>
-                          <strong>추천 {benchmarkVolumeLabel}</strong>
+                          <strong>異붿쿇 {benchmarkVolumeLabel}</strong>
                           <strong>{benchmark.training_tuning?.microbatch_tokens ?? 0} tokens</strong>
                           <small>
-                            CPU score {benchmarkCpuScore ?? "n/a"} / {benchmark?.can_read_local_hardware ? "실제 PC 기준으로 자동 적용됨" : "배포 화면의 CPU/RAM은 Vercel 샌드박스이며 실제 PC가 아닙니다"}
+                            CPU score {benchmarkCpuScore ?? "n/a"} / {benchmark?.can_read_local_hardware ? "?ㅼ젣 PC 湲곗??쇰줈 ?먮룞 ?곸슜?? : "諛고룷 ?붾㈃??CPU/RAM? Vercel ?뚮뱶諛뺤뒪?대ŉ ?ㅼ젣 PC媛 ?꾨떃?덈떎"}
                           </small>
-                          {resourceStopReason ? <small>안전중지: {resourceStopReason}</small> : null}
+                          {resourceStopReason ? <small>?덉쟾以묒?: {resourceStopReason}</small> : null}
                         </div>
                       </div>
                     ) : null}
                     {step.number === "07" && stability ? (
                       <div className="build-run-detail">
                         <div className="build-trace">
-                          <span data-state="running">Backpressure: {stability.backpressure_policy?.length ?? 0} 규칙</span>
-                          <span data-state="complete">Checkpoint {stability.checkpoint_policy?.training_checkpoint_interval_minutes ?? 15}분</span>
+                          <span data-state="running">Backpressure: {stability.backpressure_policy?.length ?? 0} 洹쒖튃</span>
+                          <span data-state="complete">Checkpoint {stability.checkpoint_policy?.training_checkpoint_interval_minutes ?? 15}遺?/span>
                           <span data-state="complete" title={stability.graph_policy?.ui_render_strategy ?? "enabled"}>Graph LOD: frontier/anchor</span>
                           <span data-state={resourceStopReason ? "running" : "complete"}>{resourceStopReason ? "Auto-stop armed" : "Auto-stop clear"}</span>
                         </div>
                         <div className="learning-budget-summary">
                           <span>{stability.profile_name ?? "Sustained Profile"}</span>
-                          <strong>{learningVolume === "infinite" ? "∞" : stability.target_workload?.target_nodes ?? 10000} 노드</strong>
-                          <strong>{learningVolume === "infinite" ? "∞" : stability.target_workload?.target_edges ?? 40000} 관계</strong>
-                          <small>저장 여유 {stability.runtime_envelope?.storage_reserve_gb ?? 200}GB 유지</small>
-                          {diskFreeGb !== null ? <small>현재 디스크 여유 {diskFreeGb.toFixed(1)}GB / {telemetryLabel}</small> : null}
-                          {resourceStopReason ? <small>현재 판단: {resourceStopReason}</small> : null}
+                          <strong>{learningVolume === "infinite" ? "?? : stability.target_workload?.target_nodes ?? 10000} ?몃뱶</strong>
+                          <strong>{learningVolume === "infinite" ? "?? : stability.target_workload?.target_edges ?? 40000} 愿怨?/strong>
+                          <small>????ъ쑀 {stability.runtime_envelope?.storage_reserve_gb ?? 200}GB ?좎?</small>
+                          {diskFreeGb !== null ? <small>?꾩옱 ?붿뒪???ъ쑀 {diskFreeGb.toFixed(1)}GB / {telemetryLabel}</small> : null}
+                          {resourceStopReason ? <small>?꾩옱 ?먮떒: {resourceStopReason}</small> : null}
                         </div>
                       </div>
                     ) : null}
-                    {step.title.includes("학습") ? <LossChart losses={losses} /> : null}
+                    {step.title.includes("?숈뒿") ? <LossChart losses={losses} /> : null}
                     <div className="process-stage-footer">
                       <button
                         disabled={!previousProcessKey}
                         onClick={() => previousProcessKey ? openProcessStep(previousProcessKey) : undefined}
                       >
-                        이전 단계
+                        ?댁쟾 ?④퀎
                       </button>
                       <button
                         disabled={!nextProcessKey || !canOpenProcessStep(nextProcessKey)}
                         onClick={() => nextProcessKey ? openProcessStep(nextProcessKey) : undefined}
                       >
-                        {nextProcessKey ? "다음 단계" : "완료"}
+                        {nextProcessKey ? "?ㅼ쓬 ?④퀎" : "?꾨즺"}
                       </button>
                     </div>
                   </article>
@@ -2774,46 +6627,47 @@ export default function BakeBoardPage() {
             ) : (
               <div className="chat-view">
                 <button className="chat-info-toggle" onClick={() => setChatInfoOpen((open) => !open)}>
-                  {chatInfoOpen ? "상태 접기" : `상태 펼치기 · ${chatSummaryText}`}
+                  {chatInfoOpen ? "?곹깭 ?묎린" : `?곹깭 ?쇱튂湲?쨌 ${chatSummaryText}`}
                 </button>
                 {chatInfoOpen ? (
                   <div className="chat-status-row">
-                    <div><span>RAG 신뢰도</span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
+                    <div><span>RAG ?좊ː??/span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
                     <div><span>Local/Cloud</span><strong>{fusionDisplayText}</strong></div>
-                    <div><span>근거 문서</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
-                    <div><span>생성 방식</span><strong>{graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "준비"}</strong></div>
-                    <div><span>Guardrail</span><strong>{guardScore === null ? "자동 대기" : `${guardScore}점 / ${guardClaimCount} 주장`}</strong></div>
-                    <div><span>웹 검색</span><strong>{webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}</strong></div>
+                    <div><span>洹쇨굅 臾몄꽌</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
+                    <div><span>?앹꽦 諛⑹떇</span><strong>{graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "以鍮?}</strong></div>
+                    <div><span>Guardrail</span><strong>{guardScore === null ? "?먮룞 ?湲? : `${guardScore}??/ ${guardClaimCount} 二쇱옣`}</strong></div>
+                    <div><span>??寃??/span><strong>{webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}</strong></div>
                   </div>
                 ) : null}
                 <div className="chat-scroll" ref={chatScrollRef}>
                   {chatMessages.map((message, index) => (
                     <article className="message" data-role={message.role} key={`${message.role}-${index}`}>
-                      <span>{message.role === "user" ? "사용자" : "ATANOR RAG"}</span>
+                      <span>{message.role === "user" ? "?ъ슜?? : "ATANOR RAG"}</span>
                       <p>{message.text}</p>
                       {message.evidence?.length ? (
-                        <div className="message-evidence">
+                        <details className="message-evidence atanor-trace-details">
+                          <summary>{language === "ko" ? "근거 / Brain path" : "Evidence / Brain path"}</summary>
                           {message.evidence.slice(0, 3).map((doc) => (
                             <div key={doc.chunk_id ?? doc.doc_id}>
                               <strong>{doc.chunk_id ?? doc.doc_id}</strong>
                               <em>
-                                점수 {doc.score ?? "-"}
+                                ?먯닔 {doc.score ?? "-"}
                                 {evidenceSignalText(doc)}
                               </em>
                               <small>{doc.snippet}</small>
                             </div>
                           ))}
-                        </div>
+                        </details>
                       ) : null}
                       {message.role === "assistant" && message.diagnostics?.degeneration ? (
                         <div className="message-evidence native-diagnostics">
                           <div>
-                            <strong>Native Alpha diagnostics</strong>
+                            <strong>Native diagnostics</strong>
                             <em>
                               loop {String(message.diagnostics.degeneration.loop_detected)} / stop {message.diagnostics.native_stop_reason ?? "n/a"}
                             </em>
                             <small>
-                              repeated bigram {message.diagnostics.degeneration.repeated_bigram_ratio ?? "n/a"} · unique token {message.diagnostics.degeneration.unique_token_ratio ?? "n/a"} · trace saved {String(message.diagnostics.training_feedback_recorded ?? false)}
+                              repeated bigram {message.diagnostics.degeneration.repeated_bigram_ratio ?? "n/a"} 쨌 unique token {message.diagnostics.degeneration.unique_token_ratio ?? "n/a"} 쨌 trace saved {String(message.diagnostics.training_feedback_recorded ?? false)}
                             </small>
                           </div>
                         </div>
@@ -2822,8 +6676,8 @@ export default function BakeBoardPage() {
                   ))}
                 </div>
                 <div className="chat-composer">
-                  <textarea value={chatInput} onChange={(event) => setChatInput(event.target.value)} aria-label="RAG 질문 입력" />
-                  <button disabled={isGeneratingAnswer} onClick={sendChat}>{isGeneratingAnswer ? "생성 중" : "질문 보내기"}</button>
+                  <textarea value={chatInput} onChange={(event) => setChatInput(event.target.value)} aria-label="RAG 吏덈Ц ?낅젰" />
+                  <button disabled={isGeneratingAnswer} onClick={sendChat}>{isGeneratingAnswer ? "?앹꽦 以? : "吏덈Ц 蹂대궡湲?}</button>
                 </div>
               </div>
             )}
@@ -2833,7 +6687,7 @@ export default function BakeBoardPage() {
 
       <section className="system-log">
         <div className="log-head">
-          <span>시스템 로그</span>
+          <span>?쒖뒪??濡쒓렇</span>
           <span>{pipeline?.generated_at ? new Date(pipeline.generated_at).toLocaleString("ko-KR") : "waiting"}</span>
         </div>
         {logs.map((log, index) => (
@@ -2843,4 +6697,6 @@ export default function BakeBoardPage() {
       <TauriUpdatePrompt />
     </main>
   );
+  */
 }
+

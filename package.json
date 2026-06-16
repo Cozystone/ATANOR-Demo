@@ -1,7 +1,7 @@
 {
   "name": "atanor",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ATANOR monorepo for a Transparent Anomy neuro-symbolic local AI engine.",
   "workspaces": [
     "apps/web"
@@ -15,7 +15,8 @@
     "desktop:signing:prepare": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_windows_signing.ps1",
     "desktop:build": "npm run desktop:sidecar && tauri build",
     "experiment:atanor": "python scripts/atanor_experiment_runner.py",
-    "store:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_store_msix.ps1"
+    "store:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_store_msix.ps1",
+    "audit:ui": "python scripts/audit_ui_quality.py"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

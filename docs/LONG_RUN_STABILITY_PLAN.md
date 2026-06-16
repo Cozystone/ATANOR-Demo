@@ -1,106 +1,28 @@
 # ATANOR Long-Run Stability Plan
 
-## 湲곗? ?ъ뼇
+ATANOR is designed to run for long local learning sessions without forcing the
+browser or backend to hold the entire graph in memory.
 
-- CPU: AMD Ryzen 9 9950X3D
-- GPU: ZOTAC GAMING GeForce RTX 5080 AMP EXTREME INFINITY 16GB GDDR7
-- Memory: Micron DDR5 32GB (16GB x 2)
-- Storage: GIGABYTE AORUS Gen4 7300 V2 1TB
+## Stability Principles
 
-## 寃곕줎
+1. Store long-term memory in SQLite WAL or a future vault driver.
+2. Keep only active graph windows in RAM.
+3. Render representative graph chunks in the browser, not the whole graph.
+4. Use lazy retrieval for GraphRAG queries.
+5. Commit ingestion work frequently so a reboot loses minutes, not days.
+6. Apply synaptic decay and pruning to stale low-value edges.
+7. Stop or throttle work before RAM, VRAM, or thermal limits are exceeded.
 
-???ъ뼇? Alpha 洹쒕え???섎갚~?섏쿇 ?몃뱶 ?쒓컖?붿? GraphRAG ?곕え?먮뒗 異⑸텇?섏?留?
-?μ떆媛??숈뒿?먯꽌 ?꾪뿕??蹂묐ぉ? ?곗궛?됰낫??洹몃옒??????뚮뜑留?泥댄겕?ъ씤????쬆?대떎.
-?곕씪??ATANOR???꾩껜 洹몃옒?꾨? 留ㅻ쾲 JSON?쇰줈 ?ㅼ떆 ?곌굅??釉뚮씪?곗???紐⑤몢 ?뚮뜑留곹븯吏 ?딅뒗??
+## Runtime Guardrails
 
-?덉젙 ?댁쟾??湲곗? 援ъ“???ㅼ쓬怨?媛숇떎.
+- Backend graph queries must use limits tied to hardware tier.
+- Frontend graph views should use chunking, sampling, or instanced rendering.
+- Learning daemons must checkpoint state.
+- Contributor Node work must remain opt-in and resource-limited.
+- Cloud Brain tasks must be public-only and bounded.
 
-1. Ontology ?먯옣? append-only graph event log濡???ν븳??
-2. ?꾩옱 ?묒뾽 以묒씤 hot graph留?SQLite WAL ?몃뜳?ㅼ뿉 ?붾떎.
-3. `nodes.json` / `edges.json`? ?ㅼ떆媛??먯옣???꾨땲??export snapshot?쇰줈留??대떎.
-4. UI???꾩껜 ?몃뱶媛 ?꾨땲??active frontier, anchor, community summary留?LOD濡?蹂댁뿬以??
-5. RAM/VRAM/storage watermark媛 ?ㅻ㈃ Harvest? ?숈뒿??利됱떆 ??텛怨? RAG??read-only濡??좎??쒕떎.
+## Failure Behavior
 
-## Runtime Envelope
-
-| ??ぉ | ?댁쟾 湲곗? |
-| --- | --- |
-| RAM soft watermark | 23.0GB |
-| RAM hard watermark | 27.5GB |
-| VRAM soft watermark | 11.8GB |
-| VRAM hard watermark | 14.4GB |
-| SSD free reserve | 理쒖냼 200GB |
-| Graph store budget | ??680GB |
-| Checkpoint ring | 80GB, 理쒓렐 8媛??좎? |
-
-Soft watermark???먮룞 backpressure媛 ?쒖옉?섎뒗 吏?먯씠?? Hard watermark???묒뾽??硫덉텛怨?flush/compact/checkpoint rotation??癒쇱? ?댁빞 ?섎뒗 吏?먯쑝濡?蹂몃떎.
-
-## Queue Policy
-
-| ??| ?쒗븳 |
-| --- | --- |
-| Harvest pending | 512~4096媛??ъ씠?먯꽌 target node ?섏뿉 ?곕씪 ?쒗븳 |
-| DataGate batch | 64 docs |
-| Ontology delta chunk | 256 chunks |
-| Node write batch | 500 nodes |
-| Edge write batch | 2000 edges |
-| RAG query concurrency | 2 |
-| Training | bf16/8-bit, gradient accumulation, activation checkpointing, full corpus VRAM ?곸옱 湲덉? |
-
-Harvest媛 鍮좊Ⅴ寃??먮즺瑜?紐⑥븘??Ontology Forge writer媛 諛由щ㈃ ??愿怨??앹꽦??硫덉텛怨?
-?대? 議댁옱?섎뒗 ?몃뱶 蹂묓빀留??섑뻾?쒕떎. ?대젃寃??댁빞 洹몃옒???앹꽦 ?띾룄媛 ???怨꾩링???뺣룄?섏? ?딅뒗??
-
-## Graph Storage Model
-
-?μ떆媛??댁쟾?먯꽌 Ontology Forge???ㅼ쓬 怨꾩링?쇰줈 ?섎돏??
-
-- Event log: `node_seen`, `edge_seen`, `evidence_attached`, `node_merged`, `edge_reweighted`
-  媛숈? append-only ?대깽??
-- Hot index: SQLite WAL. 理쒓렐 ?쒖꽦 ?몃뱶, edge key, evidence count, confidence, last_seen_at.
-- Snapshot: 二쇨린?곸쑝濡?compact??`nodes.json`, `edges.json`, graph summary export.
-- Cold evidence: ?먮Ц chunk? provenance??蹂꾨룄 chunk store??蹂닿??섍퀬, graph edge??reference留?媛吏꾨떎.
-
-Edge??以묐났 row瑜?怨꾩냽 ?섎━吏 ?딄퀬 `(source_id, target_id, relation_type)`瑜?key濡??ъ슜?쒕떎.
-??洹쇨굅媛 ?ㅼ뼱?ㅻ㈃ `evidence_count`, `confidence`, `last_seen_at`??媛깆떊?쒕떎.
-
-## UI LOD Policy
-
-?섏쿇 ?몃뱶媛 ?앷꺼??釉뚮씪?곗????꾩껜 洹몃옒?꾨? ?뚮뜑留곹븯吏 ?딅뒗??
-
-- Hot window: 湲곕낯 2,048 nodes / 12,000 edges, max 24,000 nodes / 240,000 edges
-- UI render budget: 240~2,000 nodes
-- ?뚮뜑留???? 吏덈Ц/?숈뒿 frontier, 怨좎떊猶?anchor, 而ㅻ??덊떚 summary, ?ъ슜?먭? ?좏깮??二쇰? ?댁썐
-- ?대룞/?뺣?/異뺤냼??移대찓???곹깭瑜??좎??섍퀬, ???몃뱶媛 ?ㅼ뼱???scene reset???섏? ?딅뒗??
-- ?꾩껜 ?먯깋? search-first濡?泥섎━?섍퀬, ?곸꽭 ?뺤옣? ?좏깮??subgraph留?媛?몄삩??
-
-## Checkpoint And Resume
-
-- Run state: 5遺꾨쭏?????- Ontology snapshot: 20遺꾨쭏?????- Training checkpoint: 15遺꾨쭏?????- Keep last: 8媛?- Resume key: `run_id`, `document_id`, `chunk_id`, `node_id`, `edge_key`
-
-紐⑤뱺 ?④퀎??idempotent?댁빞 ?쒕떎. 媛숈? chunk瑜??ㅼ떆 泥섎━?대룄 媛숈? node/edge key濡??⑹퀜?몄빞 ?섎ŉ,
-以묐떒 ???ш컻?대룄 愿怨꾧? ??諛곕줈 遺덉뼱?섎㈃ ???쒕떎.
-
-## Backpressure Rules
-
-| 議곌굔 | 議곗튂 |
-| --- | --- |
-| RAM >= soft watermark | Harvest ?쇱떆?뺤?, ontology batch flush, hot graph compact, RAG read-only |
-| VRAM >= soft watermark | ATANOR Oven batch ?쇱떆?뺤?, microbatch 異뺤냼, DataGate/Ontology??CPU ?좎? |
-| Graph writer lag > 2 batches | ??relation ?앹꽦 以묒?, known node merge留??섑뻾 |
-| Storage free <= reserve | Harvest 以묒?, checkpoint rotation, graph compaction, operator review ?꾩슂 |
-
-## Current Alpha ?곸슜 ?곹깭
-
-- `/api/neuro/stability`媛 ???뺤콉??怨꾩궛?쒕떎.
-- BakeBoard ?숈뒿 怨쇱젙??`吏???댁쟾 ?덉쟾?μ튂` ?④퀎媛 異붽??쒕떎.
-- UI?먯꽌 ?숈뒿??preset???곕씪 target nodes/edges/duration???ㅼ떆 怨꾩궛?쒕떎.
-- Alpha??`nodes.json` / `edges.json` 寃쎈줈???꾩쭅 snapshot 以묒떖?대떎. ?ㅼ쓬 ?④퀎?먯꽌 live source瑜?  SQLite WAL + event log濡??밴꺽?댁빞 ?쒕떎.
-
-## ?ㅼ쓬 援ы쁽 ?④퀎
-
-1. `ontology_events` append-only log? SQLite WAL hot index 異붽?.
-2. Ontology Forge writer瑜?batch writer濡?遺꾨━?섍퀬 writer lag metric 異붽?.
-3. Build Start graph frames瑜?event replay 湲곕컲?쇰줈 蹂寃?
-4. RAG retriever媛 ?꾩껜 graph JSON ???hot index + sampled context bundle???쎈룄濡?蹂寃?
-5. UI graph API瑜?pagination/subgraph endpoint濡?遺꾨━.
-6. checkpoint rotation怨?resume contract瑜??ㅼ젣 run directory?????
+If ATANOR detects repeated resource pressure, API failures, SSE disconnects, or
+graph render resets, it should record the failure, pause heavy work, and expose
+the state honestly instead of pretending the run is healthy.

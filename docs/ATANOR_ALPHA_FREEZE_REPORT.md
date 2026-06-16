@@ -20,7 +20,7 @@ The working tree is intentionally not clean because this freeze pass is stabiliz
 - Preserved compatibility-sensitive internal names where renaming would risk runtime breakage.
 - Restored internal Tauri/Rust compatibility names while keeping visible product naming as ATANOR.
 - Added ATANOR environment aliases while retaining legacy `HOMAGE_*` fallbacks.
-- Updated the main 3D graph viewport so the root UI uses the same dark 3D canvas treatment as the operator console.
+- Updated the main 3D graph viewport so the root UI uses the same dark 3D canvas treatment as the current ATANOR shell.
 - Adjusted 3D graph contrast:
   - base nodes: cool slate instead of white
   - base edges: darker slate instead of washed-out white
@@ -142,7 +142,7 @@ Result:
 Directory:
 
 ```text
-C:\0.ASKIM ALL-VIN\24.Homage1.0\dist\ATANOR_0.1.1
+dist/ATANOR_0.1.1
 ```
 
 Files:
@@ -167,7 +167,7 @@ SHA256:
 Partner Center upload file:
 
 ```text
-C:\0.ASKIM ALL-VIN\24.Homage1.0\dist-artifacts\windows-store\ATANOR_0.1.1.0_x64.msixupload
+dist-artifacts/windows-store/ATANOR_0.1.1.0_x64.msixupload
 ```
 
 Partner Center status observed:

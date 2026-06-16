@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ state: "viewer_only", nodes: [], edges: [] });
   }
   const limit = request.nextUrl.searchParams.get("limit") ?? "5000";
-  const response = await fetch(`${backend}/api/graph/subgraph?limit=${encodeURIComponent(limit)}`, {
+  const includeCloudAttached = request.nextUrl.searchParams.get("include_cloud_attached") ?? "false";
+  const response = await fetch(`${backend}/api/graph/subgraph?limit=${encodeURIComponent(limit)}&include_cloud_attached=${encodeURIComponent(includeCloudAttached)}`, {
     cache: "no-store",
   });
   if (!response.ok) {

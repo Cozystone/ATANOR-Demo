@@ -53,16 +53,31 @@ export async function POST(request: Request) {
   let query = "GraphRAG evidence";
   let webSearch = false;
   let webSearchProvider: string | null = null;
+  let brainMode = "unified";
+  let locale: string | null = null;
+  let includeTrace = true;
   try {
     const parsed = JSON.parse(body || "{}");
     query = parsed.query ?? query;
     webSearch = Boolean(parsed.web_search ?? false);
     webSearchProvider = parsed.web_search_provider ?? null;
+    const requestedBrainMode = String(parsed.brain_mode ?? "");
+    brainMode = requestedBrainMode === "dual"
+      ? "unified"
+      : ["local", "cloud", "unified"].includes(requestedBrainMode)
+        ? requestedBrainMode
+        : "unified";
+    locale = typeof parsed.locale === "string" ? parsed.locale : null;
+    includeTrace = parsed.include_trace !== false;
   } catch {
     // Fall through to deterministic demo with the default query.
   }
   if (isLowInformationConversationQuery(query)) {
     webSearch = false;
+  } else if (brainMode === "local") {
+    webSearch = false;
+  } else if (brainMode === "cloud") {
+    webSearch = true;
   } else {
     webSearch = webSearch || isFreshSearchQuery(query) || isKnowledgeLookupQuery(query);
   }
@@ -71,7 +86,7 @@ export async function POST(request: Request) {
     const proxied = await proxyJson("/api/graphrag/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, web_search: webSearch, web_search_provider: webSearchProvider }),
+      body: JSON.stringify({ query, web_search: webSearch, web_search_provider: webSearchProvider, brain_mode: brainMode, locale, include_trace: includeTrace }),
     });
     if (proxied?.body?.result?.answer && !isLegacySurfaceResult(proxied.body) && (!webSearch || proxied.body.result.web_search)) {
       return NextResponse.json(proxied.body, { status: proxied.status });

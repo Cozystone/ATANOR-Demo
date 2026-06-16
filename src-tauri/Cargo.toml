@@ -1,6 +1,6 @@
 [package]
 name = "homage-desktop"
-version = "0.1.1"
+version = "0.1.2"
 description = "ATANOR desktop shell with a Python FastAPI sidecar"
 authors = ["ATANOR"]
 edition = "2021"
