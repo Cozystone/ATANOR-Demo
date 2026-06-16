@@ -1546,6 +1546,7 @@ export default function BakeBoardPage() {
   const [contributionCpuLimit, setContributionCpuLimit] = useState(() => Number(readBrowserStorage("atanor.contribution.cpuLimit") ?? 20));
   const [contributionGpuLimit, setContributionGpuLimit] = useState(() => Number(readBrowserStorage("atanor.contribution.gpuLimit") ?? 0));
   const [contributionAllowPublic, setContributionAllowPublic] = useState(() => readBrowserStorage("atanor.contribution.publicFragments") !== "false");
+  const [contributionChartTick, setContributionChartTick] = useState(0);
   const [contributionStatus, setContributionStatus] = useState<AnyRecord | null>(null);
   const [persistedLearningSeconds, setPersistedLearningSeconds] = useState(0);
   const [learningVolume, setLearningVolume] = useState<LearningVolume>("standard");
@@ -3393,10 +3394,12 @@ export default function BakeBoardPage() {
     const activityBoost = contributionIsActive ? 0.34 : 0.08;
     const gpuBoost = contributionGpuAvailable ? contributionGpuLimitEffective / 140 : 0.04;
     const cpuBoost = contributionCpuUsage / 260;
+    const phase = contributionChartTick / 1.7;
     const samples = [0.72, 0.78, 0.74, 0.86, 0.91, 0.88, 1.02, 0.98, 1.1, 1.16, 1.12, 1.24];
     const values = samples.map((sample, index) => {
       const liveBias = (index / Math.max(1, samples.length - 1)) * (activityBoost + gpuBoost + cpuBoost);
-      return Number(Math.max(0, base * sample + liveBias).toFixed(2));
+      const wave = Math.sin(phase + index * 0.82) * 0.11 + Math.cos(phase * 1.7 + index * 0.44) * 0.05;
+      return Number(Math.max(0, base * (sample + wave) + liveBias).toFixed(2));
     });
     const max = Math.max(...values, 1);
     const min = Math.min(...values, 0);
@@ -3406,7 +3409,7 @@ export default function BakeBoardPage() {
       x: Number(((index / Math.max(1, values.length - 1)) * 100).toFixed(2)),
       y: Number((80 - ((value - min) / range) * 62).toFixed(2)),
     }));
-  }, [contributionCpuUsage, contributionEstimatedTaskCredit, contributionGpuAvailable, contributionGpuLimitEffective, contributionIsActive, contributionTotalCredit]);
+  }, [contributionChartTick, contributionCpuUsage, contributionEstimatedTaskCredit, contributionGpuAvailable, contributionGpuLimitEffective, contributionIsActive, contributionTotalCredit]);
   const contributionCreditPolyline = contributionCreditTrend.map((point) => `${point.x},${point.y}`).join(" ");
   const contributionCreditArea = contributionCreditTrend.length
     ? `0,96 ${contributionCreditPolyline} 100,96`
@@ -3463,6 +3466,12 @@ export default function BakeBoardPage() {
     if (!continuousLearningActive || !resourceStopReason) return;
     stopContinuousLearning(resourceStopReason);
   }, [continuousLearningActive, resourceStopReason]);
+
+  useEffect(() => {
+    if (mainSection !== "contribute") return;
+    const timer = window.setInterval(() => setContributionChartTick((tick) => tick + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [mainSection]);
 
   const advancedProcessSteps: never[] = []; /*
     {
@@ -5017,7 +5026,7 @@ export default function BakeBoardPage() {
                 ["audit", language === "ko" ? "Audit Log" : "Audit Log"],
               ].map(([id, label]) => (
                 <button key={id} type="button" data-active={graphHubTab === id} onClick={() => setGraphHubTab(id as typeof graphHubTab)}>
-                  {label}
+                  <span>{label}</span>
                 </button>
               ))}
             </nav>
@@ -5075,14 +5084,14 @@ export default function BakeBoardPage() {
                     </div>
                     <div className="atanor-graph-hub-card-actions">
                       <button disabled={graphHubRunning === item.cartridge_id} onClick={() => handleGraphHubPrimary(item)}>
-                        {graphHubRunning === item.cartridge_id ? (language === "ko" ? "처리 중" : "Working") : graphHubPrimaryLabel(item)}
+                        <span>{graphHubRunning === item.cartridge_id ? (language === "ko" ? "처리 중" : "Working") : graphHubPrimaryLabel(item)}</span>
                       </button>
                       {item.installed ? (
                         <button
                           type="button"
                           onClick={() => runGraphHubAction(`uninstall-${String(item.cartridge_id)}`, `/api/graph-hub/uninstall/${encodeURIComponent(String(item.cartridge_id))}`)}
                         >
-                          {language === "ko" ? "설치 해제" : "Uninstall"}
+                          <span>{language === "ko" ? "설치 해제" : "Uninstall"}</span>
                         </button>
                       ) : null}
                       {item.pricing_model === "subscription" && item.entitlement_status === "active_subscription" ? (
@@ -5090,7 +5099,7 @@ export default function BakeBoardPage() {
                           type="button"
                           onClick={() => runGraphHubAction(`expire-${String(item.cartridge_id)}`, `/api/graph-hub/entitlements/expire/${encodeURIComponent(String(item.cartridge_id))}`)}
                         >
-                          {language === "ko" ? "구독 관리" : "Manage subscription"}
+                          <span>{language === "ko" ? "구독 관리" : "Manage"}</span>
                         </button>
                       ) : null}
                     </div>
@@ -5319,11 +5328,11 @@ export default function BakeBoardPage() {
                   <button onClick={() => runAction(enableContribution)}>
                     {contributionEnabled && !contributionPaused ? (language === "ko" ? "브레인 링크 갱신" : "Refresh Brain Link") : (language === "ko" ? "브레인 링크 연결" : "Connect Brain Link")}
                   </button>
-                  <button disabled={contributionBlockedBySafety} onClick={contributionIsActive ? pauseContribution : resumeContribution}>
+                  <button onClick={contributionBlockedBySafety ? () => runAction(refreshAll) : contributionIsActive ? pauseContribution : resumeContribution}>
                     {contributionIsActive
                       ? (language === "ko" ? "일시정지" : "Pause")
                       : contributionBlockedBySafety
-                        ? (language === "ko" ? "보호 조건 확인" : "Protection check")
+                        ? (language === "ko" ? "상태 재확인" : "Recheck")
                         : (language === "ko" ? "재개" : "Resume")}
                   </button>
                 </div>

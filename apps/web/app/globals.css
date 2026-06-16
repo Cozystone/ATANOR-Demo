@@ -5674,22 +5674,39 @@ p {
 
 .atanor-graph-hub-tabs {
   align-items: center;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding: 6px;
+  scrollbar-width: none;
+  width: min(100%, 760px);
 }
 
 .atanor-graph-hub-tabs button {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.58);
+  border: 0;
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.68);
   cursor: pointer;
   flex: 0 0 auto;
-  font: 800 0.78rem Helvetica, Arial, sans-serif;
-  min-height: 38px;
-  padding: 0 15px;
+  font: 900 0.76rem Helvetica, Arial, sans-serif;
+  min-height: 40px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.atanor-graph-hub-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.atanor-graph-hub-tabs button span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .atanor-graph-hub-tabs button[data-active="true"] {
@@ -5899,21 +5916,35 @@ p {
 }
 
 .atanor-graph-hub-card-actions button {
+  align-items: center;
   background: #f4f4f4;
   border: 0;
   border-radius: 12px;
   color: #050506;
   cursor: pointer;
+  display: flex;
   font: 900 0.82rem Helvetica, Arial, sans-serif;
+  justify-content: center;
+  line-height: 1;
   min-height: 42px;
+  overflow: hidden;
   padding: 0 13px;
+  white-space: nowrap;
+}
+
+.atanor-graph-hub-card-actions button span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .atanor-graph-hub-card-actions button + button {
   background: rgba(255, 255, 255, 0.065);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.72);
-  min-height: 34px;
+  min-height: 42px;
 }
 
 .atanor-graph-hub-lower {
@@ -6141,12 +6172,19 @@ p {
 }
 
 .atanor-contribution-actions button {
+  align-items: center;
   background: #f4f4f4;
   border: 0;
   border-radius: 12px;
   color: #050506;
+  display: inline-flex;
   font: 900 0.82rem Helvetica, Arial, sans-serif;
+  justify-content: center;
+  line-height: 1;
   min-height: 40px;
+  min-width: 118px;
+  padding: 0 16px;
+  white-space: nowrap;
 }
 
 .atanor-contribution-actions button + button {
@@ -6304,6 +6342,10 @@ p {
 
 .atanor-credit-chart[data-active="true"] polyline {
   filter: drop-shadow(0 0 8px rgba(255, 138, 0, 0.62));
+}
+
+.atanor-credit-chart polyline {
+  transition: d 180ms ease, filter 180ms ease;
 }
 
 .atanor-credit-chart-axis {
