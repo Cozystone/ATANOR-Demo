@@ -5557,7 +5557,7 @@ export default function BakeBoardPage() {
               <span><i data-kind="line-weak" />{copy.weakRelation}</span>
             </div>
             {mainSection === "local" || mainSection === "cloud" ? (
-              <section className="atanor-brain-layer-panel">
+              <section className="atanor-brain-layer-panel" data-compact={mainSection === "cloud"}>
                 <header>
                   <div>
                     <span>{mainSection === "local" ? "LOCAL VIEW" : "CLOUD VIEW"}</span>
@@ -5573,27 +5573,32 @@ export default function BakeBoardPage() {
                   <span><small>Overlay</small><strong>{activeBrainOverlay?.working_memory_active ? "active" : "idle"}</strong></span>
                   <span><small>Local write</small><strong>{String(Boolean(activeBrainOverlay?.local_brain_write)).toLowerCase()}</strong></span>
                 </div>
-                <div className="atanor-brain-layer-list">
-                  {activeBrainGraphRows.map((row) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      data-enabled={row.enabled}
-                      data-missing={Boolean(row.missingReason)}
-                      onClick={() => toggleBrainGraphLayer(activeBrainView, row.id)}
-                    >
-                      <span>{row.label}</span>
-                      <strong>{row.enabled ? row.count.toLocaleString() : "off"}</strong>
-                      {row.missingReason ? <small>{row.missingReason}</small> : null}
-                    </button>
-                  ))}
-                </div>
-                <p>
-                  {mainSection === "local"
-                    ? (language === "ko" ? "Cloud attached 노드는 로컬 브레인 카운트에 포함하지 않습니다." : "Cloud-attached nodes are not counted as Local Brain memory.")
-                    : (language === "ko" ? "Surface Graph는 전체 렌더링하지 않고 표현 계획 요약만 표시합니다." : "Surface Graph is summarized, not fully rendered.")}
-                </p>
-                {brainGraphStatus?.pipeline ? <small>{String(brainGraphStatus.pipeline)}</small> : null}
+                {mainSection === "cloud" ? (
+                  <div className="atanor-brain-layer-strip" aria-label="Cloud Brain layer summary">
+                    {activeBrainGraphRows.filter((row) => row.enabled && row.count > 0).slice(0, 4).map((row) => (
+                      <span key={row.id}>{row.label}<strong>{row.count.toLocaleString()}</strong></span>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="atanor-brain-layer-list">
+                      {activeBrainGraphRows.map((row) => (
+                        <button
+                          key={row.id}
+                          type="button"
+                          data-enabled={row.enabled}
+                          data-missing={Boolean(row.missingReason)}
+                          onClick={() => toggleBrainGraphLayer(activeBrainView, row.id)}
+                        >
+                          <span>{row.label}</span>
+                          <strong>{row.enabled ? row.count.toLocaleString() : "off"}</strong>
+                          {row.missingReason ? <small>{row.missingReason}</small> : null}
+                        </button>
+                      ))}
+                    </div>
+                    <p>{language === "ko" ? "Cloud attached 노드는 로컬 브레인 카운트에 포함하지 않습니다." : "Cloud-attached nodes are not counted as Local Brain memory."}</p>
+                  </>
+                )}
               </section>
             ) : null}
           </article>

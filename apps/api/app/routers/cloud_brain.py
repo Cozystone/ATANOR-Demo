@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -410,6 +411,78 @@ def _ghost_node_from_row(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def _fallback_fragment_from_cloud_raw(concept_id: str, *, max_nodes: int, max_edges: int) -> dict[str, Any]:
+    """Build hash-only topology from local public fragment files when Ghost Shell is empty.
+
+    This keeps the peer payload contract alive during a fresh local broker test:
+    `/ingest` can append a public fragment before the heavier memory builder has
+    materialized ghost tables. Raw text stays disk-bound and is never exported.
+    """
+
+    query = concept_id.strip().lower()
+    if not query:
+        return {"nodes": [], "edges": [], "concept_ids": []}
+    raw_dir = _cloud_fragment_raw_dir()
+    candidates: list[tuple[float, Path, str]] = []
+    for path in sorted(raw_dir.glob("cloud-fragment-*.md"), key=lambda item: item.stat().st_mtime, reverse=True)[:24]:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        score = 1.0 if query in text.lower() else 0.0
+        if score <= 0:
+            tokens = {token for token in re.split(r"[^0-9A-Za-z가-힣_+-]+", query) if token}
+            lowered = text.lower()
+            score = sum(1.0 for token in tokens if token.lower() in lowered)
+        if score > 0:
+            candidates.append((score, path, text))
+    if not candidates:
+        return {"nodes": [], "edges": [], "concept_ids": [concept_id]}
+
+    _, path, text = candidates[0]
+    words = [
+        token
+        for token in re.split(r"[^0-9A-Za-z가-힣_+-]+", text)
+        if len(token) >= 3 and token.lower() not in {"source", "inline", "cloud", "brain"}
+    ]
+    ordered_terms = list(dict.fromkeys([concept_id, *words]))[: max(1, min(max_nodes, 18))]
+    nodes: list[dict[str, Any]] = []
+    for index, term in enumerate(ordered_terms):
+        node_hash = hashlib.sha256(f"{path.name}:{term}".encode("utf-8", errors="ignore")).hexdigest()
+        angle = (index / max(1, len(ordered_terms))) * 6.283185307179586
+        radius = 0.35 + 0.04 * index
+        nodes.append(
+            {
+                "id": node_hash,
+                "node_hash": node_hash,
+                "label": term[:48],
+                "type": "cloud_fragment_hash",
+                "x": round(radius * math.cos(angle), 6),
+                "y": round(radius * math.sin(angle), 6),
+                "z": round((index % 5 - 2) * 0.08, 6),
+                "payload_resolved": False,
+            }
+        )
+    edges: list[dict[str, Any]] = []
+    for index in range(max(0, min(len(nodes) - 1, max_edges))):
+        source_hash = nodes[index]["node_hash"]
+        target_hash = nodes[index + 1]["node_hash"]
+        edges.append(
+            {
+                "source_hash": source_hash,
+                "target_hash": target_hash,
+                "source": source_hash,
+                "target": target_hash,
+                "weight": round(max(0.1, 0.72 - index * 0.03), 3),
+            }
+        )
+    return {
+        "nodes": nodes,
+        "edges": edges[:max_edges],
+        "concept_ids": list(dict.fromkeys([concept_id, *ordered_terms[:6]])),
+    }
+
+
 def _local_fragment_for_concept(concept_id: str, *, max_nodes: int, max_edges: int) -> dict[str, Any]:
     concept_id = concept_id.strip()
     if not concept_id:
@@ -417,10 +490,10 @@ def _local_fragment_for_concept(concept_id: str, *, max_nodes: int, max_edges: i
 
     conn = _connect_memory_readonly()
     if conn is None:
-        return {"nodes": [], "edges": [], "concept_ids": [concept_id]}
+        return _fallback_fragment_from_cloud_raw(concept_id, max_nodes=max_nodes, max_edges=max_edges)
     try:
         if not (_table_exists(conn, "ghost_nodes") and _table_exists(conn, "ghost_edges")):
-            return {"nodes": [], "edges": [], "concept_ids": [concept_id]}
+            return _fallback_fragment_from_cloud_raw(concept_id, max_nodes=max_nodes, max_edges=max_edges)
         seed_hashes: list[str] = []
         if HEX_HASH_RE.match(concept_id):
             row = conn.execute("SELECT node_hash FROM ghost_nodes WHERE node_hash = ? LIMIT 1", (concept_id,)).fetchone()
@@ -432,7 +505,7 @@ def _local_fragment_for_concept(concept_id: str, *, max_nodes: int, max_edges: i
             seed_hashes.extend(str(node.get("node_hash") or node.get("id")) for node in subgraph.get("nodes", [])[: max(1, min(12, max_nodes))])
         seed_hashes = list(dict.fromkeys(hash_value for hash_value in seed_hashes if hash_value))[:max_nodes]
         if not seed_hashes:
-            return {"nodes": [], "edges": [], "concept_ids": [concept_id]}
+            return _fallback_fragment_from_cloud_raw(concept_id, max_nodes=max_nodes, max_edges=max_edges)
 
         marks = ",".join("?" for _ in seed_hashes)
         edge_rows = conn.execute(
@@ -475,6 +548,8 @@ def _local_fragment_for_concept(concept_id: str, *, max_nodes: int, max_edges: i
         nodes = [_ghost_node_from_row(row) for row in node_rows]
         node_set = {node["node_hash"] for node in nodes}
         edges = [edge for edge in edges if edge["source_hash"] in node_set and edge["target_hash"] in node_set][:max_edges]
+        if not nodes and not edges:
+            return _fallback_fragment_from_cloud_raw(concept_id, max_nodes=max_nodes, max_edges=max_edges)
         return {"nodes": nodes, "edges": edges, "concept_ids": [concept_id, *seed_hashes[:6]]}
     finally:
         conn.close()

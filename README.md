@@ -115,6 +115,12 @@ Cloud Brain and Atlas visualize public graph-fragment state without claiming pri
 
 ![ATANOR Cloud Brain Atlas](docs/media/atanor-cloud-atlas.png)
 
+### Cloud Graph
+
+The Cloud Graph tab keeps public semantic fragments readable by giving the graph canvas priority and reducing layer diagnostics to a compact summary strip.
+
+![ATANOR Cloud Graph](docs/media/cloud-tab-compact-panel.png)
+
 ## Architecture In One Picture
 
 ```text
