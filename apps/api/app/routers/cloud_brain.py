@@ -817,7 +817,7 @@ def cloud_brain_ingest(request: CloudBrainIngestRequest) -> dict[str, Any]:
             "fragment_store": "local_companion_payload_vault",
             "reason": fragment.get("reason"),
         }
-    daemon_after = tick_daemon(force=True)
+    daemon_after = daemon_status()
     memory_after = memory_status()
     return {
         **_status_shell(daemon_after, memory_after),

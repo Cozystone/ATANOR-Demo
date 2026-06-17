@@ -3473,8 +3473,9 @@ export default function BakeBoardPage() {
   const graphHeaderEdgeCount = mainSection === "cloud" && semanticStoreRelationCount > 0
     ? semanticStoreRelationCount
     : displayMemoryEdgeCount;
-  const graphHeaderNodeText = tabBrainGraphPending ? "..." : graphHeaderNodeCount.toLocaleString();
-  const graphHeaderEdgeText = tabBrainGraphPending ? "..." : graphHeaderEdgeCount.toLocaleString();
+  const graphHeaderHasFallbackCounts = graphHeaderNodeCount > 0 || graphHeaderEdgeCount > 0;
+  const graphHeaderNodeText = tabBrainGraphPending && !graphHeaderHasFallbackCounts ? "..." : graphHeaderNodeCount.toLocaleString();
+  const graphHeaderEdgeText = tabBrainGraphPending && !graphHeaderHasFallbackCounts ? "..." : graphHeaderEdgeCount.toLocaleString();
   const graphEmptyTitle = tabBrainGraphPending
     ? (language === "ko" ? "그래프 동기화 중" : "Syncing graph")
     : localBackendDisplay;
@@ -4502,10 +4503,10 @@ export default function BakeBoardPage() {
     : {};
   const graphHeaderStats = mainSection === "cloud"
     ? [
-      { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: tabBrainGraphPending ? "..." : Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount).toLocaleString() },
-      { label: language === "ko" ? "Stored relations" : "Stored relations", value: tabBrainGraphPending ? "..." : Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount).toLocaleString() },
-      { label: language === "ko" ? "Materialized" : "Materialized", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
-      { label: language === "ko" ? "Rendered edges" : "Rendered edges", value: tabBrainGraphPending ? "..." : Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
+      { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount).toLocaleString() },
+      { label: language === "ko" ? "Stored relations" : "Stored relations", value: Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount).toLocaleString() },
+      { label: language === "ko" ? "Materialized" : "Materialized", value: Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
+      { label: language === "ko" ? "Rendered edges" : "Rendered edges", value: Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
     ]
     : [
       { label: copy.nodes, value: graphHeaderNodeText },
@@ -4564,7 +4565,7 @@ export default function BakeBoardPage() {
   const semanticCloudEvidence = Number(semanticCloudStatus?.evidence ?? 0);
   const semanticCloudLoaded = Boolean(semanticCloudStatus) || semanticCloudConcepts > 0 || semanticCloudRelations > 0;
   const cloudLoadingText = language === "ko" ? "확인 중" : "Checking";
-  const cloudNumberText = (value: number) => semanticCloudLoaded ? value.toLocaleString() : "...";
+  const cloudNumberText = (value: number) => Number.isFinite(value) ? value.toLocaleString() : "0";
   const semanticLastGrowthRun = (semanticCloudStatus?.last_growth_run && typeof semanticCloudStatus.last_growth_run === "object" && !Array.isArray(semanticCloudStatus.last_growth_run))
     ? semanticCloudStatus.last_growth_run as AnyRecord
     : {};
@@ -4644,14 +4645,14 @@ export default function BakeBoardPage() {
     { label: "Stored relations", value: cloudNumberText(Number(graphVizLogical.stored_relation_count ?? semanticCloudRelations)) },
     { label: "Candidate pairs", value: `${cloudNumberText(Number(graphVizLogical.possible_candidate_pairs ?? graphVizLogical.possible_pair_candidates ?? 0))} implicit` },
     { label: "Active Chunks", value: `${Number(graphVizMaterialized.active_chunks ?? 0).toLocaleString()} · LOD ${String((activeBrainVisualizationState?.spherical_view as AnyRecord | undefined)?.lod ?? graphVizMaterialized.zoom_level ?? 0)}` },
-    { label: "Materialized nodes", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.node_count ?? activeBrainRenderedNodes).toLocaleString() },
-    { label: "Verified relations", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.verified_relation_count ?? graphVizMaterialized.relation_count ?? semanticCloudRelations).toLocaleString() },
-    { label: "Focus relations", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.focus_relation_count ?? 0).toLocaleString() },
-    { label: "Implicit pairs", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.implicit_candidate_pairs ?? 0).toLocaleString() },
-    { label: "Rendered Frame", value: tabBrainGraphPending ? "..." : `${Number(graphVizRendered.node_count ?? activeBrainRenderedNodes).toLocaleString()} / ${Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString()}` },
-    { label: "Visual hints", value: tabBrainGraphPending ? "..." : Number(graphVizRendered.visual_edge_hints ?? 0).toLocaleString() },
+    { label: "Materialized nodes", value: Number(graphVizMaterialized.node_count ?? activeBrainRenderedNodes ?? 0).toLocaleString() },
+    { label: "Verified relations", value: Number(graphVizMaterialized.verified_relation_count ?? graphVizMaterialized.relation_count ?? semanticCloudRelations).toLocaleString() },
+    { label: "Focus relations", value: Number(graphVizMaterialized.focus_relation_count ?? 0).toLocaleString() },
+    { label: "Implicit pairs", value: Number(graphVizMaterialized.implicit_candidate_pairs ?? 0).toLocaleString() },
+    { label: "Rendered Frame", value: `${Number(graphVizRendered.node_count ?? activeBrainRenderedNodes ?? 0).toLocaleString()} / ${Number(graphVizRendered.edge_count ?? activeBrainRenderedEdges ?? 0).toLocaleString()}` },
+    { label: "Visual hints", value: Number(graphVizRendered.visual_edge_hints ?? 0).toLocaleString() },
     { label: "Pair edges sent", value: String(graphVizMaterialized.candidate_pair_edges_sent ?? 0) },
-    { label: "Virtualization", value: graphVizVirtualization.candidate_pairs_implicit === false ? "off" : "spherical chunks" },
+    { label: "Virtualization", value: graphVizVirtualization.candidate_pairs_implicit === false ? "off" : "ON" },
   ];
   const cloudSourceCompactRows = [
     { label: language === "ko" ? "소스" : "Source", value: cloudBrainSourceInspector ? activeCloudSourceMode : cloudLoadingText },
