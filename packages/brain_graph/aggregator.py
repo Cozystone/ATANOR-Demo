@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import math
 from typing import Any
 
 from .materializers import (
@@ -60,6 +61,82 @@ def _materialize_layer(layer: str, view: BrainGraphView, max_nodes: int, max_edg
     return LayerResult(layer=layer, available=False, missing_reason="unknown_layer")
 
 
+def _float_or_default(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _spherical_position(node: dict[str, Any], lod: int) -> dict[str, Any]:
+    """Derive stable spherical chunk coordinates from existing 3D node positions."""
+    x = _float_or_default(node.get("x"))
+    y = _float_or_default(node.get("y"))
+    z = _float_or_default(node.get("z"))
+    radius = max(math.sqrt((x * x) + (y * y) + (z * z)), 0.0001)
+    theta = (math.atan2(z, x) + (math.pi * 2.0)) % (math.pi * 2.0)
+    phi = math.acos(max(-1.0, min(1.0, y / radius)))
+    shell = max(0, min(9, int(radius // 1.25)))
+    theta_buckets = max(8, 8 * lod)
+    phi_buckets = max(4, 4 * lod)
+    sector_theta = min(theta_buckets - 1, int(theta / (math.pi * 2.0) * theta_buckets))
+    sector_phi = min(phi_buckets - 1, int(phi / math.pi * phi_buckets))
+    chunk_id = f"shell_{shell:02d}_theta_{sector_theta:02d}_phi_{sector_phi:02d}_lod_{lod:02d}"
+    return {
+        "r": radius,
+        "theta": theta,
+        "phi": phi,
+        "shell": shell,
+        "sector_theta": sector_theta,
+        "sector_phi": sector_phi,
+        "lod": lod,
+        "chunk_id": chunk_id,
+    }
+
+
+def _active_spherical_chunks(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], lod: int) -> list[dict[str, Any]]:
+    positions_by_node: dict[str, dict[str, Any]] = {}
+    chunks: dict[str, dict[str, Any]] = {}
+    for node in nodes:
+        position = _spherical_position(node, lod)
+        node_id = str(node.get("id"))
+        positions_by_node[node_id] = position
+        chunk = chunks.setdefault(
+            str(position["chunk_id"]),
+            {
+                "chunk_id": position["chunk_id"],
+                "shell": position["shell"],
+                "sector_theta": position["sector_theta"],
+                "sector_phi": position["sector_phi"],
+                "lod": lod,
+                "bounds": {
+                    "theta_sector": position["sector_theta"],
+                    "phi_sector": position["sector_phi"],
+                    "shell": position["shell"],
+                },
+                "logical_node_count": 0,
+                "stored_relation_count": 0,
+                "implicit_candidate_pairs": 0,
+                "materialized_node_count": 0,
+                "materialized_relation_count": 0,
+            },
+        )
+        chunk["logical_node_count"] += 1
+        chunk["materialized_node_count"] += 1
+
+    for edge in edges:
+        source_chunk = positions_by_node.get(str(edge.get("source")), {}).get("chunk_id")
+        target_chunk = positions_by_node.get(str(edge.get("target")), {}).get("chunk_id")
+        if source_chunk and source_chunk == target_chunk and source_chunk in chunks:
+            chunks[source_chunk]["stored_relation_count"] += 1
+            chunks[source_chunk]["materialized_relation_count"] += 1
+
+    for chunk in chunks.values():
+        count = int(chunk["materialized_node_count"])
+        chunk["implicit_candidate_pairs"] = count * max(0, count - 1) // 2
+    return sorted(chunks.values(), key=lambda row: (-int(row["materialized_node_count"]), str(row["chunk_id"])))
+
+
 def aggregate_brain_graph(
     *,
     view: BrainGraphView,
@@ -67,6 +144,8 @@ def aggregate_brain_graph(
     query: str | None = None,
     max_nodes: int = 1000,
     max_edges: int = 3000,
+    focus_node_id: str | None = None,
+    lod: int | None = None,
 ) -> dict[str, Any]:
     selected_layers = _normalize_layers(view, layers)
     unknown_layers = _missing_requested(view, layers)
@@ -77,11 +156,9 @@ def aggregate_brain_graph(
     missing: list[dict[str, Any]] = [{"layer": layer, "reason": "not_allowed_for_view"} for layer in unknown_layers]
     partial = False
 
-    per_layer_node_budget = max(1, max_nodes // max(len(selected_layers), 1))
-    per_layer_edge_budget = max(1, max_edges // max(len(selected_layers), 1))
     for layer in selected_layers:
         try:
-            result = _materialize_layer(layer, view, per_layer_node_budget, per_layer_edge_budget, query)
+            result = _materialize_layer(layer, view, max_nodes, max_edges, query)
         except Exception as exc:
             result = LayerResult(layer=layer, available=False, missing_reason=f"materializer_error: {exc}")
         layer_payload = result.to_dict()
@@ -100,6 +177,87 @@ def aggregate_brain_graph(
     layer_counts = Counter(str(node.get("layer")) for node in nodes)
     edge_layer_counts = Counter(str(edge.get("layer")) for edge in edges)
     overlay = get_overlay_status()
+    logical_node_count = len(nodes)
+    stored_relation_count = len([
+        edge for edge in edges
+        if not ((edge.get("metadata") or {}).get("counts_as_stored_relation") is False)
+    ])
+    if view == "cloud":
+        for result in layer_results:
+            if result.get("layer") == "semantic_cloud":
+                stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
+                logical_node_count = max(logical_node_count, int(stats.get("concepts") or stats.get("semantic_cloud_nodes") or 0))
+                stored_relation_count = max(stored_relation_count, int(stats.get("relations") or stats.get("semantic_cloud_edges") or 0))
+                break
+    possible_pair_candidates = logical_node_count * max(0, logical_node_count - 1) // 2
+    materialized_node_count = len(nodes)
+    materialized_relation_count = stored_relation_count if view == "cloud" else len(edges)
+    verified_relation_count = len(edges)
+    materialized_possible_pairs = materialized_node_count * max(0, materialized_node_count - 1) // 2
+    culled_edges = max(0, materialized_relation_count - len(edges))
+    effective_lod = max(1, min(6, int(lod))) if lod is not None else (3 if materialized_node_count >= 96 else 2)
+    focus_relation_count = 0
+    if focus_node_id:
+        focus_relation_count = sum(
+            1
+            for edge in edges
+            if str(edge.get("source")) == focus_node_id or str(edge.get("target")) == focus_node_id
+        )
+    active_chunks = _active_spherical_chunks(nodes, edges, effective_lod)
+    active_chunk_ids = [str(chunk["chunk_id"]) for chunk in active_chunks[:16]]
+    sphere_radius = max((_float_or_default(node.get("radius"), 1.0) for node in nodes), default=1.0)
+    visualization_state = {
+        "logical": {
+            "node_count": logical_node_count,
+            "stored_relation_count": stored_relation_count,
+            "possible_candidate_pairs": possible_pair_candidates,
+            "possible_pair_candidates": possible_pair_candidates,
+            "sphere_topology": True,
+            "density": (stored_relation_count / possible_pair_candidates) if possible_pair_candidates else 0.0,
+        },
+        "spherical_view": {
+            "camera_shell": 0,
+            "focus_node_id": focus_node_id,
+            "zoom_level": effective_lod,
+            "active_chunk_ids": active_chunk_ids,
+            "active_chunks": len(active_chunks),
+            "chunks": active_chunks[:16],
+            "lod": effective_lod,
+            "sphere_radius": sphere_radius,
+        },
+        "materialized": {
+            "active_chunks": len(active_chunks),
+            "chunk_ids": active_chunk_ids,
+            "node_count": materialized_node_count,
+            "relation_count": materialized_relation_count,
+            "verified_relation_count": verified_relation_count,
+            "focus_relation_count": focus_relation_count,
+            "implicit_candidate_pairs": materialized_possible_pairs,
+            "candidate_pair_edges_sent": 0,
+            "zoom_level": effective_lod,
+            "focus_node_id": focus_node_id,
+        },
+        "rendered": {
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "visual_edge_hints": min(len(active_chunks) * 8, 256),
+            "edge_mode": "hybrid",
+            "render_budget_nodes": max_nodes,
+            "render_budget_edges": max_edges,
+            "culled_edges": culled_edges,
+            "sampling_reason": "viewport_chunk" if culled_edges else "none",
+        },
+        "virtualization": {
+            "enabled": True,
+            "mode": "spherical_minecraft_chunks",
+            "candidate_pairs_implicit": True,
+            "send_candidate_pairs_as_edges": False,
+            "zoom_reveal_enabled": True,
+            "full_graph_loaded_into_ram": False,
+            "fake_aggregate_nodes": False,
+            "sphere_shape_preserved": True,
+        },
+    }
     graph_id = f"{view}-brain-graph-{utc_now_iso()}"
     return {
         "graph_id": graph_id,
@@ -123,7 +281,9 @@ def aggregate_brain_graph(
             "local_user_nodes": layer_counts.get("local_user", 0),
             "cloud_attached_nodes": overlay.get("cloud_attached_nodes", 0),
             "cloud_attached_counts_as_local": False,
+            "visualization_state": visualization_state,
         },
+        "visualization_state": visualization_state,
         "honesty": {
             "view_is_tab_aware": True,
             "local_view_excludes_semantic_cloud": view == "local",

@@ -361,6 +361,8 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
             )
             for index, row in enumerate(semantic_graph["edges"])
         ]
+        verified_edge_count = len(edges)
+        implicit_candidate_pairs = len(nodes) * max(0, len(nodes) - 1) // 2
         return LayerResult(
             layer="semantic_cloud",
             available=True,
@@ -369,7 +371,10 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
             stats={
                 **semantic_status,
                 "semantic_cloud_nodes": len(nodes),
-                "semantic_cloud_edges": len(edges),
+                "semantic_cloud_edges": verified_edge_count,
+                "implicit_candidate_pairs": implicit_candidate_pairs,
+                "candidate_pair_edges_sent": 0,
+                "candidate_pair_topology": "implicit_spherical_field",
                 "source_is_remote": False,
                 "old_mirror_snapshot_used": False,
             },
@@ -444,12 +449,24 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
                 },
             )
         )
+    verified_edge_count = len(edges)
+    materialized_nodes = _bounded(nodes, max_nodes)
+    edges = _bounded(edges, max_edges)
+    implicit_candidate_pairs = len(materialized_nodes) * max(0, len(materialized_nodes) - 1) // 2
     return LayerResult(
         layer="semantic_cloud",
         available=True,
-        nodes=_bounded(nodes, max_nodes),
-        edges=_bounded(edges, max_edges),
-        stats={**status, "semantic_cloud_nodes": len(nodes), "semantic_cloud_edges": len(edges), "source_is_remote": False},
+        nodes=materialized_nodes,
+        edges=edges,
+        stats={
+            **status,
+            "semantic_cloud_nodes": len(nodes),
+            "semantic_cloud_edges": verified_edge_count,
+            "implicit_candidate_pairs": implicit_candidate_pairs,
+            "candidate_pair_edges_sent": 0,
+            "candidate_pair_topology": "implicit_spherical_field",
+            "source_is_remote": False,
+        },
         partial=len(nodes) > max_nodes or len(edges) > max_edges,
     )
 

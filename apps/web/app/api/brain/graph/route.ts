@@ -1,17 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { proxyJson } from "../../_backend";
+import { backendBaseUrl } from "../../_backend";
 
 export async function GET(request: NextRequest) {
   const search = request.nextUrl.search || "";
-  const proxied = await proxyJson(`/api/brain/graph${search}`);
-  return NextResponse.json(
-    proxied?.body ?? {
-      view: request.nextUrl.searchParams.get("view") ?? "local",
-      nodes: [],
-      edges: [],
-      layers_missing: [{ layer: "brain_graph", reason: "local_backend_unavailable" }],
-      honesty: { missing_layers_are_reported: true },
+  const baseUrl = backendBaseUrl();
+  if (!baseUrl) {
+    return NextResponse.json(
+      {
+        view: request.nextUrl.searchParams.get("view") ?? "local",
+        nodes: [],
+        edges: [],
+        layers_missing: [{ layer: "brain_graph", reason: "local_backend_unavailable" }],
+        honesty: { missing_layers_are_reported: true },
+      },
+      { status: 503 },
+    );
+  }
+
+  const response = await fetch(`${baseUrl}/api/brain/graph${search}`, { cache: "no-store" });
+  if (response.status === 404 || response.status === 405) {
+    return NextResponse.json(
+      {
+        view: request.nextUrl.searchParams.get("view") ?? "local",
+        nodes: [],
+        edges: [],
+        layers_missing: [{ layer: "brain_graph", reason: "local_backend_unavailable" }],
+        honesty: { missing_layers_are_reported: true },
+      },
+      { status: 503 },
+    );
+  }
+  return new Response(response.body, {
+    status: response.status,
+    headers: {
+      "content-type": response.headers.get("content-type") ?? "application/json",
+      "cache-control": "no-store",
     },
-    { status: proxied?.status ?? 503 },
-  );
+  });
 }

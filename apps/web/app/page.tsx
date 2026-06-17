@@ -738,6 +738,16 @@ function buildBrainLayerGraph3D(rawGraph: AnyRecord | null | undefined): Rag3DGr
   };
 }
 
+function graphPayloadNodeCount(rawGraph: AnyRecord | null | undefined) {
+  return Array.isArray(rawGraph?.nodes) ? rawGraph.nodes.length : 0;
+}
+
+function keepNonEmptyGraph(current: AnyRecord | null, next: AnyRecord | null) {
+  if (!next) return current;
+  if (graphPayloadNodeCount(next) === 0 && graphPayloadNodeCount(current) > 0) return current;
+  return next;
+}
+
 const stateLabels: Record<string, string> = {
   idle: "대기",
   running: "진행 중",
@@ -866,7 +876,22 @@ function edgeAdvertiseApiPath(baseUrl: string) {
   return `/api/network/edge/advertise?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}`;
 }
 
-function graphStreamApiPath(baseUrl: string, limit = 5000) {
+function brainGraphApiPath(
+  view: "local" | "cloud",
+  layers?: string[],
+  profile: "fast" | "full" = "fast",
+  options?: { focusNodeId?: string | null; lod?: number | null },
+) {
+  const layerParam = layers && layers.length > 0 ? `&layers=${layers.join(",")}` : "";
+  const limits = view === "cloud"
+    ? (profile === "full" ? { nodes: 1200, edges: 30000 } : { nodes: 1200, edges: 30000 })
+    : (profile === "full" ? { nodes: 5000, edges: 10000 } : { nodes: 1200, edges: 2400 });
+  const focusParam = options?.focusNodeId ? `&focus_node_id=${encodeURIComponent(options.focusNodeId)}` : "";
+  const lodParam = options?.lod ? `&lod=${encodeURIComponent(String(options.lod))}` : "";
+  return `/api/brain/graph?view=${view}${layerParam}&max_nodes=${limits.nodes}&max_edges=${limits.edges}${focusParam}${lodParam}`;
+}
+
+function graphStreamApiPath(baseUrl: string, limit = 1200) {
   return `/api/graph/stream?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}&limit=${encodeURIComponent(String(limit))}&include_cloud_attached=true`;
 }
 
@@ -1310,6 +1335,18 @@ function signalTraceForQuery(query: string, graph: Rag3DGraph, result?: AnyRecor
     if (visibleNodeIds.has(id)) activeCandidates.add(id);
   }
 
+  const semanticCloudAttached = Number(result?.compact_trace?.semantic_cloud_graph?.attached_nodes ?? 0);
+  if (semanticCloudAttached > 0 && activeCandidates.size < 3) {
+    graph.nodes
+      .filter((node) => {
+        const type = String(node.type ?? "").toLowerCase();
+        const id = String(node.id ?? "").toLowerCase();
+        return type.includes("cloud") || type.includes("semantic") || id.includes("cloud") || id.includes("semantic");
+      })
+      .slice(0, Math.max(3, Math.min(semanticCloudAttached, 10)))
+      .forEach((node) => activeCandidates.add(node.id));
+  }
+
   if (activeCandidates.size < 3 && queryTerms.length) {
     graph.nodes
       .map((node) => {
@@ -1586,6 +1623,7 @@ export default function BakeBoardPage() {
   const progressTimerRef = useRef<number | null>(null);
   const buildFrameTimerRef = useRef<number | null>(null);
   const benchmarkAppliedRef = useRef(false);
+  const benchmarkProbeAtRef = useRef(0);
   const [graphView, setGraphView] = useState<GraphView>({ scale: 1, x: 0, y: 0 });
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [atlasRotationDeg, setAtlasRotationDeg] = useState(0);
@@ -1615,15 +1653,22 @@ export default function BakeBoardPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.has("api") || params.has("backend")) return;
     const savedUrl = readBrowserStorage("atanor.localFastApiUrl");
-    if (savedUrl) {
-      setLocalBackendUrl(savedUrl);
-      connectLocalBackend(savedUrl).catch(() => undefined);
-    } else {
-      connectLocalBackend("http://127.0.0.1:8500").catch(() => undefined);
+    const targetUrl = savedUrl || "http://127.0.0.1:8500";
+    const requestedSection = params.get("section");
+    const shouldWarmBrainGraph = requestedSection === "home" || requestedSection === "local" || requestedSection === "cloud";
+    if (savedUrl) setLocalBackendUrl(savedUrl);
+    if (shouldWarmBrainGraph) {
+      refreshCloudProofFast().catch(() => undefined);
+      refreshBrainGraphPanels().catch(() => undefined);
     }
+    const timer = window.setTimeout(() => {
+      connectLocalBackend(targetUrl).catch(() => undefined);
+    }, shouldWarmBrainGraph ? 500 : 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
+    const warmupTimers: number[] = [];
     const params = new URLSearchParams(window.location.search);
     const requestedLanguage = params.get("lang") ?? params.get("language");
     const initialLanguage = requestedLanguage === "ko" || requestedLanguage === "en"
@@ -1638,11 +1683,24 @@ export default function BakeBoardPage() {
       if (nextSection === "atlas") setWorkspaceMode("daemon");
       if (nextSection === "chat") setRightMode("chat");
       if (nextSection === "graph") setLayoutMode("graph");
+      if (nextSection === "home" || nextSection === "local" || nextSection === "cloud") {
+        refreshCloudProofFast().catch(() => undefined);
+        refreshBrainGraphPanels().catch(() => undefined);
+        for (let index = 1; index <= 3; index += 1) {
+          warmupTimers.push(window.setTimeout(() => {
+            refreshCloudProofFast().catch(() => undefined);
+            refreshBrainGraphPanels().catch(() => undefined);
+          }, index * 1100));
+        }
+      }
     }
     const savedSeconds = Number(readBrowserStorage("atanor.cumulativeLearningSeconds") ?? "0");
     if (Number.isFinite(savedSeconds) && savedSeconds > 0) {
       setPersistedLearningSeconds(Math.floor(savedSeconds));
     }
+    return () => {
+      warmupTimers.forEach((timer) => window.clearTimeout(timer));
+    };
   }, []);
 
   useEffect(() => {
@@ -1772,7 +1830,7 @@ export default function BakeBoardPage() {
       neuroStatus,
     ] = await Promise.all([
       directBackendJson<AnyRecord>(url, "/api/memory/status").catch(() => null),
-      directBackendJson<AnyRecord>(url, "/api/memory/graph?limit=5000&include_cloud_attached=true").catch(() => null),
+      directBackendJson<AnyRecord>(url, "/api/memory/graph?limit=600&include_cloud_attached=true").catch(() => null),
       directBackendJson<AnyRecord>(url, "/api/memory/drift-check").catch(() => null),
       directBackendJson<AnyRecord>(url, "/api/learning/daemon/status").catch(() => null),
       fetchJson<AnyRecord>(edgeStatusApiPath(url)).catch(() => null),
@@ -1801,8 +1859,8 @@ export default function BakeBoardPage() {
       directBackendJson<AnyRecord>(url, "/api/q-cortex/status").catch(() => null),
       directBackendJson<AnyRecord>(url, "/api/base-brain/status").catch(() => null),
       directBackendJson<AnyRecord>(url, "/api/answer-quality/status").catch(() => null),
-      directBackendJson<AnyRecord>(url, `/api/brain/graph?view=local&layers=${encodeURIComponent(localBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
-      directBackendJson<AnyRecord>(url, `/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      directBackendJson<AnyRecord>(url, brainGraphApiPath("local", localBrainGraphLayers)).catch(() => null),
+      directBackendJson<AnyRecord>(url, brainGraphApiPath("cloud", cloudBrainGraphLayers)).catch(() => null),
       directBackendJson<AnyRecord>(url, "/api/brain/overlay-status").catch(() => null),
       directBackendJson<AnyRecord>(url, "/api/brain/graph/status").catch(() => null),
       directBackendJson<AnyRecord>(url, "/api/graphrag/status").catch(() => null),
@@ -1831,8 +1889,8 @@ export default function BakeBoardPage() {
     if (qCortexStatusResult) setQCortexStatus(qCortexStatusResult);
     if (baseBrainStatusResult) setBaseBrainStatus(baseBrainStatusResult);
     if (answerQualityStatusResult) setAnswerQualityStatus(answerQualityStatusResult);
-    if (brainGraphLocalResult) setBrainGraphLocal(brainGraphLocalResult);
-    if (brainGraphCloudResult) setBrainGraphCloud(brainGraphCloudResult);
+    if (brainGraphLocalResult) setBrainGraphLocal((current) => keepNonEmptyGraph(current, brainGraphLocalResult));
+    if (brainGraphCloudResult) setBrainGraphCloud((current) => keepNonEmptyGraph(current, brainGraphCloudResult));
     if (brainGraphOverlayResult) setBrainGraphOverlayStatus(brainGraphOverlayResult);
     if (brainGraphStatusResult) setBrainGraphStatus(brainGraphStatusResult);
     if (graphragStatus) setGraphRag(graphragStatus);
@@ -1870,6 +1928,7 @@ export default function BakeBoardPage() {
       fetchJson<AnyRecord>(edgeStatusApiPath(url))
         .then((edgeBrokerStatus) => setEdgeStatus(edgeBrokerStatus))
         .catch(() => setEdgeStatus(defaultEdgeBrokerStatus));
+      benchmarkProbeAtRef.current = Date.now();
       const [systemStatus, gpuStatus, benchmarkStatus] = await Promise.all([
         directBackendJson<AnyRecord>(url, "/api/telemetry/system").catch(() => null),
         directBackendJson<AnyRecord>(url, "/api/telemetry/gpu").catch(() => null),
@@ -1881,7 +1940,15 @@ export default function BakeBoardPage() {
       if (systemStatus) setSystem(systemStatus);
       if (gpuStatus) setGpu(gpuStatus);
       if (benchmarkStatus) setBenchmark(benchmarkStatus);
-      await syncLocalBackendState(url, benchmarkStatus);
+      const requestedSection = new URLSearchParams(window.location.search).get("section");
+      const deferHeavyLocalSync = requestedSection === "home" || requestedSection === "local" || requestedSection === "cloud";
+      if (deferHeavyLocalSync) {
+        window.setTimeout(() => {
+          syncLocalBackendState(url, benchmarkStatus).catch(() => undefined);
+        }, 1800);
+      } else {
+        await syncLocalBackendState(url, benchmarkStatus);
+      }
       const recommended = benchmarkStatus?.recommended_learning_volume as LearningVolume | undefined;
       let nextVolume = learningVolume;
       let nextTargetNodeCount = targetNodeCount;
@@ -1916,12 +1983,17 @@ export default function BakeBoardPage() {
 
   async function refreshAll() {
     const localStrict = localBackendConnected ? { localOnly: true } : {};
-    const benchmarkForRefresh = localBackendConnected
-      ? await apiJson<AnyRecord>("/api/neuro/benchmark", {
+    let benchmarkForRefresh = benchmark;
+    const shouldProbeBenchmark = localBackendConnected && (
+      !benchmarkForRefresh || Date.now() - benchmarkProbeAtRef.current > 120000
+    );
+    if (shouldProbeBenchmark) {
+      benchmarkProbeAtRef.current = Date.now();
+      benchmarkForRefresh = await apiJson<AnyRecord>("/api/neuro/benchmark", {
         method: "POST",
         body: JSON.stringify({ run_probes: true }),
-      }, { localOnly: true }).catch(() => benchmark)
-      : benchmark;
+      }, { localOnly: true }).catch(() => benchmark);
+    }
     const [
       pipelineStatus,
       datagateStatus,
@@ -1960,7 +2032,7 @@ export default function BakeBoardPage() {
       apiJson<AnyRecord>("/api/ontology/status"),
       apiJson<AnyRecord>("/api/ontology/graph"),
       apiJson<AnyRecord>("/api/memory/status"),
-      fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localStrict)),
+      fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 600)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=600&include_cloud_attached=true", undefined, localStrict)),
       apiJson<AnyRecord>("/api/memory/drift-check"),
       apiJson<AnyRecord>("/api/learning/daemon/status"),
       fetchJson<AnyRecord>(edgeStatusApiPath(localBackendUrl)).catch(() => defaultEdgeBrokerStatus),
@@ -1996,8 +2068,8 @@ export default function BakeBoardPage() {
       localBackendConnected
         ? directBackendJson<AnyRecord>(localBackendUrl, "/api/answer-quality/status").catch(() => null)
         : apiJson<AnyRecord>("/api/answer-quality/status").catch(() => null),
-      fetchJson<AnyRecord>(`/api/brain/graph?view=local&layers=${encodeURIComponent(localBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
-      fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      fetchJson<AnyRecord>(brainGraphApiPath("local", localBrainGraphLayers)).catch(() => null),
+      fetchJson<AnyRecord>(brainGraphApiPath("cloud", cloudBrainGraphLayers)).catch(() => null),
       fetchJson<AnyRecord>("/api/brain/overlay-status").catch(() => null),
       fetchJson<AnyRecord>("/api/brain/graph/status").catch(() => null),
       apiJson<AnyRecord>("/api/graphrag/status"),
@@ -2039,8 +2111,8 @@ export default function BakeBoardPage() {
     setQCortexStatus((current) => qCortexStatusResult ?? current);
     setBaseBrainStatus((current) => baseBrainStatusResult ?? current);
     setAnswerQualityStatus((current) => answerQualityStatusResult ?? current);
-    setBrainGraphLocal((current) => brainGraphLocalResult ?? current);
-    setBrainGraphCloud((current) => brainGraphCloudResult ?? current);
+    setBrainGraphLocal((current) => keepNonEmptyGraph(current, brainGraphLocalResult));
+    setBrainGraphCloud((current) => keepNonEmptyGraph(current, brainGraphCloudResult));
     setBrainGraphOverlayStatus((current) => brainGraphOverlayResult ?? current);
     setBrainGraphStatus((current) => brainGraphStatusResult ?? current);
     setGraph(memoryGraphResult && ("nodes" in memoryGraphResult || "working_memory_overlay" in memoryGraphResult) ? memoryGraphResult : ontologyGraph);
@@ -2076,7 +2148,7 @@ export default function BakeBoardPage() {
     setSemanticGrowthError(null);
     const [status, cloudGraph] = await Promise.all([
       apiJson<AnyRecord>("/api/cloud-brain/semantic/status", undefined, localBackendConnected ? { localOnly: true } : {}),
-      fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      fetchJson<AnyRecord>(brainGraphApiPath("cloud", cloudBrainGraphLayers, "full")).catch(() => null),
     ]);
     setSemanticCloudStatus(status);
     if (cloudGraph) setBrainGraphCloud(cloudGraph);
@@ -2105,6 +2177,23 @@ export default function BakeBoardPage() {
     }
   }
 
+  async function accelerateSemanticCloudBatch() {
+    setSemanticGrowthRunning(true);
+    setSemanticGrowthError(null);
+    try {
+      const summary = await apiJson<AnyRecord>("/api/cloud-brain/semantic/accelerate", {
+        method: "POST",
+        body: JSON.stringify({ batch_size: 1000 }),
+      }, localBackendConnected ? { localOnly: true } : {});
+      setSemanticGrowthRun(summary);
+      await refreshSemanticCloud();
+    } catch (caught) {
+      setSemanticGrowthError(caught instanceof Error ? caught.message : "Semantic Cloud acceleration failed.");
+    } finally {
+      setSemanticGrowthRunning(false);
+    }
+  }
+
   async function attachSemanticCloudSample() {
     setSemanticGrowthRunning(true);
     setSemanticGrowthError(null);
@@ -2116,8 +2205,8 @@ export default function BakeBoardPage() {
       setSemanticAttachResult(attach);
       const [overlay, memoryGraph, cloudGraph] = await Promise.all([
         fetchJson<AnyRecord>("/api/brain/overlay-status").catch(() => null),
-        apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => null),
-        fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+        apiJson<AnyRecord>("/api/memory/graph?limit=600&include_cloud_attached=true", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => null),
+        fetchJson<AnyRecord>(brainGraphApiPath("cloud", cloudBrainGraphLayers, "full")).catch(() => null),
       ]);
       if (overlay) setBrainGraphOverlayStatus(overlay);
       if (memoryGraph && ("nodes" in memoryGraph || "working_memory_overlay" in memoryGraph)) setGraph(memoryGraph);
@@ -2160,7 +2249,7 @@ export default function BakeBoardPage() {
       if (action === "export") setGraphHubExport(result);
       if (action === "proof") setGraphHubProof(result);
       await refreshGraphHub();
-      const cloudGraph = await fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null);
+      const cloudGraph = await fetchJson<AnyRecord>(brainGraphApiPath("cloud", cloudBrainGraphLayers, "full")).catch(() => null);
       if (cloudGraph) setBrainGraphCloud(cloudGraph);
     } catch (caught) {
       setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub action failed.");
@@ -2390,23 +2479,68 @@ export default function BakeBoardPage() {
     refreshRepairReviewQueue().catch(() => undefined);
   }, [mainSection, workspaceMode]);
 
-  async function refreshBrainGraphPanels() {
+  async function refreshCloudProofFast() {
+    const [semanticStatusResult, cloudSourceInspectorResult] = await Promise.all([
+      fetchJson<AnyRecord>("/api/cloud-brain/semantic/status").catch(() => null),
+      fetchJson<AnyRecord>("/api/cloud-brain/source-inspector").catch(() => null),
+    ]);
+    if (semanticStatusResult) setSemanticCloudStatus(semanticStatusResult);
+    if (cloudSourceInspectorResult) setCloudBrainSourceInspector(cloudSourceInspectorResult);
+  }
+
+  async function refreshBrainGraphPanels(profile: "fast" | "full" = "fast") {
+    async function fetchBrainGraph(view: "local" | "cloud", layers: string[]) {
+      const selectedId = typeof selectedMemory?.id === "string" ? selectedMemory.id : "";
+      const focusOptions = view === mainSection && selectedId
+        ? { focusNodeId: selectedId, lod: profile === "full" ? 4 : 3 }
+        : undefined;
+      const path = brainGraphApiPath(view, layers, profile, focusOptions);
+      const primary = await (localBackendConnected
+        ? directBackendJson<AnyRecord>(localBackendUrl, path).catch(() => fetchJson<AnyRecord>(path).catch(() => null))
+        : fetchJson<AnyRecord>(path).catch(() => null));
+      const primaryNodeCount = Array.isArray(primary?.nodes) ? primary.nodes.length : 0;
+      if (primaryNodeCount > 0) return primary;
+      const fallbackPath = brainGraphApiPath(view, undefined, profile);
+      return localBackendConnected
+        ? directBackendJson<AnyRecord>(localBackendUrl, fallbackPath).catch(() => fetchJson<AnyRecord>(fallbackPath).catch(() => primary))
+        : fetchJson<AnyRecord>(fallbackPath).catch(() => primary);
+    }
+    const semanticStatusPromise = fetchJson<AnyRecord>("/api/cloud-brain/semantic/status").catch(() => null);
+    const cloudSourceInspectorPromise = fetchJson<AnyRecord>("/api/cloud-brain/source-inspector").catch(() => null);
     const [localResult, cloudResult, overlayResult, statusResult] = await Promise.all([
-      fetchJson<AnyRecord>(`/api/brain/graph?view=local&layers=${encodeURIComponent(localBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
-      fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null),
+      fetchBrainGraph("local", localBrainGraphLayers),
+      fetchBrainGraph("cloud", cloudBrainGraphLayers),
       fetchJson<AnyRecord>("/api/brain/overlay-status").catch(() => null),
       fetchJson<AnyRecord>("/api/brain/graph/status").catch(() => null),
     ]);
-    if (localResult) setBrainGraphLocal(localResult);
-    if (cloudResult) setBrainGraphCloud(cloudResult);
+    if (localResult) setBrainGraphLocal((current) => keepNonEmptyGraph(current, localResult));
+    if (cloudResult) setBrainGraphCloud((current) => keepNonEmptyGraph(current, cloudResult));
     if (overlayResult) setBrainGraphOverlayStatus(overlayResult);
     if (statusResult) setBrainGraphStatus(statusResult);
+    Promise.all([semanticStatusPromise, cloudSourceInspectorPromise])
+      .then(([semanticStatusResult, cloudSourceInspectorResult]) => {
+        if (semanticStatusResult) setSemanticCloudStatus(semanticStatusResult);
+        if (cloudSourceInspectorResult) setCloudBrainSourceInspector(cloudSourceInspectorResult);
+      })
+      .catch(() => undefined);
   }
 
   useEffect(() => {
     if (mainSection !== "local" && mainSection !== "cloud") return;
     refreshBrainGraphPanels().catch(() => undefined);
   }, [mainSection, localBrainGraphLayers, cloudBrainGraphLayers]);
+
+  useEffect(() => {
+    if (mainSection !== "local" && mainSection !== "cloud") return;
+    let attempts = 0;
+    const maxAttempts = localBackendConnected ? 3 : 2;
+    const interval = window.setInterval(() => {
+      attempts += 1;
+      refreshBrainGraphPanels().catch(() => undefined);
+      if (attempts >= maxAttempts) window.clearInterval(interval);
+    }, localBackendConnected ? 700 : 1200);
+    return () => window.clearInterval(interval);
+  }, [mainSection, localBrainGraphLayers, cloudBrainGraphLayers, localBackendConnected]);
 
   function toggleBrainGraphLayer(view: "local" | "cloud", layer: string) {
     const setter = view === "local" ? setLocalBrainGraphLayers : setCloudBrainGraphLayers;
@@ -2421,8 +2555,8 @@ export default function BakeBoardPage() {
     const localStrict = localBackendConnected ? { localOnly: true } : {};
     const attachmentResult = await apiJson<AnyRecord>("/api/working-memory/cloud-attachments", undefined, localStrict).catch(() => null);
     if (attachmentResult) setCloudAttachmentStatus(attachmentResult);
-    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000))
-      .catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localStrict));
+    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 600))
+      .catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=600&include_cloud_attached=true", undefined, localStrict));
     if (graphResult && ("nodes" in graphResult || "working_memory_overlay" in graphResult)) setGraph(graphResult);
     return graphResult;
   }
@@ -2547,11 +2681,18 @@ export default function BakeBoardPage() {
   }
 
   useEffect(() => {
-    refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "BakeBoard瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??"));
+    const requestedSection = new URLSearchParams(window.location.search).get("section");
+    const deferFullRefresh = requestedSection === "home" || requestedSection === "local" || requestedSection === "cloud";
+    const initialTimer = window.setTimeout(() => {
+      refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "BakeBoard瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??"));
+    }, deferFullRefresh ? 1600 : 0);
     const timer = window.setInterval(() => {
       refreshAll().catch(() => undefined);
     }, 10000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
   }, [learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at, localBackendConnected, localBackendUrl]);
 
   useEffect(() => {
@@ -2721,7 +2862,7 @@ export default function BakeBoardPage() {
     const previousEdgeCount = Number(memoryStatus?.edge_count ?? graph?.edges?.length ?? 0);
     setMemoryStatus((current) => ({ ...(current ?? {}), state: "running" }));
     const result = await apiJson<AnyRecord>("/api/memory/build", { method: "POST" }, localStrict);
-    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 5000)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=5000&include_cloud_attached=true", undefined, localStrict));
+    const graphResult = await fetchJson<AnyRecord>(graphStreamApiPath(localBackendUrl, 600)).catch(() => apiJson<AnyRecord>("/api/memory/graph?limit=600&include_cloud_attached=true", undefined, localStrict));
     const driftResult = await apiJson<AnyRecord>("/api/memory/drift-check", undefined, localStrict);
     setMemoryStatus(result);
     setMemoryDrift(driftResult);
@@ -2862,7 +3003,7 @@ export default function BakeBoardPage() {
     setError(null);
     setIsGeneratingAnswer(true);
     if (learnComplete) setStageProgress("output", Math.max(8, labStageProgress.output));
-    activateSignal(signalTraceForQuery(question, displayGraph3D), 15000);
+    activateSignal(signalTraceForQuery(question, displayGraph3D), 4200);
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
     try {
       const shouldUseWebSearch = shouldUseWebSearchForQuestion(question, webSearchEnabled);
@@ -2887,24 +3028,12 @@ export default function BakeBoardPage() {
       if (isConversationResult) {
         clearActiveSignal();
       } else {
-        activateSignal(signalTraceForQuery(question, displayGraph3D, apiResult), 15000);
+        activateSignal(signalTraceForQuery(question, displayGraph3D, apiResult), 2600);
       }
       const evidence = result?.result?.evidence_docs ?? [];
       const nodes = result?.result?.matched_nodes ?? [];
       const answer = result?.result?.answer;
       const nodeText = nodes.length ? nodes.map((node: AnyRecord) => node.label).join(", ") : "현재 메모리";
-      if (answer) {
-        setDraft(answer);
-        try {
-          const guardResult = await apiJson<AnyRecord>("/api/guard/check", {
-            method: "POST",
-            body: JSON.stringify({ draft_answer: answer, evidence_bundle: result?.result ?? null }),
-          });
-          setGuard(guardResult);
-        } catch {
-          // Guardrail is an automatic output check; answer generation should not fail if the check is unavailable.
-        }
-      }
       setChatMessages((messages) => [
         ...messages,
         {
@@ -2922,6 +3051,21 @@ export default function BakeBoardPage() {
           },
         },
       ]);
+      if (answer) {
+        setDraft(answer);
+        setIsGeneratingAnswer(false);
+        void (async () => {
+          try {
+            const guardResult = await apiJson<AnyRecord>("/api/guard/check", {
+              method: "POST",
+              body: JSON.stringify({ draft_answer: answer, evidence_bundle: result?.result ?? null }),
+            });
+            setGuard(guardResult);
+          } catch {
+            // Guardrail is an automatic output check; answer generation should not fail if the check is unavailable.
+          }
+        })();
+      }
       if (learnComplete) setStageProgress("output", 100);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "RAG 梨꾪똿???ㅽ뙣?덉뒿?덈떎.");
@@ -3211,13 +3355,41 @@ export default function BakeBoardPage() {
       : null;
   const tabBrainGraphPending = (mainSection === "local" || mainSection === "cloud") && !activeTabBrainGraphRaw;
   const tabBrainGraph3D = useMemo(() => buildBrainLayerGraph3D(activeTabBrainGraphRaw), [activeTabBrainGraphRaw]);
+  const homeProjectionGraph3D = useMemo<Rag3DGraph>(() => {
+    const local = buildBrainLayerGraph3D(brainGraphLocal);
+    const cloud = buildBrainLayerGraph3D(brainGraphCloud);
+    const nodes = [...local.nodes, ...cloud.nodes];
+    const edges = [...local.edges, ...cloud.edges];
+    if (local.nodes.length && cloud.nodes.length) {
+      const localAnchors = local.nodes.slice(0, 8);
+      const cloudAnchors = cloud.nodes.slice(0, 8);
+      localAnchors.forEach((source, index) => {
+        const target = cloudAnchors[index % cloudAnchors.length];
+        if (!target) return;
+        edges.push({
+          source: source.id,
+          target: target.id,
+          relation: "visual_projection_only",
+          weight: 0.24,
+          source_type: "visual_projection",
+        });
+      });
+    }
+    return {
+      nodes,
+      edges,
+      traversal_path: nodes.slice(0, 32).map((node) => node.id),
+    };
+  }, [brainGraphCloud, brainGraphLocal]);
   const sectionMemoryGraph3D = mainSection === "cloud"
     ? tabBrainGraph3D
     : mainSection === "local"
       ? (graphPresentationMode === "local_private_memory" && !localBrainInitialized && !localWorkingMemoryOverlayActive && tabBrainGraph3D.nodes.length === 0
           ? emptyLocalBrainGraph3D
           : tabBrainGraph3D)
-      : memoryGraph3D;
+      : homeProjectionGraph3D.nodes.length
+        ? homeProjectionGraph3D
+        : memoryGraph3D;
   const displayGraph3D = graphSourceMode === "memory" ? sectionMemoryGraph3D : activeGraph3D ?? sectionMemoryGraph3D;
   const collectionDisplayNodeCount = buildRun ? activeGraph3D?.nodes.length ?? buildRun.graph_3d.nodes.length : displayGraph3D.nodes.length;
   const totalLiveNodeCount = buildRun ? rawGrowthPulseCount * liveGrowthBatchSize : 0;
@@ -3236,6 +3408,8 @@ export default function BakeBoardPage() {
   const daemonGraphReady = workspaceMode !== "daemon" || (localBackendConnected && daemonCanOperate && Boolean(learningDaemon?.worker_alive));
   const graphSyncPending = workspaceMode === "lab"
     && graphSourceMode === "memory"
+    && mainSection !== "local"
+    && mainSection !== "cloud"
     && !localBackendConnected
     && localBackendStatus !== "failed"
     && !buildRun;
@@ -3291,8 +3465,14 @@ export default function BakeBoardPage() {
 
   const displayMemoryNodeCount = visibleGraph3D.nodes.length;
   const displayMemoryEdgeCount = visibleGraph3D.edges.length;
-  const graphHeaderNodeCount = displayMemoryNodeCount;
-  const graphHeaderEdgeCount = displayMemoryEdgeCount;
+  const semanticStoreConceptCount = Number(semanticCloudStatus?.concepts ?? 0);
+  const semanticStoreRelationCount = Number(semanticCloudStatus?.relations ?? 0);
+  const graphHeaderNodeCount = mainSection === "cloud" && semanticStoreConceptCount > 0
+    ? semanticStoreConceptCount
+    : displayMemoryNodeCount;
+  const graphHeaderEdgeCount = mainSection === "cloud" && semanticStoreRelationCount > 0
+    ? semanticStoreRelationCount
+    : displayMemoryEdgeCount;
   const graphHeaderNodeText = tabBrainGraphPending ? "..." : graphHeaderNodeCount.toLocaleString();
   const graphHeaderEdgeText = tabBrainGraphPending ? "..." : graphHeaderEdgeCount.toLocaleString();
   const graphEmptyTitle = tabBrainGraphPending
@@ -3413,14 +3593,19 @@ export default function BakeBoardPage() {
   const contributionWaitingCredit = contributionPendingCredit;
   const contributionCreditTrend = useMemo(() => {
     const base = Math.max(0.2, contributionTotalCredit || contributionEstimatedTaskCredit || 0.8);
-    const activityBoost = contributionIsActive ? 0.34 : 0.08;
-    const gpuBoost = contributionGpuAvailable ? contributionGpuLimitEffective / 140 : 0.04;
-    const cpuBoost = contributionCpuUsage / 260;
-    const phase = contributionChartTick / 1.7;
-    const samples = [0.72, 0.78, 0.74, 0.86, 0.91, 0.88, 1.02, 0.98, 1.1, 1.16, 1.12, 1.24];
+    const activityBoost = contributionIsActive ? 0.48 : 0.12;
+    const gpuBoost = contributionGpuAvailable ? contributionGpuLimitEffective / 95 : 0.05;
+    const cpuBoost = contributionCpuUsage / 220;
+    const phase = contributionChartTick / 0.72;
+    const samples = Array.from({ length: 42 }, (_, index) => {
+      const localSpike = index % 7 === 0 ? 0.2 : index % 11 === 0 ? -0.14 : 0;
+      return 0.82 + Math.sin(index * 0.92) * 0.12 + Math.cos(index * 1.83) * 0.08 + localSpike;
+    });
     const values = samples.map((sample, index) => {
       const liveBias = (index / Math.max(1, samples.length - 1)) * (activityBoost + gpuBoost + cpuBoost);
-      const wave = Math.sin(phase + index * 0.82) * 0.11 + Math.cos(phase * 1.7 + index * 0.44) * 0.05;
+      const wave = Math.sin(phase + index * 0.96) * 0.18
+        + Math.cos(phase * 2.35 + index * 0.57) * 0.1
+        + Math.sin(phase * 4.1 + index * 1.31) * 0.045;
       return Number(Math.max(0, base * (sample + wave) + liveBias).toFixed(2));
     });
     const max = Math.max(...values, 1);
@@ -4298,6 +4483,36 @@ export default function BakeBoardPage() {
   const activeBrainMissing = Array.isArray(activeBrainGraph?.layers_missing) ? activeBrainGraph.layers_missing as AnyRecord[] : [];
   const activeBrainRenderedNodes = Number((activeBrainGraph?.stats as AnyRecord | undefined)?.rendered_nodes ?? 0);
   const activeBrainRenderedEdges = Number((activeBrainGraph?.stats as AnyRecord | undefined)?.rendered_edges ?? 0);
+  const activeBrainVisualizationState = (
+    (activeBrainGraph?.visualization_state && typeof activeBrainGraph.visualization_state === "object" && !Array.isArray(activeBrainGraph.visualization_state))
+      ? activeBrainGraph.visualization_state
+      : (activeBrainGraph?.stats as AnyRecord | undefined)?.visualization_state
+  ) as AnyRecord | undefined;
+  const graphVizLogical = (activeBrainVisualizationState?.logical && typeof activeBrainVisualizationState.logical === "object" && !Array.isArray(activeBrainVisualizationState.logical))
+    ? activeBrainVisualizationState.logical as AnyRecord
+    : {};
+  const graphVizMaterialized = (activeBrainVisualizationState?.materialized && typeof activeBrainVisualizationState.materialized === "object" && !Array.isArray(activeBrainVisualizationState.materialized))
+    ? activeBrainVisualizationState.materialized as AnyRecord
+    : {};
+  const graphVizRendered = (activeBrainVisualizationState?.rendered && typeof activeBrainVisualizationState.rendered === "object" && !Array.isArray(activeBrainVisualizationState.rendered))
+    ? activeBrainVisualizationState.rendered as AnyRecord
+    : {};
+  const graphVizVirtualization = (activeBrainVisualizationState?.virtualization && typeof activeBrainVisualizationState.virtualization === "object" && !Array.isArray(activeBrainVisualizationState.virtualization))
+    ? activeBrainVisualizationState.virtualization as AnyRecord
+    : {};
+  const graphHeaderStats = mainSection === "cloud"
+    ? [
+      { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: tabBrainGraphPending ? "..." : Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount).toLocaleString() },
+      { label: language === "ko" ? "Stored relations" : "Stored relations", value: tabBrainGraphPending ? "..." : Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount).toLocaleString() },
+      { label: language === "ko" ? "Materialized" : "Materialized", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
+      { label: language === "ko" ? "Rendered edges" : "Rendered edges", value: tabBrainGraphPending ? "..." : Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
+    ]
+    : [
+      { label: copy.nodes, value: graphHeaderNodeText },
+      { label: copy.relations, value: graphHeaderEdgeText },
+      { label: copy.sparsity, value: `${graphSparsity}%` },
+      { label: copy.communities, value: String(graphCommunities) },
+    ];
   const activeBrainOverlay = brainGraphOverlayStatus ?? ((activeBrainGraph?.stats as AnyRecord | undefined)?.overlay as AnyRecord | undefined) ?? {};
   const activeBrainGraphRows = activeBrainLayerCatalog.map((item) => {
     const count = Number(activeBrainLayerCounts?.[item.id] ?? 0);
@@ -4335,11 +4550,38 @@ export default function BakeBoardPage() {
   const sourceInspectorWarning = verifiedRemoteCloudBrain
     ? (language === "ko" ? "검증된 원격 Cloud Brain 브로커를 보고 있습니다." : "You are viewing a verified remote Cloud Brain broker.")
     : (language === "ko" ? "현재 화면은 실시간 원격 Cloud Brain이 아닙니다. 로컬 proof, 로컬 브로커 또는 미러 스냅샷입니다." : "You are not viewing the live remote Cloud Brain. This view is local proof, local broker, or mirror snapshot.");
+  const cloudGraphStats = (brainGraphCloud?.stats && typeof brainGraphCloud.stats === "object" && !Array.isArray(brainGraphCloud.stats))
+    ? brainGraphCloud.stats as AnyRecord
+    : {};
+  const cloudGraphLayerCounts = (cloudGraphStats.layer_counts && typeof cloudGraphStats.layer_counts === "object" && !Array.isArray(cloudGraphStats.layer_counts))
+    ? cloudGraphStats.layer_counts as AnyRecord
+    : {};
+  const cloudGraphEdgeLayerCounts = (cloudGraphStats.edge_layer_counts && typeof cloudGraphStats.edge_layer_counts === "object" && !Array.isArray(cloudGraphStats.edge_layer_counts))
+    ? cloudGraphStats.edge_layer_counts as AnyRecord
+    : {};
+  const semanticCloudConcepts = semanticStoreConceptCount || Number(cloudGraphLayerCounts.semantic_cloud ?? 0);
+  const semanticCloudRelations = semanticStoreRelationCount || Number(cloudGraphEdgeLayerCounts.semantic_cloud ?? 0);
+  const semanticCloudEvidence = Number(semanticCloudStatus?.evidence ?? 0);
+  const semanticCloudLoaded = Boolean(semanticCloudStatus) || semanticCloudConcepts > 0 || semanticCloudRelations > 0;
+  const cloudLoadingText = language === "ko" ? "확인 중" : "Checking";
+  const cloudNumberText = (value: number) => semanticCloudLoaded ? value.toLocaleString() : "...";
+  const semanticLastGrowthRun = (semanticCloudStatus?.last_growth_run && typeof semanticCloudStatus.last_growth_run === "object" && !Array.isArray(semanticCloudStatus.last_growth_run))
+    ? semanticCloudStatus.last_growth_run as AnyRecord
+    : {};
+  const semanticRecentGrowthDelta = Number(semanticLastGrowthRun.concepts_created ?? 0)
+    + Number(semanticLastGrowthRun.concepts_merged ?? 0)
+    + Number(semanticLastGrowthRun.relations_created ?? 0)
+    + Number(semanticLastGrowthRun.relations_strengthened ?? 0)
+    + Number(semanticLastGrowthRun.evidence_added ?? 0);
+  const semanticWebSeedActive = Boolean(semanticCloudStatus?.web_seed_feeder_active);
+  const semanticSelfGrowthActive = Boolean(semanticCloudStatus?.self_growth_active) || semanticWebSeedActive;
   const semanticCloudRows = [
-    { label: language === "ko" ? "개념" : "Concepts", value: String(semanticCloudStatus?.concepts ?? 0) },
-    { label: language === "ko" ? "관계" : "Relations", value: String(semanticCloudStatus?.relations ?? 0) },
-    { label: language === "ko" ? "근거" : "Evidence", value: String(semanticCloudStatus?.evidence ?? 0) },
+    { label: language === "ko" ? "개념" : "Concepts", value: cloudNumberText(semanticCloudConcepts) },
+    { label: language === "ko" ? "관계" : "Relations", value: cloudNumberText(semanticCloudRelations) },
+    { label: language === "ko" ? "근거" : "Evidence", value: cloudNumberText(semanticCloudEvidence) },
     { label: language === "ko" ? "저장소" : "Store", value: semanticCloudStatus?.proof_store_only === false ? "external" : "proof only" },
+    { label: language === "ko" ? "자가증식" : "Self-growth", value: semanticSelfGrowthActive ? (language === "ko" ? "활성" : "active") : (language === "ko" ? "대기" : "idle") },
+    { label: language === "ko" ? "최근 변화" : "Recent delta", value: String(semanticRecentGrowthDelta) },
   ];
   const semanticGrowthRows = [
     { label: language === "ko" ? "생성 개념" : "Concepts created", value: String(semanticGrowthRun?.concepts_created ?? 0) },
@@ -4366,59 +4608,60 @@ export default function BakeBoardPage() {
   const webFeederState = (cloudBrainStatus?.web_feeder_state && typeof cloudBrainStatus.web_feeder_state === "object" && !Array.isArray(cloudBrainStatus.web_feeder_state))
     ? cloudBrainStatus.web_feeder_state as AnyRecord
     : {};
-  const webFeederEnabled = Boolean(webFeederState.enabled);
-  const webFeederStatus = String(webFeederState.status ?? webFeederState.last_status ?? "idle");
+  const webFeederEnabled = Boolean(webFeederState.enabled) || semanticWebSeedActive;
+  const webFeederStatus = String(semanticCloudStatus?.web_seed_feeder_status ?? webFeederState.status ?? webFeederState.last_status ?? "idle");
   const webFeederLastRun = String(webFeederState.last_run_at ?? "-");
   const webFeederCreated = Number(webFeederState.fragments_created ?? 0);
   const webFeederRejected = Number(webFeederState.fragments_rejected ?? 0);
+  const webFeederSemanticIngested = Number(semanticCloudStatus?.web_seed_semantic_ingested ?? webFeederState.semantic_ingested ?? 0);
+  const webFeederDiscovered = Number(semanticCloudStatus?.web_seed_discovered_sources_added ?? webFeederState.discovered_sources_added ?? 0);
   const webFeederRows = [
     { label: language === "ko" ? "상태" : "State", value: webFeederEnabled ? (language === "ko" ? "활성" : "Enabled") : (language === "ko" ? "비활성" : "Disabled") },
     { label: language === "ko" ? "최근 실행" : "Last run", value: webFeederLastRun },
     { label: language === "ko" ? "확인 소스" : "Sources checked", value: String(webFeederState.sources_checked ?? 0) },
     { label: language === "ko" ? "후보 생성" : "Candidates", value: String(webFeederCreated) },
+    { label: language === "ko" ? "수집 반영" : "Semantic ingest", value: String(webFeederSemanticIngested) },
+    { label: language === "ko" ? "발견 소스" : "Discovered", value: String(webFeederDiscovered) },
     { label: language === "ko" ? "거절" : "Rejected", value: String(webFeederRejected) },
     { label: language === "ko" ? "마지막 상태" : "Last status", value: webFeederStatus },
   ];
   const webFeederMessage = !webFeederEnabled
     ? (language === "ko" ? "Web Seed Feeder는 비활성 상태입니다." : "Web Seed Feeder is disabled.")
-    : webFeederCreated > 0
-      ? (language === "ko" ? "새 공개 후보 fragment가 생성되었습니다. 검증/수집 대기 중입니다." : "New public candidate fragments were created. Waiting for verification/ingestion.")
+    : webFeederSemanticIngested > 0 || semanticRecentGrowthDelta > 0
+      ? (language === "ko" ? "공개 웹 시드가 Semantic Cloud proof store에 반영되고 있습니다." : "Public web seeds are being reflected into the Semantic Cloud proof store.")
+      : webFeederCreated > 0
+        ? (language === "ko" ? "새 공개 후보 fragment가 생성되었습니다. 검증/수집 대기 중입니다." : "New public candidate fragments were created. Waiting for verification/ingestion.")
       : webFeederStatus === "no_new_payload" || webFeederStatus === "listening"
         ? (language === "ko" ? "새 공개 seed payload를 대기 중입니다." : "Listening for new public seed payloads.")
         : (language === "ko" ? "Cloud Brain 카운트는 수집과 검증 이후에만 갱신됩니다." : "Cloud Brain counts update only after ingestion and verification.");
   const controlledGrowthState = (cloudBrainStatus?.controlled_self_growth_state && typeof cloudBrainStatus.controlled_self_growth_state === "object" && !Array.isArray(cloudBrainStatus.controlled_self_growth_state))
     ? cloudBrainStatus.controlled_self_growth_state as AnyRecord
     : {};
-  const autonomousSelfGrowthActive = Boolean(
-    webFeederEnabled
-    && webFeederCreated > 0
-    && controlledGrowthState.last_ingestion_success
-    && String(controlledGrowthState.provenance_type ?? "").toLowerCase() === "autonomous_growth"
-  );
-  const semanticCloudConcepts = Number(semanticCloudStatus?.concepts ?? 0);
-  const semanticCloudRelations = Number(semanticCloudStatus?.relations ?? 0);
-  const semanticCloudEvidence = Number(semanticCloudStatus?.evidence ?? 0);
+  const autonomousSelfGrowthActive = Boolean(semanticSelfGrowthActive && (semanticRecentGrowthDelta > 0 || webFeederSemanticIngested > 0 || semanticCloudConcepts > 0));
   const cloudTruthRows = [
-    { label: language === "ko" ? "Store" : "Store", value: semanticCloudStatus?.proof_store_only === false ? "external" : "proof only" },
-    { label: language === "ko" ? "Concepts" : "Concepts", value: String(semanticCloudConcepts) },
-    { label: language === "ko" ? "Relations" : "Relations", value: String(semanticCloudRelations) },
-    { label: language === "ko" ? "Evidence" : "Evidence", value: String(semanticCloudEvidence) },
-    { label: language === "ko" ? "Self-growth" : "Self-growth", value: autonomousSelfGrowthActive ? (language === "ko" ? "활성" : "active") : (language === "ko" ? "비활성" : "inactive") },
-    { label: language === "ko" ? "Web feeder" : "Web feeder", value: webFeederEnabled ? webFeederStatus : (language === "ko" ? "비활성" : "inactive") },
-    { label: language === "ko" ? "Source" : "Source", value: semanticCloudConcepts > 0 ? (language === "ko" ? "sample / proof" : "sample / proof") : "empty" },
-    { label: language === "ko" ? "Local write" : "Local write", value: "false" },
+    { label: "Logical Sphere", value: graphVizLogical.sphere_topology === false ? "off" : "ON" },
+    { label: "Nodes", value: cloudNumberText(Number(graphVizLogical.node_count ?? semanticCloudConcepts)) },
+    { label: "Stored relations", value: cloudNumberText(Number(graphVizLogical.stored_relation_count ?? semanticCloudRelations)) },
+    { label: "Candidate pairs", value: `${cloudNumberText(Number(graphVizLogical.possible_candidate_pairs ?? graphVizLogical.possible_pair_candidates ?? 0))} implicit` },
+    { label: "Active Chunks", value: `${Number(graphVizMaterialized.active_chunks ?? 0).toLocaleString()} · LOD ${String((activeBrainVisualizationState?.spherical_view as AnyRecord | undefined)?.lod ?? graphVizMaterialized.zoom_level ?? 0)}` },
+    { label: "Materialized nodes", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.node_count ?? activeBrainRenderedNodes).toLocaleString() },
+    { label: "Verified relations", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.verified_relation_count ?? graphVizMaterialized.relation_count ?? semanticCloudRelations).toLocaleString() },
+    { label: "Focus relations", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.focus_relation_count ?? 0).toLocaleString() },
+    { label: "Implicit pairs", value: tabBrainGraphPending ? "..." : Number(graphVizMaterialized.implicit_candidate_pairs ?? 0).toLocaleString() },
+    { label: "Rendered Frame", value: tabBrainGraphPending ? "..." : `${Number(graphVizRendered.node_count ?? activeBrainRenderedNodes).toLocaleString()} / ${Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString()}` },
+    { label: "Visual hints", value: tabBrainGraphPending ? "..." : Number(graphVizRendered.visual_edge_hints ?? 0).toLocaleString() },
+    { label: "Pair edges sent", value: String(graphVizMaterialized.candidate_pair_edges_sent ?? 0) },
+    { label: "Virtualization", value: graphVizVirtualization.candidate_pairs_implicit === false ? "off" : "spherical chunks" },
   ];
   const cloudSourceCompactRows = [
-    { label: language === "ko" ? "Active source" : "Active source", value: activeCloudSourceMode },
-    { label: language === "ko" ? "Remote broker" : "Remote broker", value: remoteBrokerInspector.reachable ? String(remoteBrokerInspector.broker_state ?? "reachable") : "not verified" },
-    { label: language === "ko" ? "Mirror snapshot" : "Mirror snapshot", value: mirrorInspector.source_is_remote ? "remote" : "not live cloud" },
-    { label: language === "ko" ? "Local Brain" : "Local Brain", value: `${Number(sourceInspector.local_brain_state?.local_total_nodes ?? 0)} / ${Number(sourceInspector.local_brain_state?.local_total_edges ?? 0)}` },
+    { label: language === "ko" ? "소스" : "Source", value: cloudBrainSourceInspector ? activeCloudSourceMode : cloudLoadingText },
+    { label: language === "ko" ? "원격" : "Remote", value: cloudBrainSourceInspector ? (remoteBrokerInspector.reachable ? String(remoteBrokerInspector.broker_state ?? "reachable") : "not verified") : cloudLoadingText },
+    { label: language === "ko" ? "로컬" : "Local", value: `${Number(sourceInspector.local_brain_state?.local_total_nodes ?? 0)} / ${Number(sourceInspector.local_brain_state?.local_total_edges ?? 0)}` },
   ];
   const cloudAttachmentCompactRows = [
-    { label: language === "ko" ? "Cloud attached" : "Cloud attached", value: `${cloudAttachedNodeCount} / ${cloudAttachedEdgeCount}` },
-    { label: language === "ko" ? "Working Memory" : "Working Memory", value: cloudAttachedNodeCount > 0 ? "temporary" : "idle" },
-    { label: language === "ko" ? "Bundles" : "Bundles", value: String(overlayBundleIds.length) },
-    { label: language === "ko" ? "Local write" : "Local write", value: "false" },
+    { label: language === "ko" ? "임시 노드" : "Temp nodes", value: `${cloudAttachedNodeCount}` },
+    { label: language === "ko" ? "임시 관계" : "Temp edges", value: `${cloudAttachedEdgeCount}` },
+    { label: language === "ko" ? "상태" : "State", value: cloudAttachedNodeCount > 0 ? "temporary" : "idle" },
   ];
   const cloudProofGraphState = (cloudBrainStatus?.cloud_graph_state && typeof cloudBrainStatus.cloud_graph_state === "object" && !Array.isArray(cloudBrainStatus.cloud_graph_state))
     ? cloudBrainStatus.cloud_graph_state as AnyRecord
@@ -4828,7 +5071,7 @@ export default function BakeBoardPage() {
         }, localBackendConnected ? { localOnly: true } : {});
       }
       await refreshGraphHub();
-      const cloudGraph = await fetchJson<AnyRecord>(`/api/brain/graph?view=cloud&layers=${encodeURIComponent(cloudBrainGraphLayers.join(","))}&max_nodes=1000&max_edges=3000`).catch(() => null);
+      const cloudGraph = await fetchJson<AnyRecord>(brainGraphApiPath("cloud", cloudBrainGraphLayers, "full")).catch(() => null);
       if (cloudGraph) setBrainGraphCloud(cloudGraph);
     } catch (caught) {
       setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub action failed.");
@@ -5561,10 +5804,9 @@ export default function BakeBoardPage() {
                 <h2>{presentationCopy.graphTitle}</h2>
               </div>
               <div className="atanor-user-stat-stack">
-                <span>{copy.nodes}<strong>{graphHeaderNodeText}</strong></span>
-                <span>{copy.relations}<strong>{graphHeaderEdgeText}</strong></span>
-                <span>{copy.sparsity}<strong>{graphSparsity}%</strong></span>
-                <span>{copy.communities}<strong>{graphCommunities}</strong></span>
+                {graphHeaderStats.map((item) => (
+                  <span key={item.label}>{item.label}<strong>{item.value}</strong></span>
+                ))}
               </div>
             </div>
             <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode}>
@@ -5646,6 +5888,15 @@ export default function BakeBoardPage() {
                       : (language === "ko" ? "Cloud 부착" : "Attach Cloud")}
                   </button>
                 ) : null}
+                {(mainSection === "local" || mainSection === "cloud") && selectedMemory?.id ? (
+                  <button
+                    type="button"
+                    onClick={() => refreshBrainGraphPanels("full")}
+                    aria-label={language === "ko" ? "선택 chunk 드러내기" : "Reveal selected chunk"}
+                  >
+                    {language === "ko" ? "Chunk 보기" : "Reveal chunk"}
+                  </button>
+                ) : null}
                 <button onClick={() => zoomGraph(-0.18)} aria-label="Zoom out">-</button>
                 <button onClick={() => zoomGraph(0.18)} aria-label="Zoom in">+</button>
                 <button onClick={resetGraph} aria-label={language === "ko" ? "그래프 초기화" : "Reset graph"}>
@@ -5676,14 +5927,14 @@ export default function BakeBoardPage() {
               <span><i data-kind="line" />{copy.strongRelation}</span>
               <span><i data-kind="line-weak" />{copy.weakRelation}</span>
             </div>
-            {mainSection === "local" || mainSection === "cloud" ? (
-              <section className="atanor-brain-layer-panel" data-compact={mainSection === "cloud"}>
+            {mainSection === "local" ? (
+              <section className="atanor-brain-layer-panel">
                 <header>
                   <div>
-                    <span>{mainSection === "local" ? "LOCAL VIEW" : "CLOUD VIEW"}</span>
-                    <h3>{mainSection === "local" ? (language === "ko" ? "로컬 브레인 레이어" : "Local Brain Layers") : (language === "ko" ? "클라우드 브레인 레이어" : "Cloud Brain Layers")}</h3>
+                    <span>LOCAL VIEW</span>
+                    <h3>{language === "ko" ? "로컬 브레인 레이어" : "Local Brain Layers"}</h3>
                   </div>
-                  <button type="button" onClick={refreshBrainGraphPanels}>
+                  <button type="button" onClick={() => refreshBrainGraphPanels("full")}>
                     {language === "ko" ? "레이어 갱신" : "Refresh layers"}
                   </button>
                 </header>
@@ -5693,32 +5944,22 @@ export default function BakeBoardPage() {
                   <span><small>Overlay</small><strong>{activeBrainOverlay?.working_memory_active ? "active" : "idle"}</strong></span>
                   <span><small>Local write</small><strong>{String(Boolean(activeBrainOverlay?.local_brain_write)).toLowerCase()}</strong></span>
                 </div>
-                {mainSection === "cloud" ? (
-                  <div className="atanor-brain-layer-strip" aria-label="Cloud Brain layer summary">
-                    {activeBrainGraphRows.filter((row) => row.enabled && row.count > 0).slice(0, 4).map((row) => (
-                      <span key={row.id}>{row.label}<strong>{row.count.toLocaleString()}</strong></span>
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    <div className="atanor-brain-layer-list">
-                      {activeBrainGraphRows.map((row) => (
-                        <button
-                          key={row.id}
-                          type="button"
-                          data-enabled={row.enabled}
-                          data-missing={Boolean(row.missingReason)}
-                          onClick={() => toggleBrainGraphLayer(activeBrainView, row.id)}
-                        >
-                          <span>{row.label}</span>
-                          <strong>{row.enabled ? (tabBrainGraphPending ? "..." : row.count.toLocaleString()) : "off"}</strong>
-                          {row.missingReason ? <small>{row.missingReason}</small> : null}
-                        </button>
-                      ))}
-                    </div>
-                    <p>{language === "ko" ? "Cloud attached 노드는 로컬 브레인 카운트에 포함하지 않습니다." : "Cloud-attached nodes are not counted as Local Brain memory."}</p>
-                  </>
-                )}
+                <div className="atanor-brain-layer-list">
+                  {activeBrainGraphRows.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      data-enabled={row.enabled}
+                      data-missing={Boolean(row.missingReason)}
+                      onClick={() => toggleBrainGraphLayer(activeBrainView, row.id)}
+                    >
+                      <span>{row.label}</span>
+                      <strong>{row.enabled ? (tabBrainGraphPending ? "..." : row.count.toLocaleString()) : "off"}</strong>
+                      {row.missingReason ? <small>{row.missingReason}</small> : null}
+                    </button>
+                  ))}
+                </div>
+                <p>{language === "ko" ? "Cloud attached 노드는 로컬 브레인 카운트에 포함하지 않습니다." : "Cloud-attached nodes are not counted as Local Brain memory."}</p>
               </section>
             ) : null}
           </article>
@@ -5766,7 +6007,7 @@ export default function BakeBoardPage() {
               <>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
                   <h2>{language === "ko" ? "Cloud Brain" : "Cloud Brain"}</h2>
-                  <span className="atanor-user-readonly-badge">{language === "ko" ? "PROOF STORE" : "PROOF STORE"}</span>
+                  <span className="atanor-user-readonly-badge">{language === "ko" ? "읽기 전용" : "READ ONLY"}</span>
                   <div className="atanor-user-viewer-grid">
                     {cloudTruthRows.map((row) => (
                       <span key={row.label}>
@@ -5775,14 +6016,35 @@ export default function BakeBoardPage() {
                       </span>
                     ))}
                   </div>
-                  <p>
-                    {language === "ko"
-                      ? "현재 화면은 live global Cloud Brain이 아니라 로컬 semantic proof store와 임시 Cloud attached 상태를 읽기 전용으로 보여줍니다."
-                      : "This view is a read-only local semantic proof store and temporary Cloud-attached state, not a live global Cloud Brain."}
-                  </p>
+                  <div className="atanor-cloud-quick-actions">
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={accelerateSemanticCloudBatch}
+                      disabled={semanticGrowthRunning}
+                    >
+                      {semanticGrowthRunning
+                        ? (language === "ko" ? "가속 중" : "Accelerating")
+                        : (language === "ko" ? "1000 배치 학습" : "Learn 1000 batch")}
+                    </button>
+                    <button
+                      className="atanor-proof-action"
+                      type="button"
+                      onClick={refreshSemanticCloud}
+                      disabled={semanticGrowthRunning}
+                    >
+                      {language === "ko" ? "그래프 갱신" : "Refresh graph"}
+                    </button>
+                  </div>
+                  {semanticGrowthRun ? (
+                    <small className="atanor-cloud-growth-inline">
+                      +{Number(semanticGrowthRun.concepts_created ?? 0).toLocaleString()} concepts / +{Number(semanticGrowthRun.relations_created ?? 0).toLocaleString()} relations
+                    </small>
+                  ) : null}
+                  {semanticGrowthError ? <small className="atanor-cloud-growth-inline" data-error="true">{semanticGrowthError}</small> : null}
                 </section>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Source Inspector" : "Source Inspector"}</h2>
+                  <h2>{language === "ko" ? "소스 상태" : "Source"}</h2>
                   <span className="atanor-user-readonly-badge">{verifiedRemoteCloudBrain ? "REMOTE VERIFIED" : "LOCAL / MIRROR"}</span>
                   <div className="atanor-user-viewer-grid">
                     {cloudSourceCompactRows.map((row) => (
@@ -5792,32 +6054,9 @@ export default function BakeBoardPage() {
                       </span>
                     ))}
                   </div>
-                  <p>{sourceInspectorWarning}</p>
-                  {remoteCloudProofError ? <p>{remoteCloudProofError}</p> : null}
-                  {remoteCloudProof ? (
-                    <p>{language === "ko" ? "마지막 검증" : "Last proof"}: {remoteProofStatus}</p>
-                  ) : null}
                 </section>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Semantic Cloud Store" : "Semantic Cloud Store"}</h2>
-                  <span className="atanor-user-readonly-badge">{language === "ko" ? "SAMPLE / PROOF" : "SAMPLE / PROOF"}</span>
-                  <div className="atanor-user-viewer-grid">
-                    {semanticCloudRows.map((row) => (
-                      <span key={row.label}>
-                        <small>{row.label}</small>
-                        <strong>{row.value}</strong>
-                      </span>
-                    ))}
-                  </div>
-                  <p>
-                    {language === "ko"
-                      ? "표시 중인 semantic cloud는 proof/sample ingest 기반입니다. 자율 성장 또는 원격 공용 그래프로 과장하지 않습니다."
-                      : "The visible semantic cloud is proof/sample-ingest based. It is not presented as autonomous growth or a verified remote public graph."}
-                  </p>
-                  {semanticGrowthError ? <p>{semanticGrowthError}</p> : null}
-                </section>
-                <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Cloud Attached" : "Cloud Attached"}</h2>
+                  <h2>{language === "ko" ? "임시 연결" : "Temporary Attach"}</h2>
                   <span className="atanor-user-readonly-badge">{cloudAttachedNodeCount > 0 ? "TEMPORARY" : "IDLE"}</span>
                   <div className="atanor-user-viewer-grid">
                     {cloudAttachmentCompactRows.map((row) => (
@@ -5827,45 +6066,24 @@ export default function BakeBoardPage() {
                       </span>
                     ))}
                   </div>
-                  <p>
-                    {language === "ko"
-                      ? "Cloud attached 노드는 임시 Working Memory overlay이며 Local Brain에 저장되지 않습니다."
-                      : "Cloud-attached nodes are temporary Working Memory overlays and are not saved into Local Brain."}
-                  </p>
                 </section>
-                <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>Web Seed Feeder</h2>
-                  <span className="atanor-user-readonly-badge">{webFeederEnabled ? (language === "ko" ? "대기 중" : "LISTENING") : (language === "ko" ? "비활성" : "DISABLED")}</span>
-                  <div className="atanor-user-viewer-grid">
-                    {webFeederRows.map((row) => (
-                      <span key={row.label}>
-                        <small>{row.label}</small>
-                        <strong>{row.value}</strong>
-                      </span>
-                    ))}
-                  </div>
-                  <p>{webFeederMessage}</p>
-                  <p>
-                    {language === "ko"
-                      ? "Cloud Brain 카운트는 후보 생성이 아니라 실제 수집과 검증 이후에만 갱신됩니다."
-                      : "Cloud Brain counts change only after actual ingestion and verification, not candidate creation."}
-                  </p>
-                </section>
-                <button
-                  className="atanor-cloud-diagnostics-toggle"
-                  type="button"
-                  onClick={() => setCloudDiagnosticsOpen((open) => !open)}
-                  aria-expanded={cloudDiagnosticsOpen}
-                >
-                  {cloudDiagnosticsOpen
-                    ? (language === "ko" ? "진단 닫기" : "Close Diagnostics")
-                    : (language === "ko" ? "진단 열기" : "Open Diagnostics")}
-                </button>
-                {cloudDiagnosticsOpen ? (
+                {workspaceMode === "lab" ? (
                   <>
+                    <button
+                      className="atanor-cloud-diagnostics-toggle"
+                      type="button"
+                      onClick={() => setCloudDiagnosticsOpen((open) => !open)}
+                      aria-expanded={cloudDiagnosticsOpen}
+                    >
+                      {cloudDiagnosticsOpen
+                        ? (language === "ko" ? "진단 닫기" : "Close Diagnostics")
+                        : (language === "ko" ? "진단 열기" : "Open Diagnostics")}
+                    </button>
+                    {cloudDiagnosticsOpen ? (
+                      <>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
-                  <h2>{language === "ko" ? "Controlled Fixture Proof" : "Controlled Fixture Proof"}</h2>
-                  <span className="atanor-user-readonly-badge">{controlledGrowthProof?.controlled_self_growth ? "FIXTURE PASSED" : "FIXTURE ONLY"}</span>
+                  <h2>{language === "ko" ? "Fixture 진단" : "Fixture Diagnostic"}</h2>
+                  <span className="atanor-user-readonly-badge">{controlledGrowthProof?.controlled_self_growth ? "PASSED" : "OPTIONAL"}</span>
                   <button
                     className="atanor-proof-action"
                     type="button"
@@ -5874,7 +6092,7 @@ export default function BakeBoardPage() {
                   >
                     {controlledGrowthRunning
                       ? (language === "ko" ? "검증 중" : "Running")
-                      : (language === "ko" ? "제한 fixture 검증 실행" : "Run bounded fixture proof")}
+                      : (language === "ko" ? "fixture 검증" : "Run fixture proof")}
                   </button>
                   <div className="atanor-user-viewer-grid">
                     {controlledGrowthRows.map((row) => (
@@ -5884,7 +6102,11 @@ export default function BakeBoardPage() {
                       </span>
                     ))}
                   </div>
-                  <p>{controlledGrowthMessage}</p>
+                  <p>
+                    {language === "ko"
+                      ? "이 카드는 현재 자가증식 상태가 아니라 제한된 fixture 검증입니다. 실제 성장은 위 Semantic Cloud 수치와 Web Seed 상태를 기준으로 봅니다."
+                      : "This card is a bounded fixture check, not the live self-growth state. Use Semantic Cloud counts and Web Seed status for current growth."}
+                  </p>
                   {controlledGrowthError ? <p>{controlledGrowthError}</p> : null}
                 </section>
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
@@ -6177,6 +6399,8 @@ export default function BakeBoardPage() {
                     </p>
                   ))}
                 </section>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
               </>
@@ -6275,6 +6499,32 @@ export default function BakeBoardPage() {
                     </span>
                   ))}
                 </div>
+                <div className="atanor-cloud-quick-actions">
+                  <button
+                    className="atanor-proof-action"
+                    type="button"
+                    onClick={accelerateSemanticCloudBatch}
+                    disabled={semanticGrowthRunning}
+                  >
+                    {semanticGrowthRunning
+                      ? (language === "ko" ? "가속 중" : "Accelerating")
+                      : (language === "ko" ? "1000 배치 학습" : "Learn 1000 batch")}
+                  </button>
+                  <button
+                    className="atanor-proof-action"
+                    type="button"
+                    onClick={refreshSemanticCloud}
+                    disabled={semanticGrowthRunning}
+                  >
+                    {language === "ko" ? "그래프 갱신" : "Refresh graph"}
+                  </button>
+                </div>
+                {semanticGrowthRun ? (
+                  <small className="atanor-cloud-growth-inline">
+                    +{Number(semanticGrowthRun.concepts_created ?? 0).toLocaleString()} concepts / +{Number(semanticGrowthRun.relations_created ?? 0).toLocaleString()} relations
+                  </small>
+                ) : null}
+                {semanticGrowthError ? <small className="atanor-cloud-growth-inline" data-error="true">{semanticGrowthError}</small> : null}
                 <p>
                   {language === "ko"
                     ? "Cloud Brain은 현재 공용 후보와 proof store 상태를 관찰하는 읽기 전용 화면입니다. 질문 생성과 개인 메모리 검색은 로컬 브레인에서만 실행됩니다."
@@ -6960,4 +7210,5 @@ export default function BakeBoardPage() {
   );
   */
 }
+
 
