@@ -94,108 +94,14 @@ class SemanticCloudStore:
         return True
 
     def status(self) -> dict[str, Any]:
-        concepts = self.load_concepts()
-        relations = self.load_relations()
-        evidence = self.load_evidence()
-        provenance_summary = {
-            "semantic_cloud_proof_store": {
-                "concepts": len(concepts),
-                "relations": len(relations),
-                "evidence": len(evidence),
-            },
-            "manual_sample_ingest": {
-                "concepts": len(concepts),
-                "relations": len(relations),
-            },
-            "autonomous_growth": {
-                "concepts": 0,
-                "relations": 0,
-                "active": False,
-            },
-            "mirror_snapshot": {
-                "used_as_live_cloud": False,
-            },
-        }
-        return {
-            "proof_store_path": str(self.paths["store"]),
-            "concepts": len(concepts),
-            "relations": len(relations),
-            "evidence": len(evidence),
-            "store_path": str(self.paths["store"]),
-            "store_backend": STORE_BACKEND,
-            "last_growth_run": self.latest_growth_run(),
-            "old_mirror_snapshot_used_as_live_cloud": False,
-            "proof_store_only": True,
-            "local_brain_write": False,
-            "external_llm_used": False,
-            "external_sllm_used": False,
-            "global_cloud_claim": False,
-            "self_growth_active": False,
-            "web_seed_feeder_active": False,
-            "sample_or_proof_data_visible": bool(concepts or relations),
-            "data_provenance_label": "manual_sample_ingest_or_proof_store",
-            "provenance_summary": provenance_summary,
-        }
+        from .read_model import load_cloud_read_model_status
+
+        return load_cloud_read_model_status(self.root)
 
     def graph_sample(self, limit_nodes: int = 1000, limit_edges: int = 3000) -> dict[str, Any]:
-        concepts = list(self.load_concepts().values())
-        relations = list(self.load_relations().values())
-        nodes = [
-            {
-                "id": row["concept_id"],
-                "label": row.get("canonical_name") or row["concept_id"],
-                "concept_id": row["concept_id"],
-                "aliases": row.get("aliases", []),
-                "language_labels": row.get("language_labels", {}),
-                "trust": row.get("trust", 0.5),
-                "confidence": row.get("confidence", 0.5),
-                "seen_count": row.get("seen_count", 1),
-                "source_scope": "cloud",
-                "proof_store_only": True,
-                "provenance_type": (row.get("metadata", {}).get("provenance_type") if isinstance(row.get("metadata"), dict) else None) or "manual_sample_ingest",
-                "source_run_id": row.get("metadata", {}).get("run_id") if isinstance(row.get("metadata"), dict) else None,
-                "source_text_hash": (row.get("source_hashes") or [None])[0] if isinstance(row.get("source_hashes"), list) else None,
-                "source_label": "Semantic Cloud proof store",
-                "is_demo_sample": True,
-                "is_autonomous_growth": False,
-                "local_brain_write": False,
-            }
-            for row in concepts[:limit_nodes]
-        ]
-        node_ids = {node["id"] for node in nodes}
-        edges = [
-            {
-                "id": row["relation_id"],
-                "source": row["source_concept_id"],
-                "target": row["target_concept_id"],
-                "relation": row["relation"],
-                "weight": row.get("weight", 0.5),
-                "confidence": row.get("confidence", 0.5),
-                "seen_count": row.get("seen_count", 1),
-                "source_scope": "cloud",
-                "proof_store_only": True,
-                "provenance_type": (row.get("metadata", {}).get("provenance_type") if isinstance(row.get("metadata"), dict) else None) or "manual_sample_ingest",
-                "source_run_id": row.get("metadata", {}).get("run_id") if isinstance(row.get("metadata"), dict) else None,
-                "source_text_hash": (row.get("source_hashes") or [None])[0] if isinstance(row.get("source_hashes"), list) else None,
-                "source_label": "Semantic Cloud proof store",
-                "is_demo_sample": True,
-                "is_autonomous_growth": False,
-                "local_brain_write": False,
-            }
-            for row in relations
-            if row.get("source_concept_id") in node_ids and row.get("target_concept_id") in node_ids
-        ][:limit_edges]
-        return {
-            "nodes": nodes,
-            "edges": edges,
-            "bounded": len(concepts) > limit_nodes or len(relations) > limit_edges,
-            "proof_store_only": True,
-            "counts": {
-                "concepts": len(concepts),
-                "relations": len(relations),
-                "evidence": len(self.load_evidence()),
-            },
-        }
+        from .read_model import load_fast_graph_sample
+
+        return load_fast_graph_sample(self.root, limit_nodes=limit_nodes, limit_edges=limit_edges)
 
     def latest_growth_run(self) -> dict[str, Any] | None:
         runs = sorted(self.paths["growth_runs"].glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
