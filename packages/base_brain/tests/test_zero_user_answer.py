@@ -7,6 +7,7 @@ FORBIDDEN = ["Local Brain", "Cloud Brain", "Working Memory", "Q-Cortex", "source
 def test_zero_user_answer_known_prompt_is_clean() -> None:
     result = answer_with_base_brain("쿠버네티스가 뭐야?", language="ko")
     assert result["answer"]
+    assert "쿠버네티스" in result["answer"]
     assert result["semantic_context_count"] > 0
     assert result["surface_candidate_count"] > 0
     assert result["local_user_brain_used"] is False
@@ -17,6 +18,12 @@ def test_zero_user_answer_known_prompt_is_clean() -> None:
 
 
 def test_zero_user_answer_unsupported_question_does_not_hallucinate() -> None:
-    result = answer_with_base_brain("오늘 내 동네 비가 올지 알려줘.", language="ko")
-    assert "부족" in result["answer"] or "외부" in result["answer"]
+    result = answer_with_base_brain("오늘 우리 동네 비가 올지 알려줘", language="ko")
+    assert "근거" in result["answer"] or "부족" in result["answer"]
     assert result["external_web_used"] is False
+
+
+def test_zero_user_answer_rejects_unverified_person() -> None:
+    result = answer_with_base_brain("유재석이 누구야", language="ko")
+    assert "검증된 근거" in result["answer"]
+    assert result["useful_answer"] is False

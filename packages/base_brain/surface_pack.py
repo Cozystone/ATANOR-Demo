@@ -37,11 +37,11 @@ def build_general_surface_pack_v0() -> dict[str, Any]:
     constructions = [
         _construction("direct_definition_ko", "ko", "definition", "X는 Y를 하는 개념입니다.", ["direct_answer", "simple_explanation"], "clear", "beginner", ["concept", "category", "function"], 0.86, "definition"),
         _construction("beginner_analogy_ko", "ko", "analogy", "쉽게 보면 X는 Y에 가깝습니다.", ["beginner_analogy", "example_bridge"], "friendly", "beginner", ["concept", "analogy"], 0.78, "analogy"),
-        _construction("contrast_explanation_ko", "ko", "comparison", "A는 ..., B는 ...라는 점이 다릅니다.", ["contrast_frame"], "clear", "intermediate", ["left", "right", "difference"], 0.82, "contrast"),
-        _construction("cause_effect_ko", "ko", "cause_effect", "A가 있기 때문에 B가 가능해집니다.", ["simple_explanation"], "clear", "intermediate", ["cause", "effect"], 0.74, "causal"),
+        _construction("contrast_explanation_ko", "ko", "comparison", "A는 ..., B는 ...에 가깝습니다.", ["contrast_frame"], "clear", "intermediate", ["left", "right", "difference"], 0.82, "contrast"),
+        _construction("cause_effect_ko", "ko", "cause_effect", "A 때문에 B가 가능해집니다.", ["simple_explanation"], "clear", "intermediate", ["cause", "effect"], 0.74, "causal"),
         _construction("step_by_step_ko", "ko", "process", "먼저 ..., 다음으로 ..., 마지막으로 ...", ["step_by_step"], "precise", "beginner", ["steps"], 0.68, "process"),
-        _construction("caveat_soft_ko", "ko", "caveat", "다만 현재 근거가 약한 부분은 조심해서 말해야 합니다.", ["caveat_transition"], "careful", "intermediate", ["caveat"], 0.72, "caveat"),
-        _construction("concise_summary_ko", "ko", "summary", "정리하면, 핵심은 ...입니다.", ["concise_summary"], "compact", "beginner", ["summary"], 0.76, "summary"),
+        _construction("caveat_soft_ko", "ko", "caveat", "다만 근거가 약한 부분은 조심해서 말해야 합니다.", ["caveat_transition"], "careful", "intermediate", ["caveat"], 0.72, "caveat"),
+        _construction("concise_summary_ko", "ko", "summary", "정리하면 핵심은 ...입니다.", ["concise_summary"], "compact", "beginner", ["summary"], 0.76, "summary"),
         _construction("expert_explanation_ko", "ko", "expert_detail", "기술적으로는 A가 B와 C를 조율하는 구조입니다.", ["expert_detail"], "technical", "expert", ["mechanism", "constraints"], 0.66, "expert"),
         _construction("direct_definition_en", "en", "definition", "X is a system that does Y.", ["direct_answer", "simple_explanation"], "clear", "beginner", ["concept", "category", "function"], 0.86, "definition"),
         _construction("beginner_analogy_en", "en", "analogy", "In simple terms, X works like Y.", ["beginner_analogy", "example_bridge"], "friendly", "beginner", ["concept", "analogy"], 0.78, "analogy"),
@@ -54,7 +54,7 @@ def build_general_surface_pack_v0() -> dict[str, Any]:
     ]
     pack = {
         "pack_id": "general_surface_v0",
-        "version": "0.1.0",
+        "version": "0.1.2",
         "created_at": utc_now_iso(),
         "constructions": [construction.to_dict() for construction in constructions],
         "notes": [

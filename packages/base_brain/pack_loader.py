@@ -8,6 +8,38 @@ from typing import Any
 from .models import PACK_PATH, BaseBrainPack
 from .pack_builder import build_base_brain_pack_v0
 
+BASE_PACK_CODE_VERSION = "0.1.2"
+TOKEN_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "for",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+    "brain",
+    "cloud",
+    "local",
+    "simple",
+    "explain",
+    "차이",
+    "비교",
+    "설명",
+    "간단",
+    "초등학생",
+    "중학생",
+    "전문가",
+    "브레인",
+}
+
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").lower()).strip()
@@ -17,7 +49,15 @@ def _tokens(text: str) -> set[str]:
     lowered = _norm(text)
     latin = set(re.findall(r"[a-z0-9.+#-]{2,}", lowered))
     korean = set(re.findall(r"[\uac00-\ud7a3]{2,}", text or ""))
-    return latin | korean
+    return {token for token in (latin | korean) if token not in TOKEN_STOPWORDS}
+
+
+def _needs_rebuild(payload: dict[str, Any]) -> bool:
+    metadata = payload.get("metadata") or {}
+    if metadata.get("base_pack_code_version") != BASE_PACK_CODE_VERSION:
+        return True
+    text = json.dumps(payload, ensure_ascii=False)
+    return any(marker in text for marker in ("荑", "吏", "媛", "占"))
 
 
 def load_base_brain_pack(pack_path: str | Path | None = None) -> BaseBrainPack:
@@ -25,6 +65,8 @@ def load_base_brain_pack(pack_path: str | Path | None = None) -> BaseBrainPack:
     if not path.exists():
         build_base_brain_pack_v0()
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if _needs_rebuild(payload):
+        payload = build_base_brain_pack_v0()
     return BaseBrainPack(
         pack_id=payload["pack_id"],
         version=payload["version"],
@@ -50,8 +92,7 @@ def _concept_score(query: str, concept: dict[str, Any]) -> float:
         if name_norm in query_norm:
             score += 2.2
         name_tokens = _tokens(str(name))
-        overlap = query_tokens & name_tokens
-        score += len(overlap) * 0.75
+        score += len(query_tokens & name_tokens) * 0.75
     desc_tokens = _tokens(str(concept.get("short_description", "")))
     score += min(len(query_tokens & desc_tokens) * 0.25, 1.0)
     return score
@@ -59,13 +100,21 @@ def _concept_score(query: str, concept: dict[str, Any]) -> float:
 
 def get_semantic_context(query: str, pack: BaseBrainPack, limit: int = 12) -> list[dict[str, Any]]:
     concepts = pack.semantic_graph.get("concepts") or []
-    scored = [
-        {**concept, "match_score": _concept_score(query, concept)}
-        for concept in concepts
-    ]
-    ranked = sorted(scored, key=lambda item: (float(item.get("match_score") or 0.0), float(item.get("confidence") or 0.0)), reverse=True)
-    direct = [item for item in ranked if float(item.get("match_score") or 0.0) > 0]
-    selected = direct[:limit]
+    scored = [{**concept, "match_score": _concept_score(query, concept)} for concept in concepts]
+    ranked = sorted(
+        scored,
+        key=lambda item: (float(item.get("match_score") or 0.0), float(item.get("confidence") or 0.0)),
+        reverse=True,
+    )
+    high_confidence = [item for item in ranked if float(item.get("match_score") or 0.0) >= 4.0]
+    selected = [item for item in ranked if float(item.get("match_score") or 0.0) >= 1.0][:limit]
+    if high_confidence:
+        selected = [
+            item
+            for item in selected
+            if item.get("concept_id") not in {"korean_language", "english_language"}
+            or any(marker in query.lower() for marker in ["한국어", "영어로", "번역투", "language"])
+        ][:limit]
     if selected:
         selected_ids = {item["concept_id"] for item in selected}
         relation_targets = {

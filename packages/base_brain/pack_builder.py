@@ -61,9 +61,10 @@ def build_base_brain_pack_v0() -> dict[str, Any]:
     _validate_surface(surface_graph)
     pack = BaseBrainPack(
         pack_id="atanor_base_brain_v0",
-        version="0.1.0",
+        version="0.1.2",
         metadata={
             "created_at": utc_now_iso(),
+            "base_pack_code_version": "0.1.2",
             "claims": [
                 "zero-user-data graph-native answer proof",
                 "curated small base graph",
