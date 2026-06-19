@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from guard import check_guard
+from guard.checker import check_guard
 from knowledge_bakery import activate_memory, build_memory, drift_check, export_graph, memory_status
 from ontology_forge import run_ontology
 from rag_engine import query_graphrag
