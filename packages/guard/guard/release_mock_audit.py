@@ -22,8 +22,11 @@ BLOCKER_PATTERNS = (
 
 ALLOWED_CONTEXT_PATTERNS = (
     re.compile(r"\b(test|tests|proof|fixture|demo|audit|report)\b", re.IGNORECASE),
-    re.compile(r"does_not_claim|must_not|not claim|no fake|not fake", re.IGNORECASE),
+    re.compile(r"(release[_-]?mock[_-]?audit|audit[_-]?release[_-]?mock[_-]?risks)", re.IGNORECASE),
+    re.compile(r"(placeholder\s*[:=]|placeholder=|placeholders?\s*=|\{placeholders\}|aria-label=\{.*placeholder|join\([\"']\?[\"']\))", re.IGNORECASE),
+    re.compile(r"does_not_claim|must_not|not claim|no fake|not fake|does not .*fake|not .*fake", re.IGNORECASE),
     re.compile(r"fake[_ -]?[A-Za-z0-9_ -]*['\"]?\s*[:=]\s*False\b", re.IGNORECASE),
+    re.compile(r"canned[_ -]?[A-Za-z0-9_ -]*['\"]?\s*[:=]\s*(False|false)\b", re.IGNORECASE),
     re.compile(r"local[_ -]?mock|mock_billing|mock detector|mock_free", re.IGNORECASE),
 )
 
@@ -40,6 +43,14 @@ DEFAULT_SKIP_PARTS = {
 
 DEFAULT_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".mjs", ".rs", ".md", ".json"}
 
+RELEASE_CRITICAL_PARTS = {
+    "apps",
+    "packages",
+    "scripts",
+    "README.md",
+    "docs",
+}
+
 
 @dataclass(frozen=True)
 class MockRisk:
@@ -51,12 +62,52 @@ class MockRisk:
     recommendation: str
 
 
+def load_allowlist(path: Path | None) -> dict[str, dict]:
+    if path is None or not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    entries = data.get("allowlist", data if isinstance(data, list) else [])
+    allowlist: dict[str, dict] = {}
+    for entry in entries:
+        key = entry.get("key")
+        reason = entry.get("reason")
+        expires = entry.get("expires")
+        if not key or not reason or not expires:
+            raise ValueError("Each release mock allowlist entry requires key, reason, and expires.")
+        allowlist[str(key)] = dict(entry)
+    return allowlist
+
+
 def _is_probably_allowed(path: Path, line: str) -> bool:
+    if "packages/guard/" in path.as_posix():
+        return True
     haystack = f"{path.as_posix()} {line}"
     return any(pattern.search(haystack) for pattern in ALLOWED_CONTEXT_PATTERNS)
 
 
-def _severity_for(path: Path, line: str) -> tuple[str, str, str]:
+def _release_sensitivity(path: Path) -> str:
+    parts = set(path.parts)
+    if "tests" in parts or "docs" in parts or "reports" in parts:
+        return "non_release_support"
+    if path.name in RELEASE_CRITICAL_PARTS or parts.intersection(RELEASE_CRITICAL_PARTS):
+        return "release_critical"
+    return "unknown"
+
+
+def _allowlist_key(path: Path, line_number: int, line: str) -> str:
+    token = RISK_PATTERN.search(line)
+    matched = token.group(1).lower() if token else "risk"
+    return f"{path.as_posix()}:{line_number}:{matched}"
+
+
+def _severity_for(path: Path, line_number: int, line: str, allowlist: dict[str, dict]) -> tuple[str, str, str]:
+    key = _allowlist_key(path, line_number, line)
+    if key in allowlist:
+        return (
+            "INFO",
+            "allowlisted_with_reason",
+            f"Allowlisted until {allowlist[key]['expires']}: {allowlist[key]['reason']}",
+        )
     if _is_probably_allowed(path, line):
         return (
             "INFO",
@@ -93,10 +144,23 @@ def _iter_files(roots: Iterable[Path], *, skip_parts: set[str] | None = None) ->
             yield path
 
 
-def audit_mock_risks(roots: Iterable[Path], *, repo_root: Path | None = None) -> dict:
+def audit_mock_risks(
+    roots: Iterable[Path],
+    *,
+    repo_root: Path | None = None,
+    allowlist_path: Path | None = None,
+    changed_files_only: Iterable[Path] | None = None,
+    release_critical_only: bool = False,
+) -> dict:
     repo = repo_root or Path.cwd()
+    allowlist = load_allowlist(allowlist_path)
+    changed = {path.resolve() for path in changed_files_only or []}
     risks: list[MockRisk] = []
     for path in sorted(set(_iter_files(roots))):
+        if changed and path.resolve() not in changed:
+            continue
+        if release_critical_only and _release_sensitivity(path) != "release_critical":
+            continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except UnicodeDecodeError:
@@ -114,8 +178,8 @@ def audit_mock_risks(roots: Iterable[Path], *, repo_root: Path | None = None) ->
         for line_number, line in enumerate(lines, start=1):
             if not RISK_PATTERN.search(line):
                 continue
-            severity, category, recommendation = _severity_for(path, line)
             relative = str(path.relative_to(repo) if path.is_relative_to(repo) else path)
+            severity, category, recommendation = _severity_for(Path(relative.replace("\\", "/")), line_number, line, allowlist)
             risks.append(
                 MockRisk(
                     severity=severity,
