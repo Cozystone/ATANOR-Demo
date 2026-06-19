@@ -35,11 +35,12 @@ from packages.cloud_brain.sphere_materialization import (
     materialize_sphere_tile,
     sphere_manifest,
 )
-from packages.cloud_brain.web_seed_feeder import feeder_status
+from packages.cloud_brain.web_seed_feeder import feeder_status, run_once as run_web_seed_feeder_once
 from packages.cloud_brain.semantic_attach import attach_semantic_cloud_for_query
 from packages.cloud_brain.semantic_growth import MAX_ACCELERATION_BATCH_SIZE, ingest_semantic_acceleration_batch, ingest_semantic_source
 from packages.cloud_brain.semantic_handoff import write_semantic_cloud_growth_handoff
-from packages.cloud_brain.semantic_store import SemanticCloudStore, get_semantic_cloud_growth_status
+from packages.cloud_brain.semantic_store import get_semantic_cloud_growth_status
+from packages.cloud_brain.read_model import build_cloud_read_model, load_fast_graph_sample
 from rag_engine.ghost_graph import GhostTopology
 from rag_engine.fusion import epistemic_uncertainty, local_density_score, route_ratio, weighted_rrf
 
@@ -111,6 +112,12 @@ def _run_semantic_acceleration_batch(batch_size: int) -> None:
     finally:
         _SEMANTIC_ACCELERATION_STATE["running"] = False
         _SEMANTIC_ACCELERATION_LOCK.release()
+
+
+class WebSeedFeederRunRequest(BaseModel):
+    force_enabled: bool = False
+    force_fetch: bool = False
+    max_sources: int | None = Field(default=None, ge=1, le=1000)
 
 
 class AnnaArchiveMetadataSearchRequest(BaseModel):
@@ -341,6 +348,11 @@ def _status_shell(daemon: dict[str, Any], memory: dict[str, Any] | None = None) 
     cloud_state = graph_states["cloud"]
     local_state = graph_states["local"]
     proof_store = cloud_store_status()
+    semantic_status = get_semantic_cloud_growth_status()
+    semantic_nodes = int(semantic_status.get("concepts") or semantic_status.get("node_count") or 0)
+    semantic_edges = int(semantic_status.get("relations") or semantic_status.get("edge_count") or 0)
+    cloud_nodes = semantic_nodes or int(cloud_state.get("cloud_total_nodes") or 0) + int(proof_store.get("cloud_total_nodes") or 0)
+    cloud_edges = semantic_edges or int(cloud_state.get("cloud_total_relations") or 0) + int(proof_store.get("cloud_total_edges") or 0)
     web_feeder_state = feeder_status()
     audit = graph_states.get("audit") or {
         "operator_graph_source": cloud_state.get("source", "unavailable"),
@@ -357,20 +369,25 @@ def _status_shell(daemon: dict[str, Any], memory: dict[str, Any] | None = None) 
         "public_cloud_backend_enabled": False,
         "local_required": True,
         "counts": {
-            "nodes": int(cloud_state.get("cloud_total_nodes") or 0) + int(proof_store.get("cloud_total_nodes") or 0),
-            "edges": int(cloud_state.get("cloud_total_relations") or 0) + int(proof_store.get("cloud_total_edges") or 0),
+            "nodes": cloud_nodes,
+            "edges": cloud_edges,
             "events": int(memory.get("event_count") or daemon.get("latest_event_count") or 0),
             "rounds": int(daemon.get("total_rounds") or 0),
             "learned_rounds": int(daemon.get("learned_rounds") or 0),
         },
         "cloud_graph_state": {
             **cloud_state,
-            "cloud_total_nodes": int(cloud_state.get("cloud_total_nodes") or 0) + int(proof_store.get("cloud_total_nodes") or 0),
-            "cloud_total_relations": int(cloud_state.get("cloud_total_relations") or 0) + int(proof_store.get("cloud_total_edges") or 0),
+            "cloud_total_nodes": cloud_nodes,
+            "cloud_total_relations": cloud_edges,
             "cloud_store_backend": proof_store.get("cloud_store_backend", "local_proof_store"),
             "proof_ingested_fragments": int(proof_store.get("proof_ingested_fragments") or 0),
             "proof_store_nodes": int(proof_store.get("cloud_total_nodes") or 0),
             "proof_store_edges": int(proof_store.get("cloud_total_edges") or 0),
+            "semantic_read_model_nodes": semantic_nodes,
+            "semantic_read_model_relations": semantic_edges,
+            "semantic_read_model_performance": semantic_status.get("performance") or {},
+            "full_store_scan": False,
+            "index_rebuild_during_request": False,
         },
         "controlled_self_growth_state": {
             "enabled": True,
@@ -777,6 +794,19 @@ def semantic_cloud_status() -> dict[str, Any]:
     return get_semantic_cloud_growth_status()
 
 
+@router.post("/semantic/index/rebuild")
+def semantic_cloud_index_rebuild(
+    limit_nodes: int = Query(default=1200, ge=1, le=50000),
+    limit_edges: int = Query(default=2400, ge=0, le=100000),
+) -> dict[str, Any]:
+    result = build_cloud_read_model(limit_nodes=limit_nodes, limit_edges=limit_edges)
+    return {
+        **result,
+        "request_time_rebuild": True,
+        "note": "Explicit index rebuild completed. Status and graph read endpoints do not rebuild during request.",
+    }
+
+
 @router.post("/semantic/attach")
 def semantic_cloud_attach(request: SemanticCloudAttachRequest) -> dict[str, Any]:
     return attach_semantic_cloud_for_query(request.query, limit=request.limit)
@@ -812,6 +842,29 @@ def semantic_cloud_accelerate(request: SemanticCloudAccelerateRequest) -> dict[s
             },
         }
     return ingest_semantic_acceleration_batch(batch_size=request.batch_size)
+
+
+@router.get("/web-seed-feeder/status")
+def cloud_brain_web_seed_feeder_status() -> dict[str, Any]:
+    return feeder_status()
+
+
+@router.post("/web-seed-feeder/run")
+def cloud_brain_web_seed_feeder_run(request: WebSeedFeederRunRequest) -> dict[str, Any]:
+    result = run_web_seed_feeder_once(
+        force_enabled=request.force_enabled,
+        force_fetch=request.force_fetch,
+        max_sources_checked_per_run=request.max_sources,
+    )
+    semantic = get_semantic_cloud_growth_status()
+    return {
+        "feeder": result.to_state(),
+        "semantic_cloud": semantic,
+        "local_brain_write": False,
+        "external_llm_used": False,
+        "external_sllm_used": False,
+        "global_cloud_claim": False,
+    }
 
 
 @router.get("/anna-archive/status")
@@ -850,7 +903,6 @@ def anna_archive_metadata_search(request: AnnaArchiveMetadataSearchRequest) -> d
                 "local_brain_write": False,
             },
         }
-
     ingest_summaries: list[dict[str, Any]] = []
     if request.ingest and result.get("records"):
         for record in result.get("records") or []:
@@ -876,7 +928,15 @@ def anna_archive_metadata_search(request: AnnaArchiveMetadataSearchRequest) -> d
                     "honesty": summary.get("honesty"),
                 }
             )
-
+        if ingest_summaries:
+            try:
+                read_model_result = build_cloud_read_model(limit_nodes=1200, limit_edges=2400)
+            except Exception as exc:
+                read_model_result = {"error": str(exc), "rebuilt": False}
+        else:
+            read_model_result = {"rebuilt": False}
+    else:
+        read_model_result = {"rebuilt": False}
     return {
         "provider": "anna_archive",
         "mode": "metadata_only",
@@ -885,6 +945,7 @@ def anna_archive_metadata_search(request: AnnaArchiveMetadataSearchRequest) -> d
             "requested": request.ingest,
             "records_ingested": len(ingest_summaries),
             "runs": ingest_summaries,
+            "read_model": read_model_result,
             "local_brain_write": False,
             "raw_text_storage": False,
             "download_url_storage": False,
@@ -903,7 +964,7 @@ def semantic_cloud_graph(
     limit_nodes: int = Query(default=1000, ge=1, le=5000),
     limit_edges: int = Query(default=3000, ge=0, le=10000),
 ) -> dict[str, Any]:
-    graph = SemanticCloudStore().graph_sample(limit_nodes=limit_nodes, limit_edges=limit_edges)
+    graph = load_fast_graph_sample(limit_nodes=limit_nodes, limit_edges=limit_edges)
     return {**graph, "proof_store_only": True, "old_mirror_snapshot_used": False}
 
 

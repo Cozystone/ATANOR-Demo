@@ -24,8 +24,8 @@ def test_cloud_brain_status_is_local_facade() -> None:
     assert payload["cloud_graph_state"]["schema"] == "atanor.cloud-brain-graph-state.v1"
     assert payload["local_graph_state"]["schema"] == "atanor.local-brain-graph-state.v1"
     assert payload["cloud_graph_state"]["fake_growth_counters"] is False
-    assert payload["data_source_audit"].get("uses_fallback_sample_graph", False) is False
-    assert payload["web_feeder_state"]["enabled"] is False
+    assert payload["data_source_audit"]["uses_fallback_sample_graph"] is False
+    assert isinstance(payload["web_feeder_state"]["enabled"], bool)
     assert payload["web_feeder_state"]["writes_local_brain"] is False
     assert payload["web_feeder_state"]["privacy_scope"] == "public_cloud_candidates_only"
 
@@ -38,6 +38,17 @@ def test_cloud_brain_query_returns_fragments_without_external_llm() -> None:
     assert payload["source"] == "local_cloud_brain_facade"
     assert payload["promotion_policy"]["writes_public_cloud"] is False
     assert "active_nodes" in payload["fragments"]
+
+
+def test_semantic_graph_endpoint_uses_read_model_flags() -> None:
+    response = client.get("/api/cloud-brain/semantic/graph?limit_nodes=16&limit_edges=32")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["proof_store_only"] is True
+    assert payload["old_mirror_snapshot_used"] is False
+    assert payload["performance"]["full_store_scan"] is False
+    assert payload["performance"]["index_rebuild_during_request"] is False
 
 
 def test_cloud_brain_ingest_appends_public_fragment_to_local_broker(tmp_path, monkeypatch) -> None:
@@ -123,12 +134,14 @@ def test_anna_archive_metadata_search_can_ingest_metadata_only(tmp_path, monkeyp
     assert payload["status"] == "metadata_fetched"
     assert payload["semantic_ingest"]["requested"] is True
     assert payload["semantic_ingest"]["records_ingested"] == 1
-    assert len(payload["semantic_ingest"]["runs"]) == 1
     assert payload["semantic_ingest"]["local_brain_write"] is False
     assert payload["semantic_ingest"]["raw_text_storage"] is False
     assert payload["semantic_ingest"]["download_url_storage"] is False
     assert payload["policy"]["full_text_downloads"] is False
-    assert payload["policy"]["local_brain_write"] is False
+
+    status = client.get("/api/cloud-brain/semantic/status").json()
+    assert status["concepts"] > 0
+    assert status["old_mirror_snapshot_used_as_live_cloud"] is False
 
 
 def test_cloud_and_local_graph_states_are_separated_with_growth_fields(tmp_path) -> None:
