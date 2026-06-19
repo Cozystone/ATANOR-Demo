@@ -19,8 +19,35 @@ function num(value: unknown, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function fallbackDiskBudget(storageGb: number, diskFreeGb: number) {
+  const desired = Number(Math.max(120, storageGb * 0.2).toFixed(1));
+  const hard = Number(Math.min(20, Math.max(10, storageGb * 0.02)).toFixed(1));
+  const soft = Number(Math.min(50, Math.max(30, storageGb * 0.05)).toFixed(1));
+  const status = diskFreeGb < hard ? "critical" : diskFreeGb < soft ? "constrained" : diskFreeGb < desired ? "caution" : "safe";
+  const action = status === "critical" ? "pause_growth" : status === "constrained" ? "compact" : status === "caution" ? "slow_growth" : "normal";
+  const message = status === "critical"
+    ? `Disk free: ${diskFreeGb.toFixed(1)}GB. Growth is paused to protect the local store.`
+    : status === "constrained"
+      ? `Disk free: ${diskFreeGb.toFixed(1)}GB. Growth is slowed and compaction is recommended.`
+      : status === "caution"
+        ? `Disk free: ${diskFreeGb.toFixed(1)}GB. Normal operation is safe. Large Cloud Brain growth reserve is not met, so growth runs in conservative mode.`
+        : `Disk free: ${diskFreeGb.toFixed(1)}GB. Normal operation and selected growth mode are within budget.`;
+  return {
+    disk_total_gb: Number(storageGb.toFixed(1)),
+    disk_free_gb: Number(diskFreeGb.toFixed(1)),
+    hard_min_free_gb: hard,
+    soft_min_free_gb: soft,
+    desired_reserve_gb: desired,
+    current_growth_budget_gb: Number(Math.max(0, diskFreeGb - soft).toFixed(1)),
+    projected_growth_gb: null,
+    status,
+    action,
+    message,
+  };
+}
+
 function fallbackBenchmark(input: BenchmarkInput = {}) {
-  const hardware = {
+  const hardware: Record<string, any> = {
     cpu: os.cpus()[0]?.model ?? "Deployment CPU",
     gpu: "Deployment sandbox",
     vram_gb: 0,
@@ -35,6 +62,8 @@ function fallbackBenchmark(input: BenchmarkInput = {}) {
   const ramGb = num(hardware.ram_gb, 8);
   const vramGb = num(hardware.vram_gb, 0);
   const threads = num(hardware.cpu_logical, 2);
+  const storageGb = num(hardware.storage_gb, num(hardware.disk_total_gb, 1));
+  const diskFreeGb = num(hardware.disk_free_gb, 1);
   let learningVolume: keyof typeof volumePayloads = "lite";
   if (ramGb >= 30 && vramGb >= 15 && threads >= 12) {
     learningVolume = "max";
@@ -85,13 +114,16 @@ function fallbackBenchmark(input: BenchmarkInput = {}) {
       ram_hard_gb: Number((ramGb * 0.86).toFixed(1)),
       vram_soft_gb: Number((vramGb * 0.74).toFixed(1)),
       vram_hard_gb: Number((vramGb * 0.9).toFixed(1)),
-      storage_reserve_gb: 200,
+      storage_reserve_gb: Number(Math.max(120, storageGb * 0.2).toFixed(1)),
+      disk_budget: fallbackDiskBudget(storageGb, diskFreeGb),
     },
     backpressure_policy: [
       { condition: "RAM >= soft watermark", action: "pause harvest, flush ontology batches, compact hot graph window, keep RAG read-only" },
       { condition: "VRAM >= soft watermark", action: "pause ATANOR Oven batches, keep DataGate/Ontology on CPU, lower microbatch size" },
       { condition: "graph writer lag > 2 batches", action: "stop creating new relations; only merge known nodes until writer catches up" },
-      { condition: "storage free <= reserve", action: "stop harvest, rotate checkpoints, compact graph snapshots, require operator review" },
+      { condition: "disk free < hard minimum", action: "pause growth, keep graph read-only, allow checkpoint, require operator review" },
+      { condition: "disk free < soft minimum", action: "slow growth, recommend compaction, prevent new large ingestion" },
+      { condition: "disk free < desired large-growth reserve", action: "normal UI allowed; run large Cloud Brain growth in conservative mode" },
     ],
     adjustment_policy: {
       auto_apply_when_source: "local-hardware-probe",

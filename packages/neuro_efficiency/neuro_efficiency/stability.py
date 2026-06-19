@@ -32,6 +32,12 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
     ram_gb = _bounded_float(hardware.get("ram_gb"), default=32, minimum=8, maximum=512)
     vram_gb = _bounded_float(hardware.get("vram_gb"), default=16, minimum=4, maximum=192)
     storage_gb = _bounded_float(hardware.get("storage_gb"), default=1000, minimum=128, maximum=16_000)
+    disk_free_gb = _bounded_float(
+        hardware.get("disk_free_gb", payload.get("disk_free_gb")),
+        default=storage_gb,
+        minimum=0,
+        maximum=storage_gb,
+    )
     target_nodes = _bounded_int(payload.get("target_nodes"), default=10_000, minimum=1_000, maximum=500_000)
     target_edges = _bounded_int(payload.get("target_edges"), default=max(30_000, target_nodes * 4), minimum=2_000, maximum=3_000_000)
     duration_hours = _bounded_int(payload.get("duration_hours"), default=72, minimum=1, maximum=720)
@@ -42,6 +48,26 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
     vram_hard = round(vram_gb * 0.9, 1)
     storage_reserve = round(max(120, storage_gb * 0.2), 1)
     graph_budget_gb = round(max(80, storage_gb - storage_reserve - 120), 1)
+    disk_budget = build_disk_budget_state(
+        disk_total_gb=storage_gb,
+        disk_free_gb=disk_free_gb,
+        desired_reserve_gb=storage_reserve,
+        current_growth_budget_gb=min(graph_budget_gb, max(0.0, disk_free_gb - 20.0)),
+        projected_growth_gb=min(graph_budget_gb, max(1.0, target_edges / 1_000_000 * 0.35)),
+    )
+    disk_status = str(disk_budget["status"])
+    if disk_status == "critical":
+        node_write_batch = 0
+        edge_write_batch = 0
+    elif disk_status == "constrained":
+        node_write_batch = 200
+        edge_write_batch = 800
+    elif disk_status == "caution":
+        node_write_batch = 500
+        edge_write_batch = 1_500
+    else:
+        node_write_batch = 500
+        edge_write_batch = 2_000
 
     hot_window_nodes = min(max(2_048, target_nodes // 10), 24_000)
     hot_window_edges = min(max(12_000, hot_window_nodes * 8), 240_000)
@@ -64,6 +90,7 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
             "vram_hard_gb": vram_hard,
             "storage_reserve_gb": storage_reserve,
             "graph_store_budget_gb": graph_budget_gb,
+            "disk_budget": disk_budget,
             "checkpoint_ring_gb": round(min(160, max(48, storage_gb * 0.08)), 1),
             "thermal_policy": {
                 "gpu_action": "pause training batches before VRAM pressure; keep graph writes on CPU",
@@ -74,8 +101,8 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
             "harvest_pending_cap": min(4_096, max(512, target_nodes // 4)),
             "datagate_batch_docs": 64 if ram_gb < 64 else 128,
             "ontology_delta_chunks": 256 if ram_gb < 64 else 512,
-            "node_write_batch": 500,
-            "edge_write_batch": 2_000,
+            "node_write_batch": node_write_batch,
+            "edge_write_batch": edge_write_batch,
             "rag_query_concurrency": 2,
             "training_microbatch_policy": "bf16/8-bit where safe, gradient accumulation, activation checkpointing, never full-corpus in VRAM",
         },
@@ -114,8 +141,16 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
                 "action": "stop creating new relations; only merge known nodes until writer catches up",
             },
             {
-                "condition": "storage free <= reserve",
-                "action": "stop harvest, rotate checkpoints, compact graph snapshots, require operator review",
+                "condition": "disk free < hard minimum",
+                "action": "pause growth, keep graph read-only, allow checkpoint, require operator review",
+            },
+            {
+                "condition": "disk free < soft minimum",
+                "action": "slow growth, recommend compaction, prevent new large ingestion",
+            },
+            {
+                "condition": "disk free < desired large-growth reserve",
+                "action": "normal UI allowed; run large Cloud Brain growth in conservative mode",
             },
         ],
         "implementation_notes": [
@@ -124,6 +159,67 @@ def build_sustained_run_plan(profile: dict[str, Any] | None = None) -> dict[str,
             "Training should consume sampled context bundles, not the full ontology graph.",
             "The UI should never render every node; thousands of nodes require LOD and search-first navigation.",
         ],
+    }
+
+
+def build_disk_budget_state(
+    *,
+    disk_total_gb: float,
+    disk_free_gb: float,
+    hard_min_free_gb: float | None = None,
+    soft_min_free_gb: float | None = None,
+    desired_reserve_gb: float | None = None,
+    current_growth_budget_gb: float | None = None,
+    projected_growth_gb: float | None = None,
+) -> dict[str, Any]:
+    """Classify disk pressure without treating desired reserve as a hard failure.
+
+    The desired reserve is a planning target for large graph growth. The hard
+    and soft minima are the actual safety gates that protect the local store.
+    """
+
+    total = max(1.0, float(disk_total_gb))
+    free = max(0.0, min(float(disk_free_gb), total))
+    hard_min = round(float(hard_min_free_gb) if hard_min_free_gb is not None else min(20.0, max(10.0, total * 0.02)), 1)
+    soft_min = round(float(soft_min_free_gb) if soft_min_free_gb is not None else min(50.0, max(30.0, total * 0.05)), 1)
+    desired = round(float(desired_reserve_gb) if desired_reserve_gb is not None else max(120.0, total * 0.2), 1)
+    current_budget = round(
+        max(0.0, float(current_growth_budget_gb) if current_growth_budget_gb is not None else max(0.0, free - soft_min)),
+        1,
+    )
+    projected = None if projected_growth_gb is None else round(max(0.0, float(projected_growth_gb)), 1)
+
+    if free < hard_min:
+        status = "critical"
+        action = "pause_growth"
+        message = f"Disk free: {free:.1f}GB. Growth is paused to protect the local store."
+    elif free < soft_min:
+        status = "constrained"
+        action = "compact"
+        message = f"Disk free: {free:.1f}GB. Growth is slowed and compaction is recommended."
+    elif free < desired:
+        status = "caution"
+        action = "slow_growth"
+        message = (
+            f"Disk free: {free:.1f}GB. Normal operation is safe. "
+            "Large Cloud Brain growth reserve is not met, so growth runs in conservative mode."
+        )
+    else:
+        status = "safe"
+        action = "normal"
+        message = f"Disk free: {free:.1f}GB. Normal operation and selected growth mode are within budget."
+
+    return {
+        "disk_total_gb": round(total, 1),
+        "disk_free_gb": round(free, 1),
+        "hard_min_free_gb": hard_min,
+        "soft_min_free_gb": soft_min,
+        "desired_reserve_gb": desired,
+        "current_growth_budget_gb": current_budget,
+        "projected_growth_gb": projected,
+        "status": status,
+        "action": action,
+        "message": message,
     }
 
 

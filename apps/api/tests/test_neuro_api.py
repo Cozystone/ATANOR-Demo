@@ -42,6 +42,7 @@ def test_neuro_stability_api() -> None:
     assert body["hardware_profile"]["gpu"].startswith("ZOTAC GAMING GeForce RTX 5080")
     assert body["runtime_envelope"]["ram_soft_gb"] == 23.0
     assert body["runtime_envelope"]["vram_soft_gb"] == 11.8
+    assert body["runtime_envelope"]["disk_budget"]["status"] in {"safe", "caution", "constrained", "critical"}
     assert body["target_workload"]["target_nodes"] == 500_000
     assert body["graph_policy"]["hot_window_nodes"] == 24_000
     assert body["graph_policy"]["ui_render_nodes"] == 2_000
@@ -82,3 +83,26 @@ def test_neuro_benchmark_api() -> None:
     assert body["ontology_tuning"]["hot_window_nodes"] == 24_000
     assert body["ontology_tuning"]["ui_render_nodes"] == 2_000
     assert body["training_tuning"]["precision"] == "bf16-preferred"
+
+
+def test_neuro_disk_budget_does_not_treat_reserve_as_hard_failure() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/neuro/stability",
+        json={
+            "target_nodes": 500_000,
+            "target_edges": 2_400_000,
+            "hardware_profile": {
+                "storage_gb": 930.5,
+                "disk_free_gb": 108.5,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    budget = response.json()["runtime_envelope"]["disk_budget"]
+    assert budget["desired_reserve_gb"] == 186.1
+    assert budget["status"] == "caution"
+    assert budget["action"] == "slow_growth"
+    assert "Normal operation is safe" in budget["message"]
