@@ -34,6 +34,8 @@ data/*/**
 reports/
 .tmp-msix-inspect*/
 homage-bench-*.bin
+/main.exe
+/main.pdb
 data/ontology/
 data/memory/
 checkpoints/
