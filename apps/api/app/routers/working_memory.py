@@ -11,6 +11,7 @@ from packages.cloud_brain.cloud_node_attachment import (
     graph_overlay,
     list_bundles,
 )
+from packages.cloud_brain.graph_exchange import run_local_cloud_exchange
 from packages.cortex_g2.pipeline import run_cortex_cycle, summarize_cortex_cycle
 
 
@@ -23,6 +24,14 @@ class CloudAttachmentCreateRequest(BaseModel):
 
 class CloudAttachmentBundleRequest(BaseModel):
     bundle_id: str = Field(min_length=1, max_length=80)
+
+
+class LocalCloudExchangeRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=400)
+    pin_context: bool = False
+    allow_web: bool = False
+    max_chunks: int = Field(default=1, ge=1, le=4)
+    max_latency_ms: int = Field(default=800, ge=100, le=5000)
 
 
 @router.post("/cloud-attachments/create")
@@ -81,3 +90,14 @@ def clear_cloud_attachments() -> dict:
     listed = list_bundles()
     detached = [detach_bundle(bundle_id) for bundle_id in listed.get("active_bundle_ids", [])]
     return {"state": "cleared", "detached": detached, **graph_overlay()}
+
+
+@router.post("/local-cloud-exchange")
+def local_cloud_exchange(request: LocalCloudExchangeRequest) -> dict:
+    return run_local_cloud_exchange(
+        request.query,
+        pin_context=request.pin_context,
+        allow_web=request.allow_web,
+        max_chunks=request.max_chunks,
+        max_latency_ms=request.max_latency_ms,
+    )
