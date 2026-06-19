@@ -257,7 +257,7 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
                 }
         except Exception:
             pass
-    if is_knowledge_lookup_query(clean_query) and selected == "static":
+    if not is_fresh_search_query(clean_query) and is_knowledge_lookup_query(clean_query) and selected == "static":
         try:
             results = wikipedia_search(clean_query, bounded_count)
             if results:
