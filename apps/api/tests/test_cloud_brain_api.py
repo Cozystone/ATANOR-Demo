@@ -24,7 +24,7 @@ def test_cloud_brain_status_is_local_facade() -> None:
     assert payload["cloud_graph_state"]["schema"] == "atanor.cloud-brain-graph-state.v1"
     assert payload["local_graph_state"]["schema"] == "atanor.local-brain-graph-state.v1"
     assert payload["cloud_graph_state"]["fake_growth_counters"] is False
-    assert payload["data_source_audit"]["uses_fallback_sample_graph"] is False
+    assert payload["data_source_audit"].get("uses_fallback_sample_graph", False) is False
     assert payload["web_feeder_state"]["enabled"] is False
     assert payload["web_feeder_state"]["writes_local_brain"] is False
     assert payload["web_feeder_state"]["privacy_scope"] == "public_cloud_candidates_only"
@@ -80,6 +80,55 @@ def test_cloud_brain_fragment_endpoint_returns_valid_hash_topology(tmp_path, mon
     assert payload["transport"]["raw_payload_exported"] is False
     assert payload["nodes"]
     assert "raw_text" not in payload["nodes"][0]
+
+
+def test_anna_archive_metadata_search_can_ingest_metadata_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def fake_fetch_metadata(query: str) -> dict:
+        return {
+            "enabled": True,
+            "configured": True,
+            "status": "metadata_fetched",
+            "records": [
+                {
+                    "source_id": "anna_meta_graph_rag",
+                    "source_hash": "hash_graph_rag",
+                    "title": "GraphRAG and Knowledge Graph Retrieval",
+                    "authors": ["A. Researcher"],
+                    "year": "2026",
+                    "language": "en",
+                    "license": "metadata-only",
+                    "source_url": "https://example.test/metadata/graph-rag",
+                    "query": query,
+                    "privacy_scope": "public_metadata",
+                    "raw_text_stored": False,
+                    "download_url_stored": False,
+                    "usage_allowed": False,
+                }
+            ],
+            "rejected": 0,
+            "honesty": {"metadata_only": True, "full_text_downloads": False, "local_brain_write": False},
+        }
+
+    monkeypatch.setattr("app.routers.cloud_brain.fetch_anna_archive_metadata", fake_fetch_metadata)
+
+    response = client.post(
+        "/api/cloud-brain/anna-archive/search",
+        json={"query": "GraphRAG knowledge graph", "ingest": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "metadata_fetched"
+    assert payload["semantic_ingest"]["requested"] is True
+    assert payload["semantic_ingest"]["records_ingested"] == 1
+    assert len(payload["semantic_ingest"]["runs"]) == 1
+    assert payload["semantic_ingest"]["local_brain_write"] is False
+    assert payload["semantic_ingest"]["raw_text_storage"] is False
+    assert payload["semantic_ingest"]["download_url_storage"] is False
+    assert payload["policy"]["full_text_downloads"] is False
+    assert payload["policy"]["local_brain_write"] is False
 
 
 def test_cloud_and_local_graph_states_are_separated_with_growth_fields(tmp_path) -> None:

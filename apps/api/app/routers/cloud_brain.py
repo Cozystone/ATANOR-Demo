@@ -24,6 +24,9 @@ from packages.cloud_brain.proof_semantic_growth import run_semantic_cloud_growth
 from packages.cloud_brain.prove_controlled_self_growth import write_controlled_self_growth_proof
 from packages.cloud_brain.remote_proof import load_last_remote_proof, write_remote_cloud_brain_proof
 from packages.cloud_brain.prove_spherical_chunk_materialization import write_spherical_chunk_materialization_proof
+from packages.cloud_brain.anna_archive_provider import fetch_metadata as fetch_anna_archive_metadata
+from packages.cloud_brain.anna_archive_provider import load_config as load_anna_archive_config
+from packages.cloud_brain.anna_archive_provider import metadata_to_semantic_text as anna_metadata_to_semantic_text
 from packages.cloud_brain.sphere_materialization import (
     get_cloud_node,
     get_sphere_tile,
@@ -80,6 +83,11 @@ class SemanticCloudIngestRequest(BaseModel):
 class SemanticCloudAttachRequest(BaseModel):
     query: str = Field(min_length=1, max_length=400)
     limit: int = Field(default=8, ge=1, le=48)
+
+
+class AnnaArchiveMetadataSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=240)
+    ingest: bool = False
 
 
 def _controlled_growth_summary_from_proof(proof: dict[str, Any] | None, *, proof_exists: bool) -> dict[str, Any]:
@@ -744,6 +752,90 @@ def semantic_cloud_status() -> dict[str, Any]:
 @router.post("/semantic/attach")
 def semantic_cloud_attach(request: SemanticCloudAttachRequest) -> dict[str, Any]:
     return attach_semantic_cloud_for_query(request.query, limit=request.limit)
+
+
+@router.get("/anna-archive/status")
+def anna_archive_metadata_status() -> dict[str, Any]:
+    config = load_anna_archive_config()
+    return {
+        "provider": "anna_archive",
+        "mode": "metadata_only",
+        "status": "enabled" if config.enabled and config.endpoint else "disabled_or_unconfigured",
+        "config": config.public_status(),
+        "policy": {
+            "full_text_downloads": False,
+            "raw_text_storage": False,
+            "download_url_storage": False,
+            "local_brain_write": False,
+            "semantic_cloud_write": "derived_metadata_only",
+        },
+    }
+
+
+@router.post("/anna-archive/search")
+def anna_archive_metadata_search(request: AnnaArchiveMetadataSearchRequest) -> dict[str, Any]:
+    try:
+        result = fetch_anna_archive_metadata(request.query)
+    except Exception as exc:
+        result = {
+            "enabled": load_anna_archive_config().enabled,
+            "configured": bool(load_anna_archive_config().endpoint),
+            "status": "remote_error",
+            "records": [],
+            "rejected": 0,
+            "error": str(exc),
+            "honesty": {
+                "metadata_only": True,
+                "full_text_downloads": False,
+                "local_brain_write": False,
+            },
+        }
+
+    ingest_summaries: list[dict[str, Any]] = []
+    if request.ingest and result.get("records"):
+        for record in result.get("records") or []:
+            if not isinstance(record, dict):
+                continue
+            summary = ingest_semantic_source(
+                anna_metadata_to_semantic_text(record),
+                source_id=str(record.get("source_id") or "anna_archive_metadata"),
+                language=str(record.get("language") or "auto") if str(record.get("language") or "").lower() in {"ko", "en"} else "auto",
+                url=str(record.get("source_url") or "") or None,
+                title=str(record.get("title") or "") or None,
+                license=str(record.get("license") or "unknown"),
+                usage_allowed=False,
+            )
+            ingest_summaries.append(
+                {
+                    "run_id": summary.get("run_id"),
+                    "concepts_created": summary.get("concepts_created", 0),
+                    "concepts_merged": summary.get("concepts_merged", 0),
+                    "relations_created": summary.get("relations_created", 0),
+                    "relations_strengthened": summary.get("relations_strengthened", 0),
+                    "evidence_added": summary.get("evidence_added", 0),
+                    "honesty": summary.get("honesty"),
+                }
+            )
+
+    return {
+        "provider": "anna_archive",
+        "mode": "metadata_only",
+        **result,
+        "semantic_ingest": {
+            "requested": request.ingest,
+            "records_ingested": len(ingest_summaries),
+            "runs": ingest_summaries,
+            "local_brain_write": False,
+            "raw_text_storage": False,
+            "download_url_storage": False,
+        },
+        "policy": {
+            "full_text_downloads": False,
+            "raw_text_storage": False,
+            "download_url_storage": False,
+            "local_brain_write": False,
+        },
+    }
 
 
 @router.get("/semantic/graph")
