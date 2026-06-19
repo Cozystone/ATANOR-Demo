@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/brain", tags=["brain-graph"])
 @router.get("/graph")
 def brain_graph(
     view: Literal["local", "cloud"] = Query(default="local"),
+    mode: Literal["fast", "full", "debug"] = Query(default="fast"),
     layers: str | None = Query(default=None),
     query: str | None = Query(default=None),
     max_nodes: int = Query(default=1000, ge=1, le=5000),
@@ -30,6 +31,7 @@ def brain_graph(
         max_edges=max_edges,
         focus_node_id=focus_node_id,
         lod=lod,
+        mode=mode,
     )
 
 

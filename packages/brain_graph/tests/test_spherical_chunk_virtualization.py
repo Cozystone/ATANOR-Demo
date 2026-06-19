@@ -28,6 +28,13 @@ def test_cloud_graph_uses_spherical_chunk_virtualization() -> None:
     assert state["materialized"]["candidate_pair_edges_sent"] == 0
     assert state["materialized"]["implicit_candidate_pairs"] >= 0
     assert state["spherical_view"]["active_chunks"] >= 0
+    metrics = state["spherical_view"]["geometry_metrics"]
+    assert metrics["x_span"] >= 0
+    assert metrics["y_span"] >= 0
+    assert metrics["z_span"] >= 0
+    if state["materialized"]["node_count"] >= 12:
+        assert metrics["spherical_uniformity_score"] > 0.45
+        assert metrics["planar_collapse_score"] < 0.6
     assert len(graph["edges"]) <= 30_000
     assert all(edge.get("relation") != "candidate_pair" for edge in graph["edges"])
 

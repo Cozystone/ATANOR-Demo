@@ -23,6 +23,8 @@ def test_brain_graph_cloud_view_reports_surface_summary_only():
     assert payload["view"] == "cloud"
     assert payload["honesty"]["surface_graph_full_render_disabled"] is True
     assert payload["stats"]["cloud_attached_counts_as_local"] is False
+    assert payload["performance"]["full_store_scan"] is False
+    assert payload["performance"]["index_rebuild_during_request"] is False
 
 
 def test_brain_overlay_status_is_honest_about_local_write():

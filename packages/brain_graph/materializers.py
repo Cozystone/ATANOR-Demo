@@ -10,8 +10,7 @@ from packages.base_brain.pack_loader import get_semantic_context, load_base_brai
 from packages.base_brain.seed_extension import build_seed_graph_v2
 from packages.cloud_brain.cloud_node_attachment import graph_overlay
 from packages.cloud_brain.contributor_node import contributor_status
-from packages.cloud_brain.ingestion import _read_jsonl, _store_paths, cloud_store_status
-from packages.cloud_brain.semantic_store import SemanticCloudStore
+from packages.cloud_brain.read_model import load_cloud_read_model_status, load_fast_graph_sample
 from packages.graph_hub.attachment import attachment_graph_payload, list_active_attachments
 
 from .models import LayerResult, RenderableBrainEdge, RenderableBrainNode
@@ -101,6 +100,17 @@ def _edge(
         verification_state=verification_state,
         metadata=metadata or {},
     ).to_dict()
+
+
+def _apply_explicit_position(node: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    try:
+        if row.get("x") is not None and row.get("y") is not None and row.get("z") is not None:
+            node["x"] = float(row["x"])
+            node["y"] = float(row["y"])
+            node["z"] = float(row["z"])
+    except (TypeError, ValueError):
+        pass
+    return node
 
 
 def _layer_missing(layer: str, reason: str, *, stats: dict[str, Any] | None = None) -> LayerResult:
@@ -302,37 +312,43 @@ def materialize_local_memory_candidates() -> LayerResult:
 
 
 def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerResult:
-    semantic_store = SemanticCloudStore(CLOUD_ROOT)
-    semantic_graph = semantic_store.graph_sample(limit_nodes=max_nodes, limit_edges=max_edges)
-    semantic_status = semantic_store.status()
+    semantic_status = load_cloud_read_model_status(CLOUD_ROOT)
+    semantic_graph = load_fast_graph_sample(CLOUD_ROOT, limit_nodes=max_nodes, limit_edges=max_edges)
+    semantic_counts = semantic_graph.get("counts") if isinstance(semantic_graph.get("counts"), dict) else {}
+    chunk_index = semantic_counts.get("chunks") if isinstance(semantic_counts.get("chunks"), dict) else {}
+    density_chunks = list(chunk_index.get("density_chunks") or chunk_index.get("chunks") or [])
     if semantic_graph["nodes"] or semantic_graph["edges"]:
-        nodes = [
-            _node(
-                str(row.get("id") or row.get("concept_id") or f"semantic-cloud:{index}"),
-                str(row.get("label") or row.get("concept_id") or f"semantic concept {index}"),
-                "semantic_cloud",
-                "cloud",
-                persistent=True,
-                temporary=False,
-                kind="semantic_cloud_concept",
-                radius=1.18,
-                trust_state="semantic_proof_store",
-                verification_state="proof_store_verified_v0",
-                metadata={
-                    "concept_id": row.get("concept_id"),
-                    "seen_count": row.get("seen_count"),
-                    "proof_store_only": True,
-                    "provenance_type": row.get("provenance_type") or "manual_sample_ingest",
-                    "source_run_id": row.get("source_run_id"),
-                    "source_text_hash": row.get("source_text_hash"),
-                    "source_label": row.get("source_label") or "Semantic Cloud proof store",
-                    "is_demo_sample": bool(row.get("is_demo_sample", True)),
-                    "is_autonomous_growth": bool(row.get("is_autonomous_growth", False)),
-                    "local_brain_write": False,
-                },
-            )
-            for index, row in enumerate(semantic_graph["nodes"])
-        ]
+        nodes = []
+        for index, row in enumerate(semantic_graph["nodes"]):
+            row_metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+            nodes.append(_apply_explicit_position(
+                _node(
+                    str(row.get("id") or row.get("concept_id") or f"semantic-cloud:{index}"),
+                    str(row.get("label") or row.get("concept_id") or f"semantic concept {index}"),
+                    "semantic_cloud",
+                    "cloud",
+                    persistent=True,
+                    temporary=False,
+                    kind=str(row_metadata.get("topology_role") or "semantic_cloud_concept"),
+                    radius=1.18,
+                    trust_state="semantic_proof_store",
+                    verification_state="proof_store_verified_v0",
+                    metadata={
+                        **row_metadata,
+                        "concept_id": row.get("concept_id"),
+                        "seen_count": row.get("seen_count"),
+                        "proof_store_only": True,
+                        "provenance_type": row.get("provenance_type") or row_metadata.get("provenance_type") or "manual_sample_ingest",
+                        "source_run_id": row.get("source_run_id"),
+                        "source_text_hash": row.get("source_text_hash"),
+                        "source_label": row.get("source_label") or "Semantic Cloud proof store",
+                        "is_demo_sample": bool(row.get("is_demo_sample", True)),
+                        "is_autonomous_growth": bool(row.get("is_autonomous_growth", False)),
+                        "local_brain_write": False,
+                    },
+                ),
+                row,
+            ))
         edges = [
             _edge(
                 str(row.get("id") or f"semantic-cloud-edge:{index}"),
@@ -347,6 +363,7 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
                 trust_state="semantic_proof_store",
                 verification_state="proof_store_verified_v0",
                 metadata={
+                    **(row.get("metadata") if isinstance(row.get("metadata"), dict) else {}),
                     "seen_count": row.get("seen_count"),
                     "proof_store_only": True,
                     "old_mirror_snapshot_used": False,
@@ -374,100 +391,49 @@ def materialize_semantic_cloud_graph(max_nodes: int, max_edges: int) -> LayerRes
                 "semantic_cloud_edges": verified_edge_count,
                 "implicit_candidate_pairs": implicit_candidate_pairs,
                 "candidate_pair_edges_sent": 0,
-                "candidate_pair_topology": "implicit_spherical_field",
+                "candidate_pair_topology": "planetary_galaxy_implicit_spherical_field",
+                "planetary_topology": semantic_counts.get("topology") or {},
+                "spherical_lod_shell": chunk_index,
+                "density_chunks": density_chunks,
+                "visible_scale_chunks": int(chunk_index.get("visible_scale_chunk_count") or len(density_chunks)),
+                "scale_chunks_are_semantic_nodes": False,
+                "all_nodes_rendered": False,
+                "read_model_available": bool(semantic_graph.get("read_model_available")),
+                "read_model_stale": bool(semantic_graph.get("read_model_stale")),
+                "graph_unavailable_reason": semantic_graph.get("graph_unavailable_reason"),
+                "performance": semantic_graph.get("performance") or {},
                 "source_is_remote": False,
                 "old_mirror_snapshot_used": False,
             },
             partial=bool(semantic_graph.get("bounded")),
         )
 
-    paths = _store_paths(CLOUD_ROOT)
-    status = cloud_store_status(CLOUD_ROOT)
-    node_rows = _read_jsonl(paths["nodes"])
-    edge_rows = _read_jsonl(paths["edges"])
-    if not node_rows and not edge_rows:
-        return _layer_missing("semantic_cloud", "semantic_cloud_store_empty", stats=status)
-    nodes = [
-        _node(
-            f"cloud:{row.get('content_hash')}:{row.get('concept_id') or index}",
-            str(row.get("label") or row.get("matched_text") or row.get("concept_id") or f"cloud concept {index}"),
-            "semantic_cloud",
-            "cloud",
-            persistent=True,
-            temporary=False,
-            kind="semantic_cloud_concept",
-            radius=1.18,
-            trust_state="seed_aligned",
-            verification_state="seed_aligned_pending_verification",
-            metadata={
-                "fragment_id": row.get("fragment_id"),
-                "content_hash": row.get("content_hash"),
-                "provenance_type": row.get("provenance_type") or "proof_fixture",
-                "source_run_id": row.get("source_run_id"),
-                "source_text_hash": row.get("content_hash"),
-                "source_label": "Cloud Brain proof fragment store",
-                "is_demo_sample": True,
-                "is_autonomous_growth": False,
-                "local_brain_write": False,
-            },
-        )
-        for index, row in enumerate(node_rows)
-    ]
-    node_lookup: dict[str, str] = {}
-    for node in nodes:
-        concept_key = str(node["metadata"].get("content_hash")) + ":" + str(node["label"])
-        node_lookup[concept_key] = node["id"]
-    edges: list[dict[str, Any]] = []
-    for index, row in enumerate(edge_rows):
-        source_key = str(row.get("content_hash")) + ":" + str(row.get("source"))
-        target_key = str(row.get("content_hash")) + ":" + str(row.get("target"))
-        source = node_lookup.get(source_key) or f"cloud:{row.get('content_hash')}:{row.get('source')}"
-        target = node_lookup.get(target_key) or f"cloud:{row.get('content_hash')}:{row.get('target')}"
-        edges.append(
-            _edge(
-                f"cloud-edge:{row.get('content_hash')}:{index}",
-                source,
-                target,
-                str(row.get("relation") or "related_to"),
-                "semantic_cloud",
-                "cloud",
-                persistent=True,
-                temporary=False,
-                weight=float(row.get("confidence") or 0.7),
-                trust_state="seed_aligned",
-                verification_state="seed_aligned_pending_verification",
-                metadata={
-                    "fragment_id": row.get("fragment_id"),
-                    "content_hash": row.get("content_hash"),
-                    "provenance_type": row.get("provenance_type") or "proof_fixture",
-                    "source_run_id": row.get("source_run_id"),
-                    "source_text_hash": row.get("content_hash"),
-                    "source_label": "Cloud Brain proof fragment store",
-                    "is_demo_sample": True,
-                    "is_autonomous_growth": False,
-                    "local_brain_write": False,
-                },
-            )
-        )
-    verified_edge_count = len(edges)
-    materialized_nodes = _bounded(nodes, max_nodes)
-    edges = _bounded(edges, max_edges)
-    implicit_candidate_pairs = len(materialized_nodes) * max(0, len(materialized_nodes) - 1) // 2
     return LayerResult(
         layer="semantic_cloud",
         available=True,
-        nodes=materialized_nodes,
-        edges=edges,
+        nodes=[],
+        edges=[],
         stats={
-            **status,
-            "semantic_cloud_nodes": len(nodes),
-            "semantic_cloud_edges": verified_edge_count,
-            "implicit_candidate_pairs": implicit_candidate_pairs,
+            **semantic_status,
+            "semantic_cloud_nodes": 0,
+            "semantic_cloud_edges": 0,
+            "implicit_candidate_pairs": 0,
             "candidate_pair_edges_sent": 0,
-            "candidate_pair_topology": "implicit_spherical_field",
+            "candidate_pair_topology": "planetary_galaxy_implicit_spherical_field",
+            "planetary_topology": semantic_counts.get("topology") or {},
+            "spherical_lod_shell": chunk_index,
+            "density_chunks": density_chunks,
+            "visible_scale_chunks": int(chunk_index.get("visible_scale_chunk_count") or len(density_chunks)),
+            "scale_chunks_are_semantic_nodes": False,
+            "all_nodes_rendered": False,
+            "read_model_available": bool(semantic_graph.get("read_model_available")),
+            "read_model_stale": bool(semantic_status.get("read_model_stale") or semantic_graph.get("read_model_stale")),
+            "graph_unavailable_reason": semantic_graph.get("graph_unavailable_reason") or semantic_status.get("graph_unavailable_reason"),
+            "performance": semantic_graph.get("performance") or semantic_status.get("performance") or {},
             "source_is_remote": False,
+            "old_mirror_snapshot_used": False,
         },
-        partial=len(nodes) > max_nodes or len(edges) > max_edges,
+        partial=True,
     )
 
 
@@ -488,6 +454,10 @@ def materialize_cloud_attached_graph(max_nodes: int, max_edges: int, layer: str 
             metadata={
                 "bundle_temporary": True,
                 "writes_to_local_brain": False,
+                "counts_as_local_brain": False,
+                "temporary_working_memory": True,
+                "promotion_required": "manual",
+                "is_semantic_node": False,
                 "provenance_type": "cloud_attached",
                 "source_run_id": row.get("source_run_id") or row.get("bundle_id"),
                 "source_text_hash": row.get("source_hash") or row.get("content_hash"),
@@ -514,6 +484,9 @@ def materialize_cloud_attached_graph(max_nodes: int, max_edges: int, layer: str 
             verification_state="temporary_working_memory",
             metadata={
                 "writes_to_local_brain": False,
+                "counts_as_local_brain": False,
+                "temporary_working_memory": True,
+                "promotion_required": "manual",
                 "provenance_type": "cloud_attached",
                 "source_run_id": row.get("source_run_id") or row.get("bundle_id"),
                 "source_text_hash": row.get("source_hash") or row.get("content_hash"),
@@ -536,6 +509,8 @@ def materialize_cloud_attached_graph(max_nodes: int, max_edges: int, layer: str 
             "cloud_attached_edges": len(edges),
             "temporary": True,
             "local_write": False,
+            "counts_as_local_brain": False,
+            "cloud_promotion": "manual_required",
         },
         partial=len(nodes) > max_nodes or len(edges) > max_edges,
     )
