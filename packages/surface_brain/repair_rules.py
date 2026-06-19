@@ -156,7 +156,7 @@ def mode_allows_rule(rule: RepairRule, mode: str) -> bool:
 
 
 def sentence_chunks(text: str) -> list[str]:
-    chunks = re.split(r"(?<=[.!?。！？])\s+|(?<=[다요죠니다까])\.\s*", text)
+    chunks = re.split(r"(?<=[.!?。])\s+|(?<=[요다까]\.)(?=\S)", text)
     return [chunk.strip() for chunk in chunks if chunk and chunk.strip()]
 
 

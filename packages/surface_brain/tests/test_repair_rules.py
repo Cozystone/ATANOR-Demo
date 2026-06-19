@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from packages.surface_brain.monitor import repair_answer_for_mode
-from packages.surface_brain.repair_rules import builtin_repair_rules
+from packages.surface_brain.repair_rules import builtin_repair_rules, sentence_chunks
 
 
 def test_default_mode_removes_internal_terms_and_preserves_meaning(tmp_path, monkeypatch) -> None:
@@ -36,3 +36,9 @@ def test_builtin_rules_include_required_leakage_guards() -> None:
     assert "replace_local_brain_user_facing" in names
     assert "remove_q_cortex_leakage" in names
     assert "remove_source_hash_leakage" in names
+
+
+def test_sentence_chunks_do_not_split_inside_korean_words_ending_with_ni() -> None:
+    text = "그 설명은 의미 단위로 보니.다음 문장은 여기입니다."
+
+    assert sentence_chunks(text) == ["그 설명은 의미 단위로 보니.다음 문장은 여기입니다."]
