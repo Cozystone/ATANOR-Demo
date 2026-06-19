@@ -83,7 +83,7 @@ def project_sentence_to_semantic_candidates(sentence: str, language: str = "auto
         if "관리" in text or "manages" in lowered or "management" in lowered:
             add_relation(source, "used_for", "관리" if detected == "ko" else "management", 0.72)
 
-    if "graphrag" in lowered or "그래프rag" in lowered or "그래프 RAG" in text:
+    if "graphrag" in lowered or "그래프rag" in lowered or "그래프RAG" in text:
         source = "GraphRAG"
         add_concept(source, 0.74)
         if "근거" in text or "evidence" in lowered:
@@ -98,7 +98,7 @@ def project_sentence_to_semantic_candidates(sentence: str, language: str = "auto
 
     if not relations:
         english_def = re.search(r"\b([A-Z][A-Za-z0-9.+#-]{1,40})\s+is\s+(?:an?\s+|the\s+)?([^.;]{3,80})", text)
-        korean_def = re.search(r"(.{2,40})는\s+(.{2,80})(?:입니다|이다|에 가깝습니다)", text)
+        korean_def = re.search(r"(.{2,40}?)(?:은|는)\s+(.{2,80}?)(?:입니다|이다|에 가깝습니다|에 가깝다)", text)
         if english_def:
             add_relation(english_def.group(1).strip(), "is_a", english_def.group(2).strip(), 0.56)
         elif korean_def:
