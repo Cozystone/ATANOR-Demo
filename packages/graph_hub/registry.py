@@ -15,6 +15,37 @@ def _semantic_edge(edge_id: str, source: str, target: str, relation: str) -> dic
     return {"id": edge_id, "source": source, "target": target, "relation": relation, "weight": 0.72}
 
 
+def _weighted_node(node_id: str, label: str, trust: float = 0.78, **metadata: Any) -> dict[str, Any]:
+    return {
+        "id": node_id,
+        "label": label,
+        "source_scope": "cartridge",
+        "trust": trust,
+        **metadata,
+    }
+
+
+def _weighted_edge(edge_id: str, source: str, target: str, relation: str, weight: float = 0.74) -> dict[str, Any]:
+    return {"id": edge_id, "source": source, "target": target, "relation": relation, "weight": weight}
+
+
+def _surface_defaults(domain: str) -> dict[str, list[dict[str, Any]]]:
+    return {
+        "constructions": [
+            {"id": f"{domain}:direct_grounded_answer", "language": "ko", "pattern_family": "grounded_direct_answer"},
+            {"id": f"{domain}:compact_evidence_caveat", "language": "en", "pattern_family": "evidence_then_caveat"},
+        ],
+        "discourse_moves": [
+            {"id": f"{domain}:answer_then_evidence", "function": "direct_answer"},
+            {"id": f"{domain}:uncertainty_boundary", "function": "caveat"},
+        ],
+        "lemma_choices": [],
+        "style_profiles": [
+            {"id": f"{domain}:clear_operator", "tone": "clear", "density": "medium"},
+        ],
+    }
+
+
 def sample_cartridges() -> list[dict[str, Any]]:
     return [
         make_graph_cartridge(
@@ -114,6 +145,148 @@ def sample_cartridges() -> list[dict[str, Any]]:
                 "reasoning_patterns": [{"id": "risk_tradeoff_mitigation", "name": "Risk-tradeoff-mitigation"}],
             },
             provenance={"source_type": "manual_sample", "source_paths": []},
+        ),
+        make_graph_cartridge(
+            cartridge_id="graphrag_evidence_verification_demo",
+            name="GraphRAG Evidence Verification",
+            subtitle="Claim, evidence, citation, and verification flow for grounded answers.",
+            description="A realistic sample graph fragment that models how retrieved evidence constrains answer candidates without exposing internal routes by default.",
+            category="verification",
+            pricing={"model": "free", "price": None, "currency": "none", "billing_period": "none"},
+            tags=["graphrag", "evidence", "verification", "claim", "source"],
+            contents={
+                "semantic_graph": {
+                    "nodes": [
+                        _weighted_node("rag:query", "User Query", 0.8, role="input"),
+                        _weighted_node("rag:seed_anchor", "Seed Anchor", 0.84, role="anchor"),
+                        _weighted_node("rag:concept_node", "Concept Node", 0.78, role="semantic"),
+                        _weighted_node("rag:evidence_chunk", "Evidence Chunk", 0.82, role="evidence"),
+                        _weighted_node("rag:source_document", "Source Document", 0.8, role="source"),
+                        _weighted_node("rag:claim", "Claim", 0.76, role="claim"),
+                        _weighted_node("rag:answer_candidate", "Answer Candidate", 0.74, role="candidate"),
+                        _weighted_node("rag:verifier", "Evidence Verifier", 0.86, role="checker"),
+                        _weighted_node("rag:citation", "Citation", 0.8, role="support"),
+                        _weighted_node("rag:unsupported_claim", "Unsupported Claim", 0.28, role="rejected"),
+                    ],
+                    "edges": [
+                        _weighted_edge("rag:query-matches-anchor", "rag:query", "rag:seed_anchor", "matches", 0.8),
+                        _weighted_edge("rag:anchor-activates-concept", "rag:seed_anchor", "rag:concept_node", "activates", 0.76),
+                        _weighted_edge("rag:concept-retrieves-evidence", "rag:concept_node", "rag:evidence_chunk", "retrieves", 0.82),
+                        _weighted_edge("rag:evidence-from-source", "rag:evidence_chunk", "rag:source_document", "from_source", 0.84),
+                        _weighted_edge("rag:evidence-supports-claim", "rag:evidence_chunk", "rag:claim", "supports", 0.82),
+                        _weighted_edge("rag:claim-forms-answer", "rag:claim", "rag:answer_candidate", "constrains", 0.74),
+                        _weighted_edge("rag:verifier-checks-answer", "rag:verifier", "rag:answer_candidate", "checks", 0.86),
+                        _weighted_edge("rag:citation-backs-answer", "rag:citation", "rag:answer_candidate", "backs", 0.78),
+                        _weighted_edge("rag:source-provides-citation", "rag:source_document", "rag:citation", "provides", 0.78),
+                        _weighted_edge("rag:verifier-rejects-unsupported", "rag:verifier", "rag:unsupported_claim", "inhibits", 0.88),
+                        _weighted_edge("rag:unsupported-conflicts-answer", "rag:unsupported_claim", "rag:answer_candidate", "conflicts_with", 0.36),
+                    ],
+                },
+                "surface_graph": _surface_defaults("rag"),
+                "reasoning_patterns": [
+                    {"id": "evidence_before_answer", "name": "Evidence before answer"},
+                    {"id": "unsupported_claim_inhibition", "name": "Unsupported claim inhibition"},
+                ],
+            },
+            provenance={"source_type": "curated_sample", "source_paths": [], "proof_store_only": True},
+        ),
+        make_graph_cartridge(
+            cartridge_id="local_cloud_boundary_demo",
+            name="Local Cloud Boundary",
+            subtitle="Read-only Cloud context, Payload Vault boundary, and Working Memory overlay rules.",
+            description="A sample safety graph showing how public cloud fragments can be attached temporarily while private Local Brain and Payload Vault data remain isolated.",
+            category="safety",
+            pricing={"model": "free", "price": None, "currency": "none", "billing_period": "none"},
+            tags=["privacy", "working_memory", "local_brain", "cloud_attached", "payload_vault"],
+            contents={
+                "semantic_graph": {
+                    "nodes": [
+                        _weighted_node("boundary:local_brain", "Local Brain", 0.86, role="private_boundary"),
+                        _weighted_node("boundary:payload_vault", "Payload Vault", 0.9, role="private_store"),
+                        _weighted_node("boundary:ghost_shell", "Ghost Shell", 0.84, role="execution_boundary"),
+                        _weighted_node("boundary:working_memory", "Working Memory Overlay", 0.82, role="temporary_overlay"),
+                        _weighted_node("boundary:cloud_fragment", "Public Cloud Fragment", 0.74, role="public_context"),
+                        _weighted_node("boundary:semantic_cloud", "Semantic Cloud Graph", 0.76, role="public_graph"),
+                        _weighted_node("boundary:approval_gate", "Explicit Promotion Gate", 0.86, role="approval"),
+                        _weighted_node("boundary:local_write", "Local Write", 0.64, role="protected_action"),
+                        _weighted_node("boundary:trial_chunk", "Trial Cartridge Chunk", 0.72, role="temporary_chunk"),
+                        _weighted_node("boundary:detach", "Detach Cleanup", 0.82, role="cleanup"),
+                    ],
+                    "edges": [
+                        _weighted_edge("boundary:vault-owned-by-local", "boundary:payload_vault", "boundary:local_brain", "protected_by", 0.88),
+                        _weighted_edge("boundary:ghost-shell-guards-vault", "boundary:ghost_shell", "boundary:payload_vault", "guards", 0.84),
+                        _weighted_edge("boundary:cloud-attaches-wm", "boundary:cloud_fragment", "boundary:working_memory", "attaches_temporarily", 0.76),
+                        _weighted_edge("boundary:semantic-cloud-provides-fragment", "boundary:semantic_cloud", "boundary:cloud_fragment", "provides", 0.76),
+                        _weighted_edge("boundary:trial-attaches-wm", "boundary:trial_chunk", "boundary:working_memory", "attaches_temporarily", 0.74),
+                        _weighted_edge("boundary:wm-not-local-write", "boundary:working_memory", "boundary:local_write", "does_not_perform", 0.82),
+                        _weighted_edge("boundary:approval-enables-write", "boundary:approval_gate", "boundary:local_write", "requires_explicit_approval", 0.88),
+                        _weighted_edge("boundary:detach-clears-wm", "boundary:detach", "boundary:working_memory", "clears", 0.84),
+                        _weighted_edge("boundary:trial-detaches", "boundary:trial_chunk", "boundary:detach", "expires_to", 0.74),
+                    ],
+                },
+                "surface_graph": _surface_defaults("boundary"),
+                "reasoning_patterns": [
+                    {"id": "temporary_context_no_private_write", "name": "Temporary context without private write"},
+                    {"id": "explicit_promotion_gate", "name": "Explicit promotion gate"},
+                ],
+            },
+            provenance={"source_type": "curated_sample", "source_paths": [], "proof_store_only": True},
+        ),
+        make_graph_cartridge(
+            cartridge_id="cortex_surface_answer_demo",
+            name="CORTEX Surface Answer Path",
+            subtitle="Activation, salience, surface planning, repair, and hidden trace flow.",
+            description="A sample graph fragment for natural answer planning: activation selects a bounded workspace, surface planning chooses phrasing, and repair moves internal details into trace.",
+            category="answering",
+            pricing={"model": "free", "price": None, "currency": "none", "billing_period": "none"},
+            tags=["surface_brain", "cortex_g2", "answer_quality", "repair", "trace_hygiene"],
+            contents={
+                "semantic_graph": {
+                    "nodes": [
+                        _weighted_node("answer:intent", "User Intent", 0.82, role="intent"),
+                        _weighted_node("answer:activation", "Graph Activation", 0.78, role="activation"),
+                        _weighted_node("answer:salience", "Salience Gate", 0.82, role="selection"),
+                        _weighted_node("answer:workspace", "Bounded Workspace", 0.84, role="workspace"),
+                        _weighted_node("answer:semantic_support", "Semantic Support", 0.82, role="grounding"),
+                        _weighted_node("answer:surface_plan", "Surface Plan", 0.78, role="realization"),
+                        _weighted_node("answer:q_cortex", "Candidate Optimizer", 0.72, role="optimizer"),
+                        _weighted_node("answer:repair_loop", "Surface Repair Loop", 0.86, role="repair"),
+                        _weighted_node("answer:clean_answer", "Clean Answer", 0.84, role="output"),
+                        _weighted_node("answer:trace_panel", "Collapsed Trace Panel", 0.78, role="trace"),
+                    ],
+                    "edges": [
+                        _weighted_edge("answer:intent-activates", "answer:intent", "answer:activation", "triggers", 0.78),
+                        _weighted_edge("answer:activation-feeds-salience", "answer:activation", "answer:salience", "feeds", 0.76),
+                        _weighted_edge("answer:salience-selects-workspace", "answer:salience", "answer:workspace", "selects", 0.84),
+                        _weighted_edge("answer:workspace-uses-semantic", "answer:workspace", "answer:semantic_support", "requires", 0.82),
+                        _weighted_edge("answer:semantic-guides-surface", "answer:semantic_support", "answer:surface_plan", "guides", 0.78),
+                        _weighted_edge("answer:optimizer-ranks-plan", "answer:q_cortex", "answer:surface_plan", "ranks_candidates", 0.72),
+                        _weighted_edge("answer:surface-to-repair", "answer:surface_plan", "answer:repair_loop", "passes_through", 0.82),
+                        _weighted_edge("answer:repair-produces-clean", "answer:repair_loop", "answer:clean_answer", "produces", 0.86),
+                        _weighted_edge("answer:repair-moves-trace", "answer:repair_loop", "answer:trace_panel", "moves_internal_detail", 0.84),
+                        _weighted_edge("answer:trace-not-default", "answer:trace_panel", "answer:clean_answer", "hidden_by_default", 0.76),
+                    ],
+                },
+                "surface_graph": {
+                    "constructions": [
+                        {"id": "answer:ko_natural_direct", "language": "ko", "pattern_family": "native_direct_answer"},
+                        {"id": "answer:en_concise_technical", "language": "en", "pattern_family": "concise_technical_answer"},
+                        {"id": "answer:soft_uncertainty", "language": "ko", "pattern_family": "soft_uncertainty_boundary"},
+                    ],
+                    "discourse_moves": [
+                        {"id": "answer:answer_first", "function": "direct_answer"},
+                        {"id": "answer:evidence_brief", "function": "evidence_summary"},
+                        {"id": "answer:trace_hidden", "function": "hide_internal_trace"},
+                    ],
+                    "lemma_choices": [],
+                    "style_profiles": [{"id": "answer:service_default", "tone": "natural", "verbosity": "compact"}],
+                },
+                "reasoning_patterns": [
+                    {"id": "bounded_workspace_answer", "name": "Bounded workspace answer"},
+                    {"id": "repair_before_user_output", "name": "Repair before user output"},
+                ],
+            },
+            provenance={"source_type": "curated_sample", "source_paths": [], "proof_store_only": True},
         ),
     ]
 
