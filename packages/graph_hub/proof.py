@@ -10,7 +10,7 @@ from .attachment import attach_cartridge, detach_cartridge, list_active_attachme
 from .audit import list_graph_hub_audit_events
 from .catalog import list_catalog_items, refresh_catalog
 from .cartridge_exporter import export_semantic_cloud_to_cartridge
-from .entitlement import expire_subscription, grant_free_entitlement, mock_purchase_one_time, mock_start_subscription
+from .entitlement import expire_subscription, grant_free_entitlement, grant_local_one_time_entitlement, grant_local_subscription_entitlement
 from .installer import install_cartridge, list_installed_cartridges
 from .models import GRAPH_HUB_ROOT, utc_now_iso, write_json
 from .sandbox import sandbox_preview
@@ -36,7 +36,7 @@ def graph_hub_status() -> dict[str, Any]:
         "external_llm_used": False,
         "external_sllm_used": False,
         "old_mirror_snapshot_used_as_live_cloud": False,
-        "billing_mode": "local_mock",
+        "billing_mode": "local_entitlement_simulation",
     }
 
 
@@ -54,10 +54,10 @@ def run_graph_hub_proof() -> dict[str, Any]:
     )
     free_entitlement = grant_free_entitlement("atanor_base_free")
     free_install = install_cartridge("atanor_base_free")
-    purchase = mock_purchase_one_time("startup_strategy_demo")
+    purchase = grant_local_one_time_entitlement("startup_strategy_demo")
     startup_install = install_cartridge("startup_strategy_demo")
     startup_attach = attach_cartridge("startup_strategy_demo")
-    subscription = mock_start_subscription("korean_writing_demo")
+    subscription = grant_local_subscription_entitlement("korean_writing_demo")
     writing_install = install_cartridge("korean_writing_demo")
     writing_attach = attach_cartridge("korean_writing_demo")
     expired = expire_subscription("korean_writing_demo")

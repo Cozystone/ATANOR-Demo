@@ -5060,9 +5060,9 @@ export default function BakeBoardPage() {
         await apiJson<AnyRecord>(`/api/graph-hub/entitlements/free/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
         await apiJson<AnyRecord>(`/api/graph-hub/install/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
       } else if (pricingModel === "one_time" && entitlementStatus !== "owned") {
-        await apiJson<AnyRecord>(`/api/graph-hub/entitlements/mock-purchase/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+        await apiJson<AnyRecord>(`/api/graph-hub/entitlements/local-one-time-simulation/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
       } else if (pricingModel === "subscription" && entitlementStatus !== "active_subscription") {
-        await apiJson<AnyRecord>(`/api/graph-hub/entitlements/mock-subscribe/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
+        await apiJson<AnyRecord>(`/api/graph-hub/entitlements/local-subscription-simulation/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
       } else if (!installed) {
         await apiJson<AnyRecord>(`/api/graph-hub/install/${encodeURIComponent(cartridgeId)}`, { method: "POST" }, localBackendConnected ? { localOnly: true } : {});
       } else {

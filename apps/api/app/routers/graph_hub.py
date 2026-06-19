@@ -12,9 +12,9 @@ from packages.graph_hub.cartridge_exporter import export_semantic_cloud_to_cartr
 from packages.graph_hub.entitlement import (
     expire_subscription,
     grant_free_entitlement,
+    grant_local_one_time_entitlement,
+    grant_local_subscription_entitlement,
     list_entitlements,
-    mock_purchase_one_time,
-    mock_start_subscription,
 )
 from packages.graph_hub.installer import install_cartridge, install_cartridge_from_path, list_installed_cartridges, uninstall_cartridge
 from packages.graph_hub.proof import graph_hub_status, run_graph_hub_proof
@@ -88,14 +88,14 @@ def entitlement_free(cartridge_id: str) -> dict[str, Any]:
     return grant_free_entitlement(cartridge_id)
 
 
-@router.post("/entitlements/mock-purchase/{cartridge_id}")
+@router.post("/entitlements/local-one-time-simulation/{cartridge_id}")
 def entitlement_purchase(cartridge_id: str) -> dict[str, Any]:
-    return mock_purchase_one_time(cartridge_id)
+    return grant_local_one_time_entitlement(cartridge_id)
 
 
-@router.post("/entitlements/mock-subscribe/{cartridge_id}")
+@router.post("/entitlements/local-subscription-simulation/{cartridge_id}")
 def entitlement_subscribe(cartridge_id: str) -> dict[str, Any]:
-    return mock_start_subscription(cartridge_id)
+    return grant_local_subscription_entitlement(cartridge_id)
 
 
 @router.post("/entitlements/expire/{cartridge_id}")

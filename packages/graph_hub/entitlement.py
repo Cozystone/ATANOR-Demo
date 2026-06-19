@@ -19,7 +19,7 @@ def _save(payload: dict[str, dict[str, Any]]) -> None:
     write_json(ENTITLEMENTS_PATH, payload)
 
 
-def _grant(cartridge_id: str, pricing_model: str, status: str, *, expires_at: str | None = None, source: str = "local_mock") -> dict[str, Any]:
+def _grant(cartridge_id: str, pricing_model: str, status: str, *, expires_at: str | None = None, source: str = "local_entitlement_simulation") -> dict[str, Any]:
     entitlements = _load()
     entitlement = {
         "entitlement_id": stable_id("ent", f"{cartridge_id}:{pricing_model}"),
@@ -29,11 +29,11 @@ def _grant(cartridge_id: str, pricing_model: str, status: str, *, expires_at: st
         "granted_at": utc_now_iso(),
         "expires_at": expires_at,
         "source": source,
-        "metadata": {"mock_billing": True},
+        "metadata": {"billing_mode": "local_entitlement_simulation", "real_payment": False},
     }
     entitlements[cartridge_id] = entitlement
     _save(entitlements)
-    event_type = "entitlement_granted" if pricing_model == "free" else "purchased_mock" if pricing_model == "one_time" else "subscription_started_mock"
+    event_type = "entitlement_granted" if pricing_model == "free" else "local_one_time_entitlement_granted" if pricing_model == "one_time" else "local_subscription_entitlement_started"
     append_graph_hub_audit_event(event_type, cartridge_id, {"status": status, "expires_at": expires_at})
     return entitlement
 
@@ -42,11 +42,11 @@ def grant_free_entitlement(cartridge_id: str) -> dict[str, Any]:
     return _grant(cartridge_id, "free", "free")
 
 
-def mock_purchase_one_time(cartridge_id: str) -> dict[str, Any]:
+def grant_local_one_time_entitlement(cartridge_id: str) -> dict[str, Any]:
     return _grant(cartridge_id, "one_time", "owned")
 
 
-def mock_start_subscription(cartridge_id: str, days: int = 30) -> dict[str, Any]:
+def grant_local_subscription_entitlement(cartridge_id: str, days: int = 30) -> dict[str, Any]:
     return _grant(cartridge_id, "subscription", "active_subscription", expires_at=iso_after_days(days))
 
 
