@@ -412,10 +412,10 @@ def _apply_brain_mode_diagnostics(
     evidence_docs = list(result.get("evidence_docs") or [])
     route_state = {
         "local": "local_private_route",
-        "cloud": "cloud_public_route" if has_cloud_payload else "cloud_preview_stub",
+        "cloud": "cloud_public_route" if has_cloud_payload else "cloud_preview_unavailable",
         "unified": "unified_working_memory_route" if ratios.get("cloud", 0) > 0 else "unified_local_route",
     }[brain_mode]
-    cloud_state = "disabled" if brain_mode == "local" else "connected" if has_cloud_payload else "stub"
+    cloud_state = "disabled" if brain_mode == "local" else "connected" if has_cloud_payload else "preview_unavailable"
     evidence_state = "enough" if len(evidence_docs) >= 3 else "partial" if evidence_docs else "low"
     selected_anchor = ""
     matched_nodes = list(result.get("matched_nodes") or [])
