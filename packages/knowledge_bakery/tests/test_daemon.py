@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from knowledge_bakery import daemon_checkpoint, daemon_status, run_synaptic_decay, start_daemon, stop_daemon, tick_daemon
+import knowledge_bakery.learning_daemon as learning_daemon
 
 
 def test_daemon_tick_persists_state_and_memory_counts(tmp_path: Path, monkeypatch) -> None:
@@ -24,6 +25,8 @@ def test_daemon_tick_persists_state_and_memory_counts(tmp_path: Path, monkeypatc
     assert status["state"] == "idle"
     assert status["total_rounds"] == 1
     assert status["learned_rounds"] == 1
+    assert status["timing_state"] == "GRAPH_GROWING"
+    assert status["current_learning_phase"] == "learning"
     assert status["latest_node_count"] > 0
     assert (tmp_path / "data" / "memory" / "daemon_state.json").exists()
 
@@ -59,6 +62,72 @@ def test_start_daemon_self_heals_worker_alive(tmp_path: Path, monkeypatch) -> No
     assert status["desired_running"] is True
     assert status["worker_alive"] is True
     stop_daemon("data/memory", "test")
+
+
+def test_waiting_for_payloads_counts_idle_not_active_learning(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    state = {
+        "state": "running",
+        "desired_running": True,
+        "queue_state": "WAITING_FOR_PAYLOADS",
+        "timing_state": "IDLE",
+        "started_at": "2026-01-01T00:00:00Z",
+        "last_timing_update_at": "2026-01-01T00:00:10Z",
+        "active_learning_seconds": 100,
+        "cumulative_learning_seconds": 100,
+        "idle_waiting_seconds": 5,
+        "cumulative_runtime_seconds": 105,
+        "total_runtime_seconds": 105,
+    }
+
+    merged = learning_daemon._merge_timing(state, now_ts=1767225620.0)
+
+    assert merged["active_learning_seconds"] == 100
+    assert merged["cumulative_learning_seconds"] == 100
+    assert merged["display_learning_seconds"] == 100
+    assert merged["idle_waiting_seconds"] == 15
+    assert merged["cumulative_runtime_seconds"] == 115
+
+
+def test_active_learning_state_counts_active_learning() -> None:
+    state = {
+        "state": "running",
+        "desired_running": True,
+        "queue_state": "GRAPH_GROWING",
+        "timing_state": "GRAPH_GROWING",
+        "started_at": "2026-01-01T00:00:00Z",
+        "last_timing_update_at": "2026-01-01T00:00:10Z",
+        "active_learning_seconds": 100,
+        "cumulative_learning_seconds": 100,
+        "idle_waiting_seconds": 5,
+        "cumulative_runtime_seconds": 105,
+        "total_runtime_seconds": 105,
+    }
+
+    merged = learning_daemon._merge_timing(state, now_ts=1767225620.0)
+
+    assert merged["active_learning_seconds"] == 110
+    assert merged["cumulative_learning_seconds"] == 110
+    assert merged["display_learning_seconds"] == 110
+    assert merged["idle_waiting_seconds"] == 5
+    assert merged["cumulative_runtime_seconds"] == 115
+
+
+def test_legacy_cumulative_learning_migrates_to_server_authoritative_active_time() -> None:
+    state = {
+        "state": "running",
+        "desired_running": True,
+        "queue_state": "WAITING_FOR_PAYLOADS",
+        "cumulative_learning_seconds": 77,
+        "total_runtime_seconds": 200,
+    }
+
+    normalized = learning_daemon._normalize_timing_fields(state)
+
+    assert normalized["active_learning_seconds"] == 77
+    assert normalized["display_learning_seconds"] == 77
+    assert normalized["cumulative_runtime_seconds"] == 200
+    assert normalized["idle_waiting_seconds"] == 123
 
 
 def test_daemon_ingests_raw_files_and_potentiates_synapses(tmp_path: Path, monkeypatch) -> None:

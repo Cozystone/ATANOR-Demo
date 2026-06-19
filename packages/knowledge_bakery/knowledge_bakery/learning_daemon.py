@@ -29,6 +29,8 @@ MIN_RAM_AVAILABLE_GB = 1.5
 SUPPORTED_RAW_EXTENSIONS = {".txt", ".md"}
 AUTO_FLUSH_FRAGMENT_COUNT = 50
 AUTO_FLUSH_SECONDS = 180.0
+ACTIVE_LEARNING_STATES = {"INGESTING", "BAKING", "EXTRACTING", "GRAPH_GROWING", "INDEXING", "PERSISTENT_APPEND_APPLIED"}
+IDLE_WAITING_STATES = {"WAITING_FOR_START", "WAITING_FOR_PAYLOADS", "WAITING_FOR_RESOURCES", "IDLE"}
 
 _lock = threading.RLock()
 _stop_event = threading.Event()
@@ -114,6 +116,14 @@ def _default_state() -> dict[str, Any]:
         "prune_threshold": DEFAULT_PRUNE_THRESHOLD,
         "potentiation_increment": DEFAULT_POTENTIATION_INCREMENT,
         "total_runtime_seconds": 0,
+        "daemon_uptime_seconds": 0,
+        "active_learning_seconds": 0,
+        "idle_waiting_seconds": 0,
+        "cumulative_learning_seconds": 0,
+        "cumulative_runtime_seconds": 0,
+        "display_learning_seconds": 0,
+        "timing_state": "IDLE",
+        "last_timing_update_at": None,
         "total_rounds": 0,
         "learned_rounds": 0,
         "idle_rounds": 0,
@@ -178,6 +188,7 @@ def _read_state(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
         if required not in watch_dirs:
             watch_dirs.append(required)
     state["watch_dirs"] = watch_dirs
+    _normalize_timing_fields(state)
     return state
 
 
@@ -474,11 +485,7 @@ def _skipped_cloud_brain_web_seed_feeder() -> dict[str, Any]:
 
 
 def _merge_runtime(state: dict[str, Any]) -> dict[str, Any]:
-    now_ts = time.time()
-    started_ts = _parse_iso(state.get("started_at"))
-    if started_ts and state.get("desired_running"):
-        state["total_runtime_seconds"] = max(int(now_ts - started_ts), int(state.get("total_runtime_seconds") or 0))
-    return state
+    return _merge_timing(state)
 
 
 def _synaptic_status(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
@@ -524,6 +531,74 @@ def _safe_memory_status(memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str
             "predicate_count": 0,
             "built_at": None,
         }
+
+
+def _timing_category(state: dict[str, Any]) -> str:
+    timing_state = str(state.get("timing_state") or "").upper()
+    queue_state = str(state.get("queue_state") or "").upper()
+    if timing_state in ACTIVE_LEARNING_STATES or queue_state in ACTIVE_LEARNING_STATES:
+        return "active"
+    if timing_state in IDLE_WAITING_STATES or queue_state in IDLE_WAITING_STATES:
+        return "idle"
+    if state.get("desired_running") and str(state.get("state") or "").lower() == "running":
+        return "idle"
+    return "paused"
+
+
+def _normalize_timing_fields(state: dict[str, Any]) -> dict[str, Any]:
+    legacy_learning = int(float(state.get("cumulative_learning_seconds") or 0))
+    legacy_runtime = int(float(state.get("total_runtime_seconds") or state.get("cumulative_runtime_seconds") or 0))
+    active = int(float(state.get("active_learning_seconds") or legacy_learning or 0))
+    runtime = int(float(state.get("cumulative_runtime_seconds") or legacy_runtime or 0))
+    idle = int(float(state.get("idle_waiting_seconds") or max(0, runtime - active)))
+    state["active_learning_seconds"] = max(0, active)
+    state["cumulative_learning_seconds"] = max(0, active)
+    state["display_learning_seconds"] = max(0, active)
+    state["cumulative_runtime_seconds"] = max(0, runtime)
+    state["total_runtime_seconds"] = max(0, runtime)
+    state["idle_waiting_seconds"] = max(0, idle)
+    state["daemon_uptime_seconds"] = max(0, int(float(state.get("daemon_uptime_seconds") or 0)))
+    state["timing_state"] = str(state.get("timing_state") or "IDLE")
+    return state
+
+
+def _accumulate_timing_delta(state: dict[str, Any], elapsed_seconds: float, category: str) -> dict[str, Any]:
+    _normalize_timing_fields(state)
+    delta = max(0, int(elapsed_seconds))
+    if delta <= 0:
+        return state
+    state["cumulative_runtime_seconds"] = int(state.get("cumulative_runtime_seconds") or 0) + delta
+    state["total_runtime_seconds"] = int(state.get("cumulative_runtime_seconds") or 0)
+    if category == "active":
+        state["active_learning_seconds"] = int(state.get("active_learning_seconds") or 0) + delta
+    elif category == "idle":
+        state["idle_waiting_seconds"] = int(state.get("idle_waiting_seconds") or 0) + delta
+    state["cumulative_learning_seconds"] = int(state.get("active_learning_seconds") or 0)
+    state["display_learning_seconds"] = int(state.get("active_learning_seconds") or 0)
+    return state
+
+
+def _merge_timing(state: dict[str, Any], now_ts: float | None = None) -> dict[str, Any]:
+    now_ts = time.time() if now_ts is None else now_ts
+    _normalize_timing_fields(state)
+    started_ts = _parse_iso(state.get("started_at"))
+    state["daemon_uptime_seconds"] = max(0, int(now_ts - started_ts)) if started_ts and state.get("desired_running") else 0
+    last_update_ts = _parse_iso(state.get("last_timing_update_at"))
+    category = _timing_category(state)
+    if state.get("desired_running") and last_update_ts is not None:
+        _accumulate_timing_delta(state, now_ts - last_update_ts, category)
+    if state.get("desired_running"):
+        state["last_timing_update_at"] = datetime.fromtimestamp(now_ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if not state.get("current_learning_phase"):
+        if category == "active":
+            state["current_learning_phase"] = "learning"
+        elif str(state.get("queue_state") or "").upper() == "WAITING_FOR_RESOURCES":
+            state["current_learning_phase"] = "waiting_for_resources"
+        elif category == "idle":
+            state["current_learning_phase"] = "waiting_for_payloads"
+        else:
+            state["current_learning_phase"] = "paused"
+    return state
 
 
 def _refresh_counts(state: dict[str, Any], memory_dir: str | Path = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
@@ -933,8 +1008,7 @@ def run_synaptic_decay(
 def daemon_status(memory_dir: str = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
     with _lock:
         memory_dir = _resolved_memory_dir(memory_dir)
-        state = _merge_runtime(_read_state(memory_dir))
-        state["cumulative_learning_seconds"] = int(state.get("total_runtime_seconds") or 0)
+        state = _merge_timing(_read_state(memory_dir))
         alive = _worker_matches(memory_dir)
         if (
             state.get("desired_running")
@@ -982,7 +1056,8 @@ def daemon_status(memory_dir: str = DEFAULT_MEMORY_DIR) -> dict[str, Any]:
         state["local_required"] = True
         state["deployment_policy"] = "The Vercel deployment stays a small viewer; real Cloud Brain learning runs only beside local FastAPI."
         _refresh_counts(state, memory_dir)
-        state["cumulative_learning_seconds"] = int(state.get("total_runtime_seconds") or 0)
+        _normalize_timing_fields(state)
+        _write_state(state, memory_dir)
         return state
 
 
@@ -1017,7 +1092,8 @@ def tick_daemon(
     run_web_seed_feeder: bool | None = None,
 ) -> dict[str, Any]:
     with _lock:
-        state = _read_state(memory_dir)
+        tick_started = time.monotonic()
+        state = _merge_timing(_read_state(memory_dir))
         snapshot = _resource_snapshot(memory_dir)
         blocker = _resource_blocker(snapshot)
         now = utc_now_iso()
@@ -1095,11 +1171,22 @@ def tick_daemon(
             message = "Continuous ingestion stream is awake; no new payloads arrived this tick."
             state["idle_rounds"] = int(state.get("idle_rounds") or 0) + 1
 
+        active_work = bool(
+            ingest_result.get("ingested", 0)
+            or needs_build
+            or decay_result
+            or int(web_seed_result.get("semantic_ingested") or 0) > 0
+            or int(web_seed_result.get("fragments_created") or 0) > 0
+        )
+        _accumulate_timing_delta(state, time.monotonic() - tick_started, "active" if active_work else "idle")
+
         state.update(
             {
                 "state": "running" if state.get("desired_running") else "idle",
                 "stream_state": "LISTENING_STREAM" if state.get("desired_running") else "PAUSED",
-                "queue_state": "PERSISTENT_APPEND_APPLIED" if ingest_result.get("ingested", 0) else "WAITING_FOR_PAYLOADS",
+                "queue_state": "PERSISTENT_APPEND_APPLIED" if active_work else "WAITING_FOR_PAYLOADS",
+                "timing_state": "GRAPH_GROWING" if active_work else "IDLE",
+                "current_learning_phase": "learning" if active_work else "waiting_for_payloads",
                 "ingestion_mode": "persistent_append",
                 "last_heartbeat_at": now,
                 "last_tick_at": now,
@@ -1190,6 +1277,9 @@ def start_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, interval_seconds: int = D
                 "interval_seconds": interval_seconds,
                 "stream_state": "LISTENING_STREAM",
                 "queue_state": "WAITING_FOR_PAYLOADS",
+                "timing_state": "IDLE",
+                "current_learning_phase": "waiting_for_payloads",
+                "last_timing_update_at": now,
                 "ingestion_mode": "persistent_append",
                 "last_error": None,
                 "last_round_message": "Continuous ingestion stream is awake and listening for payloads.",
@@ -1223,6 +1313,8 @@ def stop_daemon(memory_dir: str = DEFAULT_MEMORY_DIR, reason: str = "manual") ->
                 "desired_running": False,
                 "resume_needed": False,
                 "last_heartbeat_at": utc_now_iso(),
+                "timing_state": "IDLE",
+                "current_learning_phase": "stopped",
                 "last_round_message": f"Local Cloud Brain hippocampus daemon stopped: {reason}.",
             }
         )

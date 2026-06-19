@@ -20,17 +20,16 @@ def utc_now_iso() -> str:
 
 
 def cumulative_learning_seconds() -> int:
-    stream_seconds = max(0, int(time.monotonic() - STREAM_STARTED_MONOTONIC))
     try:
         daemon = daemon_status()
     except Exception:
-        return stream_seconds
-    durable_seconds = int(
-        daemon.get("cumulative_learning_seconds")
-        or daemon.get("total_runtime_seconds")
+        return 0
+    return int(
+        daemon.get("display_learning_seconds")
+        or daemon.get("active_learning_seconds")
+        or daemon.get("cumulative_learning_seconds")
         or 0
     )
-    return max(stream_seconds, durable_seconds)
 
 
 def _event_id() -> str:
