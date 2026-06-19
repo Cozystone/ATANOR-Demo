@@ -43,10 +43,14 @@ function normalizeExchange(query: string, exchange: AnyRecord) {
   const chunkRelationCount = asArray(chunk.relations).length;
   const overlayNodeCount = Number(overlayInner.cloud_attached_nodes ?? 0);
   const overlayRelationCount = Number(overlayInner.cloud_attached_edges ?? 0);
-  const attachedNodes = Math.max(Number.isFinite(overlayNodeCount) ? overlayNodeCount : 0, chunkNodeCount);
-  const attachedRelations = Math.max(Number.isFinite(overlayRelationCount) ? overlayRelationCount : 0, chunkRelationCount);
   const cloudHit = states.includes("cloud_hit") || asArray(chunk.semantic_nodes).length > 0;
   const hasEvidence = asArray(evidenceBundle.evidence_refs).length > 0 || asArray(chunk.evidence_refs).length > 0;
+  const attachedNodes = cloudHit || hasEvidence
+    ? Math.max(Number.isFinite(overlayNodeCount) ? overlayNodeCount : 0, chunkNodeCount)
+    : 0;
+  const attachedRelations = cloudHit || hasEvidence
+    ? Math.max(Number.isFinite(overlayRelationCount) ? overlayRelationCount : 0, chunkRelationCount)
+    : 0;
   const status = cloudHit
     ? (hasEvidence ? "evidence_attached" : "cloud_hit")
     : states.includes("web_not_configured")
@@ -95,9 +99,9 @@ export async function POST(request: Request) {
     });
 
     if (!proxied) return notConfigured(query);
-    if (proxied.status >= 500) return notConfigured(query, 503);
+    if (proxied.status >= 500) return notConfigured(query);
     return NextResponse.json(normalizeExchange(query, asRecord(proxied.body)), { status: proxied.status });
   } catch {
-    return notConfigured(query, 503);
+    return notConfigured(query);
   }
 }
