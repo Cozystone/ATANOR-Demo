@@ -102,6 +102,54 @@ def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
     return any(needle.lower() in lowered for needle in needles)
 
 
+ATANOR_MEMORY_CONTEXT_TERMS = (
+    "내 로컬 메모리",
+    "로컬 메모리",
+    "개인 메모리",
+    "로컬 브레인",
+    "클라우드 브레인",
+    "ATANOR 메모리",
+    "아타노르 메모리",
+    "저장된 기억",
+    "저장된 노드",
+    "로컬 그래프",
+    "클라우드 그래프",
+    "local brain",
+    "cloud brain",
+    "local graph",
+    "cloud graph",
+    "private memory",
+    "memory graph",
+)
+
+COMPUTER_MEMORY_CONTEXT_TERMS = (
+    "RAM",
+    "램",
+    "컴퓨터 메모리",
+    "휘발성 메모리",
+    "주기억장치",
+    "메모리와 SSD",
+    "SSD 차이",
+    "memory vs ssd",
+    "computer memory",
+    "volatile memory",
+)
+
+
+def _is_atanor_memory_context(query: str) -> bool:
+    return _contains_any(query, ATANOR_MEMORY_CONTEXT_TERMS)
+
+
+def _is_computer_memory_context(query: str) -> bool:
+    return _contains_any(query, COMPUTER_MEMORY_CONTEXT_TERMS)
+
+
+def _disambiguate_memory_context(query: str, semantic_context: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not _is_atanor_memory_context(query) or _is_computer_memory_context(query):
+        return semantic_context
+    return [item for item in semantic_context if str(item.get("concept_id")) != "ram"]
+
+
 def _seed(query: str) -> int:
     return int(hashlib.sha256(query.encode("utf-8", errors="ignore")).hexdigest()[:8], 16)
 
@@ -156,6 +204,10 @@ def _relation_sentence(source: dict[str, Any], relation: dict[str, Any], context
     target_label = _label(target, language)
     relation_name = str(relation.get("relation") or "related_to")
     if language == "ko":
+        if relation_name == "contrasts_with":
+            return f"{_topic(source_label)} {_with_and(target_label)} 대비됩니다."
+        if relation_name == "similar_to":
+            return f"{_topic(source_label)} {_with_and(target_label)} 비슷합니다."
         relation_word = RELATION_WORDS_KO.get(relation_name, "와 관련됩니다")
         return f"{_topic(source_label)} {_object(target_label)} {relation_word}."
     relation_word = RELATION_WORDS_EN.get(relation_name, "is related to")
@@ -293,6 +345,7 @@ def answer_with_base_brain(
 ) -> dict[str, Any]:
     pack = load_base_brain_pack()
     semantic_context = get_semantic_context(query, pack, limit=12)
+    semantic_context = _disambiguate_memory_context(query, semantic_context)
     intent = classify_intent(query, pack)
     surface_candidates = get_surface_candidates(query, semantic_context, language, audience_level, limit=8, pack=pack)
     selection = select_surface_candidates(surface_candidates, max_selected=4, seed=_seed(query), q_cortex_enabled=True)
