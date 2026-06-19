@@ -27,13 +27,15 @@ INTERNAL_TRACE_TERMS = (
     "Contributor Node",
 )
 
+ENCODING_ARTIFACT_RE = re.compile(r"[�占]|(?:ì|ë|í|ð|筌|荑|濡|洹|蹂|留|좊|쾶|ㅽ)")
+
 
 def monitor_answer(answer: str, *, language: str = "ko", max_chars: int = 1600) -> dict[str, Any]:
     issues: list[str] = []
     text = str(answer or "")
     if any(term in text for term in INTERNAL_TRACE_TERMS):
         issues.append("internal_trace_leakage")
-    if "attach" in text.lower() or "detach" in text.lower() or "부착" in text or "붙이면" in text:
+    if any(term in text.lower() for term in ("attach", "detach")) or any(term in text for term in ("부착", "붙이면", "붙여")):
         issues.append("implementation_wording")
     words = re.findall(r"[\w\uac00-\ud7a3]+", text, flags=re.UNICODE)
     for index in range(len(words) - 3):
@@ -42,8 +44,10 @@ def monitor_answer(answer: str, *, language: str = "ko", max_chars: int = 1600) 
             break
     if len(text) > max_chars:
         issues.append("too_long")
-    if re.search(r"[�]{1,}", text):
+    if ENCODING_ARTIFACT_RE.search(text):
         issues.append("encoding_artifact")
+    if re.search(r"\b[0-9a-f]{24,}\b", text, flags=re.IGNORECASE):
+        issues.append("internal_identifier_leakage")
     return {
         "issues": sorted(set(issues)),
         "needs_repair": bool(issues),
@@ -132,7 +136,7 @@ def repair_answer_for_mode(
     current = re.sub(r"\s+", " ", current).strip()
     if not current:
         current = (
-            "현재 확인된 근거만으로는 단정하기 어렵습니다. 관련 공개 지식과 근거를 더 확인하면 더 정확하게 답할 수 있습니다."
+            "현재 확인된 근거만으로는 단정하기 어렵습니다. 관련 공개 지식과 근거가 더 확보되면 더 정확히 답할 수 있습니다."
             if re.search(r"[\uac00-\ud7a3]", original)
             else "Based on the available evidence, the answer cannot be stated confidently yet. More relevant public knowledge would improve the response."
         )
