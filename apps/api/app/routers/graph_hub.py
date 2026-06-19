@@ -9,6 +9,13 @@ from packages.graph_hub.attachment import attach_cartridge, detach_cartridge, li
 from packages.graph_hub.audit import list_graph_hub_audit_events
 from packages.graph_hub.catalog import get_catalog_item, list_catalog_items, refresh_catalog
 from packages.graph_hub.cartridge_exporter import export_semantic_cloud_to_cartridge
+from packages.graph_hub.cartridge_mount import (
+    attach_cartridge_namespace,
+    detach_cartridge_namespace,
+    list_mounted_cartridges,
+    materialize_cartridge_chunk,
+    select_cartridge_chunks,
+)
 from packages.graph_hub.entitlement import (
     expire_subscription,
     grant_free_entitlement,
@@ -41,6 +48,18 @@ class InstallFromPathRequest(BaseModel):
 class AttachRequest(BaseModel):
     scope: Literal["session", "workspace", "global"] = "session"
     read_only: bool = True
+
+
+class CartridgeSelectChunksRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    max_chunks: int = Field(default=4, ge=1, le=16)
+
+
+class CartridgeMaterializeChunkRequest(BaseModel):
+    cartridge_id: str = Field(min_length=1, max_length=160)
+    chunk_id: str = Field(min_length=1, max_length=260)
+    max_nodes: int = Field(default=1000, ge=1, le=2000)
+    max_edges: int = Field(default=2000, ge=0, le=4000)
 
 
 @router.get("/status")
@@ -158,6 +177,39 @@ def detach(cartridge_id: str) -> dict[str, Any]:
 @router.get("/attachments")
 def attachments() -> list[dict[str, Any]]:
     return list_active_attachments()
+
+
+@router.post("/cartridges/attach/{cartridge_id}")
+def cartridge_mount_attach(cartridge_id: str) -> dict[str, Any]:
+    return attach_cartridge_namespace(cartridge_id)
+
+
+@router.post("/cartridges/detach/{cartridge_id}")
+def cartridge_mount_detach(cartridge_id: str) -> dict[str, Any]:
+    return detach_cartridge_namespace(cartridge_id)
+
+
+@router.get("/cartridges/mounted")
+def cartridge_mounts() -> list[dict[str, Any]]:
+    return list_mounted_cartridges()
+
+
+@router.post("/cartridges/select-chunks")
+def cartridge_select_chunks(request: CartridgeSelectChunksRequest) -> dict[str, Any]:
+    return select_cartridge_chunks(request.query, max_chunks=request.max_chunks)
+
+
+@router.post("/cartridges/materialize-chunk")
+def cartridge_materialize_chunk(request: CartridgeMaterializeChunkRequest) -> dict[str, Any]:
+    try:
+        return materialize_cartridge_chunk(
+            request.cartridge_id,
+            request.chunk_id,
+            max_nodes=request.max_nodes,
+            max_edges=request.max_edges,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/audit")
