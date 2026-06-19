@@ -5,6 +5,7 @@ import json
 import math
 import re
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -36,7 +37,7 @@ from packages.cloud_brain.sphere_materialization import (
 )
 from packages.cloud_brain.web_seed_feeder import feeder_status
 from packages.cloud_brain.semantic_attach import attach_semantic_cloud_for_query
-from packages.cloud_brain.semantic_growth import ingest_semantic_source
+from packages.cloud_brain.semantic_growth import MAX_ACCELERATION_BATCH_SIZE, ingest_semantic_acceleration_batch, ingest_semantic_source
 from packages.cloud_brain.semantic_handoff import write_semantic_cloud_growth_handoff
 from packages.cloud_brain.semantic_store import SemanticCloudStore, get_semantic_cloud_growth_status
 from rag_engine.ghost_graph import GhostTopology
@@ -83,6 +84,33 @@ class SemanticCloudIngestRequest(BaseModel):
 class SemanticCloudAttachRequest(BaseModel):
     query: str = Field(min_length=1, max_length=400)
     limit: int = Field(default=8, ge=1, le=48)
+
+
+class SemanticCloudAccelerateRequest(BaseModel):
+    batch_size: int = Field(default=1000, ge=1, le=MAX_ACCELERATION_BATCH_SIZE)
+    async_run: bool = False
+
+
+_SEMANTIC_ACCELERATION_LOCK = threading.Lock()
+_SEMANTIC_ACCELERATION_STATE: dict[str, Any] = {
+    "running": False,
+    "last_result": None,
+    "last_error": None,
+}
+
+
+def _run_semantic_acceleration_batch(batch_size: int) -> None:
+    if not _SEMANTIC_ACCELERATION_LOCK.acquire(blocking=False):
+        return
+    try:
+        _SEMANTIC_ACCELERATION_STATE.update({"running": True, "last_error": None})
+        result = ingest_semantic_acceleration_batch(batch_size=batch_size)
+        _SEMANTIC_ACCELERATION_STATE.update({"last_result": result, "last_error": None})
+    except Exception as exc:
+        _SEMANTIC_ACCELERATION_STATE.update({"last_error": str(exc)})
+    finally:
+        _SEMANTIC_ACCELERATION_STATE["running"] = False
+        _SEMANTIC_ACCELERATION_LOCK.release()
 
 
 class AnnaArchiveMetadataSearchRequest(BaseModel):
@@ -752,6 +780,38 @@ def semantic_cloud_status() -> dict[str, Any]:
 @router.post("/semantic/attach")
 def semantic_cloud_attach(request: SemanticCloudAttachRequest) -> dict[str, Any]:
     return attach_semantic_cloud_for_query(request.query, limit=request.limit)
+
+
+@router.post("/semantic/accelerate")
+def semantic_cloud_accelerate(request: SemanticCloudAccelerateRequest) -> dict[str, Any]:
+    if request.async_run:
+        already_running = bool(_SEMANTIC_ACCELERATION_STATE.get("running")) or _SEMANTIC_ACCELERATION_LOCK.locked()
+        if not already_running:
+            _SEMANTIC_ACCELERATION_STATE["running"] = True
+            _SEMANTIC_ACCELERATION_STATE["scheduled_batch_size"] = request.batch_size
+            thread = threading.Timer(0.5, _run_semantic_acceleration_batch, args=(request.batch_size,))
+            thread.daemon = True
+            thread.name = "atanor-semantic-cloud-accelerator"
+            thread.start()
+        return {
+            "accepted": not already_running,
+            "async_run": True,
+            "state": "running" if already_running else "started",
+            "batch_size_requested": request.batch_size,
+            "batch_size_applied": request.batch_size,
+            "last_result": _SEMANTIC_ACCELERATION_STATE.get("last_result"),
+            "last_error": _SEMANTIC_ACCELERATION_STATE.get("last_error"),
+            "fake_counter": False,
+            "honesty": {
+                "local_brain_write": False,
+                "external_llm_used": False,
+                "external_sllm_used": False,
+                "web_api_call_used": False,
+                "global_cloud_claim": False,
+                "proof_store_only": True,
+            },
+        }
+    return ingest_semantic_acceleration_batch(batch_size=request.batch_size)
 
 
 @router.get("/anna-archive/status")
