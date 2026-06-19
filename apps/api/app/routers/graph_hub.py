@@ -16,6 +16,7 @@ from packages.graph_hub.cartridge_mount import (
     materialize_cartridge_chunk,
     select_cartridge_chunks,
 )
+from packages.graph_hub.cartridge_profiler import profile_cartridge_payload, profile_installed_cartridge
 from packages.graph_hub.entitlement import (
     expire_subscription,
     grant_free_entitlement,
@@ -26,6 +27,8 @@ from packages.graph_hub.entitlement import (
 from packages.graph_hub.installer import install_cartridge, install_cartridge_from_path, list_installed_cartridges, uninstall_cartridge
 from packages.graph_hub.proof import graph_hub_status, run_graph_hub_proof
 from packages.graph_hub.sandbox import sandbox_preview
+from packages.graph_hub.sandbox_trial import detach_sandbox_trial, get_sandbox_trial, run_sandbox_trial_query, start_sandbox_trial
+from packages.graph_hub.synergy import score_cartridge_synergy
 
 
 router = APIRouter(prefix="/api/graph-hub", tags=["graph-hub"])
@@ -60,6 +63,23 @@ class CartridgeMaterializeChunkRequest(BaseModel):
     chunk_id: str = Field(min_length=1, max_length=260)
     max_nodes: int = Field(default=1000, ge=1, le=2000)
     max_edges: int = Field(default=2000, ge=0, le=4000)
+
+
+class CartridgeProfileRequest(BaseModel):
+    cartridge: dict[str, Any] | None = None
+    offline_inspection: bool = False
+
+
+class CartridgeSynergyRequest(BaseModel):
+    active_context: str | None = Field(default=None, max_length=500)
+
+
+class TrialStartRequest(BaseModel):
+    intent: str | None = Field(default=None, max_length=500)
+
+
+class TrialQueryRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
 
 
 @router.get("/status")
@@ -208,6 +228,61 @@ def cartridge_materialize_chunk(request: CartridgeMaterializeChunkRequest) -> di
             max_nodes=request.max_nodes,
             max_edges=request.max_edges,
         )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/cartridges/profile")
+def cartridge_profile_payload(request: CartridgeProfileRequest) -> dict[str, Any]:
+    if request.cartridge is None:
+        raise HTTPException(status_code=400, detail="cartridge_payload_required")
+    return profile_cartridge_payload(request.cartridge, full_load_performed=True)
+
+
+@router.get("/cartridges/{cartridge_id}/profile")
+def cartridge_profile(cartridge_id: str, offline_inspection: bool = Query(default=False)) -> dict[str, Any]:
+    try:
+        return profile_installed_cartridge(cartridge_id, offline_inspection=offline_inspection)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/cartridges/{cartridge_id}/synergy")
+def cartridge_synergy(cartridge_id: str, request: CartridgeSynergyRequest | None = None) -> dict[str, Any]:
+    try:
+        return score_cartridge_synergy(cartridge_id, active_context=(request.active_context if request else None))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/cartridges/{cartridge_id}/trial/start")
+def trial_start(cartridge_id: str, request: TrialStartRequest | None = None) -> dict[str, Any]:
+    try:
+        return start_sandbox_trial(cartridge_id, intent=(request.intent if request else None))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/trials/{session_id}")
+def trial_get(session_id: str) -> dict[str, Any]:
+    try:
+        return get_sandbox_trial(session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/trials/{session_id}/query")
+def trial_query(session_id: str, request: TrialQueryRequest) -> dict[str, Any]:
+    try:
+        return run_sandbox_trial_query(session_id, request.query)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/trials/{session_id}/detach")
+def trial_detach(session_id: str) -> dict[str, Any]:
+    try:
+        return detach_sandbox_trial(session_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

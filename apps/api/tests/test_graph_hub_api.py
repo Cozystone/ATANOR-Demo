@@ -92,3 +92,52 @@ def test_graph_cartridge_mount_api_is_manifest_only_and_lazy():
     detached = client.post("/api/graph-hub/cartridges/detach/software_architect_demo")
     assert detached.status_code == 200
     assert detached.json()["working_memory_cleared"] is True
+
+
+def test_graph_hub_profiler_synergy_and_trial_api_are_isolated():
+    assert client.post("/api/graph-hub/entitlements/free/software_architect_demo").status_code == 200
+    assert client.post("/api/graph-hub/install/software_architect_demo").status_code == 200
+
+    profile = client.get("/api/graph-hub/cartridges/software_architect_demo/profile")
+    assert profile.status_code == 200
+    profile_payload = profile.json()
+    assert profile_payload["full_load_performed"] is False
+    assert profile_payload["pair_edges_sent"] == 0
+    assert profile_payload["profile"]["read_only"] is True
+
+    synergy = client.post(
+        "/api/graph-hub/cartridges/software_architect_demo/synergy",
+        json={"active_context": "testing deployment"},
+    )
+    assert synergy.status_code == 200
+    synergy_payload = synergy.json()
+    assert 0 <= synergy_payload["constructive_interference_pct"] <= 100
+    assert synergy_payload["raw_local_graph_uploaded"] is False
+    assert synergy_payload["pair_edges_sent"] == 0
+
+    trial = client.post(
+        "/api/graph-hub/cartridges/software_architect_demo/trial/start",
+        json={"intent": "testing deployment"},
+    )
+    assert trial.status_code == 200
+    trial_payload = trial.json()
+    assert trial_payload["remaining_queries"] == 5
+    assert trial_payload["local_write"] is False
+    assert trial_payload["cloud_merge"] is False
+    session_id = trial_payload["session_id"]
+
+    final = None
+    for index in range(5):
+        response = client.post(f"/api/graph-hub/trials/{session_id}/query", json={"query": f"trial query {index}"})
+        assert response.status_code == 200
+        final = response.json()
+        assert final["local_write"] is False
+        assert final["cloud_merge"] is False
+        assert final["pair_edges_sent"] == 0
+    assert final is not None
+    assert final["state"] == "detached"
+    assert final["cleanup_status"] == "working_memory_overlay_purged"
+
+    body = str(profile_payload) + str(synergy_payload) + str(trial_payload)
+    forbidden_terms = ["payment", "billing", "subscribe", "subscription", "purchase"]
+    assert not any(term in body.lower() for term in forbidden_terms)
