@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyJson } from "../../_backend";
+import { filterSeedViewer, loadBundledSeedViewer } from "../_seedFallback";
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams.toString();
@@ -7,6 +8,15 @@ export async function GET(request: NextRequest) {
   try {
     const proxied = await proxyJson(path);
     if (proxied) return NextResponse.json(proxied.body, { status: proxied.status });
+    const bundled = await loadBundledSeedViewer();
+    if (bundled) {
+      return NextResponse.json(filterSeedViewer(
+        bundled,
+        request.nextUrl.searchParams.get("search") ?? "",
+        request.nextUrl.searchParams.get("relation_type") ?? "all",
+        request.nextUrl.searchParams.get("trust_state") ?? "all",
+      ));
+    }
     return NextResponse.json({
       mode: "seed_research_viewer",
       read_only: true,
@@ -27,6 +37,15 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch {
+    const bundled = await loadBundledSeedViewer();
+    if (bundled) {
+      return NextResponse.json(filterSeedViewer(
+        bundled,
+        request.nextUrl.searchParams.get("search") ?? "",
+        request.nextUrl.searchParams.get("relation_type") ?? "all",
+        request.nextUrl.searchParams.get("trust_state") ?? "all",
+      ));
+    }
     return NextResponse.json({ error: "Seed Research Viewer unavailable" }, { status: 503 });
   }
 }

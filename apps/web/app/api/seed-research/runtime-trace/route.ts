@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyJson } from "../../_backend";
+import { bundledRuntimeTrace } from "../_seedFallback";
 
 const fallbackTrace = (query: string) => ({
   query,
@@ -37,8 +38,12 @@ export async function GET(request: NextRequest) {
   try {
     const proxied = await proxyJson(`/api/seed-research/runtime-trace?q=${encodeURIComponent(query)}`);
     if (proxied) return NextResponse.json(proxied.body, { status: proxied.status });
+    const bundled = await bundledRuntimeTrace(query);
+    if (bundled.seed_anchor_trace.seed_anchor_ready) return NextResponse.json(bundled);
     return NextResponse.json(fallbackTrace(query));
   } catch {
+    const bundled = await bundledRuntimeTrace(query);
+    if (bundled.seed_anchor_trace.seed_anchor_ready) return NextResponse.json(bundled);
     return NextResponse.json(fallbackTrace(query), { status: 200 });
   }
 }
@@ -53,8 +58,12 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ query }),
     });
     if (proxied) return NextResponse.json(proxied.body, { status: proxied.status });
+    const bundled = await bundledRuntimeTrace(query);
+    if (bundled.seed_anchor_trace.seed_anchor_ready) return NextResponse.json(bundled);
     return NextResponse.json(fallbackTrace(query));
   } catch {
+    const bundled = await bundledRuntimeTrace(query);
+    if (bundled.seed_anchor_trace.seed_anchor_ready) return NextResponse.json(bundled);
     return NextResponse.json(fallbackTrace(query), { status: 200 });
   }
 }
