@@ -12,6 +12,12 @@ pip install -r apps/api/requirements.txt
 npm install
 ```
 
+Copy the local-first environment template before starting services:
+
+```powershell
+Copy-Item .env.example .env
+```
+
 ## 2. Start Backend
 
 ```powershell
