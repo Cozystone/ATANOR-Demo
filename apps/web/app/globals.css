@@ -6036,11 +6036,86 @@ p {
 }
 
 .atanor-graph-hub-card-actions {
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-template-columns: none;
+}
+
+.atanor-graph-hub-card-actions button {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  height: 40px !important;
+  min-width: 0;
+  min-height: 40px !important;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.atanor-graph-hub-card-actions button span {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .atanor-graph-hub-card-actions button + button {
   color: rgba(255, 255, 255, 0.64);
+}
+
+.atanor-graph-hub-trial-panel {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 10px;
+}
+
+.atanor-graph-hub-trial-panel p {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  min-height: auto;
+}
+
+.atanor-graph-hub-trial-panel p span {
+  color: rgba(255, 255, 255, 0.48);
+  font: 800 0.67rem Helvetica, Arial, sans-serif;
+  text-transform: uppercase;
+}
+
+.atanor-graph-hub-trial-panel p strong {
+  color: rgba(255, 255, 255, 0.86);
+  font: 900 0.74rem Helvetica, Arial, sans-serif;
+}
+
+.atanor-graph-hub-trial-query {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.atanor-graph-hub-trial-query input {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.86);
+  font: 800 0.72rem Helvetica, Arial, sans-serif;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.atanor-graph-hub-trial-query button {
+  background: rgba(255, 255, 255, 0.9);
+  border: 0;
+  border-radius: 10px;
+  color: #050506;
+  font: 900 0.72rem Helvetica, Arial, sans-serif;
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .atanor-user-shell[data-section="contribute"] .atanor-user-main {

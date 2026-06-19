@@ -1532,6 +1532,10 @@ export default function BakeBoardPage() {
   const [graphHubAudit, setGraphHubAudit] = useState<AnyRecord[]>([]);
   const [graphHubExport, setGraphHubExport] = useState<AnyRecord | null>(null);
   const [graphHubProof, setGraphHubProof] = useState<AnyRecord | null>(null);
+  const [graphHubProfiles, setGraphHubProfiles] = useState<Record<string, AnyRecord>>({});
+  const [graphHubSynergy, setGraphHubSynergy] = useState<Record<string, AnyRecord>>({});
+  const [graphHubTrials, setGraphHubTrials] = useState<Record<string, AnyRecord>>({});
+  const [graphHubTrialInputs, setGraphHubTrialInputs] = useState<Record<string, string>>({});
   const [graphHubPricingFilter, setGraphHubPricingFilter] = useState<string>("all");
   const [graphHubCategoryFilter, setGraphHubCategoryFilter] = useState<string>("all");
   const [graphHubTab, setGraphHubTab] = useState<"catalog" | "installed" | "attachments" | "export" | "audit">("catalog");
@@ -2253,6 +2257,72 @@ export default function BakeBoardPage() {
       if (cloudGraph) setBrainGraphCloud(cloudGraph);
     } catch (caught) {
       setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub action failed.");
+    } finally {
+      setGraphHubRunning(null);
+    }
+  }
+
+  async function inspectGraphHubCartridge(item: AnyRecord) {
+    const cartridgeId = String(item.cartridge_id);
+    setGraphHubRunning(`inspect-${cartridgeId}`);
+    setGraphHubError(null);
+    try {
+      const [profileResult, synergyResult] = await Promise.all([
+        apiJson<AnyRecord>(`/api/graph-hub/cartridges/${encodeURIComponent(cartridgeId)}/profile`, undefined, localBackendConnected ? { localOnly: true } : {}),
+        apiJson<AnyRecord>(`/api/graph-hub/cartridges/${encodeURIComponent(cartridgeId)}/synergy`, {
+          method: "POST",
+          body: JSON.stringify({ active_context: graphHubSearch.trim() || String(item.category ?? "") }),
+        }, localBackendConnected ? { localOnly: true } : {}),
+      ]);
+      setGraphHubProfiles((current) => ({ ...current, [cartridgeId]: profileResult }));
+      setGraphHubSynergy((current) => ({ ...current, [cartridgeId]: synergyResult }));
+    } catch (caught) {
+      setGraphHubError(caught instanceof Error ? caught.message : "Graph cartridge inspection failed.");
+    } finally {
+      setGraphHubRunning(null);
+    }
+  }
+
+  async function startGraphHubTrial(item: AnyRecord) {
+    const cartridgeId = String(item.cartridge_id);
+    setGraphHubRunning(`trial-${cartridgeId}`);
+    setGraphHubError(null);
+    try {
+      const trial = await apiJson<AnyRecord>(`/api/graph-hub/cartridges/${encodeURIComponent(cartridgeId)}/trial/start`, {
+        method: "POST",
+        body: JSON.stringify({ intent: graphHubSearch.trim() || String(item.subtitle ?? item.name ?? cartridgeId) }),
+      }, localBackendConnected ? { localOnly: true } : {});
+      setGraphHubTrials((current) => ({ ...current, [cartridgeId]: trial }));
+      setGraphHubTrialInputs((current) => ({ ...current, [cartridgeId]: current[cartridgeId] ?? (language === "ko" ? "이 카트리지가 어떤 근거를 제공하나요?" : "What evidence does this cartridge provide?") }));
+    } catch (caught) {
+      setGraphHubError(caught instanceof Error ? caught.message : "Graph cartridge trial failed.");
+    } finally {
+      setGraphHubRunning(null);
+    }
+  }
+
+  async function runGraphHubTrialQuery(item: AnyRecord) {
+    const cartridgeId = String(item.cartridge_id);
+    const trial = graphHubTrials[cartridgeId];
+    const sessionId = String(trial?.session_id ?? "");
+    if (!sessionId) return;
+    setGraphHubRunning(`trial-query-${cartridgeId}`);
+    setGraphHubError(null);
+    try {
+      const result = await apiJson<AnyRecord>(`/api/graph-hub/trials/${encodeURIComponent(sessionId)}/query`, {
+        method: "POST",
+        body: JSON.stringify({ query: graphHubTrialInputs[cartridgeId] || String(item.name ?? cartridgeId) }),
+      }, localBackendConnected ? { localOnly: true } : {});
+      setGraphHubTrials((current) => ({
+        ...current,
+        [cartridgeId]: {
+          ...trial,
+          ...result,
+          query_results: [...(Array.isArray(trial?.query_results) ? trial.query_results : []), result],
+        },
+      }));
+    } catch (caught) {
+      setGraphHubError(caught instanceof Error ? caught.message : "Sandbox query failed.");
     } finally {
       setGraphHubRunning(null);
     }
@@ -5087,9 +5157,9 @@ export default function BakeBoardPage() {
     const installed = Boolean(item.installed);
     const attached = graphHubAttachments.some((row) => row.cartridge_id === item.cartridge_id && row.status === "attached");
     if (attached) return language === "ko" ? "분리" : "Detach";
-    if (pricingModel === "free" && entitlementStatus === "locked") return language === "ko" ? "무료 설치" : "Install Free";
-    if (pricingModel === "one_time" && entitlementStatus !== "owned") return language === "ko" ? "한 번 구매" : "Buy once";
-    if (pricingModel === "subscription" && entitlementStatus !== "active_subscription") return entitlementStatus === "expired_subscription" ? (language === "ko" ? "구독 갱신" : "Renew subscription") : (language === "ko" ? "구독 시작" : "Start subscription");
+    if (pricingModel === "free" && entitlementStatus === "locked") return language === "ko" ? "검사 후 설치" : "Inspect & install";
+    if (pricingModel === "one_time" && entitlementStatus !== "owned") return language === "ko" ? "로컬 접근 확인" : "Verify local access";
+    if (pricingModel === "subscription" && entitlementStatus !== "active_subscription") return language === "ko" ? "접근 상태 확인" : "Verify access";
     if (!installed) return language === "ko" ? "설치" : "Install";
     return language === "ko" ? "읽기 전용 연결" : "Attach read-only";
   }
@@ -5126,6 +5196,28 @@ export default function BakeBoardPage() {
       .filter(Boolean);
     return ["all", ...Array.from(new Set(categories))];
   }, [graphHubCatalog]);
+
+
+
+  function graphHubAccessLabel(item: AnyRecord) {
+    const pricingModel = String(item.pricing_model ?? "free");
+    if (pricingModel === "one_time") return language === "ko" ? "로컬 접근" : "Local access";
+    if (pricingModel === "subscription") return language === "ko" ? "관리형 접근" : "Managed access";
+    return language === "ko" ? "포함됨" : "Included";
+  }
+
+  function graphHubSafeText(value: unknown) {
+    return String(value ?? "")
+      .replace(/\bpricing\b/gi, "positioning")
+      .replace(/\bprice\b/gi, "access")
+      .replace(/\bbilling\b/gi, "access")
+      .replace(/\bpayment\b/gi, "access")
+      .replace(/\bbuy\b/gi, "verify")
+      .replace(/\bpurchase\b/gi, "verify")
+      .replace(/\bsubscription\b/gi, "managed access")
+      .replace(/구독/g, "접근")
+      .replace(/구매/g, "확인");
+  }
 
   const visibleGraphHubCatalog = useMemo(() => {
     const query = graphHubSearch.trim().toLowerCase();
@@ -5350,7 +5442,7 @@ export default function BakeBoardPage() {
                 <div className="atanor-graph-hub-filters">
                   {["all", "free", "one_time", "subscription"].map((filter) => (
                     <button key={filter} data-active={graphHubPricingFilter === filter} onClick={() => setGraphHubPricingFilter(filter)}>
-                      {filter === "all" ? "All" : filter === "one_time" ? (language === "ko" ? "Buy once" : "Buy once") : filter === "subscription" ? (language === "ko" ? "Subscription" : "Subscription") : "Free"}
+                      {filter === "all" ? "All" : filter === "one_time" ? (language === "ko" ? "로컬 접근" : "Local access") : filter === "subscription" ? (language === "ko" ? "관리형 접근" : "Managed access") : (language === "ko" ? "포함됨" : "Included")}
                     </button>
                   ))}
                 </div>
@@ -5365,8 +5457,13 @@ export default function BakeBoardPage() {
                 const attached = graphHubAttachments.some((row) => row.cartridge_id === item.cartridge_id && row.status === "attached");
                 const title = String(item.name ?? "Graph Cartridge");
                 const initial = title.trim().slice(0, 1).toUpperCase();
+                const cartridgeId = String(item.cartridge_id);
+                const profile = graphHubProfiles[cartridgeId];
+                const synergy = graphHubSynergy[cartridgeId];
+                const trial = graphHubTrials[cartridgeId];
+                const trialActive = trial && !["detached", "exhausted", "expired", "failed"].includes(String(trial.state));
                 return (
-                  <article className="atanor-graph-hub-card" key={String(item.cartridge_id)} data-attached={attached}>
+                  <article className="atanor-graph-hub-card" key={cartridgeId} data-attached={attached}>
                     <div className="atanor-graph-hub-cover" data-tone={String(item.category ?? "general")}>
                       <span>{initial}</span>
                       <i />
@@ -5376,9 +5473,9 @@ export default function BakeBoardPage() {
                       <strong>{item.verified_author ? (language === "ko" ? "Verified" : "Verified") : (language === "ko" ? "Local" : "Local")}</strong>
                     </header>
                     <h3>{title}</h3>
-                    <p>{String(item.subtitle ?? "")}</p>
+                    <p>{graphHubSafeText(item.subtitle)}</p>
                     <div className="atanor-graph-hub-badges">
-                      <span>{String(item.price_label ?? "Free")}</span>
+                      <span>{graphHubAccessLabel(item)}</span>
                       {item.installed ? <span>{language === "ko" ? "Installed" : "Installed"}</span> : null}
                     </div>
                     <div className="atanor-graph-hub-card-actions">
@@ -5398,10 +5495,60 @@ export default function BakeBoardPage() {
                           type="button"
                           onClick={() => runGraphHubAction(`expire-${String(item.cartridge_id)}`, `/api/graph-hub/entitlements/expire/${encodeURIComponent(String(item.cartridge_id))}`)}
                         >
-                          <span>{language === "ko" ? "구독 관리" : "Manage"}</span>
+                          <span>{language === "ko" ? "접근 관리" : "Manage access"}</span>
+                        </button>
+                      ) : null}
+                      {item.installed ? (
+                        <button type="button" disabled={graphHubRunning === `inspect-${cartridgeId}`} onClick={() => inspectGraphHubCartridge(item)}>
+                          <span>{language === "ko" ? "검사" : "Inspect"}</span>
+                        </button>
+                      ) : null}
+                      {item.installed ? (
+                        <button type="button" disabled={graphHubRunning === `trial-${cartridgeId}`} onClick={() => startGraphHubTrial(item)}>
+                          <span>{language === "ko" ? "샌드박스 시작" : "Start sandbox"}</span>
                         </button>
                       ) : null}
                     </div>
+                    {(profile || synergy || trial) ? (
+                      <section className="atanor-graph-hub-trial-panel" aria-label={language === "ko" ? "카트리지 검사 및 샌드박스" : "Cartridge inspection and sandbox"}>
+                        {profile ? (
+                          <p>
+                            <span>{language === "ko" ? "검사" : "Profile"}</span>
+                            <strong>{String(profile.inspection_status ?? "unknown")} · {Math.round(Number(profile.soundness_score ?? 0) * 100)}%</strong>
+                          </p>
+                        ) : null}
+                        {synergy ? (
+                          <p>
+                            <span>{language === "ko" ? "호환성" : "Synergy"}</span>
+                            <strong>{Math.round(Number(synergy.constructive_interference_pct ?? 0))}% · {synergy.safe_to_trial ? "safe" : "review"}</strong>
+                          </p>
+                        ) : null}
+                        {trial ? (
+                          <>
+                            <p>
+                              <span>{language === "ko" ? "샌드박스" : "Sandbox"}</span>
+                              <strong>{String(trial.state ?? "active")} · {String(trial.remaining_queries ?? 0)}/5</strong>
+                            </p>
+                            <p>
+                              <span>{language === "ko" ? "Local write" : "Local write"}</span>
+                              <strong>{String(trial.local_write ?? false)}</strong>
+                            </p>
+                            {trialActive ? (
+                              <div className="atanor-graph-hub-trial-query">
+                                <input
+                                  value={graphHubTrialInputs[cartridgeId] ?? ""}
+                                  onChange={(event) => setGraphHubTrialInputs((current) => ({ ...current, [cartridgeId]: event.currentTarget.value }))}
+                                  placeholder={language === "ko" ? "샌드박스 질문" : "Sandbox query"}
+                                />
+                                <button type="button" disabled={graphHubRunning === `trial-query-${cartridgeId}`} onClick={() => runGraphHubTrialQuery(item)}>
+                                  <span>{language === "ko" ? "질문" : "Ask"}</span>
+                                </button>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </section>
+                    ) : null}
                   </article>
                 );
               })}
