@@ -68,6 +68,56 @@ def _concept_terms(concept: dict[str, Any], alias_rows: list[dict[str, Any]]) ->
     return [(term, reason) for term, reason in dedup.items()]
 
 
+def _append_relation_context(
+    matched: list[dict[str, Any]],
+    matched_ids: set[str],
+    concepts: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    *,
+    max_concepts: int = 8,
+) -> None:
+    if not matched_ids or len(matched_ids) > 4:
+        return
+    concept_by_id = {str(concept.get("concept_id") or concept.get("id") or ""): concept for concept in concepts}
+    priority_relations = {
+        "belongs_to_layer",
+        "depends_on",
+        "has_evidence",
+        "has_source",
+        "produces",
+        "requires",
+        "verifies",
+        "weakens",
+    }
+    for edge in sorted(edges, key=lambda item: (-float(item.get("confidence") or item.get("weight") or 0.0), str(item.get("relation")))):
+        relation = str(edge.get("relation") or "")
+        if relation not in priority_relations:
+            continue
+        source = str(edge.get("source") or "")
+        target = str(edge.get("target") or "")
+        if source in matched_ids and target not in matched_ids:
+            related_id = target
+        elif target in matched_ids and source not in matched_ids:
+            related_id = source
+        else:
+            continue
+        concept = concept_by_id.get(related_id)
+        if not concept:
+            continue
+        matched_ids.add(related_id)
+        matched.append(
+            {
+                "concept_id": related_id,
+                "label": concept.get("label") or related_id,
+                "aliases_matched": [],
+                "match_reason": "relation_context",
+                "confidence": round(float(edge.get("confidence") or edge.get("weight") or 0.68) * 0.82, 3),
+            }
+        )
+        if len(matched_ids) >= max_concepts:
+            break
+
+
 def resolve_seed_concepts(query: str, root: str | Path | None = None) -> dict[str, Any]:
     concepts, edges, aliases = _load_current(root)
     query_tokens = set(_tokens(query))
@@ -103,27 +153,7 @@ def resolve_seed_concepts(query: str, root: str | Path | None = None) -> dict[st
             )
             matched_ids.add(concept_id)
 
-    if len(matched_ids) == 1:
-        seed = next(iter(matched_ids))
-        for edge in edges:
-            if edge.get("source") == seed:
-                matched_ids.add(str(edge.get("target")))
-            if edge.get("target") == seed:
-                matched_ids.add(str(edge.get("source")))
-            if len(matched_ids) >= 4:
-                break
-        for concept in concepts:
-            concept_id = str(concept.get("concept_id") or concept.get("id") or "")
-            if concept_id in matched_ids and not any(item["concept_id"] == concept_id for item in matched):
-                matched.append(
-                    {
-                        "concept_id": concept_id,
-                        "label": concept.get("label") or concept_id,
-                        "aliases_matched": [],
-                        "match_reason": "relation_context",
-                        "confidence": round(float(concept.get("confidence") or 0.68) * 0.72, 3),
-                    }
-                )
+    _append_relation_context(matched, matched_ids, concepts, edges)
 
     matched.sort(key=lambda item: (-float(item["confidence"]), item["concept_id"]))
     edge_rows = []

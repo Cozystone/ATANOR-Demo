@@ -213,6 +213,46 @@ BASE_CONCEPTS: list[dict[str, Any]] = [
         "type": "governance_concept",
     },
     {
+        "slug": "query",
+        "label": "Query",
+        "ko": "질문",
+        "aliases_ko": ["사용자 질문", "입력 질의"],
+        "aliases_en": ["user question", "input query"],
+        "definition_ko": "사용자가 로컬 브레인에 던지는 요청 또는 탐색 시작점입니다.",
+        "definition_en": "A user request that starts retrieval, grounding, or clarification.",
+        "type": "reasoning_input",
+    },
+    {
+        "slug": "answer",
+        "label": "Answer",
+        "ko": "답변",
+        "aliases_ko": ["응답", "출력 문장", "답해야", "대답"],
+        "aliases_en": ["response", "output utterance"],
+        "definition_ko": "근거와 신뢰 상태를 반영해 사용자에게 표면화되는 문장입니다.",
+        "definition_en": "The surfaced response that reflects grounding and trust state.",
+        "type": "reasoning_output",
+    },
+    {
+        "slug": "grounding",
+        "label": "Grounding",
+        "ko": "근거화",
+        "aliases_ko": ["근거 연결", "증거 기반화", "근거가 필요", "근거 필요"],
+        "aliases_en": ["evidence grounding", "groundedness"],
+        "definition_ko": "답변이나 주장을 실제 근거, 출처, 관계 경로에 연결하는 과정입니다.",
+        "definition_en": "The process of linking an answer or claim to evidence, sources, and relation paths.",
+        "type": "reasoning_process",
+    },
+    {
+        "slug": "no_evidence",
+        "label": "No Evidence",
+        "ko": "근거 없음",
+        "aliases_ko": ["근거 부족", "로컬 근거 없음", "증거 없음", "근거가 없음", "근거가 없으면", "근거 없으면"],
+        "aliases_en": ["missing evidence", "no local evidence", "unknown from local evidence"],
+        "definition_ko": "질문에 답할 수 있는 검증 가능한 로컬 근거가 아직 없는 상태입니다.",
+        "definition_en": "A state where verifiable local evidence for the query is not available yet.",
+        "type": "reasoning_state",
+    },
+    {
         "slug": "seed_graph_duplicate",
         "label": "Seed Ontology",
         "ko": "시드 온톨로지",
@@ -239,7 +279,15 @@ BASE_EDGES: list[tuple[str, str, str]] = [
     ("evidence", "supports", "claim"),
     ("claim", "requires", "evidence"),
     ("evidence", "has_source", "source"),
-    ("graphrag", "uses_for", "retrieval"),
+    ("query", "used_for", "retrieval"),
+    ("retrieval", "produces", "answer"),
+    ("answer", "requires", "grounding"),
+    ("grounding", "has_evidence", "evidence"),
+    ("grounding", "has_source", "source"),
+    ("no_evidence", "weakens", "trust"),
+    ("no_evidence", "requires", "retrieval"),
+    ("no_evidence", "requires", "grounding"),
+    ("graphrag", "used_for", "retrieval"),
     ("graphrag", "has_evidence", "evidence"),
     ("seed_graph", "is_a", "ontology"),
     ("seed_graph", "used_for", "retrieval"),
@@ -332,6 +380,20 @@ BENCHMARKS: list[dict[str, Any]] = [
         "expected_relations": ["is_a", "used_for"],
         "expected_behavior": "explain seed graph as semantic coordinate system",
     },
+    {
+        "id": "bench_0011",
+        "query": "근거가 없으면 어떻게 답해야 해?",
+        "expected_concepts": ["seed.core.no_evidence", "seed.core.grounding", "seed.core.answer"],
+        "expected_relations": ["requires", "weakens"],
+        "expected_behavior": "route unknown answers to no-evidence state instead of hallucination",
+    },
+    {
+        "id": "bench_0012",
+        "query": "답변은 왜 근거화가 필요해?",
+        "expected_concepts": ["seed.core.answer", "seed.core.grounding", "seed.core.evidence"],
+        "expected_relations": ["requires", "has_evidence"],
+        "expected_behavior": "link answer quality to grounding and evidence",
+    },
 ]
 
 
@@ -377,8 +439,7 @@ def ensure_layout(root: str | Path | None = None) -> SeedPaths:
         },
     )
     benchmark_file = p.benchmarks / "seed_benchmark_questions.jsonl"
-    if not benchmark_file.exists():
-        write_jsonl(benchmark_file, BENCHMARKS)
+    ensure_standard_benchmarks(benchmark_file)
     (p.benchmarks / "seed_benchmark_results.jsonl").touch(exist_ok=True)
     (p.feedback / "feedback_log.jsonl").touch(exist_ok=True)
     (p.feedback / "patches").mkdir(parents=True, exist_ok=True)
@@ -390,6 +451,17 @@ def _write_json_if_missing(path: Path, data: Any) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def ensure_standard_benchmarks(path: Path) -> None:
+    """Keep generated standard benchmark rows aligned without dropping custom rows."""
+
+    standard_by_id = {row["id"]: row for row in BENCHMARKS}
+    existing = read_jsonl(path) if path.exists() else []
+    custom_rows = [row for row in existing if row.get("id") not in standard_by_id]
+    merged = [*BENCHMARKS, *custom_rows]
+    if existing != merged:
+        write_jsonl(path, merged)
 
 
 def write_json(path: Path, data: Any) -> None:
@@ -917,7 +989,7 @@ def freeze_seed(run: str, version: str, root: str | Path | None = None, output_r
         raise FileNotFoundError(f"seed run not found: {run}")
     output = Path(output_root or os.getenv("ATANOR_SEED_OUTPUT_ROOT") or "data/seed")
     output.mkdir(parents=True, exist_ok=True)
-    for name in ["seed_concepts.jsonl", "seed_edges.jsonl", "seed_aliases.jsonl", "seed_eval_report.md"]:
+    for name in ["seed_concepts.jsonl", "seed_edges.jsonl", "seed_aliases.jsonl", "seed_eval_report.md", "viewer_export.json"]:
         shutil.copyfile(run_dir / name, output / name)
     manifest = {
         "schema": "atanor.seed.freeze-manifest.v1",

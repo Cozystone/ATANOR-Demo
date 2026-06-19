@@ -39,12 +39,17 @@ def test_seed_iteration_creates_artifacts_without_local_memory(tmp_path, monkeyp
     assert metrics["edge_count"] > 8
     assert metrics["duplicate_merge_count"] >= 1
     assert metrics["benchmark_score"] > 0.6
+    assert metrics["benchmark_score"] >= 0.82
 
     viewer = json.loads((run_dir / "viewer_export.json").read_text(encoding="utf-8"))
     assert viewer["mode"] == "seed_research_viewer"
     assert viewer["read_only"] is True
     assert viewer["not_local_brain"] is True
     assert viewer["concept_count"] == metrics["concept_count"]
+    labels = {node["id"]: node["labels"]["ko"] for node in viewer["nodes"]}
+    assert labels["seed.core.evidence"] == "근거"
+    assert labels["seed.core.no_evidence"] == "근거 없음"
+    assert "�" not in json.dumps(viewer, ensure_ascii=False)
 
 
 def test_previous_runs_are_immutable_and_current_updates(tmp_path) -> None:

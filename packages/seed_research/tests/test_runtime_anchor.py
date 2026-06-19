@@ -30,6 +30,34 @@ def test_seed_edges_return_when_related_concepts_match(tmp_path) -> None:
     assert trace["matched_seed_edges"]
 
 
+def test_no_evidence_seed_anchor_resolves_from_korean_alias(tmp_path) -> None:
+    root = tmp_path / "seed_research"
+    run_seed_iteration(root)
+
+    trace = resolve_seed_concepts("근거가 없으면 어떻게 답해야 해?", root)
+
+    concept_ids = {item["concept_id"] for item in trace["matched_seed_concepts"]}
+    assert "seed.core.no_evidence" in concept_ids
+    assert "seed.core.grounding" in concept_ids
+    relations = {item["relation"] for item in trace["matched_seed_edges"]}
+    assert "weakens" in relations or "requires" in relations
+
+
+def test_local_cloud_query_expands_relation_context(tmp_path) -> None:
+    root = tmp_path / "seed_research"
+    run_seed_iteration(root)
+
+    trace = resolve_seed_concepts("Local Brain과 Cloud Brain은 어떻게 분리돼?", root)
+
+    concept_ids = {item["concept_id"] for item in trace["matched_seed_concepts"]}
+    assert "seed.core.local_brain" in concept_ids
+    assert "seed.core.cloud_brain" in concept_ids
+    assert "seed.core.privacy_scope" in concept_ids
+    relations = {item["relation"] for item in trace["matched_seed_edges"]}
+    assert "belongs_to_layer" in relations
+    assert "depends_on" in relations
+
+
 def test_seed_anchor_trace_has_no_generation_or_external_model_claims(tmp_path) -> None:
     root = tmp_path / "seed_research"
     run_seed_iteration(root)
