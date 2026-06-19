@@ -44,8 +44,8 @@ def build_zero_user_benchmark_v0() -> dict[str, Any]:
         _prompt("ko_006", "SQLite가 로컬 앱에 좋은 이유는?", "ko", "explain", ["sqlite", "local_first_ai"]),
         _prompt("ko_007", "CPU와 GPU의 차이를 알려줘.", "ko", "compare", ["cpu", "gpu"]),
         _prompt("ko_008", "전압과 전류의 차이를 쉽게 말해줘.", "ko", "compare", ["voltage", "current"]),
-        _prompt("ko_009", "로컬 AI와 클라우드 AI의 차이는?", "ko", "compare", ["local_first_ai", "cloud_ai"]),
-        _prompt("ko_010", "Tauri 앱은 웹 배포와 뭐가 달라?", "ko", "compare", ["tauri", "desktop_app"]),
+        _prompt("ko_009", "로컬 AI와 클라우드 AI의 차이점은?", "ko", "compare", ["local_first_ai", "cloud_ai"]),
+        _prompt("ko_010", "Tauri 앱 배포가 뭐가 달라?", "ko", "explain", ["tauri", "desktop_app"]),
         _prompt("ko_011", "온톨로지 그래프가 뭐야?", "ko", "define", ["ontology", "semantic_graph"]),
         _prompt("ko_012", "환각을 줄이려면 왜 근거가 필요해?", "ko", "explain", ["hallucination_reduction", "evidence"]),
         _prompt("ko_013", "Surface Graph는 왜 필요한 거야?", "ko", "explain", ["surface_graph", "semantic_graph"]),
@@ -65,11 +65,11 @@ def build_zero_user_benchmark_v0() -> dict[str, Any]:
         _prompt("style_002", "쿠버네티스를 전문가에게 말하듯 설명해줘.", "ko", "explain", ["kubernetes"], "expert"),
         _prompt("style_003", "Explain Kubernetes in simple English.", "en", "explain", ["kubernetes"], "beginner"),
         _prompt("style_004", "Explain Kubernetes concisely for an engineer.", "en", "explain", ["kubernetes"], "expert"),
-        _prompt("unsupported_001", "오늘 내 동네 비가 올지 알려줘.", "ko", "unknown", ["needs_external_context"]),
+        _prompt("unsupported_001", "오늘 우리 동네 비가 오는지 알려줘.", "ko", "unknown", ["needs_external_context"]),
     ]
     benchmark = {
         "benchmark_id": "zero_user_general_v0",
-        "version": "0.1.0",
+        "version": "0.1.1",
         "created_at": utc_now_iso(),
         "prompts": prompts,
         "honesty": {
