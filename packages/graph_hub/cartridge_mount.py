@@ -53,6 +53,47 @@ class CartridgeChunkRef:
     is_graph_node: bool = False
 
 
+@dataclass(frozen=True)
+class MountedCartridge:
+    mount_id: str
+    cartridge_id: str
+    state: str
+    mounted_at: str
+    manifest: dict[str, Any]
+    chunk_index: list[dict[str, Any]]
+    index_state: str
+    loaded_chunks: int
+    materialized_nodes: int
+    materialized_edges: int
+    read_only: bool
+    local_write: bool
+    cloud_merge: bool
+    full_cartridge_loaded_at_attach: bool
+    background_warmup_state: str
+
+
+@dataclass(frozen=True)
+class ActiveCartridgeChunk:
+    cartridge_id: str
+    chunk_id: str
+    opened_at: str
+    materialized_nodes: int
+    materialized_edges: int
+    temporary: bool
+    local_write: bool
+    cloud_merge: bool
+
+
+@dataclass(frozen=True)
+class CartridgeMountTable:
+    mounted: list[MountedCartridge]
+    active_chunks: list[ActiveCartridgeChunk]
+    max_active_cartridges: int = MAX_ACTIVE_CARTRIDGES
+    max_active_chunks_per_cartridge: int = MAX_ACTIVE_CHUNKS_PER_CARTRIDGE
+    max_materialized_nodes: int = MAX_MATERIALIZED_NODES
+    max_materialized_edges: int = MAX_MATERIALIZED_EDGES
+
+
 def _load_mounts() -> dict[str, dict[str, Any]]:
     payload = read_json(MOUNT_TABLE_PATH, {})
     return payload if isinstance(payload, dict) else {}
@@ -146,6 +187,37 @@ def _wave_budget(active_cartridges: int, active_chunks: int, nodes: int, edges: 
     }
 
 
+def _mount_table_metadata(mounts: dict[str, dict[str, Any]] | None = None, active: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    mounts = _load_mounts() if mounts is None else mounts
+    active = _load_active_chunks() if active is None else active
+    active_cartridges = {str(row.get("cartridge_id")) for row in active.values() if row.get("cartridge_id")}
+    return {
+        "mounted_cartridges": len(mounts),
+        "active_cartridges": len(active_cartridges),
+        "active_chunks": len(active),
+        "max_active_cartridges": MAX_ACTIVE_CARTRIDGES,
+        "max_active_chunks_per_cartridge": MAX_ACTIVE_CHUNKS_PER_CARTRIDGE,
+        "max_materialized_nodes": MAX_MATERIALIZED_NODES,
+        "max_materialized_edges": MAX_MATERIALIZED_EDGES,
+        "normal_graph_full_store_scan": False,
+        "pair_edges_sent": 0,
+    }
+
+
+def _visualization_metadata(cartridge_id: str, *, active_chunks: int = 0, materialized_nodes: int = 0) -> dict[str, Any]:
+    return {
+        "render_role": "mounted_cartridge_satellite",
+        "cartridge_id": cartridge_id,
+        "cloud_brain_merge_visual": False,
+        "local_brain_merge_visual": False,
+        "mounted_namespace_visible": True,
+        "active_chunk_halo": active_chunks > 0,
+        "active_chunk_halo_color": "violet" if active_chunks > 0 else "none",
+        "density_chunk_role": "blue_gray_render_container",
+        "materialized_nodes": materialized_nodes,
+    }
+
+
 def attach_cartridge_namespace(cartridge_id: str) -> dict[str, Any]:
     start = time.perf_counter()
     installed = get_installed_cartridge(cartridge_id)
@@ -171,26 +243,39 @@ def attach_cartridge_namespace(cartridge_id: str) -> dict[str, Any]:
             "local_write": False,
             "cloud_merge": False,
         }
+    mounts = _load_mounts()
+    if cartridge_id not in mounts and len(mounts) >= MAX_ACTIVE_CARTRIDGES:
+        return {
+            "cartridge_id": cartridge_id,
+            "state": "unavailable",
+            "reason": "mount_budget_exceeded",
+            "loaded_chunks": 0,
+            "materialized_nodes": 0,
+            "read_only": True,
+            "local_write": False,
+            "cloud_merge": False,
+            "mount_table": _mount_table_metadata(mounts),
+        }
     manifest = _installed_manifest(installed)
     chunk_refs = _chunk_refs(manifest)
-    mounts = _load_mounts()
-    mounts[cartridge_id] = {
-        "mount_id": stable_id("gcm", f"{cartridge_id}:{manifest.version}"),
-        "cartridge_id": cartridge_id,
-        "state": "mounted",
-        "mounted_at": utc_now_iso(),
-        "manifest": asdict(manifest),
-        "chunk_index": [asdict(ref) for ref in chunk_refs],
-        "index_state": "portable_index_ready",
-        "loaded_chunks": 0,
-        "materialized_nodes": 0,
-        "materialized_edges": 0,
-        "read_only": True,
-        "local_write": False,
-        "cloud_merge": False,
-        "full_cartridge_loaded_at_attach": False,
-        "background_warmup_state": "ready",
-    }
+    mounted = MountedCartridge(
+        mount_id=stable_id("gcm", f"{cartridge_id}:{manifest.version}"),
+        cartridge_id=cartridge_id,
+        state="mounted",
+        mounted_at=utc_now_iso(),
+        manifest=asdict(manifest),
+        chunk_index=[asdict(ref) for ref in chunk_refs],
+        index_state="portable_index_ready",
+        loaded_chunks=0,
+        materialized_nodes=0,
+        materialized_edges=0,
+        read_only=True,
+        local_write=False,
+        cloud_merge=False,
+        full_cartridge_loaded_at_attach=False,
+        background_warmup_state="ready",
+    )
+    mounts[cartridge_id] = asdict(mounted)
     _save_mounts(mounts)
     attach_ms = round((time.perf_counter() - start) * 1000, 3)
     append_graph_hub_audit_event("cartridge_mounted", cartridge_id, {"attach_ms": attach_ms, "loaded_chunks": 0, "cloud_merge": False})
@@ -208,9 +293,11 @@ def attach_cartridge_namespace(cartridge_id: str) -> dict[str, Any]:
         "manifest": asdict(manifest),
         "chunk_count": manifest.chunk_count,
         "index_state": "portable_index_ready",
+        "background_warmup_state": "ready",
         "full_cartridge_loaded_at_attach": False,
+        "mount_table": _mount_table_metadata(mounts),
+        "visualization": _visualization_metadata(cartridge_id),
     }
-
 
 def detach_cartridge_namespace(cartridge_id: str) -> dict[str, Any]:
     start = time.perf_counter()
@@ -238,7 +325,20 @@ def detach_cartridge_namespace(cartridge_id: str) -> dict[str, Any]:
 
 
 def list_mounted_cartridges() -> list[dict[str, Any]]:
-    return list(_load_mounts().values())
+    mounts = _load_mounts()
+    active = _load_active_chunks()
+    rows: list[dict[str, Any]] = []
+    for cartridge_id, mount in mounts.items():
+        active_count = sum(1 for row in active.values() if row.get("cartridge_id") == cartridge_id)
+        materialized_nodes = sum(int(row.get("materialized_nodes") or 0) for row in active.values() if row.get("cartridge_id") == cartridge_id)
+        rows.append({
+            **mount,
+            "active_chunks": active_count,
+            "materialized_nodes": materialized_nodes,
+            "mount_table": _mount_table_metadata(mounts, active),
+            "visualization": _visualization_metadata(cartridge_id, active_chunks=active_count, materialized_nodes=materialized_nodes),
+        })
+    return rows
 
 
 def select_cartridge_chunks(query: str, max_chunks: int = 4) -> dict[str, Any]:
@@ -263,7 +363,17 @@ def select_cartridge_chunks(query: str, max_chunks: int = 4) -> dict[str, Any]:
                 score = 0
             selected.append({**ref, "score": score})
     selected.sort(key=lambda row: (-int(row.get("score") or 0), str(row.get("chunk_id") or "")))
-    selected = selected[:bounded_max]
+    bounded_selection: list[dict[str, Any]] = []
+    selected_cartridges: set[str] = set()
+    for row in selected:
+        row_cartridge = str(row.get("cartridge_id") or "")
+        if row_cartridge not in selected_cartridges and len(selected_cartridges) >= MAX_ACTIVE_CARTRIDGES:
+            continue
+        selected_cartridges.add(row_cartridge)
+        bounded_selection.append(row)
+        if len(bounded_selection) >= bounded_max:
+            break
+    selected = bounded_selection
     active_cartridges = len({str(row.get("cartridge_id")) for row in selected})
     budget = _wave_budget(active_cartridges, len(selected), 0, 0)
     return {
@@ -277,6 +387,9 @@ def select_cartridge_chunks(query: str, max_chunks: int = 4) -> dict[str, Any]:
         "local_write": False,
         "cloud_merge": False,
         "pair_edges_sent": 0,
+        "full_store_scan": False,
+        "materialized_nodes": 0,
+        "mount_table": _mount_table_metadata(mounts),
     }
 
 
@@ -320,6 +433,27 @@ def materialize_cartridge_chunk(cartridge_id: str, chunk_id: str, max_nodes: int
             "cloud_merge": False,
             "pair_edges_sent": 0,
         }
+    active = _load_active_chunks()
+    active_key = f"{cartridge_id}:{chunk_id}"
+    active_for_cartridge = [row for row in active.values() if row.get("cartridge_id") == cartridge_id]
+    if active_key not in active and len(active_for_cartridge) >= MAX_ACTIVE_CHUNKS_PER_CARTRIDGE:
+        return {
+            "cartridge_id": cartridge_id,
+            "chunk_id": chunk_id,
+            "state": "budget_exceeded",
+            "reason": "max_active_chunks_per_cartridge",
+            "nodes": [],
+            "edges": [],
+            "materialized_nodes": 0,
+            "materialized_edges": 0,
+            "working_memory_temporary": True,
+            "read_only": True,
+            "local_write": False,
+            "cloud_merge": False,
+            "pair_edges_sent": 0,
+            "full_store_scan": False,
+            "mount_table": _mount_table_metadata(mounts, active),
+        }
     payload = _load_installed_payload(cartridge_id)
     semantic = ((payload.get("contents") or {}).get("semantic_graph") or {})
     node_limit = max(0, min(int(max_nodes or 0), MAX_MATERIALIZED_NODES))
@@ -342,10 +476,13 @@ def materialize_cartridge_chunk(cartridge_id: str, chunk_id: str, max_nodes: int
     ]
     node_ids = {str(node.get("source_id")) for node in nodes}
     edges = []
+    fanout: dict[str, int] = {}
     for edge in raw_edges:
         source = str(edge.get("source") or "")
         target = str(edge.get("target") or "")
         if source not in node_ids or target not in node_ids:
+            continue
+        if fanout.get(source, 0) >= 32:
             continue
         edges.append(
             {
@@ -363,21 +500,20 @@ def materialize_cartridge_chunk(cartridge_id: str, chunk_id: str, max_nodes: int
                 "source_cartridge_id": cartridge_id,
             }
         )
+        fanout[source] = fanout.get(source, 0) + 1
         if len(edges) >= edge_limit:
             break
-    active = _load_active_chunks()
-    active_key = f"{cartridge_id}:{chunk_id}"
     materialize_ms = round((time.perf_counter() - start) * 1000, 3)
-    active[active_key] = {
-        "cartridge_id": cartridge_id,
-        "chunk_id": chunk_id,
-        "opened_at": utc_now_iso(),
-        "materialized_nodes": len(nodes),
-        "materialized_edges": len(edges),
-        "temporary": True,
-        "local_write": False,
-        "cloud_merge": False,
-    }
+    active[active_key] = asdict(ActiveCartridgeChunk(
+        cartridge_id=cartridge_id,
+        chunk_id=chunk_id,
+        opened_at=utc_now_iso(),
+        materialized_nodes=len(nodes),
+        materialized_edges=len(edges),
+        temporary=True,
+        local_write=False,
+        cloud_merge=False,
+    ))
     _save_active_chunks(active)
     wave_budget = _wave_budget(len({row.get("cartridge_id") for row in active.values()}), len(active), len(nodes), len(edges))
     append_graph_hub_audit_event("cartridge_chunk_materialized", cartridge_id, {"chunk_id": chunk_id, "nodes": len(nodes), "edges": len(edges), "materialize_ms": materialize_ms})
@@ -398,4 +534,6 @@ def materialize_cartridge_chunk(cartridge_id: str, chunk_id: str, max_nodes: int
         "full_store_scan": False,
         "wave_budget": wave_budget,
         "materialize_ms": materialize_ms,
+        "mount_table": _mount_table_metadata(mounts, active),
+        "visualization": _visualization_metadata(cartridge_id, active_chunks=sum(1 for row in active.values() if row.get("cartridge_id") == cartridge_id), materialized_nodes=len(nodes)),
     }

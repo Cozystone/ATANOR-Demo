@@ -58,6 +58,10 @@ class CartridgeSelectChunksRequest(BaseModel):
     max_chunks: int = Field(default=4, ge=1, le=16)
 
 
+class CartridgeMountRequest(BaseModel):
+    cartridge_id: str = Field(min_length=1, max_length=160)
+
+
 class CartridgeMaterializeChunkRequest(BaseModel):
     cartridge_id: str = Field(min_length=1, max_length=160)
     chunk_id: str = Field(min_length=1, max_length=260)
@@ -204,9 +208,19 @@ def cartridge_mount_attach(cartridge_id: str) -> dict[str, Any]:
     return attach_cartridge_namespace(cartridge_id)
 
 
+@router.post("/cartridges/attach")
+def cartridge_mount_attach_body(request: CartridgeMountRequest) -> dict[str, Any]:
+    return attach_cartridge_namespace(request.cartridge_id)
+
+
 @router.post("/cartridges/detach/{cartridge_id}")
 def cartridge_mount_detach(cartridge_id: str) -> dict[str, Any]:
     return detach_cartridge_namespace(cartridge_id)
+
+
+@router.post("/cartridges/detach")
+def cartridge_mount_detach_body(request: CartridgeMountRequest) -> dict[str, Any]:
+    return detach_cartridge_namespace(request.cartridge_id)
 
 
 @router.get("/cartridges/mounted")

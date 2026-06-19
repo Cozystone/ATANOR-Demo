@@ -94,6 +94,33 @@ def test_graph_cartridge_mount_api_is_manifest_only_and_lazy():
     assert detached.json()["working_memory_cleared"] is True
 
 
+def test_graph_cartridge_mount_body_api_and_visual_metadata():
+    assert client.post("/api/graph-hub/entitlements/free/korean_writing_demo").status_code == 200
+    assert client.post("/api/graph-hub/install/korean_writing_demo").status_code == 200
+
+    mounted = client.post("/api/graph-hub/cartridges/attach", json={"cartridge_id": "korean_writing_demo"})
+    assert mounted.status_code == 200
+    payload = mounted.json()
+    assert payload["state"] == "mounted"
+    assert payload["loaded_chunks"] == 0
+    assert payload["materialized_nodes"] == 0
+    assert payload["local_write"] is False
+    assert payload["cloud_merge"] is False
+    assert payload["mount_table"]["pair_edges_sent"] == 0
+    assert payload["visualization"]["render_role"] == "mounted_cartridge_satellite"
+
+    mounted_list = client.get("/api/graph-hub/cartridges/mounted")
+    assert mounted_list.status_code == 200
+    rows = mounted_list.json()
+    assert any(row["cartridge_id"] == "korean_writing_demo" for row in rows)
+    assert all(row["local_write"] is False and row["cloud_merge"] is False for row in rows)
+
+    detached = client.post("/api/graph-hub/cartridges/detach", json={"cartridge_id": "korean_writing_demo"})
+    assert detached.status_code == 200
+    assert detached.json()["state"] == "detached"
+    assert detached.json()["working_memory_cleared"] is True
+
+
 def test_graph_hub_profiler_synergy_and_trial_api_are_isolated():
     assert client.post("/api/graph-hub/entitlements/free/software_architect_demo").status_code == 200
     assert client.post("/api/graph-hub/install/software_architect_demo").status_code == 200
