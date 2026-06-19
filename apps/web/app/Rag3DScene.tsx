@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { computeWebGpuGraphLayout } from "./webgpuLayout";
 
 export type Rag3DNode = {
   id: string;
@@ -25,10 +26,25 @@ export type Rag3DEdge = {
   source_type?: string;
 };
 
+export type Rag3DScaleChunk = {
+  chunk_id: string;
+  type?: string;
+  is_semantic_node?: boolean;
+  represents_node_count?: number;
+  represents_relation_count?: number;
+  lod_level?: number;
+  radius_range?: [number, number] | number[];
+  theta_range?: [number, number] | number[];
+  phi_range?: [number, number] | number[];
+  density?: number;
+  loaded?: boolean;
+};
+
 export type Rag3DGraph = {
   nodes: Rag3DNode[];
   edges: Rag3DEdge[];
   traversal_path?: string[];
+  scale_chunks?: Rag3DScaleChunk[];
 };
 
 export type Rag3DControl = {
@@ -106,6 +122,8 @@ type SceneState = {
   lastGraphNodeCount: number;
   lastViewportEmitFrame: number;
   layoutDiagnostics: Record<string, number | string | number[]>;
+  layoutRequestSerial: number;
+  layoutSignature: string;
   newNodeIds: Set<string>;
   nodeBornAt: Map<string, number>;
   nodeCapacity: number;
@@ -122,7 +140,10 @@ type SceneState = {
   pulseItems: EdgePulse[];
   pulseMesh: THREE.InstancedMesh | null;
   renderer: THREE.WebGLRenderer;
+  scaleChunks: Rag3DScaleChunk[];
   scene: THREE.Scene;
+  shellCapacity: number;
+  shellMesh: THREE.InstancedMesh | null;
   startedAt: number;
   userCameraControlUntilFrame: number;
   visibleEdges: VisibleEdge[];
@@ -139,20 +160,24 @@ const STRONG_EDGE_COLOR = 0xeaf2ff;
 const NEON_ORANGE = 0xffa028;
 const COLD_LABEL = "#eef3f8";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const NEW_NODE_ANIMATION_SECONDS = 1.5;
+const NEW_NODE_ANIMATION_SECONDS = 1.0;
+const MAX_SHELL_RENDER_CHUNKS = 384;
+const DEFAULT_GRAPH_TILT_X = -0.22;
+const DEFAULT_GRAPH_TILT_Y = 0.34;
 
 const baseEdgeColor = new THREE.Color(BASE_EDGE_COLOR);
 const weakEdgeColor = new THREE.Color(BASE_EDGE_WEAK);
 const nearActiveEdgeColor = new THREE.Color(BASE_EDGE_ACTIVE_NEAR);
 const strongEdgeColor = new THREE.Color(STRONG_EDGE_COLOR);
 const neonOrangeColor = new THREE.Color(NEON_ORANGE);
-const localMemoryColor = new THREE.Color(0xf4f0e6);
-const representativeNodeColor = new THREE.Color(0x7f8fa6);
-const cloudBrainColor = new THREE.Color(0x4e8fff);
+const localMemoryColor = new THREE.Color(0xffffff);
+const representativeNodeColor = new THREE.Color(0xa7b7d1);
+const cloudBrainColor = new THREE.Color(0x6fb0ff);
 const workingMemoryColor = new THREE.Color(0x5eead4);
 const contributorFragmentColor = new THREE.Color(0xffa028);
 const seedSchemaColor = new THREE.Color(0x9b7cff);
 const evidenceSourceColor = new THREE.Color(0x91a4bd);
+const depthWhiteColor = new THREE.Color(0xffffff);
 const tempColor = new THREE.Color();
 const tempMatrix = new THREE.Matrix4();
 const tempQuaternion = new THREE.Quaternion();
@@ -169,30 +194,30 @@ function getNodePointTexture() {
   const context = canvas.getContext("2d");
   if (context) {
     context.clearRect(0, 0, canvas.width, canvas.height);
-    const glow = context.createRadialGradient(30, 27, 5, 32, 32, 31);
-    glow.addColorStop(0, "rgba(255,255,255,0.72)");
-    glow.addColorStop(0.42, "rgba(255,255,255,0.34)");
-    glow.addColorStop(0.76, "rgba(255,255,255,0.12)");
+    const glow = context.createRadialGradient(30, 27, 4, 32, 32, 31);
+    glow.addColorStop(0, "rgba(255,255,255,1)");
+    glow.addColorStop(0.4, "rgba(255,255,255,0.62)");
+    glow.addColorStop(0.76, "rgba(255,255,255,0.22)");
     glow.addColorStop(1, "rgba(255,255,255,0)");
     context.fillStyle = glow;
     context.beginPath();
     context.arc(32, 32, 31, 0, Math.PI * 2);
     context.fill();
 
-    const sphere = context.createRadialGradient(25, 22, 2, 32, 32, 13);
+    const sphere = context.createRadialGradient(24, 21, 1, 32, 32, 13.5);
     sphere.addColorStop(0, "rgba(255,255,255,1)");
     sphere.addColorStop(0.42, "rgba(238,243,248,0.96)");
     sphere.addColorStop(0.72, "rgba(128,148,170,0.84)");
     sphere.addColorStop(1, "rgba(22,28,36,0.96)");
     context.fillStyle = sphere;
     context.beginPath();
-    context.arc(32, 32, 12.5, 0, Math.PI * 2);
+    context.arc(32, 32, 13.2, 0, Math.PI * 2);
     context.fill();
 
     context.strokeStyle = "rgba(255,255,255,0.72)";
     context.lineWidth = 1.1;
     context.beginPath();
-    context.arc(32, 32, 12.2, 0, Math.PI * 2);
+    context.arc(32, 32, 12.8, 0, Math.PI * 2);
     context.stroke();
   }
   nodePointTexture = new THREE.CanvasTexture(canvas);
@@ -214,7 +239,7 @@ function coordinateAnimationAllowed(visualState: Rag3DVisualState) {
 }
 
 function movingPulseAllowed(visualState: Rag3DVisualState) {
-  return visualState === "loading" || visualState === "learning" || visualState === "activating";
+  return visualState === "loading" || visualState === "learning" || visualState === "activating" || visualState === "completed";
 }
 
 function resolveVisualState(
@@ -320,14 +345,14 @@ function stableVolumePoint(id: string, index: number, total: number) {
   const y = THREE.MathUtils.clamp(1 - ((index + 0.5) / count) * 2 + hashUnit(id, 13) * 0.035, -0.98, 0.98);
   const theta = index * GOLDEN_ANGLE + hashUnit(id, 29) * 0.82;
   const radial = Math.sqrt(Math.max(0.0001, 1 - y * y));
-  const volumeRadius = Math.min(44, 6.2 + Math.cbrt(count) * 1.56);
-  const shellNoise = 0.68 + Math.cbrt(hash01(id, 47)) * 0.5;
+  const volumeRadius = Math.min(48, 6.6 + Math.cbrt(count) * 1.72);
+  const shellNoise = 0.66 + Math.cbrt(hash01(id, 47)) * 0.58;
   const localJitter = 1 + hashUnit(id, 71) * 0.065;
   const radius = volumeRadius * Math.min(1.14, shellNoise * localJitter);
   return new THREE.Vector3(
     Math.cos(theta) * radial * radius,
     y * radius,
-    Math.sin(theta) * radial * radius,
+    Math.sin(theta) * radial * radius * 1.46,
   );
 }
 
@@ -375,13 +400,13 @@ function semanticClusterKey(node: Rag3DNode) {
 
 function seededClusterCenter(key: string, index: number, total: number) {
   const theta = index * GOLDEN_ANGLE + hashUnit(key, 101) * 0.48;
-  const z = hashUnit(key, 131) * 0.55;
+  const z = hashUnit(key, 131) * 0.72;
   const radial = Math.sqrt(Math.max(0.08, 1 - z * z));
   const radius = 4.2 + Math.cbrt(Math.max(1, total)) * 0.54;
   return new THREE.Vector3(
     Math.cos(theta) * radial * radius,
     Math.sin(theta) * radial * radius,
-    z * radius * 0.72,
+    z * radius * 1.34,
   );
 }
 
@@ -422,7 +447,7 @@ function computeOrganicGraphLayout(
     position.normalize().multiplyScalar(Math.max(1.2, baseRadius * radiusFactor));
     position.x += hashUnit(node.id, 173) * 0.8;
     position.y += hashUnit(node.id, 211) * 0.8;
-    position.z += hashUnit(node.id, 241) * 0.45;
+    position.z += hashUnit(node.id, 241) * 1.15;
     return position;
   });
   if (nodes.length <= 1) return { positions, diagnostics: layoutDiagnostics(nodes, edges, positions, activeNodeIds) };
@@ -471,7 +496,6 @@ function computeOrganicGraphLayout(
       const cluster = clusterCenters.get(semanticClusterKey(node));
       const degreeRatio = (degree.get(node.id) ?? 0) / maxDegree;
       if (cluster) position.lerp(cluster, (0.004 + degreeRatio * 0.005) * cooling);
-      position.z *= 0.995;
     });
   }
   const center = new THREE.Vector3();
@@ -583,7 +607,19 @@ function spreadPositions(nodes: Rag3DNode[], edges: Rag3DEdge[] = [], activeNode
 }
 
 function sourceCoordinatePositions(nodes: Rag3DNode[]) {
-  return nodes.map((node) => new THREE.Vector3(node.x, node.y, node.z));
+  const positions = nodes.map((node) => new THREE.Vector3(Number(node.x) || 0, Number(node.y) || 0, Number(node.z) || 0));
+  if (positions.length <= 2) return positions;
+  const center = positions.reduce((sum, position) => sum.add(position), new THREE.Vector3()).divideScalar(positions.length);
+  let radius = 1;
+  positions.forEach((position) => {
+    radius = Math.max(radius, position.distanceTo(center));
+  });
+  const scale = radius > 18 ? 18 / radius : 1;
+  const jitterScale = Math.min(0.055, Math.max(0.012, radius * 0.004));
+  return positions.map((position, index) => {
+    const volume = stableVolumePoint(nodes[index].id, index, nodes.length);
+    return position.clone().sub(center).multiplyScalar(scale).add(volume.multiplyScalar(jitterScale));
+  });
 }
 
 function viewportRadiusForCamera(camera: THREE.PerspectiveCamera) {
@@ -662,8 +698,8 @@ function ensureNodeBuffers(state: SceneState, nodeCount: number) {
       depthTest: false,
       depthWrite: false,
       map: getNodePointTexture(),
-      opacity: 0.92,
-      size: nodeCount > 100_000 ? 0.038 : nodeCount > 25_000 ? 0.048 : nodeCount > 5_000 ? 0.066 : nodeCount > 1_000 ? 0.118 : 0.21,
+      opacity: 1,
+      size: nodeCount > 100_000 ? 0.044 : nodeCount > 25_000 ? 0.056 : nodeCount > 5_000 ? 0.078 : nodeCount > 1_000 ? 0.132 : 0.225,
       sizeAttenuation: true,
       transparent: true,
       vertexColors: true,
@@ -678,8 +714,8 @@ function ensureNodeBuffers(state: SceneState, nodeCount: number) {
     material.alphaTest = 0.04;
     material.blending = THREE.AdditiveBlending;
     material.map = getNodePointTexture();
-    material.opacity = 0.92;
-    material.size = nodeCount > 100_000 ? 0.038 : nodeCount > 25_000 ? 0.048 : nodeCount > 5_000 ? 0.066 : nodeCount > 1_000 ? 0.118 : 0.21;
+    material.opacity = 1;
+    material.size = nodeCount > 100_000 ? 0.044 : nodeCount > 25_000 ? 0.056 : nodeCount > 5_000 ? 0.078 : nodeCount > 1_000 ? 0.132 : 0.225;
     material.needsUpdate = true;
   }
 }
@@ -738,13 +774,13 @@ function ensureHaloMesh(state: SceneState, count: number) {
     disposeObject(state.haloMesh);
   }
   state.haloCapacity = nextCapacity(count, 64);
-  const geometry = new THREE.TorusGeometry(1, 0.018, 8, 48);
+  const geometry = new THREE.TorusGeometry(1, 0.0075, 8, 40);
   const material = new THREE.MeshBasicMaterial({
     blending: THREE.AdditiveBlending,
     color: NEON_ORANGE,
     depthTest: false,
     depthWrite: false,
-    opacity: 0.12,
+    opacity: 0.05,
     transparent: true,
   });
   state.haloMesh = new THREE.InstancedMesh(geometry, material, state.haloCapacity);
@@ -785,6 +821,36 @@ function ensurePulseMesh(state: SceneState, count: number) {
   state.group.add(state.pulseMesh);
 }
 
+function ensureShellMesh(state: SceneState, count: number) {
+  if (count <= 0) {
+    if (state.shellMesh) state.shellMesh.count = 0;
+    return;
+  }
+  if (state.shellMesh && state.shellCapacity >= count) {
+    state.shellMesh.count = count;
+    return;
+  }
+
+  if (state.shellMesh) {
+    state.group.remove(state.shellMesh);
+    disposeObject(state.shellMesh);
+  }
+  state.shellCapacity = nextCapacity(count, 64);
+  const geometry = new THREE.SphereGeometry(1, 10, 10);
+  const material = new THREE.MeshBasicMaterial({
+    blending: THREE.AdditiveBlending,
+    color: 0x4ea3ff,
+    depthWrite: false,
+    opacity: 0.105,
+    transparent: true,
+  });
+  state.shellMesh = new THREE.InstancedMesh(geometry, material, state.shellCapacity);
+  state.shellMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  state.shellMesh.count = count;
+  state.shellMesh.renderOrder = 0;
+  state.group.add(state.shellMesh);
+}
+
 function findSpawnPositionForNode(nodeId: string, edges: Rag3DEdge[], positions: Map<string, THREE.Vector3>, fallback: THREE.Vector3) {
   for (const edge of edges) {
     if (edge.source === nodeId) {
@@ -819,10 +885,12 @@ function syncGraph(
   state.newNodeIds = new Set(newNodeIds);
   state.graphNodes = graph?.nodes ?? [];
   state.graphEdges = graph?.edges ?? [];
+  state.scaleChunks = (graph?.scale_chunks ?? []).filter((chunk) => chunk?.is_semantic_node !== true);
 
   if (!graph?.nodes?.length) {
     state.nodePoints?.geometry.setDrawRange(0, 0);
     state.edgeLines?.geometry.setDrawRange(0, 0);
+    ensureShellMesh(state, state.scaleChunks.length);
     if (state.haloMesh) state.haloMesh.count = 0;
     if (state.pulseMesh) state.pulseMesh.count = 0;
     removeDynamicObjects(state);
@@ -842,6 +910,7 @@ function syncGraph(
     visual_state: nextVisualState,
   };
   const targets = state.preserveSourceCoordinates ? sourceCoordinatePositions(graph.nodes) : organicLayout.positions;
+  scheduleWebGpuLayout(state, graph, activeNodeIds);
   const nextKnownNodeIds = new Set<string>();
   const nextNodeIndexById = new Map<string, number>();
   const stillPresent = new Set<string>();
@@ -915,35 +984,18 @@ function syncGraph(
   ensureNodeBuffers(state, graph.nodes.length);
   ensureEdgeBuffers(state, state.visibleEdges.length * 2);
 
-  const hasSignalEvent = activeNodeIds.size > 0 || activeEdgeKeys.size > 0 || newNodeIds.size > 0;
-  state.haloItems = graph.nodes
-    .filter((node) => {
-      const bornAt = state.nodeBornAt.get(node.id);
-      const newPulse = hasSignalEvent && typeof bornAt === "number" && elapsed - bornAt < NEW_NODE_ANIMATION_SECONDS;
-      return newNodeIds.has(node.id) || newPulse;
-    })
-    .slice(0, 64)
-    .map((node) => {
-      const bornAt = state.nodeBornAt.get(node.id) ?? elapsed;
-      const position = state.nodePositionById.get(node.id) ?? state.nodeTargetById.get(node.id) ?? new THREE.Vector3();
-      return {
-        bornAt,
-        id: node.id,
-        newNode: newNodeIds.has(node.id) || (hasSignalEvent && elapsed - bornAt < NEW_NODE_ANIMATION_SECONDS),
-        position,
-        scale: 0.24 + (node.confidence ?? 0.65) * 0.14,
-      };
-    });
+  state.haloItems = [];
   ensureHaloMesh(state, state.haloItems.length);
 
   state.pulseItems = movingPulseAllowed(nextVisualState)
     ? state.visibleEdges
       .filter((edge) => edge.active)
-      .slice(0, 640)
+      .slice(0, 980)
       .flatMap((edge) => [0, 1, 2].map((pulse) => ({ source: edge.source, target: edge.target, phase: pulse / 3 })))
     : [];
   ensurePulseMesh(state, state.pulseItems.length);
   state.edgePulseCount = state.pulseItems.length;
+  ensureShellMesh(state, state.scaleChunks.length);
 
   removeDynamicObjects(state);
   if (showLabels) {
@@ -962,6 +1014,57 @@ function syncGraph(
   state.knownNodeIds = nextKnownNodeIds;
 }
 
+function graphLayoutSignature(graph: Rag3DGraph, activeNodeIds: Set<string>) {
+  const first = graph.nodes[0]?.id ?? "";
+  const last = graph.nodes[graph.nodes.length - 1]?.id ?? "";
+  const active = Array.from(activeNodeIds).sort().slice(0, 32).join(",");
+  return `${graph.nodes.length}:${graph.edges.length}:${first}:${last}:${active}`;
+}
+
+function scheduleWebGpuLayout(state: SceneState, graph: Rag3DGraph, activeNodeIds: Set<string>) {
+  if (state.preserveSourceCoordinates || typeof navigator === "undefined") return;
+  const signature = graphLayoutSignature(graph, activeNodeIds);
+  if (signature === state.layoutSignature) return;
+  state.layoutSignature = signature;
+  const serial = state.layoutRequestSerial + 1;
+  state.layoutRequestSerial = serial;
+  const graphNodes = graph.nodes.map((node) => ({ ...node }));
+  const graphEdges = graph.edges.map((edge) => ({ ...edge }));
+  const activeSnapshot = new Set(activeNodeIds);
+  computeWebGpuGraphLayout(graphNodes, graphEdges, activeSnapshot)
+    .then((result) => {
+      if (!result || sceneStateIsStale(state, serial, signature)) return;
+      const targetMap = new Map<string, THREE.Vector3>();
+      graphNodes.forEach((node, index) => {
+        const position = result.positions[index];
+        if (!position) return;
+        targetMap.set(node.id, new THREE.Vector3(position[0], position[1], position[2]));
+      });
+      if (targetMap.size !== graphNodes.length) return;
+      state.nodeTargetById = targetMap;
+      state.layoutDiagnostics = {
+        ...state.layoutDiagnostics,
+        ...result.diagnostics,
+      };
+      state.nodePositionBufferDirty = true;
+      state.edgePositionBufferDirty = true;
+      const fitDistance = fitDistanceForPositions(Array.from(targetMap.values()), state.camera, true) * state.fitScale;
+      if (state.frame >= state.userCameraControlUntilFrame && fitDistance > state.camera.position.z) {
+        state.camera.position.z = fitDistance;
+        state.lastFitDistance = fitDistance;
+      }
+    })
+    .catch((error) => {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("ATANOR WebGPU layout unavailable; using CPU layout", error);
+      }
+    });
+}
+
+function sceneStateIsStale(state: SceneState, serial: number, signature: string) {
+  return state.layoutRequestSerial !== serial || state.layoutSignature !== signature || state.preserveSourceCoordinates;
+}
+
 function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number) {
   const active = state.activeNodeIds.has(node.id);
   const hop = state.activationHops.get(node.id);
@@ -970,15 +1073,15 @@ function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number)
   const newPulse = coordinateAnimationAllowed(state.visualState) && (state.newNodeIds.has(node.id) || newAge < NEW_NODE_ANIMATION_SECONDS);
   if (state.visualState === "low_memory_viewer") return active ? 0.42 : 0;
   if (active) {
-    const amplitude = state.visualState === "completed" ? 0.045 : 0.18;
-    const base = state.visualState === "completed" ? 0.46 : 0.7;
+    const amplitude = state.visualState === "completed" ? 0.012 : 0.12;
+    const base = state.visualState === "completed" ? 0.26 : 0.58;
     return base + Math.sin(elapsed * 10 + hash01(node.id, 31) * Math.PI * 2) * amplitude;
   }
   if (hop !== undefined && hop <= 3) {
     const base = Math.exp(-hop * 1.42);
-    const pulseAmplitude = state.visualState === "completed" ? 0.012 : 0.05;
-    const pulseBase = state.visualState === "completed" ? 0.16 : 0.32;
-    return THREE.MathUtils.clamp(base * (pulseBase + Math.sin(elapsed * 8 + hash01(node.id, 37) * Math.PI * 2) * pulseAmplitude), 0.008, 0.22);
+    const pulseAmplitude = state.visualState === "completed" ? 0.004 : 0.04;
+    const pulseBase = state.visualState === "completed" ? 0.08 : 0.28;
+    return THREE.MathUtils.clamp(base * (pulseBase + Math.sin(elapsed * 8 + hash01(node.id, 37) * Math.PI * 2) * pulseAmplitude), 0.004, 0.16);
   }
   if (newPulse) return THREE.MathUtils.clamp(1 - newAge / NEW_NODE_ANIMATION_SECONDS, 0, 1);
   return 0;
@@ -1045,6 +1148,9 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
 
     const signal = nodeSignalStrength(state, node, elapsed);
     tempColor.copy(nodeBaseColor(node)).lerp(neonOrangeColor, signal);
+    const depthCue = THREE.MathUtils.clamp(0.5 + position.z / Math.max(10, state.camera.position.z * 0.28), 0.18, 1);
+    tempColor.multiplyScalar(0.66 + depthCue * 0.42);
+    tempColor.lerp(depthWhiteColor, depthCue * 0.1);
     state.nodeColorArray![index * 3] = tempColor.r;
     state.nodeColorArray![index * 3 + 1] = tempColor.g;
     state.nodeColorArray![index * 3 + 2] = tempColor.b;
@@ -1089,6 +1195,9 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       tempColor.lerp(strongEdgeColor, THREE.MathUtils.clamp((weight - 0.62) * 0.48, 0, 0.28));
     }
     tempColor.lerp(neonOrangeColor, signal);
+    const edgeDepthCue = THREE.MathUtils.clamp(0.5 + ((source.z + target.z) * 0.5) / Math.max(10, state.camera.position.z * 0.28), 0.2, 1);
+    tempColor.multiplyScalar(0.58 + edgeDepthCue * 0.46);
+    tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.08);
     state.edgeColorArray![vertexIndex] = tempColor.r;
     state.edgeColorArray![vertexIndex + 1] = tempColor.g;
     state.edgeColorArray![vertexIndex + 2] = tempColor.b;
@@ -1114,13 +1223,13 @@ function updateHaloMesh(state: SceneState, elapsed: number) {
     const signal = halo.newNode
       ? 1 - t
       : 0.55 + Math.sin(elapsed * 10 + hash01(halo.id, 43) * Math.PI * 2) * 0.18;
-    const ringScale = halo.scale * (halo.newNode ? THREE.MathUtils.lerp(1.15, 0.42, t) : THREE.MathUtils.lerp(0.62, 0.82, signal));
+    const ringScale = halo.scale * (halo.newNode ? THREE.MathUtils.lerp(0.76, 0.18, t) : THREE.MathUtils.lerp(0.28, 0.36, signal));
     tempScale.setScalar(Math.max(0.001, ringScale));
     tempMatrix.compose(position, tempRingQuaternion, tempScale);
     state.haloMesh!.setMatrixAt(index, tempMatrix);
   });
   const material = state.haloMesh.material as THREE.MeshBasicMaterial;
-  material.opacity = state.haloItems.some((halo) => halo.newNode) ? 0.12 : 0.06;
+  material.opacity = state.haloItems.some((halo) => halo.newNode) ? 0.045 : 0.015;
   material.needsUpdate = true;
   state.haloMesh.instanceMatrix.needsUpdate = true;
 }
@@ -1136,13 +1245,63 @@ function updatePulseMesh(state: SceneState, elapsed: number) {
     const source = state.nodePositionById.get(pulse.source);
     const target = state.nodePositionById.get(pulse.target);
     if (!source || !target) return;
-    const t = (elapsed * 1.8 + pulse.phase) % 1;
+    const t = (elapsed * 3.1 + pulse.phase) % 1;
     tempPosition.copy(source).lerp(target, t);
-    tempScale.setScalar(0.035 + Math.sin(t * Math.PI) * 0.06);
+    tempScale.setScalar(0.014 + Math.sin(t * Math.PI) * 0.024);
     tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
     state.pulseMesh!.setMatrixAt(index, tempMatrix);
   });
   state.pulseMesh.instanceMatrix.needsUpdate = true;
+}
+
+function chunkMidpoint(value: number[] | undefined, fallback: number) {
+  if (!Array.isArray(value) || value.length < 2) return fallback;
+  return (Number(value[0]) + Number(value[1])) / 2;
+}
+
+function updateShellMesh(state: SceneState, elapsed: number) {
+  if (!state.shellMesh) return;
+  const chunks = state.scaleChunks.filter((chunk) => chunk?.is_semantic_node !== true).slice(0, MAX_SHELL_RENDER_CHUNKS);
+  const cameraZ = state.camera.position.z;
+  const shellVisibility = THREE.MathUtils.clamp((cameraZ - 8.0) / 22.0, 0, 1);
+  if (shellVisibility <= 0.015) {
+    state.shellMesh.count = 0;
+    return;
+  }
+  state.shellMesh.count = chunks.length;
+  chunks.forEach((chunk, index) => {
+    const radiusRange = Array.isArray(chunk.radius_range) ? chunk.radius_range : [0.64, 0.78];
+    const normalizedRadius = (Number(radiusRange[0]) + Number(radiusRange[1])) / 2;
+    const explicitX = Number((chunk as { x?: unknown }).x);
+    const explicitY = Number((chunk as { y?: unknown }).y);
+    const explicitZ = Number((chunk as { z?: unknown }).z);
+    const hasExplicitCenter = Number.isFinite(explicitX) && Number.isFinite(explicitY) && Number.isFinite(explicitZ);
+    const shellRadius = 4.2 + normalizedRadius * 5.8 + (1 - shellVisibility) * 0.65;
+    const density = THREE.MathUtils.clamp(Number(chunk.density ?? 0.45), 0.12, 1);
+    const shimmer = 0.82 + Math.sin(elapsed * 0.7 + index * 1.37) * 0.06;
+    if (hasExplicitCenter) {
+      tempPosition.set(explicitX, explicitY, explicitZ);
+      if (tempPosition.lengthSq() < 0.0001) {
+        tempPosition.set(0, 1, 0);
+      }
+      tempPosition.normalize().multiplyScalar(shellRadius);
+    } else {
+      const theta = THREE.MathUtils.degToRad(chunkMidpoint(chunk.theta_range, index * 37) % 360);
+      const phi = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(chunkMidpoint(chunk.phi_range, 72), 3, 177));
+      tempPosition.set(
+        Math.sin(phi) * Math.cos(theta) * shellRadius,
+        Math.cos(phi) * shellRadius,
+        Math.sin(phi) * Math.sin(theta) * shellRadius,
+      );
+    }
+    tempScale.setScalar((0.042 + density * 0.145) * shimmer);
+    tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+    state.shellMesh!.setMatrixAt(index, tempMatrix);
+  });
+  const material = state.shellMesh.material as THREE.MeshBasicMaterial;
+  material.opacity = chunks.length ? 0.095 * shellVisibility : 0;
+  material.needsUpdate = true;
+  state.shellMesh.instanceMatrix.needsUpdate = true;
 }
 
 export default function Rag3DScene({
@@ -1243,7 +1402,7 @@ export default function Rag3DScene({
     if (control.action === "down") group.rotation.x += 0.18;
     if (control.action === "reset") {
       camera.position.set(0, 0, Math.max(cameraDistanceForNodeCount(totalNodes), state.lastFitDistance));
-      group.rotation.set(0, 0, 0);
+      group.rotation.set(DEFAULT_GRAPH_TILT_X, DEFAULT_GRAPH_TILT_Y, 0);
     }
     camera.updateProjectionMatrix();
     clampCameraZ(camera, totalNodes);
@@ -1280,6 +1439,7 @@ export default function Rag3DScene({
     container.replaceChildren(renderer.domElement);
 
     const group = new THREE.Group();
+    group.rotation.set(DEFAULT_GRAPH_TILT_X, DEFAULT_GRAPH_TILT_Y, 0);
     scene.add(group);
     scene.add(new THREE.AmbientLight(0xffffff, darkMode ? 0.78 : 1.25));
     const light = new THREE.DirectionalLight(0xffffff, darkMode ? 0.8 : 1.3);
@@ -1326,6 +1486,8 @@ export default function Rag3DScene({
       lastGraphNodeCount: 0,
       lastViewportEmitFrame: -999,
       layoutDiagnostics: { layout_mode: "organic_semantic_force" },
+      layoutRequestSerial: 0,
+      layoutSignature: "",
       newNodeIds: new Set(),
       nodeBornAt: new Map(),
       nodeCapacity: 0,
@@ -1342,7 +1504,10 @@ export default function Rag3DScene({
       pulseItems: [],
       pulseMesh: null,
       renderer,
+      scaleChunks: [],
       scene,
+      shellCapacity: 0,
+      shellMesh: null,
       startedAt: performance.now(),
       userCameraControlUntilFrame: 0,
       visibleEdges: [],
@@ -1427,6 +1592,7 @@ export default function Rag3DScene({
 
       updateNodeBuffers(state, elapsed);
       updateEdgeBuffers(state, elapsed);
+      updateShellMesh(state, elapsed);
       updateHaloMesh(state, elapsed);
       updatePulseMesh(state, elapsed);
 
@@ -1476,6 +1642,10 @@ export default function Rag3DScene({
       if (state.haloMesh) {
         state.group.remove(state.haloMesh);
         disposeObject(state.haloMesh);
+      }
+      if (state.shellMesh) {
+        state.group.remove(state.shellMesh);
+        disposeObject(state.shellMesh);
       }
       if (state.pulseMesh) {
         state.group.remove(state.pulseMesh);
