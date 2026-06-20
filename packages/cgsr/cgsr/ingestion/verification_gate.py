@@ -28,6 +28,9 @@ ALLOWED_SOURCE_TYPES = {
     "public_domain_archive",
     "open_access_paper",
     "user_provided_allowed",
+    "manual_public_sentence",
+    "graph_hub_verified",
+    "verified_store_rebuild",
     "local_proof_seed",
 }
 FORBIDDEN_SOURCE_TYPES = {"local_semantic_acceleration_batch", "mock_template", "unknown_origin"}

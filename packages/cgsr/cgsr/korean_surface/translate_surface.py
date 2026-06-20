@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cgsr.english.canonical_frames import RealizedAnswer
+from ..english.canonical_frames import RealizedAnswer
 
 from .glossary import apply_glossary_locks
 from .locks import extract_entity_locks, extract_number_locks

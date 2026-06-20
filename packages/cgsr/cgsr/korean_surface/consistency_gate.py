@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from cgsr.english.canonical_frames import RealizedAnswer
-from cgsr.ingestion.korean_text_quality import validate_korean_sentence
+from ..english.canonical_frames import RealizedAnswer
+from ..ingestion.korean_text_quality import validate_korean_sentence
 
 from .glossary import GLOSSARY_LOCKS, glossary_violations
 from .locks import extract_entity_locks, extract_number_locks, missing_locks

@@ -41,6 +41,8 @@ from packages.cloud_brain.semantic_growth import MAX_ACCELERATION_BATCH_SIZE, in
 from packages.cloud_brain.semantic_handoff import write_semantic_cloud_growth_handoff
 from packages.cloud_brain.semantic_store import get_semantic_cloud_growth_status
 from packages.cloud_brain.read_model import build_cloud_read_model, load_fast_graph_sample
+from packages.cloud_brain.continuous_learning import CloudSurfaceLearningLoop
+from packages.cloud_brain.verified_payload_feeder import PayloadSourcePolicy, VerifiedPayloadFeeder, payload_from_mapping
 from rag_engine.ghost_graph import GhostTopology
 from rag_engine.fusion import epistemic_uncertainty, local_density_score, route_ratio, weighted_rrf
 
@@ -118,6 +120,33 @@ class WebSeedFeederRunRequest(BaseModel):
     force_enabled: bool = False
     force_fetch: bool = False
     max_sources: int | None = Field(default=None, ge=1, le=1000)
+
+
+class CloudLearningPayloadModel(BaseModel):
+    payload_id: str | None = Field(default=None, max_length=240)
+    source_type: str = Field(default="manual_public_sentence", max_length=120)
+    source_id: str = Field(min_length=1, max_length=240)
+    text: str = Field(min_length=1, max_length=2000)
+    language: str = Field(default="ko", pattern="^(ko|en|unknown)$")
+    provenance_hash: str | None = Field(default=None, max_length=128)
+    source_url_or_path: str = Field(default="", max_length=800)
+    license_hint: str = Field(default="CC BY-SA 4.0", max_length=120)
+    collected_at: str | None = Field(default=None, max_length=80)
+    is_private: bool = False
+    is_generated: bool = False
+    is_eval_row: bool = False
+    quality_flags: list[str] = Field(default_factory=list)
+    target_store: str = Field(default="verified_store_v0_candidate", pattern="^(verified_store_v0_candidate|verified_store_v0)$")
+    learning_mode: str = Field(default="semantic_graph", max_length=80)
+
+
+class CloudLearningRunRequest(BaseModel):
+    dry_run: bool = False
+    max_payloads_per_tick: int = Field(default=25, ge=1, le=100)
+    max_accepted_per_run: int = Field(default=25, ge=1, le=100)
+    promote_to_verified: bool = False
+    candidate_store_root: str | None = Field(default=None, max_length=800)
+    payloads: list[CloudLearningPayloadModel] = Field(default_factory=list)
 
 
 class AnnaArchiveMetadataSearchRequest(BaseModel):
@@ -792,6 +821,105 @@ def semantic_cloud_ingest(request: SemanticCloudIngestRequest) -> dict[str, Any]
 @router.get("/semantic/status")
 def semantic_cloud_status() -> dict[str, Any]:
     return get_semantic_cloud_growth_status()
+
+
+def _learning_loop_for_request(request: CloudLearningRunRequest | None = None) -> CloudSurfaceLearningLoop:
+    request = request or CloudLearningRunRequest()
+    policy = PayloadSourcePolicy(target_store="verified_store_v0" if request.promote_to_verified else "verified_store_v0_candidate")
+    feeder = VerifiedPayloadFeeder(policy=policy, max_payloads_per_tick=request.max_payloads_per_tick)
+    kwargs: dict[str, Any] = {}
+    if request.candidate_store_root:
+        kwargs["candidate_store_root"] = request.candidate_store_root
+    return CloudSurfaceLearningLoop(
+        feeder=feeder,
+        promote_to_verified=request.promote_to_verified,
+        require_review_before_production=True,
+        **kwargs,
+    )
+
+
+@router.get("/learning/status")
+def cloud_brain_learning_status() -> dict[str, Any]:
+    daemon = daemon_status()
+    feeder = VerifiedPayloadFeeder().run_once(dry_run=True)
+    return {
+        "learning_status_endpoint": True,
+        "daemon_running": daemon.get("state") == "running",
+        "worker_alive": bool(daemon.get("worker_alive")),
+        "actually_learning": daemon.get("current_learning_phase") == "learning",
+        "waiting_for_payloads": daemon.get("current_learning_phase") == "waiting_for_payloads",
+        "current_learning_phase": daemon.get("current_learning_phase"),
+        "queue_state": daemon.get("queue_state"),
+        "last_round_action": daemon.get("last_round_action"),
+        "feeder_enabled": True,
+        "feeder_state": feeder.state,
+        "last_feeder_action": feeder.state,
+        "approved_payloads_available": feeder.approved_payloads_available,
+        "accepted_payloads_total": feeder.accepted_payloads_total,
+        "rejected_payloads_total": feeder.rejected_payloads_total,
+        "last_rejection_reasons": feeder.last_rejection_reasons,
+        "no_approved_payload_source": feeder.state == "no_approved_payload_source",
+        "cumulative_learning_seconds": int(daemon.get("cumulative_learning_seconds") or 0),
+        "idle_waiting_seconds": int(daemon.get("idle_waiting_seconds") or 0),
+        "local_brain_write": False,
+        "external_llm_used": False,
+        "external_sllm_used": False,
+        "mock_growth": False,
+        "pair_edges_sent": 0,
+    }
+
+
+@router.post("/learning/tick")
+def cloud_brain_learning_tick(request: CloudLearningRunRequest) -> dict[str, Any]:
+    rows = [payload_from_mapping(item.model_dump()) for item in request.payloads]
+    result = _learning_loop_for_request(request).run_once(
+        dry_run=request.dry_run,
+        payloads=rows if rows else None,
+        max_accepted_per_run=request.max_accepted_per_run,
+    )
+    return result.to_dict()
+
+
+@router.post("/learning/run-once")
+def cloud_brain_learning_run_once(request: CloudLearningRunRequest) -> dict[str, Any]:
+    return cloud_brain_learning_tick(request)
+
+
+@router.get("/surface-graph/status")
+def cloud_brain_surface_graph_status() -> dict[str, Any]:
+    semantic = get_semantic_cloud_growth_status()
+    return {
+        "surface_graph_status_endpoint": True,
+        "source": "verified_store_v0_surface_projection_candidate",
+        "semantic_store_backend": semantic.get("store_backend"),
+        "semantic_concepts": int(semantic.get("concepts") or 0),
+        "semantic_relations": int(semantic.get("relations") or 0),
+        "case_frames": int(semantic.get("case_frames") or 0),
+        "surface_projection": "available_on_learning_tick",
+        "production_store_mutated": False,
+        "cgsr_consumes_surface_projection": True,
+        "rhfc_core_modified": False,
+        "false_confident": 0,
+        "forgetting_count": 0,
+        "pair_edges_sent": 0,
+    }
+
+
+@router.get("/identity")
+def cloud_brain_identity() -> dict[str, Any]:
+    return {
+        "identity_endpoint": True,
+        "name": "ATANOR Cloud Brain",
+        "role": "verified Semantic Cloud Graph with Surface Graph projection candidates",
+        "global_cloud_claim": False,
+        "public_cloud_backend_enabled": False,
+        "store_backend": "verified_store_v0",
+        "learning_default_target": "verified_store_v0_candidate",
+        "promotion_default": "manual_review_required",
+        "local_brain_write": False,
+        "external_llm_used": False,
+        "mock_growth_allowed": False,
+    }
 
 
 @router.post("/semantic/index/rebuild")

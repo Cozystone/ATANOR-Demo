@@ -8,7 +8,7 @@ import hashlib
 import re
 from typing import Any
 
-from cgsr.morphology import analyze
+from ..morphology import analyze
 
 from .source_reader import SourceSentence
 from .verification_gate import VerificationDecision, has_mock_signal, normalize_for_dedupe
