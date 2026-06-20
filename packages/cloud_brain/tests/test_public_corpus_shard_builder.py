@@ -84,6 +84,44 @@ def test_execute_writes_valid_approved_jsonl(tmp_path: Path) -> None:
     assert all(policy.decide(payload_from_mapping(row)).accepted for row in rows)
 
 
+def test_builder_reads_local_wikipedia_xml_with_page_revision_fields(tmp_path: Path) -> None:
+    source = tmp_path / "enwiki.xml"
+    source.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<mediawiki>
+  <page>
+    <title>Graph theory</title>
+    <ns>0</ns>
+    <id>42</id>
+    <revision>
+      <id>84</id>
+      <text>Graph theory describes relationships between mathematical objects. It provides public concepts for network analysis.</text>
+    </revision>
+  </page>
+</mediawiki>
+""",
+        encoding="utf-8",
+    )
+
+    result = build_public_corpus_shard(
+        PublicCorpusBuilderConfig(
+            input_file=str(source),
+            source_name="enwiki-fixture",
+            license_hint="CC BY-SA 4.0",
+            language="en",
+            input_format="auto",
+            dry_run=True,
+            execute=False,
+        )
+    )
+
+    assert result.rows_accepted == 2
+    assert {row["page_id"] for row in result.samples} == {"42"}
+    assert {row["revision_id"] for row in result.samples} == {"84"}
+    assert {row["sentence_index"] for row in result.samples} == {1, 2}
+    assert all(row["source_mode"] == "local_dump_shard" for row in result.samples)
+
+
 def test_missing_source_file_is_rejected(tmp_path: Path) -> None:
     result = build_public_corpus_shard(
         PublicCorpusBuilderConfig(

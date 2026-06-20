@@ -39,6 +39,14 @@ ALLOWED_SOURCE_TYPES = {
     "local_proof_seed",
 }
 FORBIDDEN_SOURCE_TYPES = {"local_semantic_acceleration_batch", "mock_template", "unknown_origin"}
+ENGLISH_FACT_RE = re.compile(
+    r"\b("
+    r"is|are|was|were|has|have|had|uses|used|provides|supports|manages|contains|includes|"
+    r"refers|describes|represents|enables|allows|requires|consists|became|becomes|means|"
+    r"defines|connects|stores|records|tracks|verifies|validates"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +98,24 @@ def has_mock_signal(*values: object) -> bool:
     return any(pattern.search(joined) for pattern in MOCK_PATTERNS)
 
 
+def _is_english_fact_statement(text: str) -> bool:
+    """Return whether English text is structurally usable as evidence.
+
+    This is not truth verification. It only rejects fragments, headings, and
+    list-like residue while allowing licensed English public corpus sentences
+    into the candidate-only learning path without using an external model.
+    """
+
+    if not re.search(r"[A-Za-z]", text):
+        return False
+    if not re.search(r"[.!?]$", text.strip()):
+        return False
+    alpha_ratio = len(re.findall(r"[A-Za-z]", text)) / max(1, len(text))
+    if alpha_ratio < 0.55:
+        return False
+    return bool(ENGLISH_FACT_RE.search(text))
+
+
 def verify_sentence(
     sentence: SourceSentence,
     *,
@@ -129,6 +155,8 @@ def verify_sentence(
         return VerificationDecision("rejected", "markup_or_symbol_noise", dedupe_key, checked_at)
     if digit_ratio > 0.35:
         return VerificationDecision("rejected", "numeric_heavy_fragment", dedupe_key, checked_at)
-    if not re.search(r"[가-힣].*(다|요|죠|함|됨|한다|했다|된다|있다|없다)", text):
+    if sentence.language == "en" and not _is_english_fact_statement(text):
+        return VerificationDecision("rejected", "not_fact_statement_shape", dedupe_key, checked_at)
+    if sentence.language != "en" and not re.search(r"[가-힣].*(다|요|죠|함|됨|한다|했다|된다|있다|없다)", text):
         return VerificationDecision("rejected", "not_fact_statement_shape", dedupe_key, checked_at)
     return VerificationDecision("verified", "verified", dedupe_key, checked_at)

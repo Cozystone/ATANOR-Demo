@@ -23,6 +23,57 @@ CASE_TAG_TO_ROLE = {
 NOUN_TAG_PREFIXES = ("NN", "SL", "SH", "SN")
 PREDICATE_TAG_PREFIXES = ("VV", "VA")
 GENERIC_HEADS = {"것", "수", "등", "때", "곳"}
+ENGLISH_VERB_LEMMAS = {
+    "is": "be",
+    "are": "be",
+    "was": "be",
+    "were": "be",
+    "has": "have",
+    "have": "have",
+    "had": "have",
+    "uses": "use",
+    "used": "use",
+    "provides": "provide",
+    "supports": "support",
+    "manages": "manage",
+    "contains": "contain",
+    "includes": "include",
+    "refers": "refer",
+    "describes": "describe",
+    "represents": "represent",
+    "enables": "enable",
+    "allows": "allow",
+    "requires": "require",
+    "consists": "consist",
+    "became": "become",
+    "becomes": "become",
+    "means": "mean",
+    "defines": "define",
+    "connects": "connect",
+    "stores": "store",
+    "records": "record",
+    "tracks": "track",
+    "verifies": "verify",
+    "validates": "validate",
+}
+ENGLISH_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "by",
+    "for",
+    "from",
+    "in",
+    "into",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "to",
+    "with",
+}
 
 
 @dataclass
@@ -92,6 +143,49 @@ def extract_case_roles(sentence: str) -> tuple[list[dict[str, str]], str]:
     return list(deduped.values()), predicate
 
 
+def _english_tokens(sentence: str) -> list[str]:
+    return re.findall(r"[A-Za-z][A-Za-z0-9_-]*", sentence)
+
+
+def _english_head(tokens: list[str]) -> str:
+    for token in reversed(tokens):
+        lowered = token.casefold()
+        if lowered not in ENGLISH_STOPWORDS and lowered not in ENGLISH_VERB_LEMMAS:
+            return token
+    return ""
+
+
+def extract_english_case_roles(sentence: str) -> tuple[list[dict[str, str]], str]:
+    """Return a conservative English SVO-style case frame.
+
+    This deterministic helper is only for licensed corpus ingestion. It does
+    not infer facts; it extracts simple subject/object heads around an explicit
+    factual verb so English rows can produce review-gated candidate frames.
+    """
+
+    tokens = _english_tokens(sentence)
+    if not tokens:
+        return [], ""
+    predicate_index = -1
+    predicate = ""
+    for index, token in enumerate(tokens):
+        lemma = ENGLISH_VERB_LEMMAS.get(token.casefold())
+        if lemma:
+            predicate_index = index
+            predicate = lemma
+            break
+    if predicate_index < 0:
+        return [], ""
+    roles: list[dict[str, str]] = []
+    subject = _english_head(tokens[:predicate_index])
+    obj = _english_head(tokens[predicate_index + 1 :])
+    if subject:
+        roles.append({"role": "SUBJ", "marker": "", "head": subject})
+    if obj:
+        roles.append({"role": "OBJ", "marker": "", "head": obj})
+    return roles, predicate
+
+
 def concept_key(name: str, language: str) -> str:
     """Return the verified store concept dedupe key."""
 
@@ -149,7 +243,10 @@ def decompose_sentence(
     created_at = utc_now()
     provenance = _provenance(sentence, ingest_run_id)
     verification = _verification_block(decision)
-    roles, predicate = extract_case_roles(sentence.text)
+    if sentence.language == "en":
+        roles, predicate = extract_english_case_roles(sentence.text)
+    else:
+        roles, predicate = extract_case_roles(sentence.text)
     concept_names = {role["head"] for role in roles if normalize_concept(role["head"])}
     if predicate:
         concept_names.add(predicate)
