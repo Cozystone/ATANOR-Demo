@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { browserMemorySafeMode, chromeHeapSnapshot, graphRenderFpsCap, resolveGraphPixelRatio, shouldRenderGraphFrame, writeGraphTelemetry } from "./graphRendererGuardrails";
 
 type AtlasGlobeNode = {
   key: string;
@@ -105,7 +106,8 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
     rotationRef.current = initialRotation;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    const pixelRatio = resolveGraphPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(pixelRatio);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
 
@@ -321,9 +323,38 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
       host.dataset.dragging = "false";
     };
     let frame = 0;
-    const animate = () => {
+    let visibilityPaused = typeof document !== "undefined" ? document.hidden : false;
+    let memorySafeMode = false;
+    let lastMemoryProbeAt = 0;
+    let lastRenderedAt = 0;
+    const onVisibilityChange = () => {
+      visibilityPaused = document.hidden;
+      lastRenderedAt = 0;
+      host.dataset.visibilityPaused = String(visibilityPaused);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    const animate = (now = performance.now()) => {
       if (disposed) return;
       frame = window.requestAnimationFrame(animate);
+      if (now - lastMemoryProbeAt > 1000) {
+        lastMemoryProbeAt = now;
+        memorySafeMode = browserMemorySafeMode(chromeHeapSnapshot());
+      }
+      const fpsCap = graphRenderFpsCap({ denseGraph: sourceNodeCount > 32, memorySafeMode, visibilityPaused });
+      writeGraphTelemetry(host, {
+        geometriesCount: 8 + relayPulses.length,
+        materializedNodes: safeNodes.length,
+        materialsCount: 10,
+        memorySafeMode,
+        pixelRatio,
+        renderFpsCap: fpsCap,
+        renderedEdges: relayPulses.length,
+        texturesCount: 3,
+        visibilityPaused,
+        visualHints: relayPulses.length,
+      });
+      if (visibilityPaused || !shouldRenderGraphFrame(now, lastRenderedAt, fpsCap)) return;
+      lastRenderedAt = now;
       const sun = currentSunDirection();
       earthMaterial.uniforms.sunDirection.value.copy(sun);
       sunLight.position.copy(sun.clone().multiplyScalar(4));
@@ -384,6 +415,7 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
     return () => {
       disposed = true;
       window.cancelAnimationFrame(frame);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);

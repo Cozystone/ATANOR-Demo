@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { browserMemorySafeMode, chromeHeapSnapshot, graphRenderFpsCap, resolveGraphPixelRatio, shouldRenderGraphFrame, writeGraphTelemetry } from "./graphRendererGuardrails";
 
 type AnyRecord = Record<string, any>;
 
@@ -59,10 +60,11 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
   const [zoomLevel, setZoomLevel] = useState(0);
   const [manifest, setManifest] = useState<AnyRecord | null>(null);
   const [materialized, setMaterialized] = useState<AnyRecord | null>(null);
+  const [memorySafeMode, setMemorySafeMode] = useState(false);
   const budgets = useMemo(() => ({
-    nodes: highEnd ? MAX_RENDERED_POINTS_HIGH_END : MAX_RENDERED_POINTS_BASELINE,
-    edges: highEnd ? MAX_RENDERED_EDGES_HIGH_END : MAX_RENDERED_EDGES_BASELINE,
-  }), [highEnd]);
+    nodes: highEnd && !memorySafeMode ? MAX_RENDERED_POINTS_HIGH_END : MAX_RENDERED_POINTS_BASELINE,
+    edges: highEnd && !memorySafeMode ? MAX_RENDERED_EDGES_HIGH_END : MAX_RENDERED_EDGES_BASELINE,
+  }), [highEnd, memorySafeMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +87,8 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
     const container = containerRef.current;
     if (!container) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const pixelRatio = resolveGraphPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
 
@@ -150,19 +153,54 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     };
-    const animate = () => {
+    let visibilityPaused = typeof document !== "undefined" ? document.hidden : false;
+    let lastMemoryProbeAt = 0;
+    let lastRenderedAt = 0;
+    let currentMemorySafeMode = false;
+    const onVisibilityChange = () => {
+      visibilityPaused = document.hidden;
+      lastRenderedAt = 0;
+      container.dataset.visibilityPaused = String(visibilityPaused);
+    };
+    const animate = (now = performance.now()) => {
+      const nodeCount = (state.nodes.geometry.getAttribute("position")?.count ?? 0) as number;
+      const edgeCount = Math.floor(((state.edges.geometry.getAttribute("position")?.count ?? 0) as number) / 2);
+      if (now - lastMemoryProbeAt > 1000) {
+        lastMemoryProbeAt = now;
+        const nextSafeMode = browserMemorySafeMode(chromeHeapSnapshot());
+        if (nextSafeMode !== currentMemorySafeMode) {
+          currentMemorySafeMode = nextSafeMode;
+          setMemorySafeMode(nextSafeMode);
+        }
+      }
+      const fpsCap = graphRenderFpsCap({ denseGraph: nodeCount > MAX_RENDERED_POINTS_BASELINE || edgeCount > MAX_RENDERED_EDGES_BASELINE, memorySafeMode: currentMemorySafeMode, visibilityPaused });
+      writeGraphTelemetry(container, {
+        densityParticles: shellCount,
+        geometriesCount: 3,
+        materializedNodes: nodeCount,
+        materialsCount: 3,
+        memorySafeMode: currentMemorySafeMode,
+        pixelRatio,
+        renderFpsCap: fpsCap,
+        renderedEdges: edgeCount,
+        visibilityPaused,
+      });
+      state.animation = window.requestAnimationFrame(animate);
+      if (visibilityPaused || !shouldRenderGraphFrame(now, lastRenderedAt, fpsCap)) return;
+      lastRenderedAt = now;
       state.rotation += 0.0018;
       shell.rotation.y = state.rotation;
       nodes.rotation.y = state.rotation;
       edges.rotation.y = state.rotation;
       renderer.render(scene, camera);
-      state.animation = window.requestAnimationFrame(animate);
     };
     resize();
     animate();
     window.addEventListener("resize", resize);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("resize", resize);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.cancelAnimationFrame(state.animation);
       renderer.dispose();
       shellGeometry.dispose();

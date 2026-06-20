@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { browserMemorySafeMode, chromeHeapSnapshot, graphRenderFpsCap, resolveGraphPixelRatio, shouldRenderGraphFrame, writeGraphTelemetry } from "./graphRendererGuardrails";
 import { computeWebGpuGraphLayout } from "./webgpuLayout";
 
 export type Rag3DNode = {
@@ -1055,6 +1056,11 @@ function scheduleWebGpuLayout(state: SceneState, graph: Rag3DGraph, activeNodeId
       }
     })
     .catch((error) => {
+      state.layoutDiagnostics = {
+        ...state.layoutDiagnostics,
+        layout_accelerator: "cpu",
+        webgpu_disabled_reason: error instanceof Error ? error.name || "layout_failed" : "layout_failed",
+      };
       if (process.env.NODE_ENV !== "production") {
         console.warn("ATANOR WebGPU layout unavailable; using CPU layout", error);
       }
@@ -1432,9 +1438,10 @@ export default function Rag3DScene({
     camera.position.set(0, 0, 13);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: darkMode });
+    const pixelRatio = resolveGraphPixelRatio(window.devicePixelRatio);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(new THREE.Color(darkMode ? 0x000000 : 0xf8faf8), darkMode ? 0 : 1);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.replaceChildren(renderer.domElement);
 
@@ -1577,15 +1584,48 @@ export default function Rag3DScene({
       renderer.setSize(container.clientWidth, container.clientHeight);
     }
 
+    let visibilityPaused = typeof document !== "undefined" ? document.hidden : false;
+    let memorySafeMode = false;
+    let lastMemoryProbeAt = 0;
+    let lastRenderedAt = 0;
+    function handleVisibilityChange() {
+      visibilityPaused = document.hidden;
+      lastRenderedAt = 0;
+      container.dataset.visibilityPaused = String(visibilityPaused);
+    }
+
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
     renderer.domElement.addEventListener("pointermove", handlePointerMove);
     renderer.domElement.addEventListener("pointerup", handlePointerUp);
     renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("resize", handleResize);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     let animation = 0;
-    function animate() {
+    function animate(now = performance.now()) {
       animation = requestAnimationFrame(animate);
+      if (now - lastMemoryProbeAt > 1000) {
+        lastMemoryProbeAt = now;
+        memorySafeMode = browserMemorySafeMode(chromeHeapSnapshot());
+      }
+      const totalNodes = graphRef.current?.nodes?.length ?? 0;
+      const denseGraph = totalNodes > 1200 || state.visibleEdges.length > 1800;
+      const fpsCap = graphRenderFpsCap({ denseGraph, memorySafeMode, visibilityPaused });
+      writeGraphTelemetry(container, {
+        densityParticles: state.shellCapacity,
+        geometriesCount: 4 + state.dynamicObjects.length,
+        materializedNodes: totalNodes,
+        memorySafeMode,
+        pixelRatio,
+        renderFpsCap: fpsCap,
+        renderedEdges: state.visibleEdges.length,
+        visibilityPaused,
+        visualHints: state.shellCapacity + state.haloItems.length + state.pulseItems.length,
+        webgpuEnabled: String(state.layoutDiagnostics.layout_accelerator ?? "") === "webgpu",
+        webgpuFallbackReason: String(state.layoutDiagnostics.webgpu_disabled_reason ?? ""),
+      });
+      if (visibilityPaused || !shouldRenderGraphFrame(now, lastRenderedAt, fpsCap)) return;
+      lastRenderedAt = now;
       state.frame += 1;
       const elapsed = (performance.now() - state.startedAt) / 1000;
       if (!drag.active && coordinateAnimationAllowed(state.visualState)) group.rotation.y += 0.00125;
@@ -1596,7 +1636,6 @@ export default function Rag3DScene({
       updateHaloMesh(state, elapsed);
       updatePulseMesh(state, elapsed);
 
-      const totalNodes = graphRef.current?.nodes?.length ?? 0;
       container.dataset.cameraZ = camera.position.z.toFixed(1);
       container.dataset.maxZoom = maxZoomDistanceForNodeCount(totalNodes).toFixed(1);
       container.dataset.nodeCount = String(totalNodes);
@@ -1626,6 +1665,7 @@ export default function Rag3DScene({
     return () => {
       cancelAnimationFrame(animation);
       window.removeEventListener("resize", handleResize);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);

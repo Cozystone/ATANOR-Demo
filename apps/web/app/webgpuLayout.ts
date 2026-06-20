@@ -130,97 +130,114 @@ export async function computeWebGpuGraphLayout(
   });
 
   const usage = GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_DST | GPU_BUFFER_USAGE.COPY_SRC;
-  let readBuffer = createMappedBuffer(device, nodeData, usage);
-  let writeBuffer = createMappedBuffer(device, nodeData, usage);
-  const edgeBuffer = createMappedBuffer(device, edgeData, GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_DST);
-  const paramsBuffer = device.createBuffer({
-    size: 32,
-    usage: GPU_BUFFER_USAGE.UNIFORM | GPU_BUFFER_USAGE.COPY_DST,
-  });
-  const resultBuffer = device.createBuffer({
-    size: nodeData.byteLength,
-    usage: GPU_BUFFER_USAGE.MAP_READ | GPU_BUFFER_USAGE.COPY_DST,
-  });
+  let readBuffer: any | null = null;
+  let writeBuffer: any | null = null;
+  let edgeBuffer: any | null = null;
+  let paramsBuffer: any | null = null;
+  let resultBuffer: any | null = null;
+  let resultMapped = false;
+  try {
+    readBuffer = createMappedBuffer(device, nodeData, usage);
+    writeBuffer = createMappedBuffer(device, nodeData, usage);
+    edgeBuffer = createMappedBuffer(device, edgeData, GPU_BUFFER_USAGE.STORAGE | GPU_BUFFER_USAGE.COPY_DST);
+    paramsBuffer = device.createBuffer({
+      size: 32,
+      usage: GPU_BUFFER_USAGE.UNIFORM | GPU_BUFFER_USAGE.COPY_DST,
+    });
+    resultBuffer = device.createBuffer({
+      size: nodeData.byteLength,
+      usage: GPU_BUFFER_USAGE.MAP_READ | GPU_BUFFER_USAGE.COPY_DST,
+    });
 
-  const module = device.createShaderModule({ code: layoutShader });
-  const pipeline = device.createComputePipeline({
-    layout: "auto",
-    compute: { module, entryPoint: "main" },
-  });
-  const bindGroups = [
-    device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: readBuffer } },
-        { binding: 1, resource: { buffer: writeBuffer } },
-        { binding: 2, resource: { buffer: edgeBuffer } },
-        { binding: 3, resource: { buffer: paramsBuffer } },
-      ],
-    }),
-    device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: writeBuffer } },
-        { binding: 1, resource: { buffer: readBuffer } },
-        { binding: 2, resource: { buffer: edgeBuffer } },
-        { binding: 3, resource: { buffer: paramsBuffer } },
-      ],
-    }),
-  ];
+    const module = device.createShaderModule({ code: layoutShader });
+    const pipeline = device.createComputePipeline({
+      layout: "auto",
+      compute: { module, entryPoint: "main" },
+    });
+    const bindGroups = [
+      device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: readBuffer } },
+          { binding: 1, resource: { buffer: writeBuffer } },
+          { binding: 2, resource: { buffer: edgeBuffer } },
+          { binding: 3, resource: { buffer: paramsBuffer } },
+        ],
+      }),
+      device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: writeBuffer } },
+          { binding: 1, resource: { buffer: readBuffer } },
+          { binding: 2, resource: { buffer: edgeBuffer } },
+          { binding: 3, resource: { buffer: paramsBuffer } },
+        ],
+      }),
+    ];
 
-  const iterations = nodes.length > 3000 ? 18 : nodes.length > 1200 ? 24 : 36;
-  const repulsionStride = nodes.length > 2200 ? 5 : nodes.length > 900 ? 3 : 1;
-  const edgeStride = validEdges.length > 12000 ? Math.ceil(validEdges.length / 12000) : 1;
-  for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const params = new Float32Array([
-      nodes.length,
-      validEdges.length,
-      1 - iteration / Math.max(1, iterations),
-      iteration,
-      repulsionStride,
-      edgeStride,
-      activeNodeIds.size > 0 ? 1 : 0,
-      0,
-    ]);
-    device.queue.writeBuffer(paramsBuffer, 0, params);
+    const iterations = nodes.length > 3000 ? 18 : nodes.length > 1200 ? 24 : 36;
+    const repulsionStride = nodes.length > 2200 ? 5 : nodes.length > 900 ? 3 : 1;
+    const edgeStride = validEdges.length > 12000 ? Math.ceil(validEdges.length / 12000) : 1;
+    for (let iteration = 0; iteration < iterations; iteration += 1) {
+      const params = new Float32Array([
+        nodes.length,
+        validEdges.length,
+        1 - iteration / Math.max(1, iterations),
+        iteration,
+        repulsionStride,
+        edgeStride,
+        activeNodeIds.size > 0 ? 1 : 0,
+        0,
+      ]);
+      device.queue.writeBuffer(paramsBuffer, 0, params);
+      const encoder = device.createCommandEncoder();
+      const pass = encoder.beginComputePass();
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, bindGroups[iteration % 2]);
+      pass.dispatchWorkgroups(Math.ceil(nodes.length / WORKGROUP_SIZE));
+      pass.end();
+      device.queue.submit([encoder.finish()]);
+    }
+
+    const finalBuffer = iterations % 2 === 0 ? readBuffer : writeBuffer;
     const encoder = device.createCommandEncoder();
-    const pass = encoder.beginComputePass();
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bindGroups[iteration % 2]);
-    pass.dispatchWorkgroups(Math.ceil(nodes.length / WORKGROUP_SIZE));
-    pass.end();
+    encoder.copyBufferToBuffer(finalBuffer, 0, resultBuffer, 0, nodeData.byteLength);
     device.queue.submit([encoder.finish()]);
+    await device.queue.onSubmittedWorkDone();
+    await resultBuffer.mapAsync(GPU_MAP_MODE_READ);
+    resultMapped = true;
+    const result = new Float32Array(resultBuffer.getMappedRange());
+    const positions = normalizeResultPositions(result, nodes.length);
+    resultBuffer.unmap();
+    resultMapped = false;
+
+    return {
+      positions,
+      diagnostics: {
+        layout_mode: "browser_webgpu_force",
+        layout_accelerator: "webgpu",
+        webgpu_nodes: nodes.length,
+        webgpu_edges: validEdges.length,
+        webgpu_iterations: iterations,
+        webgpu_repulsion_stride: repulsionStride,
+        webgpu_edge_stride: edgeStride,
+      },
+    };
+  } finally {
+    if (resultMapped) {
+      try {
+        resultBuffer?.unmap();
+      } catch {
+        // Ignore cleanup errors; the caller falls back to CPU layout on the original failure.
+      }
+    }
+    readBuffer?.destroy?.();
+    writeBuffer?.destroy?.();
+    edgeBuffer?.destroy?.();
+    paramsBuffer?.destroy?.();
+    resultBuffer?.destroy?.();
+    device.destroy?.();
   }
-
-  const finalBuffer = iterations % 2 === 0 ? readBuffer : writeBuffer;
-  const encoder = device.createCommandEncoder();
-  encoder.copyBufferToBuffer(finalBuffer, 0, resultBuffer, 0, nodeData.byteLength);
-  device.queue.submit([encoder.finish()]);
-  await device.queue.onSubmittedWorkDone();
-  await resultBuffer.mapAsync(GPU_MAP_MODE_READ);
-  const result = new Float32Array(resultBuffer.getMappedRange());
-  const positions = normalizeResultPositions(result, nodes.length);
-  resultBuffer.unmap();
-
-  readBuffer.destroy();
-  writeBuffer.destroy();
-  edgeBuffer.destroy();
-  paramsBuffer.destroy();
-  resultBuffer.destroy();
-  device.destroy?.();
-
-  return {
-    positions,
-    diagnostics: {
-      layout_mode: "browser_webgpu_force",
-      layout_accelerator: "webgpu",
-      webgpu_nodes: nodes.length,
-      webgpu_edges: validEdges.length,
-      webgpu_iterations: iterations,
-      webgpu_repulsion_stride: repulsionStride,
-      webgpu_edge_stride: edgeStride,
-    },
-  };
 }
 
 function createMappedBuffer(device: any, data: Float32Array, usage: number) {
