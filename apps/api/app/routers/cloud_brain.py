@@ -40,6 +40,12 @@ from packages.cloud_brain.semantic_attach import attach_semantic_cloud_for_query
 from packages.cloud_brain.semantic_growth import MAX_ACCELERATION_BATCH_SIZE, ingest_semantic_acceleration_batch, ingest_semantic_source
 from packages.cloud_brain.semantic_handoff import write_semantic_cloud_growth_handoff
 from packages.cloud_brain.semantic_store import get_semantic_cloud_growth_status
+from packages.cloud_brain.bounded_learning_runner import (
+    BoundedLearningRunConfig,
+    DEFAULT_TARGET_STORE,
+    assess_24h_readiness,
+    run_bounded_candidate_learning,
+)
 from packages.cloud_brain.read_model import build_cloud_read_model, load_fast_graph_sample
 from packages.cloud_brain.continuous_learning import CloudSurfaceLearningLoop
 from packages.cloud_brain.verified_payload_feeder import PayloadSourcePolicy, VerifiedPayloadFeeder, payload_from_mapping
@@ -146,6 +152,22 @@ class CloudLearningRunRequest(BaseModel):
     max_accepted_per_run: int = Field(default=25, ge=1, le=100)
     promote_to_verified: bool = False
     candidate_store_root: str | None = Field(default=None, max_length=800)
+    payloads: list[CloudLearningPayloadModel] = Field(default_factory=list)
+
+
+class CloudLearningRunCappedRequest(BaseModel):
+    profile: str = Field(default="interactive_safe", pattern="^(interactive_safe|24h_balanced|night_max)$")
+    max_payloads: int | None = Field(default=1000, ge=1, le=200000)
+    max_seconds: int | None = Field(default=300, ge=1, le=86400)
+    max_store_mb: float | None = Field(default=256.0, ge=0.001, le=100000.0)
+    min_ram_free_gb: float = Field(default=8.0, ge=0.0, le=1024.0)
+    min_disk_free_gb: float = Field(default=40.0, ge=0.0, le=100000.0)
+    max_cpu_percent: float | None = Field(default=80.0, ge=1.0, le=100.0)
+    max_candidate_files: int | None = Field(default=64, ge=1, le=10000)
+    dry_run: bool = True
+    execute: bool = False
+    target_candidate_store: str | None = Field(default=None, max_length=800)
+    promote_to_verified: bool = False
     payloads: list[CloudLearningPayloadModel] = Field(default_factory=list)
 
 
@@ -842,6 +864,8 @@ def _learning_loop_for_request(request: CloudLearningRunRequest | None = None) -
 def cloud_brain_learning_status() -> dict[str, Any]:
     daemon = daemon_status()
     feeder = VerifiedPayloadFeeder().run_once(dry_run=True)
+    readiness = assess_24h_readiness(profile="24h_balanced")
+    pressure = readiness.get("resource_snapshot") or {}
     return {
         "learning_status_endpoint": True,
         "daemon_running": daemon.get("state") == "running",
@@ -866,6 +890,13 @@ def cloud_brain_learning_status() -> dict[str, Any]:
         "external_sllm_used": False,
         "mock_growth": False,
         "pair_edges_sent": 0,
+        "bounded_runner_available": True,
+        "last_bounded_run_state": None,
+        "last_stop_reason": None,
+        "current_resource_pressure": pressure,
+        "recommended_profile": readiness.get("recommended_profile"),
+        "safe_to_start_24h_candidate_run": readiness.get("safe_to_start_24h_candidate_run"),
+        "reason": readiness.get("reason"),
     }
 
 
@@ -883,6 +914,29 @@ def cloud_brain_learning_tick(request: CloudLearningRunRequest) -> dict[str, Any
 @router.post("/learning/run-once")
 def cloud_brain_learning_run_once(request: CloudLearningRunRequest) -> dict[str, Any]:
     return cloud_brain_learning_tick(request)
+
+
+@router.post("/learning/run-capped")
+def cloud_brain_learning_run_capped(request: CloudLearningRunCappedRequest) -> dict[str, Any]:
+    if request.promote_to_verified:
+        raise HTTPException(status_code=400, detail="production promotion is not allowed for bounded candidate runs")
+    rows = [payload_from_mapping(item.model_dump()) for item in request.payloads]
+    config = BoundedLearningRunConfig(
+        profile=request.profile,
+        max_payloads=request.max_payloads,
+        max_seconds=request.max_seconds,
+        max_store_mb=request.max_store_mb,
+        min_ram_free_gb=request.min_ram_free_gb,
+        min_disk_free_gb=request.min_disk_free_gb,
+        max_cpu_percent=request.max_cpu_percent,
+        max_candidate_files=request.max_candidate_files,
+        target_candidate_store=request.target_candidate_store or str(DEFAULT_TARGET_STORE),
+        promote_to_verified=False,
+        dry_run=request.dry_run,
+        execute=request.execute,
+    )
+    result = run_bounded_candidate_learning(config, payloads=rows)
+    return result.to_dict()
 
 
 @router.get("/surface-graph/status")
