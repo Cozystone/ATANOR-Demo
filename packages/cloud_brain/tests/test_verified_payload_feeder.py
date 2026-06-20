@@ -64,7 +64,7 @@ def test_feeder_accepts_only_policy_safe_public_rows(tmp_path: Path) -> None:
             },
         ],
     )
-    feeder = VerifiedPayloadFeeder(source_paths=[source], policy=PayloadSourcePolicy())
+    feeder = VerifiedPayloadFeeder(source_paths=[source], source_dir=tmp_path / "unused_default_dir", policy=PayloadSourcePolicy())
     result = feeder.run_once()
     assert result.state == "payloads_available"
     assert result.payloads_accepted == 1

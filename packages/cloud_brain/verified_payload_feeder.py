@@ -16,6 +16,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAYLOAD_DIR = PROJECT_ROOT / "data" / "cloud_brain" / "approved_payloads"
 ALLOWED_SOURCE_TYPES = {
     "wikipedia",
+    "approved_public_corpus",
+    "public_web_feed",
+    "local_public_corpus_file",
+    "wikipedia_dump_shard",
     "public_domain_archive",
     "open_access_paper",
     "graph_hub_verified",
@@ -59,6 +63,7 @@ class LearningPayload:
     is_private: bool = False
     is_generated: bool = False
     is_eval_row: bool = False
+    is_mock: bool = False
     quality_flags: list[str] = field(default_factory=list)
     target_store: str = "verified_store_v0_candidate"
     learning_mode: str = "semantic_graph"
@@ -104,6 +109,8 @@ class PayloadSourcePolicy:
             return PayloadDecision(False, "generated_payload_rejected")
         if payload.is_eval_row and not self.allow_eval:
             return PayloadDecision(False, "eval_row_rejected")
+        if payload.is_mock:
+            return PayloadDecision(False, "mock_payload_rejected")
         if has_mock_signal(payload.text, payload.source_id, payload.source_type):
             return PayloadDecision(False, "mock_payload_rejected")
         if re.search(r"AtanorSeedConcept\d+|\bsector\s+\d+\b", payload.normalized_text, re.IGNORECASE):
@@ -168,6 +175,7 @@ def payload_from_mapping(row: dict[str, Any], *, default_target_store: str = "ve
         is_private=bool(row.get("is_private", False)),
         is_generated=bool(row.get("is_generated", False)),
         is_eval_row=bool(row.get("is_eval_row", False)),
+        is_mock=bool(row.get("is_mock", False)),
         quality_flags=[str(flag) for flag in row.get("quality_flags") or []],
         target_store=str(row.get("target_store") or default_target_store),
         learning_mode=str(row.get("learning_mode") or "semantic_graph"),

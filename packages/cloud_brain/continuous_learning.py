@@ -27,6 +27,10 @@ DEFAULT_VERIFIED_STORE = PROJECT_ROOT / "data" / "cloud_brain" / "verified_store
 DEFAULT_CANDIDATE_STORE = PROJECT_ROOT / "data" / "cloud_brain" / "verified_store_v0_candidate"
 _CANDIDATE_SOURCE_TYPES = {
     "wikipedia",
+    "approved_public_corpus",
+    "public_web_feed",
+    "local_public_corpus_file",
+    "wikipedia_dump_shard",
     "public_domain_archive",
     "open_access_paper",
     "graph_hub_verified",
