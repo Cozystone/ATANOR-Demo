@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.error import HTTPError
 
 from packages.cloud_brain.bounded_learning_runner import BoundedLearningRunConfig, run_bounded_candidate_learning
 from packages.cloud_brain.verified_payload_feeder import VerifiedPayloadFeeder
@@ -67,6 +68,128 @@ def test_local_public_corpus_creates_policy_safe_payload_jsonl(tmp_path: Path) -
     assert all(row["is_eval_row"] is False for row in rows)
     assert "mock_template_signal" in ",".join(result.rejection_reasons)
     assert Path(result.manifest_path or "").exists()
+
+
+def test_local_public_corpus_shard_jsonl_creates_line_scoped_payloads(tmp_path: Path) -> None:
+    shard = tmp_path / "public_shard.jsonl"
+    rows = [
+        {
+            "text": "Public corpus shards provide provenance for candidate learning.",
+            "title": "Public shard A",
+            "source_url": "https://example.org/public/a",
+            "license": "CC BY-SA 4.0",
+            "language": "en",
+        },
+        {
+            "text": "Public corpus shards provide provenance for candidate learning.",
+            "title": "Public shard A duplicate",
+            "source_url": "https://example.org/public/a-duplicate",
+            "license": "CC BY-SA 4.0",
+            "language": "en",
+        },
+        {
+            "text": "AtanorSeedConcept42 sector 9 is forbidden mock material.",
+            "title": "Mock row",
+            "source_url": "https://example.org/public/mock",
+            "license": "CC BY-SA 4.0",
+            "language": "en",
+        },
+    ]
+    shard.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    result = collect_approved_payloads(
+        [
+            SourceSpec(
+                source_type="local_public_corpus_shard",
+                source_id="fixture:public-shard",
+                source_url_or_path=str(shard),
+                license_hint="CC BY-SA 4.0",
+            )
+        ],
+        output_dir=tmp_path / "approved",
+        rejected_dir=tmp_path / "rejected",
+        manifest_path=tmp_path / "manifest.json",
+        dry_run=False,
+        max_sentences=10,
+    )
+
+    assert result.source_mode == "local_dump_shard"
+    assert result.payloads_approved == 1
+    assert result.payloads_rejected == 2
+    assert result.duplicate_count == 1
+    assert result.rate_limited_count == 0
+    assert result.recommended_source_for_long_run == "local_dump_shard"
+    rows = _read_jsonl(Path(result.approved_payload_path or ""))
+    assert rows[0]["source_type"] == "local_public_corpus_shard"
+    assert rows[0]["source_id"].endswith(":line:1")
+    assert rows[0]["source_url_or_path"] == "https://example.org/public/a"
+
+
+def test_missing_local_public_corpus_shard_is_rejected(tmp_path: Path) -> None:
+    result = collect_approved_payloads(
+        [
+            SourceSpec(
+                source_type="local_public_corpus_shard",
+                source_id="fixture:missing-shard",
+                source_url_or_path=str(tmp_path / "missing.jsonl"),
+                license_hint="CC BY-SA 4.0",
+            )
+        ],
+        output_dir=tmp_path / "approved",
+        rejected_dir=tmp_path / "rejected",
+        manifest_path=tmp_path / "manifest.json",
+        dry_run=False,
+        max_sentences=10,
+    )
+    assert result.payloads_approved == 0
+    assert result.payloads_rejected == 1
+    assert "source_file_missing" in result.rejection_reasons
+
+
+def test_rest_429_backoff_is_recorded_without_crashing(tmp_path: Path, monkeypatch) -> None:
+    calls = {"count": 0}
+
+    class _Response:
+        headers = {"content-type": "text/plain"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return b"Public evidence supports candidate graph learning."
+
+    def _fake_urlopen(*_args, **_kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise HTTPError("https://en.wikipedia.org/wiki/Test", 429, "Too Many Requests", {}, None)
+        return _Response()
+
+    monkeypatch.setattr("packages.cloud_brain.web_approved_payload_feeder.urlopen", _fake_urlopen)
+    monkeypatch.setattr("packages.cloud_brain.web_approved_payload_feeder.time.sleep", lambda _seconds: None)
+
+    result = collect_approved_payloads(
+        [
+            SourceSpec(
+                source_type="public_web_feed",
+                source_id="fixture:429",
+                source_url_or_path="https://en.wikipedia.org/wiki/Test",
+                license_hint="CC BY-SA 4.0",
+            )
+        ],
+        policy=WebFeederPolicy(rest_max_retries=1, rest_backoff_base_seconds=0.01),
+        output_dir=tmp_path / "approved",
+        rejected_dir=tmp_path / "rejected",
+        manifest_path=tmp_path / "manifest.json",
+        dry_run=False,
+        max_sentences=10,
+    )
+    assert result.payloads_approved == 1
+    assert result.rate_limited_count == 1
+    assert result.backoff_seconds > 0
+    assert result.last_429_at
 
 
 def test_quality_gate_rejects_private_generated_eval_mojibake_and_duplicates(tmp_path: Path) -> None:

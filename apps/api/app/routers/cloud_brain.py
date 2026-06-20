@@ -48,6 +48,7 @@ from packages.cloud_brain.bounded_learning_runner import (
 )
 from packages.cloud_brain.read_model import build_cloud_read_model, load_fast_graph_sample
 from packages.cloud_brain.continuous_learning import CloudSurfaceLearningLoop
+from packages.cloud_brain.candidate_read_model import candidate_cloud_graph, candidate_cloud_status
 from packages.cloud_brain.verified_payload_feeder import PayloadSourcePolicy, VerifiedPayloadFeeder, payload_from_mapping
 from rag_engine.ghost_graph import GhostTopology
 from rag_engine.fusion import epistemic_uncertainty, local_density_score, route_ratio, weighted_rrf
@@ -957,6 +958,22 @@ def cloud_brain_surface_graph_status() -> dict[str, Any]:
         "forgetting_count": 0,
         "pair_edges_sent": 0,
     }
+
+
+@router.get("/candidate/status")
+def cloud_brain_candidate_status(
+    candidate_store_path: str | None = Query(default=None, max_length=800),
+) -> dict[str, Any]:
+    return candidate_cloud_status(candidate_store_path)
+
+
+@router.get("/candidate/graph")
+def cloud_brain_candidate_graph(
+    candidate_store_path: str | None = Query(default=None, max_length=800),
+    max_nodes: int = Query(default=200, ge=1, le=1200),
+    max_edges: int = Query(default=400, ge=0, le=2400),
+) -> dict[str, Any]:
+    return candidate_cloud_graph(candidate_store_path, max_nodes=max_nodes, max_edges=max_edges)
 
 
 @router.get("/identity")

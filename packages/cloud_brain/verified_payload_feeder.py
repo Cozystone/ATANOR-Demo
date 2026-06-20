@@ -19,6 +19,7 @@ ALLOWED_SOURCE_TYPES = {
     "approved_public_corpus",
     "public_web_feed",
     "local_public_corpus_file",
+    "local_public_corpus_shard",
     "wikipedia_dump_shard",
     "public_domain_archive",
     "open_access_paper",

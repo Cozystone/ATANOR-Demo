@@ -9,6 +9,7 @@ import re
 import time
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -75,6 +76,7 @@ class WebFeederPolicy:
             "approved_public_corpus",
             "public_web_feed",
             "local_public_corpus_file",
+            "local_public_corpus_shard",
             "manual_public_sentence",
         }
     )
@@ -90,6 +92,8 @@ class WebFeederPolicy:
     max_sentence_chars: int = 700
     max_bytes_per_source: int = 1_500_000
     request_timeout_seconds: float = 12.0
+    rest_max_retries: int = 2
+    rest_backoff_base_seconds: float = 1.0
 
     @property
     def source_allowlist(self) -> set[str]:
@@ -137,6 +141,12 @@ class ApprovedPayloadFeederResult:
     pair_edges_sent: int = 0
     private_data_used_for_cloud_learning: bool = False
     unsupported_claims: int = 0
+    source_mode: str = "rest_api"
+    rate_limited_count: int = 0
+    backoff_seconds: float = 0.0
+    source_rotation_count: int = 0
+    last_429_at: str | None = None
+    recommended_source_for_long_run: str = "local_dump_shard"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -160,13 +170,31 @@ def _is_allowed_url(url: str, policy: WebFeederPolicy) -> bool:
     return host in policy.allowed_domains
 
 
-def _fetch_public_url(url: str, policy: WebFeederPolicy) -> str:
+def _fetch_public_url(url: str, policy: WebFeederPolicy, stats: dict[str, Any] | None = None) -> str:
     if not _is_allowed_url(url, policy):
         raise ValueError("source_domain_not_allowed")
     request = Request(url, headers={"User-Agent": "ATANOR-approved-payload-feeder/1.0"})
-    with urlopen(request, timeout=policy.request_timeout_seconds) as response:  # nosec B310 - explicit allowlist.
-        content_type = response.headers.get("content-type", "")
-        raw = response.read(policy.max_bytes_per_source + 1)
+    for attempt in range(max(1, int(policy.rest_max_retries) + 1)):
+        try:
+            with urlopen(request, timeout=policy.request_timeout_seconds) as response:  # nosec B310 - explicit allowlist.
+                content_type = response.headers.get("content-type", "")
+                raw = response.read(policy.max_bytes_per_source + 1)
+            break
+        except HTTPError as exc:
+            if exc.code != 429 or attempt >= int(policy.rest_max_retries):
+                raise
+            retry_after = exc.headers.get("Retry-After")
+            try:
+                delay = float(retry_after) if retry_after else policy.rest_backoff_base_seconds * (2**attempt)
+            except ValueError:
+                delay = policy.rest_backoff_base_seconds * (2**attempt)
+            if stats is not None:
+                stats["rate_limited_count"] = int(stats.get("rate_limited_count") or 0) + 1
+                stats["backoff_seconds"] = float(stats.get("backoff_seconds") or 0.0) + delay
+                stats["last_429_at"] = utc_now()
+            time.sleep(min(delay, 30.0))
+    else:  # pragma: no cover - defensive only.
+        raise ValueError("source_fetch_failed")
     if len(raw) > policy.max_bytes_per_source:
         raw = raw[: policy.max_bytes_per_source]
     text = raw.decode("utf-8", errors="replace")
@@ -183,15 +211,64 @@ def _fetch_public_url(url: str, policy: WebFeederPolicy) -> str:
     return parser.text()
 
 
-def _read_source_text(source: SourceSpec, policy: WebFeederPolicy) -> str:
+def _read_source_text(source: SourceSpec, policy: WebFeederPolicy, stats: dict[str, Any] | None = None) -> str:
     if source.text is not None:
         return source.text
     if source.source_type in {"wikipedia", "public_web_feed"} or source.source_url_or_path.startswith(("http://", "https://")):
-        return _fetch_public_url(source.source_url_or_path, policy)
+        return _fetch_public_url(source.source_url_or_path, policy, stats)
     path = Path(source.source_url_or_path)
     if not path.exists() or not path.is_file():
         raise ValueError("source_file_missing")
     return path.read_text(encoding="utf-8")
+
+
+def _source_items(source: SourceSpec, policy: WebFeederPolicy, stats: dict[str, Any]) -> list[tuple[SourceSpec, str]]:
+    """Return bounded text items for one configured public source.
+
+    ``local_public_corpus_shard`` is the long-run path: JSONL rows or
+    one-sentence-per-line text are read locally, with line-scoped provenance,
+    so candidate-only learning does not depend on live REST API rate limits.
+    """
+
+    if source.source_type != "local_public_corpus_shard":
+        return [(source, _read_source_text(source, policy, stats))]
+    path = Path(source.source_url_or_path)
+    if not path.exists() or not path.is_file():
+        raise ValueError("source_file_missing")
+    items: list[tuple[SourceSpec, str]] = []
+    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        text = line.strip()
+        title = source.source_title
+        url_or_path = f"{path}#L{line_no}"
+        license_hint = source.license_hint
+        if path.suffix.lower() == ".jsonl":
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                row = {}
+            if isinstance(row, dict):
+                text = str(row.get("text") or row.get("sentence") or row.get("extract") or "").strip()
+                title = str(row.get("title") or title or "") or title
+                url_or_path = str(row.get("source_url") or row.get("url") or url_or_path)
+                license_hint = str(row.get("license_hint") or row.get("license") or license_hint)
+        if not text:
+            continue
+        items.append(
+            (
+                SourceSpec(
+                    source_type=source.source_type,
+                    source_id=f"{source.source_id}:line:{line_no}",
+                    source_url_or_path=url_or_path,
+                    license_hint=license_hint,
+                    source_title=title,
+                    text=text,
+                ),
+                text,
+            )
+        )
+    return items
 
 
 def _split_sentences(text: str, *, max_sentences: int) -> list[str]:
@@ -349,10 +426,18 @@ def collect_approved_payloads(
         )
 
     started = time.perf_counter()
+    source_mode = "local_dump_shard" if any(source.source_type == "local_public_corpus_shard" for source in sources) else "rest_api"
+    stats: dict[str, Any] = {
+        "rate_limited_count": 0,
+        "backoff_seconds": 0.0,
+        "source_rotation_count": max(0, min(len(sources), max_sources) - 1),
+        "last_429_at": None,
+    }
     approved: list[LearningPayload] = []
     approved_rows: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     seen_hashes: set[str] = set()
+    seen_text_hashes: set[str] = set()
     duplicate_count = 0
     sources_checked = 0
     for source in sources[: max(1, max_sources)]:
@@ -360,31 +445,36 @@ def collect_approved_payloads(
             break
         sources_checked += 1
         try:
-            raw_text = _read_source_text(source, active_policy)
+            source_items = _source_items(source, active_policy, stats)
         except Exception as exc:
             rejected.append({"source_id": source.source_id, "reason": str(exc), "source_url_or_path": source.source_url_or_path})
             continue
-        remaining = max(0, min(max_sentences, active_policy.max_sentences_per_source) - len(approved) - len(rejected))
-        if remaining <= 0:
-            break
-        for index, sentence in enumerate(_split_sentences(raw_text, max_sentences=remaining)):
-            payload = _payload_from_sentence(sentence, source, index, active_policy)
-            if payload.provenance_hash in seen_hashes:
-                duplicate_count += 1
-                rejected.append({"source_id": source.source_id, "reason": "duplicate_payload", "text": payload.normalized_text})
-                continue
-            seen_hashes.add(payload.provenance_hash)
-            if "quality_rejected" in set(payload.quality_flags):
-                rejected.append(
-                    {
-                        "source_id": source.source_id,
-                        "reason": ",".join(flag for flag in payload.quality_flags if flag != "quality_rejected") or "quality_rejected",
-                        "text": payload.normalized_text,
-                    }
-                )
-                continue
-            approved.append(payload)
-            approved_rows.append(approved_payload_to_dict(payload, source, raw_text=raw_text))
+        for item_source, raw_text in source_items:
+            remaining = max(0, min(max_sentences, active_policy.max_sentences_per_source) - len(approved) - len(rejected))
+            if remaining <= 0:
+                break
+            for index, sentence in enumerate(_split_sentences(raw_text, max_sentences=remaining)):
+                payload = _payload_from_sentence(sentence, item_source, index, active_policy)
+                text_hash = stable_hash(payload.normalized_text)
+                if payload.provenance_hash in seen_hashes or text_hash in seen_text_hashes:
+                    duplicate_count += 1
+                    rejected.append({"source_id": item_source.source_id, "reason": "duplicate_payload", "text": payload.normalized_text})
+                    continue
+                seen_hashes.add(payload.provenance_hash)
+                seen_text_hashes.add(text_hash)
+                if "quality_rejected" in set(payload.quality_flags):
+                    rejected.append(
+                        {
+                            "source_id": item_source.source_id,
+                            "reason": ",".join(flag for flag in payload.quality_flags if flag != "quality_rejected") or "quality_rejected",
+                            "text": payload.normalized_text,
+                        }
+                    )
+                    continue
+                approved.append(payload)
+                approved_rows.append(approved_payload_to_dict(payload, item_source, raw_text=raw_text))
+            if len(approved) + len(rejected) >= max_sentences:
+                break
 
     rejection_reasons: dict[str, int] = {}
     for row in rejected:
@@ -408,6 +498,12 @@ def collect_approved_payloads(
         approved_payload_path=None if dry_run or not approved else approved_path,
         rejected_payload_path=None if dry_run or not rejected else rejected_path,
         manifest_path=None if dry_run else str(manifest_path),
+        source_mode=source_mode,
+        rate_limited_count=int(stats.get("rate_limited_count") or 0),
+        backoff_seconds=round(float(stats.get("backoff_seconds") or 0.0), 3),
+        source_rotation_count=int(stats.get("source_rotation_count") or 0),
+        last_429_at=stats.get("last_429_at"),
+        recommended_source_for_long_run="local_dump_shard",
     )
     if not dry_run:
         if approved:
@@ -433,7 +529,7 @@ def _sources_from_args(args: argparse.Namespace) -> list[SourceSpec]:
     for file_path in args.source_file or []:
         sources.append(
             SourceSpec(
-                source_type="local_public_corpus_file",
+                source_type=args.source_type,
                 source_id=f"file:{stable_hash(str(Path(file_path).resolve()))[:16]}",
                 source_url_or_path=str(file_path),
                 license_hint=args.license_hint,
@@ -458,6 +554,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create approved public Cloud Brain learning payloads.")
     parser.add_argument("--source-url", action="append", default=[])
     parser.add_argument("--source-file", action="append", default=[])
+    parser.add_argument("--source-type", default="local_public_corpus_shard")
     parser.add_argument("--manual-public-sentence", action="append", default=[])
     parser.add_argument("--manual-source-url", default="")
     parser.add_argument("--license-hint", default="")

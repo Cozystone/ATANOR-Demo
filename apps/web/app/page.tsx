@@ -1521,6 +1521,7 @@ export default function BakeBoardPage() {
   const [cloudBrainStatus, setCloudBrainStatus] = useState<AnyRecord | null>(null);
   const [cloudBrainSourceInspector, setCloudBrainSourceInspector] = useState<AnyRecord | null>(null);
   const [semanticCloudStatus, setSemanticCloudStatus] = useState<AnyRecord | null>(null);
+  const [cloudCandidateStatus, setCloudCandidateStatus] = useState<AnyRecord | null>(null);
   const [semanticGrowthRun, setSemanticGrowthRun] = useState<AnyRecord | null>(null);
   const [semanticAttachResult, setSemanticAttachResult] = useState<AnyRecord | null>(null);
   const [semanticGrowthRunning, setSemanticGrowthRunning] = useState(false);
@@ -1805,6 +1806,22 @@ export default function BakeBoardPage() {
     }
     return fetchJson<T>(path, init);
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshCandidateCloudStatus() {
+      const candidateStatus = await fetchJson<AnyRecord>("/api/cloud-brain/candidate/status").catch(() => null);
+      if (!cancelled && candidateStatus) {
+        setCloudCandidateStatus(candidateStatus);
+      }
+    }
+    refreshCandidateCloudStatus();
+    const timer = window.setInterval(refreshCandidateCloudStatus, 12000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   async function syncLocalBackendState(url: string, benchmarkForStability?: AnyRecord | null) {
     const [
@@ -4709,6 +4726,10 @@ export default function BakeBoardPage() {
     ? cloudBrainStatus.controlled_self_growth_state as AnyRecord
     : {};
   const autonomousSelfGrowthActive = Boolean(semanticSelfGrowthActive && (semanticRecentGrowthDelta > 0 || webFeederSemanticIngested > 0 || semanticCloudConcepts > 0));
+  const candidateOverlayAvailable = Boolean(cloudCandidateStatus?.candidate_available);
+  const candidateOverlayLabel = candidateOverlayAvailable
+    ? (language === "ko" ? "후보 / 미승격" : "candidate / unpromoted")
+    : (language === "ko" ? "후보 없음" : "none");
   const cloudTruthRows = [
     { label: "Logical Sphere", value: graphVizLogical.sphere_topology === false ? "off" : "ON" },
     { label: "Nodes", value: cloudNumberText(Number(graphVizLogical.node_count ?? semanticCloudConcepts)) },
@@ -4723,6 +4744,12 @@ export default function BakeBoardPage() {
     { label: "Visual hints", value: Number(graphVizRendered.visual_edge_hints ?? 0).toLocaleString() },
     { label: "Pair edges sent", value: String(graphVizMaterialized.candidate_pair_edges_sent ?? 0) },
     { label: "Virtualization", value: graphVizVirtualization.candidate_pairs_implicit === false ? "off" : "ON" },
+    { label: language === "ko" ? "후보 오버레이" : "Candidate overlay", value: candidateOverlayLabel },
+    { label: language === "ko" ? "후보 concepts" : "Candidate concepts", value: cloudNumberText(Number(cloudCandidateStatus?.candidate_concepts ?? 0)) },
+    { label: language === "ko" ? "후보 relations" : "Candidate relations", value: cloudNumberText(Number(cloudCandidateStatus?.candidate_relations ?? 0)) },
+    { label: language === "ko" ? "후보 evidence" : "Candidate evidence", value: cloudNumberText(Number(cloudCandidateStatus?.candidate_evidence ?? 0)) },
+    { label: language === "ko" ? "후보 case frames" : "Candidate case frames", value: cloudNumberText(Number(cloudCandidateStatus?.candidate_case_frames ?? 0)) },
+    { label: "Surface / CGSR / RHFC", value: `${cloudNumberText(Number(cloudCandidateStatus?.surface_candidates ?? 0))} / ${cloudNumberText(Number(cloudCandidateStatus?.cgsr_frames ?? 0))} / ${cloudNumberText(Number(cloudCandidateStatus?.rhfc_candidates ?? 0))}` },
   ];
   const cloudSourceCompactRows = [
     { label: language === "ko" ? "소스" : "Source", value: cloudBrainSourceInspector ? activeCloudSourceMode : cloudLoadingText },
