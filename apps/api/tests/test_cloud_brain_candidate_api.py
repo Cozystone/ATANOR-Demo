@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import hashlib
 
 from fastapi.testclient import TestClient
 
@@ -94,3 +95,48 @@ def test_default_brain_graph_does_not_include_candidate_overlay(tmp_path: Path) 
     metadata = payload.get("metadata") or {}
     assert metadata.get("candidate_available") is not True
     assert metadata.get("candidate_is_verified") is not True
+
+
+def test_run_capped_reports_insufficient_rows_for_target_duration(tmp_path: Path) -> None:
+    text = "Public evidence supports candidate learning with source capacity planning."
+    response = client.post(
+        "/api/cloud-brain/learning/run-capped",
+        json={
+            "execute": True,
+            "dry_run": False,
+            "max_payloads": 1,
+            "max_seconds": 60,
+            "min_ram_free_gb": 0,
+            "min_disk_free_gb": 0,
+            "max_cpu_percent": None,
+            "max_candidate_files": None,
+            "target_candidate_store": str(tmp_path / "candidate"),
+            "target_payloads_per_second": 5,
+            "target_duration_seconds": 21600,
+            "pacing_mode": "sleep_between_batches",
+            "payloads": [
+                {
+                    "payload_id": "api-rate-test-1",
+                    "source_type": "local_public_corpus_shard",
+                    "source_id": "fixture:api-rate-test:1",
+                    "source_url_or_path": "file://fixture/public.jsonl#L1",
+                    "provenance_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    "license_hint": "CC BY-SA 4.0 test fixture",
+                    "language": "en",
+                    "text": text,
+                    "is_private": False,
+                    "is_generated": False,
+                    "is_eval_row": False,
+                    "target_store": "verified_store_v0_candidate",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["state"] == "paused"
+    assert payload["stop_reason"] == "insufficient_source_rows_for_target_duration"
+    assert payload["payloads_accepted"] == 0
+    assert payload["production_store_mutated"] is False
+    assert payload["source_capacity_plan"]["required_rows_for_duration"] == 108000

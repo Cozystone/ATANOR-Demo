@@ -15,6 +15,7 @@ except Exception:  # pragma: no cover - exercised when psutil is absent.
     psutil = None  # type: ignore
 
 from .continuous_learning import CloudSurfaceLearningLoop
+from .source_capacity_planner import plan_source_capacity
 from .verified_payload_feeder import LearningPayload, PayloadSourcePolicy, VerifiedPayloadFeeder, payload_from_mapping
 
 
@@ -83,6 +84,12 @@ class BoundedLearningRunConfig:
     dry_run: bool = True
     execute: bool = False
     batch_size: int | None = None
+    target_payloads_per_second: float | None = None
+    target_duration_seconds: int | None = None
+    min_source_rows_for_target_duration: int | None = None
+    pacing_mode: str = "none"
+    checkpoint_interval_seconds: int | None = None
+    status_interval_seconds: int | None = None
 
     def normalized(self) -> "BoundedLearningRunConfig":
         """Return this config with conservative profile defaults filled in."""
@@ -126,6 +133,8 @@ class BoundedLearningRunConfig:
                 payload[key] = value
         if self.profile not in defaults:
             payload["profile"] = "interactive_safe"
+        if payload.get("pacing_mode") not in {"none", "sleep_between_batches", "token_bucket"}:
+            payload["pacing_mode"] = "none"
         return BoundedLearningRunConfig(**payload)
 
 
@@ -175,6 +184,9 @@ class BoundedLearningRunResult:
     false_confident: int = 0
     forgetting_count: int = 0
     unsupported_claims: int = 0
+    target_payloads_per_second: float | None = None
+    target_duration_seconds: int | None = None
+    source_capacity_plan: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -263,6 +275,36 @@ def _empty_invariants() -> dict[str, Any]:
     }
 
 
+def _source_capacity_plan_for_config(cfg: BoundedLearningRunConfig, source_rows: int) -> dict[str, Any]:
+    """Return a source-capacity plan when long-duration pacing is requested."""
+
+    if cfg.target_payloads_per_second is None or cfg.target_duration_seconds is None:
+        return {}
+    return plan_source_capacity(
+        source_rows=source_rows,
+        accepted_estimate=source_rows,
+        target_duration_seconds=int(cfg.target_duration_seconds),
+        target_payloads_per_second=float(cfg.target_payloads_per_second),
+        min_payloads_required=cfg.min_source_rows_for_target_duration,
+        candidate_store_cap_mb=cfg.max_store_mb,
+    ).to_dict()
+
+
+def _pace_after_batch(cfg: BoundedLearningRunConfig, *, started: float, payloads_seen: int) -> None:
+    """Sleep only as needed to keep real ingestion near the configured target rate."""
+
+    if cfg.pacing_mode == "none" or cfg.target_payloads_per_second is None:
+        return
+    target_rate = float(cfg.target_payloads_per_second)
+    if target_rate <= 0 or payloads_seen <= 0:
+        return
+    target_elapsed = payloads_seen / target_rate
+    actual_elapsed = time.perf_counter() - started
+    delay = target_elapsed - actual_elapsed
+    if delay > 0:
+        time.sleep(delay)
+
+
 def _invariant_failure(result: dict[str, Any]) -> str | None:
     invariants = result.get("invariants") or {}
     checks = {
@@ -330,6 +372,19 @@ def run_bounded_candidate_learning(
     else:
         payload_rows = list(payloads)
     original_payload_count = len(payload_rows)
+    source_capacity_plan = _source_capacity_plan_for_config(cfg, original_payload_count)
+    if source_capacity_plan and not bool(source_capacity_plan.get("can_run_full_duration")):
+        return BoundedLearningRunResult(
+            state="paused",
+            stop_reason="insufficient_source_rows_for_target_duration",
+            elapsed_seconds=round(time.perf_counter() - started, 6),
+            candidate_store_mb=first_sample.candidate_store_mb,
+            resource_samples=[first_sample],
+            invariants=_empty_invariants(),
+            source_capacity_plan=source_capacity_plan,
+            target_payloads_per_second=cfg.target_payloads_per_second,
+            target_duration_seconds=cfg.target_duration_seconds,
+        )
     if cfg.max_payloads is not None:
         payload_rows = payload_rows[: cfg.max_payloads]
 
@@ -389,6 +444,7 @@ def run_bounded_candidate_learning(
         totals["rhfc"] += int(cgsr.get("rhfc_candidates_added") or 0)
         final_invariants = result.get("invariants") or final_invariants
         index += len(batch)
+        _pace_after_batch(cfg, started=started, payloads_seen=totals["seen"])
         post_batch_sample = monitor.sample(payloads_seen=totals["seen"], candidate_store=cfg.target_candidate_store)
         samples.append(post_batch_sample)
         post_batch_terminal = monitor.terminal_reason(
@@ -434,6 +490,9 @@ def run_bounded_candidate_learning(
         false_confident=int(final_invariants.get("false_confident") or 0),
         forgetting_count=int(final_invariants.get("forgetting_count") or 0),
         unsupported_claims=0,
+        target_payloads_per_second=cfg.target_payloads_per_second,
+        target_duration_seconds=cfg.target_duration_seconds,
+        source_capacity_plan=source_capacity_plan,
     )
 
 
@@ -518,6 +577,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", default=False)
     parser.add_argument("--execute", action="store_true", default=False)
     parser.add_argument("--payload-file", default=None)
+    parser.add_argument("--target-payloads-per-second", type=float, default=None)
+    parser.add_argument("--target-duration-seconds", type=int, default=None)
+    parser.add_argument("--min-source-rows-for-target-duration", type=int, default=None)
+    parser.add_argument("--pacing-mode", default="none", choices=["none", "sleep_between_batches", "token_bucket"])
     return parser.parse_args(argv)
 
 
@@ -537,6 +600,10 @@ def main(argv: list[str] | None = None) -> int:
         target_candidate_store=args.target_candidate_store,
         dry_run=dry_run,
         execute=bool(args.execute),
+        target_payloads_per_second=args.target_payloads_per_second,
+        target_duration_seconds=args.target_duration_seconds,
+        min_source_rows_for_target_duration=args.min_source_rows_for_target_duration,
+        pacing_mode=args.pacing_mode,
     )
     payloads: list[LearningPayload] | None = None
     if args.payload_file:

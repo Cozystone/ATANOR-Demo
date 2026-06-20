@@ -169,6 +169,10 @@ class CloudLearningRunCappedRequest(BaseModel):
     execute: bool = False
     target_candidate_store: str | None = Field(default=None, max_length=800)
     promote_to_verified: bool = False
+    target_payloads_per_second: float | None = Field(default=None, ge=0.001, le=1000.0)
+    target_duration_seconds: int | None = Field(default=None, ge=1, le=86400)
+    min_source_rows_for_target_duration: int | None = Field(default=None, ge=1, le=10000000)
+    pacing_mode: str = Field(default="none", pattern="^(none|sleep_between_batches|token_bucket)$")
     payloads: list[CloudLearningPayloadModel] = Field(default_factory=list)
 
 
@@ -935,6 +939,10 @@ def cloud_brain_learning_run_capped(request: CloudLearningRunCappedRequest) -> d
         promote_to_verified=False,
         dry_run=request.dry_run,
         execute=request.execute,
+        target_payloads_per_second=request.target_payloads_per_second,
+        target_duration_seconds=request.target_duration_seconds,
+        min_source_rows_for_target_duration=request.min_source_rows_for_target_duration,
+        pacing_mode=request.pacing_mode,
     )
     result = run_bounded_candidate_learning(config, payloads=rows)
     return result.to_dict()
