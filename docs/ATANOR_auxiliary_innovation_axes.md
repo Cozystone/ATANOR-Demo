@@ -1,6 +1,6 @@
 # ATANOR Auxiliary Innovation Axes
 
-This document introduces five auxiliary innovation axes for ATANOR. They are
+This document introduces auxiliary innovation axes for ATANOR. They are
 supporting layers, not replacements for Cloud Brain, CGSR, RHFC, Local Brain, or
 the candidate learning spine.
 
@@ -11,9 +11,10 @@ current production path imports or uses these auxiliary axes yet.
 
 1. Dijkstra Trust Router
 2. Tabularis Privacy Shield
-3. MiroFish Deliberation Lab
-4. Turbovec Compression Layer
-5. AirLLM Offload Sandbox
+3. Selfhood + Midnight Congress
+4. MiroFish Deliberation Lab
+5. Turbovec Compression Layer
+6. AirLLM Offload Sandbox
 
 ## 1. Dijkstra Trust Router
 
@@ -48,7 +49,31 @@ Tabularis must sit before any Atlas, MiroFish, Graph Hub, or cartridge workflow
 that might receive private structured data. It must not export raw private data
 and must not mutate Local Brain.
 
-## 3. MiroFish Deliberation Lab
+## 3. Selfhood + Midnight Congress
+
+Status: PROOF_KERNEL_COMPLETE.
+
+Commit: `336fd256`.
+
+Purpose: close ATANOR's selfhood, ego-sync, and Midnight Congress work at the
+proof-kernel level. The milestone includes the Autonomy Kernel self-model loop,
+Ego Network cartridges, deterministic local Midnight Congress simulation,
+Morning Brief / Morning Gift events, proposal-only patch planning, and
+multi-device sync planning.
+
+Production boundary: proof-only, not production. It does not implement
+peer-network transport, cloud upload, Local Brain mutation, production mutation,
+production code replacement, or generated code execution.
+
+Next gates:
+
+1. 24h final audit.
+2. Candidate promotion gate.
+3. Privacy gate.
+4. Identity gate.
+5. Atlas peer-transport gate.
+
+## 4. MiroFish Deliberation Lab
 
 Status: deferred descriptor only.
 
@@ -57,7 +82,7 @@ MiroFish must not be built before candidate promotion gates exist, because a
 deliberation layer without promotion discipline would amplify unreviewed
 candidate artifacts.
 
-## 4. Turbovec Compression Layer
+## 5. Turbovec Compression Layer
 
 Status: deferred descriptor only.
 
@@ -65,7 +90,7 @@ Purpose: future vector and graph compression plus hot/cold memory acceleration.
 Turbovec should wait until graph scale and access patterns prove that
 compression is the bottleneck.
 
-## 5. AirLLM Offload Sandbox
+## 6. AirLLM Offload Sandbox
 
 Status: deferred descriptor only.
 
@@ -77,6 +102,7 @@ remain behind explicit review boundaries.
 
 The 24h candidate-only learning run remains a protected experiment. This
 document and the isolated `packages/atlas_router` and
-`packages/tabularis_privacy` proof packages do not modify the active daemon,
-Cloud Brain, API routes, Cloud Lab UI, candidate stores, production stores,
-Local Brain, approved payloads, or runtime status files.
+`packages/tabularis_privacy`, `packages/autonomy_kernel`, and
+`packages/ego_network` proof packages do not modify the active daemon, Cloud
+Brain, API routes, Cloud Lab UI, candidate stores, production stores, Local
+Brain, approved payloads, or runtime status files.

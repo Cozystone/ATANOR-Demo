@@ -1,8 +1,8 @@
 # ATANOR Midnight Congress Architecture
 
 Midnight Congress is a proof-only local deliberation layer for ATANOR's
-autonomous self-model loop. It is not a claim of real consciousness, AGI, peer
-consensus, or self-modifying agency.
+autonomous self-model loop. It is not a consciousness claim, current AGI
+capability, peer consensus implementation, or self-modifying agency.
 
 ## Local Simulator
 
@@ -23,7 +23,8 @@ morning gift event.
 ## Deliberation Rules
 
 - privacy_guard blocks `private_local_only` export.
-- router references Atlas Router only conceptually; no real P2P is used.
+- router references Atlas Router only conceptually; no peer network transport
+  is used.
 - synthesis always requires user approval.
 - production mutation is false.
 - Local Brain mutation is false.
@@ -45,9 +46,9 @@ production verified store.
 - Atlas Congress provides a local-only preview shell for deliberation.
 - Ego cartridges provide metadata-only proposal packages.
 
-## Future Real P2P Stages
+## Future Peer-Network Stages
 
-Real P2P requires privacy gate maturity, promotion gate maturity, audited
-identity custody, signed cartridge manifests, user-visible conflict review, and
-clear rollback semantics. Until those gates mature, every checkin is
-proposal-only and every sync plan is dry-run.
+Peer-network operation requires privacy gate maturity, promotion gate maturity,
+audited identity custody, signed cartridge manifests, user-visible conflict
+review, and clear rollback semantics. Until those gates mature, every checkin
+is proposal-only and every sync plan is dry-run.

@@ -1,8 +1,8 @@
 # ATANOR Constellation Ego Sync Architecture
 
 This document defines the proof-only constellation ego-sync layer. It closes the
-architecture at the proof-kernel level only; it is not real P2P, not real cloud
-checkout, not production DID custody, and not Local Brain replication.
+architecture at the proof-kernel level only; it is not peer-network transport,
+cloud checkout, production DID custody, or Local Brain replication.
 
 ## Terms
 
@@ -50,9 +50,9 @@ checkout, not production DID custody, and not Local Brain replication.
 ## Deferred Production Work
 
 - audited identity and key custody;
-- real Atlas Network transport;
+- future Atlas Network transport;
 - promotion and privacy gates for durable memory;
-- real cartridge serialization;
+- production cartridge serialization;
 - conflict-aware human review UI;
 - secure multi-device enrollment;
 - production traffic A/B validation.

@@ -1,7 +1,8 @@
 # ATANOR Autonomy Kernel Architecture
 
 This document describes a proof-only autonomous self-model loop for ATANOR. It
-does not claim real consciousness, AGI, or IIT proof.
+does not claim consciousness, current AGI capability, or a proof of integrated
+information.
 
 ## World Model
 
@@ -35,7 +36,7 @@ The proof loop is:
 7. present morning brief
 
 All proposals require review. The proof loop does not execute generated code,
-mutate production, write Local Brain, or use real P2P networking.
+mutate production, write Local Brain, or use peer-network transport.
 
 ## Midnight Congress
 
@@ -63,7 +64,7 @@ The proof enforces:
 - no generated code execution
 - no production mutation
 - no Local Brain mutation
-- no real P2P
+- no peer network transport
 - no network
 - no raw private data export
 - no consciousness claim
@@ -85,4 +86,3 @@ tests, review, and explicit human approval.
 Integration should wait until the active 24h candidate-learning run completes,
 candidate promotion gates are mature, privacy gates are explicit, and event
 stream UX/API surfaces are designed as read-only review channels first.
-

@@ -20,9 +20,9 @@ proof-kernel level only.
 
 ## Safety Boundary
 
-This milestone does not implement real consciousness, AGI, real P2P, real cloud
-checkout, production DID custody, Local Brain replication, production hot-swap,
-or self-executing generated code.
+This milestone does not implement consciousness, current AGI capability,
+peer-network transport, cloud checkout, production DID custody, Local Brain
+replication, production code replacement, or self-executing generated code.
 
 All ego-sync actions are proposal-only. Conflicts and checkins require user
 approval. Proof relay simulation is local and in-memory. Raw private data does
@@ -46,9 +46,9 @@ before production use.
 1. Complete and audit the active 24h candidate-learning run.
 2. Add promotion gates before durable candidate adoption.
 3. Mature Tabularis privacy gates before private-data routing.
-4. Add audited identity/key custody before real DID-style use.
-5. Add real Atlas Network/P2P only after routing, privacy, and promotion gates
-   are mature.
+4. Add audited identity/key custody before production DID-style use.
+5. Add Atlas Network peer transport only after routing, privacy, and promotion
+   gates are mature.
 
 Until those gates pass, this milestone remains a local proof kernel rather than
 a production selfhood network.

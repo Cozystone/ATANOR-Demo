@@ -13,10 +13,11 @@ It models:
 - multi-device constellation sync planning;
 - in-memory morning gift events.
 
-It does not implement real DID/Web3 custody, real cloud checkout, real P2P,
-real Local Brain replication, real production mutation, real hot-swap, or real
-code execution. Raw private data is not exported by the proof relay. All
-checkin and merge results are proposal-only and require user approval.
+It does not implement production DID/Web3 custody, cloud checkout, peer-network
+transport, Local Brain replication, production mutation, production code
+replacement, or generated code execution. Raw private data is not exported by
+the proof relay. All checkin and merge results are proposal-only and require
+user approval.
 
 The seed identity accepts a 12-word phrase only for deterministic fixtures. It
 stores a salted hash and a public fingerprint, never the raw phrase. Production

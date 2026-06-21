@@ -14,10 +14,11 @@ It models:
 - Mutual Perception event stream
 - morning brief generation
 
-This package is not real consciousness, not AGI, not an IIT proof, and not
-self-modifying production code. It does not create real P2P connections, does
-not transfer real private data, does not mutate production stores, and does not
-write Local Brain. Autonomous proposals always require approval.
+This package is not a consciousness claim, not a current AGI capability, not a
+proof of integrated information, and not self-modifying production code. It does
+not create peer network connections, does not transfer raw private data, does
+not mutate production stores, and does not write Local Brain. Autonomous
+proposals always require approval.
 
 Run tests:
 
@@ -30,4 +31,3 @@ Run proof:
 ```powershell
 python -m packages.autonomy_kernel.proof
 ```
-
