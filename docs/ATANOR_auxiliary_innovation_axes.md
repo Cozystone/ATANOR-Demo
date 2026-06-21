@@ -31,12 +31,22 @@ writes.
 
 ## 2. Tabularis Privacy Shield
 
-Status: descriptor only.
+Status: proof-only implementation in `packages/tabularis_privacy`.
 
 Purpose: transform private structured data into safe synthetic, anonymized, or
 redacted representations before any Cloud, Atlas, or deliberation layer can see
 it. Tabularis should be built second because privacy boundaries must exist
 before broader source routing or multi-agent deliberation.
+
+The current proof package classifies direct identifiers, quasi-identifiers,
+sensitive attributes, and public attributes; redacts direct identifiers;
+generalizes quasi-identifiers; creates deterministic proof-only aggregate
+records; and emits reviewable privacy reports. It does not claim perfect
+anonymity and is not a production privacy guarantee.
+
+Tabularis must sit before any Atlas, MiroFish, Graph Hub, or cartridge workflow
+that might receive private structured data. It must not export raw private data
+and must not mutate Local Brain.
 
 ## 3. MiroFish Deliberation Lab
 
@@ -66,7 +76,7 @@ remain behind explicit review boundaries.
 ## Protection Note
 
 The 24h candidate-only learning run remains a protected experiment. This
-document and the isolated `packages/atlas_router` proof package do not modify
-the active daemon, Cloud Brain, API routes, Cloud Lab UI, candidate stores,
-production stores, Local Brain, approved payloads, or runtime status files.
-
+document and the isolated `packages/atlas_router` and
+`packages/tabularis_privacy` proof packages do not modify the active daemon,
+Cloud Brain, API routes, Cloud Lab UI, candidate stores, production stores,
+Local Brain, approved payloads, or runtime status files.
