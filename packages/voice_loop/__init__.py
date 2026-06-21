@@ -9,6 +9,7 @@ from packages.voice_loop.models import (
     VoiceOutputEvent,
     VoiceResponsePlan,
 )
+from packages.voice_loop.runtime_availability import RuntimeAvailability, check_voice_runtime_availability
 
 __all__ = [
     "AudioSource",
@@ -18,4 +19,6 @@ __all__ = [
     "VoiceLoopConfig",
     "VoiceOutputEvent",
     "VoiceResponsePlan",
+    "RuntimeAvailability",
+    "check_voice_runtime_availability",
 ]
