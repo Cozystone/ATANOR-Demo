@@ -7992,6 +7992,23 @@ p {
   width: 100%;
 }
 
+.atanor-hologram-speech {
+  bottom: clamp(104px, 13vh, 148px);
+  color: rgba(236, 249, 255, 0.72);
+  filter: drop-shadow(0 0 18px rgba(42, 226, 255, 0.2));
+  font: 650 clamp(0.9rem, 1.2vw, 1.1rem)/1.45 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: 0;
+  margin: 0;
+  max-width: min(420px, 34vw);
+  pointer-events: none;
+  position: absolute;
+  right: clamp(44px, 8vw, 132px);
+  text-align: left;
+  text-wrap: balance;
+  top: auto;
+  z-index: 6;
+}
+
 .hologram-voice-orb {
   align-items: center;
   background: transparent;
@@ -8052,13 +8069,62 @@ p {
   z-index: 6;
 }
 
+.atanor-hologram-composer[data-voice-mode="true"] {
+  background:
+    linear-gradient(90deg, rgba(21, 238, 255, 0.07), rgba(255, 96, 176, 0.045), rgba(75, 171, 255, 0.07)),
+    rgba(255, 255, 255, 0.036);
+  border-color: rgba(130, 236, 255, 0.18);
+  box-shadow:
+    0 0 34px rgba(30, 221, 255, 0.1),
+    0 18px 60px rgba(0, 0, 0, 0.34);
+}
+
+.atanor-voice-wave {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  grid-column: 2;
+  grid-row: 1;
+  height: 34px;
+  justify-content: center;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+  z-index: 0;
+}
+
+.atanor-hologram-composer[data-voice-mode="true"] .atanor-voice-wave {
+  opacity: 0.66;
+}
+
+.atanor-voice-wave span {
+  animation: atanorVoicePulse 980ms ease-in-out infinite;
+  animation-delay: calc(var(--i) * -54ms);
+  background: linear-gradient(180deg, rgba(54, 240, 255, 0.8), rgba(247, 100, 190, 0.48));
+  border-radius: 999px;
+  display: block;
+  height: var(--h);
+  opacity: 0.62;
+  width: 3px;
+}
+
 .atanor-hologram-composer input {
   background: transparent;
   border: 0;
   color: rgba(255, 255, 255, 0.92);
   font: 700 0.92rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   outline: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.atanor-hologram-composer[data-voice-mode="true"] input {
+  color: rgba(255, 255, 255, 0.98);
+  text-align: center;
 }
 
 .atanor-hologram-composer input::placeholder {
@@ -8083,6 +8149,16 @@ p {
   background: rgba(255, 255, 255, 0.14);
 }
 
+@keyframes atanorVoicePulse {
+  0%,
+  100% {
+    transform: scaleY(0.38);
+  }
+  48% {
+    transform: scaleY(1.4);
+  }
+}
+
 @media (max-width: 720px) {
   .hologram-voice-orb {
     min-height: 100%;
@@ -8092,5 +8168,13 @@ p {
   .atanor-hologram-composer {
     grid-template-columns: 42px minmax(150px, 1fr) 42px;
     width: calc(100% - 36px);
+  }
+
+  .atanor-hologram-speech {
+    bottom: 104px;
+    left: 28px;
+    max-width: calc(100% - 56px);
+    right: auto;
+    text-align: center;
   }
 }

@@ -19,7 +19,7 @@ type HologramVoiceOrbProps = {
 };
 
 const RIBBON_PARTICLES = 24000;
-const SHELL_PARTICLES = 18000;
+const SHELL_PARTICLES = 14000;
 const AURA_PARTICLES = 5200;
 const SHAPE_COUNT = 7;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -186,12 +186,12 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const aura = new THREE.Points(auraGeometry, auraMaterial);
     root.add(aura);
 
-    const shellGeometry = buildShellGeometry(SHELL_PARTICLES, 1.82, 0.08);
+    const shellGeometry = buildShellGeometry(SHELL_PARTICLES, 1.72, 0.06);
     const shellMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      opacity: 0.34,
-      size: 0.012,
+      opacity: 0.24,
+      size: 0.01,
       sizeAttenuation: true,
       transparent: true,
       vertexColors: true,
@@ -199,12 +199,12 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const shell = new THREE.Points(shellGeometry, shellMaterial);
     root.add(shell);
 
-    const rimGeometry = buildShellGeometry(Math.floor(SHELL_PARTICLES * 0.42), 1.86, 0.2);
+    const rimGeometry = buildShellGeometry(Math.floor(SHELL_PARTICLES * 0.38), 1.76, 0.15);
     const rimMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      opacity: 0.42,
-      size: 0.018,
+      opacity: 0.3,
+      size: 0.014,
       sizeAttenuation: true,
       transparent: true,
       vertexColors: true,
@@ -304,7 +304,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
 
       const state = stateRef.current;
       ribbonMaterial.opacity = state === "resting" ? 0.62 : state === "blocked" ? 0.7 : 0.9;
-      shellMaterial.opacity = state === "thinking" ? 0.39 : 0.31;
+      shellMaterial.opacity = state === "thinking" ? 0.3 : 0.22;
       auraMaterial.opacity = state === "listening" || state === "speaking" ? 0.17 : 0.1;
 
       renderer.render(scene, camera);
