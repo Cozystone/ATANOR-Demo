@@ -34,7 +34,7 @@ class BrainAccessRoad:
         self.audit_records: list[dict[str, object]] = []
 
     def request(self, request: BrainAccessRequest) -> BrainAccessResponse:
-        if request.operation in {"local_brain_direct_write", "production_store_direct_write"}:
+        if request.operation in {"local_brain_direct_write", "production_store_direct_write", "cloud_brain_production_write"}:
             response = BrainAccessResponse(False, denied_reason="direct brain/store write is forbidden", approval_required=True)
         elif request.target == "local_brain" and request.operation in {
             "local_brain_read_redacted_summary",

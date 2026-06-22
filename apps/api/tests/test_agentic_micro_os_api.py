@@ -24,7 +24,9 @@ def test_status_is_proof_only_and_external_models_disabled() -> None:
     assert payload["modules"]["browser_read"] == "proof_only"
     assert payload["modules"]["mcp_allowlist_gateway"] == "proof_only"
     assert payload["modules"]["splatra_evaluator"] == "proof_only"
+    assert payload["modules"]["web_explorer_loop"] == "proof_only"
     assert payload["tool_gateway_phase1"]["browser_read"]["browser_automation"] is False
+    assert payload["tool_gateway_phase1"]["web_explorer_loop"]["aggressive_crawling"] is False
 
 
 def test_action_validation_accepts_safe_dashboard_action() -> None:
@@ -155,3 +157,45 @@ def test_splatra_evaluator_api_is_proposal_only() -> None:
     assert payload["local_brain_write"] is False
     assert payload["production_store_mutated"] is False
     assert payload["metrics"]["particle_budget_ok"] is True
+
+
+def test_web_explorer_status_is_proof_only() -> None:
+    payload = _client().get("/api/agentic-os/web-explorer/status").json()
+
+    assert payload["available"] is True
+    assert payload["proof_only"] is True
+    assert payload["external_llm"] is False
+    assert payload["default_limits"]["max_runtime_sec"] == 21600
+
+
+def test_web_explorer_run_once_creates_drafts_without_mutation() -> None:
+    client = _client()
+    payload = client.post(
+        "/api/agentic-os/web-explorer/run-once",
+        json={
+            "goal": "research local TTS alternatives",
+            "allowed_domains": ["docs.local"],
+            "pages": [
+                {"url": "http://docs.local/fish", "title": "Fish", "visible_text": "Fish public runtime notes"},
+                {"url": "https://blocked.example/fish", "title": "Blocked", "visible_text": "blocked"},
+                {"url": "http://docs.local/private", "title": "Private", "visible_text": "raw_private_memory should fail"},
+            ],
+            "max_pages": 30,
+        },
+    ).json()
+
+    assert payload["pages_read"] == 1
+    assert payload["pages_rejected"] == 2
+    assert payload["candidate_drafts_count"] == 1
+    assert payload["skill_drafts_count"] == 1
+    assert payload["skill_drafts"][0]["promotion_required"] is True
+    assert payload["production_store_mutated"] is False
+    assert payload["local_brain_write"] is False
+    assert payload["candidate_promotion"] is False
+    assert "production write blocked" in payload["safety_blocks"]
+
+    run_id = payload["run_id"]
+    run_payload = client.get(f"/api/agentic-os/web-explorer/runs/{run_id}").json()
+    drafts_payload = client.get("/api/agentic-os/skills/drafts").json()
+    assert run_payload["run"]["run_id"] == run_id
+    assert drafts_payload["skill_drafts"]

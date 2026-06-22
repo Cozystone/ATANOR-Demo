@@ -14,6 +14,7 @@ from packages.agentic_micro_os.capabilities import CapabilityKernel
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
 from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
 from packages.agentic_micro_os.splatra_evaluator import SplatraCosmosEvaluator, SplatraEvaluationRequest
+from packages.agentic_micro_os.web_explorer_loop import HermesWebExplorerLoop, WebExplorerConfig, WebPageInput
 from packages.hermes_intake.scanner import scan_repo
 
 
@@ -54,9 +55,13 @@ MODULE_STATUS = {
     "browser_read": "proof_only",
     "mcp_allowlist_gateway": "proof_only",
     "splatra_evaluator": "proof_only",
+    "web_explorer_loop": "proof_only",
     "cloud_gateway_mock": "available",
     "hermes_intake": "architecture_extracted",
 }
+
+WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
+WEB_EXPLORER_SKILL_DRAFTS: list[dict[str, Any]] = []
 
 
 class DashboardActionRequest(BaseModel):
@@ -101,6 +106,24 @@ class SplatraEvaluateApiRequest(BaseModel):
     emotion_probe: dict[str, float] = Field(default_factory=lambda: {"valence": 0.2, "arousal": 0.6, "audio_energy": 0.0})
 
 
+class WebExplorerPageApiInput(BaseModel):
+    url: str
+    title: str = ""
+    visible_text: str = ""
+    depth: int = 0
+
+
+class WebExplorerRunOnceApiRequest(BaseModel):
+    goal: str = "research local TTS alternatives and SPLATRA particle rendering"
+    allowed_domains: list[str] = Field(default_factory=lambda: ["docs.local", "127.0.0.1", "localhost"])
+    pages: list[WebExplorerPageApiInput] = Field(default_factory=list)
+    max_pages: int = 30
+    max_depth: int = 2
+    max_runtime_sec: int = 21600
+    max_candidate_drafts: int = 100
+    max_skill_drafts: int = 20
+
+
 @router.get("/status")
 def status() -> dict[str, Any]:
     browser = BrowserReadConnector()
@@ -113,6 +136,13 @@ def status() -> dict[str, Any]:
             "browser_read": browser.status(),
             "mcp_allowlist": mcp.status(),
             "splatra_evaluator": splatra.status(),
+            "web_explorer_loop": {
+                "available": True,
+                "proof_only": True,
+                "real_long_daemon": False,
+                "private_credentialed_browsing": False,
+                "aggressive_crawling": False,
+            },
         },
         "blocked_actions": [
             "unrestricted_shell",
@@ -185,6 +215,60 @@ def splatra_evaluate(request: SplatraEvaluateApiRequest) -> dict[str, Any]:
         token,
     )
     return {**SAFETY_FLAGS, **result.to_dict()}
+
+
+@router.get("/web-explorer/status")
+def web_explorer_status() -> dict[str, Any]:
+    return {
+        **SAFETY_FLAGS,
+        "available": True,
+        "proof_only": True,
+        "runs": len(WEB_EXPLORER_RUNS),
+        "skill_drafts": len(WEB_EXPLORER_SKILL_DRAFTS),
+        "default_limits": {
+            "max_pages": 30,
+            "max_depth": 2,
+            "max_runtime_sec": 21600,
+            "max_candidate_drafts": 100,
+            "max_skill_drafts": 20,
+        },
+    }
+
+
+@router.post("/web-explorer/run-once")
+def web_explorer_run_once(request: WebExplorerRunOnceApiRequest) -> dict[str, Any]:
+    config = WebExplorerConfig(
+        goal=request.goal,
+        allowed_domains=request.allowed_domains,
+        pages=[
+            WebPageInput(
+                url=page.url,
+                title=page.title,
+                visible_text=page.visible_text,
+                depth=page.depth,
+            )
+            for page in request.pages
+        ],
+        max_pages=max(1, min(request.max_pages, 30)),
+        max_depth=max(0, min(request.max_depth, 4)),
+        max_runtime_sec=max(1, min(request.max_runtime_sec, 21600)),
+        max_candidate_drafts=max(0, min(request.max_candidate_drafts, 100)),
+        max_skill_drafts=max(0, min(request.max_skill_drafts, 20)),
+    )
+    result = HermesWebExplorerLoop(config).run_once().to_dict()
+    WEB_EXPLORER_RUNS[str(result["run_id"])] = result
+    WEB_EXPLORER_SKILL_DRAFTS.extend(result["skill_drafts"])  # type: ignore[arg-type]
+    return {**SAFETY_FLAGS, **result}
+
+
+@router.get("/web-explorer/runs/{run_id}")
+def web_explorer_run(run_id: str) -> dict[str, Any]:
+    return {**SAFETY_FLAGS, "run": WEB_EXPLORER_RUNS.get(run_id)}
+
+
+@router.get("/skills/drafts")
+def skill_drafts() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, "skill_drafts": WEB_EXPLORER_SKILL_DRAFTS}
 
 
 @router.post("/action/validate")
