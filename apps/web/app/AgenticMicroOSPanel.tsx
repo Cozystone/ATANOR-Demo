@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Language = "en" | "ko";
 type AnyRecord = Record<string, any>;
 type SmokeKey = "dashboard" | "browser" | "mcp" | "splatra" | "openWeb";
+type ReviewDecision = "approved" | "rejected" | "deferred" | "needs_more_evidence";
 
 type Props = {
   language: Language;
@@ -30,8 +31,25 @@ function joinApiUrl(baseUrl: string, path: string) {
 }
 
 async function jsonFetch(baseUrl: string, path: string, init?: RequestInit): Promise<AnyRecord> {
-  const response = await fetch(joinApiUrl(baseUrl, path), { ...init, cache: "no-store" });
-  return response.json();
+  const sameOriginTargets = path.startsWith("/api/agentic-os") ? [""] : [];
+  const backendTargets = baseUrl.includes("127.0.0.1:8500") || baseUrl.includes("localhost:8500")
+    ? [baseUrl, "http://127.0.0.1:8502"]
+    : [baseUrl];
+  const targets = [...sameOriginTargets, ...backendTargets];
+  let lastError: unknown = null;
+  for (const target of targets) {
+    try {
+      const response = await fetch(target ? joinApiUrl(target, path) : path, { ...init, cache: "no-store" });
+      if (!response.ok) {
+        lastError = new Error(`HTTP ${response.status}`);
+        continue;
+      }
+      return response.json();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function ResultLine({ result }: { result: AnyRecord | null }) {
@@ -56,6 +74,8 @@ function MetricStrip({ result }: { result: AnyRecord | null }) {
 
 export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props) {
   const [status, setStatus] = useState<AnyRecord | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<AnyRecord | null>(null);
+  const [reviewItems, setReviewItems] = useState<AnyRecord[]>([]);
   const [results, setResults] = useState<Record<SmokeKey, AnyRecord | null>>({
     dashboard: null,
     browser: null,
@@ -66,6 +86,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
 
   useEffect(() => {
     jsonFetch(localBackendUrl, "/api/agentic-os/status").then(setStatus).catch(() => setStatus({ error: "local_backend_unavailable" }));
+    refreshReviewQueue().catch(() => undefined);
   }, [localBackendUrl]);
 
   const blockedActions = useMemo(() => {
@@ -82,34 +103,43 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     setResults((current) => ({ ...current, [key]: result }));
   }
 
+  async function refreshReviewQueue() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/review/items").catch((error) => ({ error: String(error), items: [] }));
+    setReviewStatus(payload);
+    setReviewItems(Array.isArray(payload.items) ? payload.items : []);
+  }
+
+  async function importLatestOpenWebRun() {
+    const run = results.openWeb;
+    if (!run?.run_id) return;
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/review/import-web-run", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ run_payload: run }),
+    }).catch((error) => ({ error: String(error), items: [] }));
+    setReviewStatus(payload);
+    setReviewItems(Array.isArray(payload.items) ? payload.items : []);
+  }
+
+  async function decideReviewItem(itemId: string, decision: ReviewDecision) {
+    await jsonFetch(localBackendUrl, "/api/agentic-os/review/decide", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        item_id: itemId,
+        decision,
+        reviewer: "lab_operator",
+        reason: `lab ${decision}`,
+        approved_for: "draft_only",
+      }),
+    }).catch(() => null);
+    await refreshReviewQueue().catch(() => undefined);
+  }
+
   const t = language === "ko"
     ? {
       title: "Agentic Micro-OS",
-      subtitle: "증명 전용 도구 게이트웨이입니다. 공개 웹 탐색은 예산과 denylist 안에서만 동작하고, 기억 변경과 승격은 차단됩니다.",
-      proof: "proof-only",
-      modules: "모듈 상태",
-      blocked: "차단된 동작",
-      dashboard: "Dashboard Action Bus",
-      browser: "Browser Read",
-      mcp: "MCP Allowlist",
-      splatra: "SPLATRA Evaluator",
-      openWeb: "Open-Web Explorer",
-      safety: "Safety Contract",
-      dashboardSmoke: "set_orb_state 검증",
-      browserSmoke: "공개 화면 스냅샷 읽기",
-      mcpSmoke: "MCP descriptor 검증",
-      splatraSmoke: "Cosmos 후보 평가",
-      openWebSmoke: "fixture open-web run",
-      browserText: "이미 보이는 public 텍스트만 요약합니다. 브라우저 자동조작과 JS 실행은 없습니다.",
-      mcpText: "descriptor hash, method, private payload 여부만 검사합니다. 실제 MCP 서버는 호출하지 않습니다.",
-      splatraText: "SPLATRA 후보를 점수화하지만 패치 적용이나 생성 코드 실행은 하지 않습니다.",
-      openWebText: "고정 allowlist 없이 공개 URL을 탐색할 수 있지만 내부망, 로그인, 결제, 업로드, 다운로드성 URL은 거절합니다.",
-      boundaryA: "Local Brain, Cloud Brain, 후보 승격은 승인 게이트 밖에서 실행되지 않습니다.",
-      boundaryB: "외부 LLM/sLLM, Hermes runtime, 임의 shell, 임의 JS는 비활성입니다.",
-    }
-    : {
-      title: "Agentic Micro-OS",
-      subtitle: "Proof-only tool gateway. Open-web exploration is budgeted and denylisted; memory mutation and promotion stay blocked.",
+      subtitle: "검토 전용 도구 관문입니다. 공개 웹 탐색 결과는 후보 초안으로만 남고, 기억 쓰기와 production 변경은 차단됩니다.",
       proof: "proof-only",
       modules: "Module Status",
       blocked: "Blocked Actions",
@@ -118,18 +148,36 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
       mcp: "MCP Allowlist",
       splatra: "SPLATRA Evaluator",
       openWeb: "Open-Web Explorer",
+      reviewQueue: "Agentic Review Queue",
       safety: "Safety Contract",
       dashboardSmoke: "Validate set_orb_state",
       browserSmoke: "Read public screen snapshot",
       mcpSmoke: "Validate MCP descriptor",
       splatraSmoke: "Evaluate Cosmos candidate",
       openWebSmoke: "Run fixture open-web loop",
-      browserText: "Summarizes only caller-provided public visible text. No browser automation or JavaScript execution.",
-      mcpText: "Checks descriptor hash, method, and private payload boundaries. No real MCP server is called.",
-      splatraText: "Scores SPLATRA candidates without applying patches or executing generated code.",
-      openWebText: "Explores public URLs without a fixed allowlist, while rejecting internal, login, payment, upload, and download-like URLs.",
-      boundaryA: "Local Brain, Cloud Brain, and candidate promotion are never mutated outside approval gates.",
-      boundaryB: "External LLM/sLLM, Hermes runtime, unrestricted shell, and arbitrary JavaScript stay disabled.",
+      reviewImport: "Import latest web run",
+      reviewRefresh: "Refresh review queue",
+    }
+    : {
+      title: "Agentic Micro-OS",
+      subtitle: "Proof-only tool gateway. Public-web exploration creates reviewable drafts; memory mutation and promotion stay blocked.",
+      proof: "proof-only",
+      modules: "Module Status",
+      blocked: "Blocked Actions",
+      dashboard: "Dashboard Action Bus",
+      browser: "Browser Read",
+      mcp: "MCP Allowlist",
+      splatra: "SPLATRA Evaluator",
+      openWeb: "Open-Web Explorer",
+      reviewQueue: "Agentic Review Queue",
+      safety: "Safety Contract",
+      dashboardSmoke: "Validate set_orb_state",
+      browserSmoke: "Read public screen snapshot",
+      mcpSmoke: "Validate MCP descriptor",
+      splatraSmoke: "Evaluate Cosmos candidate",
+      openWebSmoke: "Run fixture open-web loop",
+      reviewImport: "Import latest web run",
+      reviewRefresh: "Refresh review queue",
     };
 
   return (
@@ -173,7 +221,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
 
         <article className="agentic-os-card">
           <h3>{t.browser}</h3>
-          <p>{t.browserText}</p>
+          <p>Summarizes caller-provided public visible text. No browser automation or JavaScript execution.</p>
           <button type="button" className="agentic-os-action" onClick={() => runSmoke("browser", "/api/agentic-os/browser-read", { url: "http://127.0.0.1:3041/?section=agent-os", visible_text: "Agentic Micro-OS proof-only visible status" })}>
             {t.browserSmoke}
           </button>
@@ -182,7 +230,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
 
         <article className="agentic-os-card">
           <h3>{t.mcp}</h3>
-          <p>{t.mcpText}</p>
+          <p>Checks descriptor hash, method, and private payload boundaries. No real MCP server is called.</p>
           <button type="button" className="agentic-os-action" onClick={() => runSmoke("mcp", "/api/agentic-os/mcp/validate", { descriptor: "render_preview", method: "render_preview", payload: { scene: "orb" } })}>
             {t.mcpSmoke}
           </button>
@@ -191,7 +239,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
 
         <article className="agentic-os-card">
           <h3>{t.splatra}</h3>
-          <p>{t.splatraText}</p>
+          <p>Scores SPLATRA candidates without applying patches or executing generated code.</p>
           <button type="button" className="agentic-os-action" onClick={() => runSmoke("splatra", "/api/agentic-os/splatra/evaluate", { candidate_id: "orb_candidate", particle_budget: 50000, target_fps: 60 })}>
             {t.splatraSmoke}
           </button>
@@ -200,7 +248,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
 
         <article className="agentic-os-card">
           <h3>{t.openWeb}</h3>
-          <p>{t.openWebText}</p>
+          <p>Explores public URLs without a fixed allowlist while rejecting internal, login, payment, upload, and download-like URLs.</p>
           <button type="button" className="agentic-os-action" onClick={() => runSmoke("openWeb", "/api/agentic-os/web-explorer/open/run", {
             goal: "open web research for ATANOR local TTS, SPLATRA, Turbovec, MCP security, Hermes-style agents",
             seed_urls: ["https://example.com/fish"],
@@ -218,10 +266,49 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
           <MetricStrip result={results.openWeb} />
         </article>
 
+        <article className="agentic-os-card agentic-os-review-card">
+          <h3>{t.reviewQueue}</h3>
+          <p>Human review surface for candidate knowledge, skill drafts, source summaries, patches, and tool trajectories. Approval never mutates production.</p>
+          <div className="agentic-os-flags">
+            <span>pending={String(reviewStatus?.pending ?? 0)}</span>
+            <span>approved={String(reviewStatus?.approved ?? 0)}</span>
+            <span>rejected={String(reviewStatus?.rejected ?? 0)}</span>
+            <span>deferred={String(reviewStatus?.deferred ?? 0)}</span>
+            <span>high-risk={String(reviewStatus?.high_risk ?? 0)}</span>
+            <span>duplicates={String(reviewStatus?.duplicate_warnings ?? 0)}</span>
+          </div>
+          <div className="agentic-os-actions">
+            <button type="button" className="agentic-os-action" disabled={!results.openWeb?.run_id} onClick={() => importLatestOpenWebRun()}>
+              {t.reviewImport}
+            </button>
+            <button type="button" className="agentic-os-action" onClick={() => refreshReviewQueue()}>
+              {t.reviewRefresh}
+            </button>
+          </div>
+          <div className="agentic-os-review-list">
+            {reviewItems.length === 0 ? <p>no pending review items</p> : reviewItems.slice(0, 8).map((item) => (
+              <div className="agentic-os-review-item" key={item.item_id}>
+                <div>
+                  <small>{item.item_type} · {item.risk_level} · {item.status}</small>
+                  <strong>{item.title}</strong>
+                  <p>{item.summary}</p>
+                  <span>confidence={String(item.confidence)} novelty={String(item.novelty_score)} duplicate={String(item.duplicate_score)}</span>
+                </div>
+                <div className="agentic-os-review-actions">
+                  <button type="button" onClick={() => decideReviewItem(item.item_id, "approved")}>approve as draft</button>
+                  <button type="button" onClick={() => decideReviewItem(item.item_id, "rejected")}>reject</button>
+                  <button type="button" onClick={() => decideReviewItem(item.item_id, "deferred")}>defer</button>
+                  <button type="button" onClick={() => decideReviewItem(item.item_id, "needs_more_evidence")}>needs evidence</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
         <article className="agentic-os-card">
           <h3>{t.safety}</h3>
-          <p>{t.boundaryA}</p>
-          <p>{t.boundaryB}</p>
+          <p>Local Brain, Cloud Brain, and candidate promotion are never mutated outside approval gates.</p>
+          <p>External LLM/sLLM, Hermes runtime, unrestricted shell, and arbitrary JavaScript stay disabled.</p>
           <div className="agentic-os-flags">
             <span>external_llm={String(status?.external_llm ?? false)}</span>
             <span>external_sllm={String(status?.external_sllm ?? false)}</span>

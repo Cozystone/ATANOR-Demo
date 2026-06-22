@@ -13,6 +13,7 @@ from packages.agentic_micro_os.browser_read import BrowserReadConnector, Browser
 from packages.agentic_micro_os.capabilities import CapabilityKernel
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
 from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
+from packages.agentic_micro_os.review_queue import ReviewQueue, ReviewStatus
 from packages.agentic_micro_os.splatra_evaluator import SplatraCosmosEvaluator, SplatraEvaluationRequest
 from packages.agentic_micro_os.web_explorer_loop import (
     FixtureOpenWebFetcher,
@@ -43,6 +44,7 @@ SAFETY_FLAGS = {
     "production_store_direct_write": False,
     "production_store_mutated": False,
     "candidate_promotion": False,
+    "skill_auto_promoted": False,
     "unrestricted_shell": False,
     "arbitrary_js_eval": False,
     "auto_commit": False,
@@ -70,6 +72,7 @@ MODULE_STATUS = {
 WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 WEB_EXPLORER_SKILL_DRAFTS: list[dict[str, Any]] = []
 OPEN_WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
+REVIEW_QUEUE = ReviewQueue()
 
 
 class DashboardActionRequest(BaseModel):
@@ -159,6 +162,19 @@ class OpenWebExplorerRunApiRequest(BaseModel):
     max_candidate_drafts: int = 200
     max_skill_drafts: int = 50
     live_web: bool = False
+
+
+class ReviewDecideApiRequest(BaseModel):
+    item_id: str
+    decision: ReviewStatus
+    reviewer: str = "operator"
+    reason: str = ""
+    approved_for: str = "draft_only"
+
+
+class ReviewImportWebRunApiRequest(BaseModel):
+    run_id: str | None = None
+    run_payload: dict[str, Any] | None = None
 
 
 @router.get("/status")
@@ -358,6 +374,76 @@ def open_web_explorer_run(request: OpenWebExplorerRunApiRequest) -> dict[str, An
 @router.get("/web-explorer/open/runs/{run_id}")
 def open_web_explorer_run_status(run_id: str) -> dict[str, Any]:
     return {**SAFETY_FLAGS, "run": OPEN_WEB_EXPLORER_RUNS.get(run_id)}
+
+
+@router.get("/review/status")
+def review_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **REVIEW_QUEUE.status()}
+
+
+@router.get("/review/items")
+def review_items(item_type: str | None = None, risk_level: str | None = None, status: str | None = None) -> dict[str, Any]:
+    return {
+        **SAFETY_FLAGS,
+        **REVIEW_QUEUE.status(),
+        "items": [item.to_dict() for item in REVIEW_QUEUE.list_items(item_type=item_type, risk_level=risk_level, status=status)],
+    }
+
+
+@router.get("/review/items/{item_id}")
+def review_item(item_id: str) -> dict[str, Any]:
+    item = REVIEW_QUEUE.get(item_id)
+    return {**SAFETY_FLAGS, "item": item.to_dict() if item else None}
+
+
+@router.post("/review/decide")
+def review_decide(request: ReviewDecideApiRequest) -> dict[str, Any]:
+    if request.item_id not in REVIEW_QUEUE.items:
+        return {**SAFETY_FLAGS, "allowed": False, "reason": "review item not found", "mutation_performed": False}
+    try:
+        decision = REVIEW_QUEUE.decide(
+            request.item_id,
+            request.decision,
+            request.reviewer,
+            request.reason,
+            request.approved_for,  # type: ignore[arg-type]
+        )
+    except ValueError as exc:
+        return {**SAFETY_FLAGS, "allowed": False, "reason": str(exc), "mutation_performed": False}
+    item = REVIEW_QUEUE.get(request.item_id)
+    return {
+        **SAFETY_FLAGS,
+        "allowed": True,
+        "decision": decision.to_dict(),
+        "item": item.to_dict() if item else None,
+        "mutation_performed": False,
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "skill_auto_promoted": False,
+    }
+
+
+@router.post("/review/import-web-run")
+def review_import_web_run(request: ReviewImportWebRunApiRequest) -> dict[str, Any]:
+    run_payload = request.run_payload
+    if run_payload is None and request.run_id:
+        run_payload = OPEN_WEB_EXPLORER_RUNS.get(request.run_id) or WEB_EXPLORER_RUNS.get(request.run_id)
+    if not run_payload:
+        return {**SAFETY_FLAGS, "allowed": False, "reason": "web run not found", "imported": 0}
+    imported = REVIEW_QUEUE.import_web_run(run_payload)
+    return {
+        **SAFETY_FLAGS,
+        **REVIEW_QUEUE.status(),
+        "allowed": True,
+        "imported": len(imported),
+        "items": [item.to_dict() for item in imported],
+        "mutation_performed": False,
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "skill_auto_promoted": False,
+    }
 
 
 @router.post("/action/validate")
