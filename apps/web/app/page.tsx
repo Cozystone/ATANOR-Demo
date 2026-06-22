@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
+import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import CloudBrainSphereScene, { type CloudBrainSphereStats } from "./CloudBrainSphereScene";
@@ -21,6 +22,7 @@ type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
 type Language = "en" | "ko";
 type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "selfhood" | "live-scheduler" | "memory-approval" | "graphhub" | "contribute" | "chat" | "settings";
+type SurfaceClass = "product" | "advanced" | "lab";
 type GraphPresentationMode = "home_unified_overview" | "local_private_memory" | "cloud_world_knowledge" | "unified_projection";
 
 const mainNavIcon = {
@@ -38,6 +40,24 @@ const mainNavIcon = {
   chat: MessageCircle,
   settings: Settings,
 } satisfies Record<MainSectionId, typeof Home>;
+
+const mainSectionSurface = {
+  home: "product",
+  graph: "product",
+  local: "product",
+  cloud: "product",
+  atlas: "product",
+  contribute: "product",
+  chat: "product",
+  settings: "product",
+  "memory-approval": "advanced",
+  congress: "lab",
+  selfhood: "lab",
+  "live-scheduler": "lab",
+  graphhub: "lab",
+} satisfies Record<MainSectionId, SurfaceClass>;
+
+const internalMainSections = new Set<MainSectionId>(["congress", "selfhood", "live-scheduler", "memory-approval", "graphhub"]);
 
 const MAIN_COPY: Record<Language, {
   nav: Array<{ id: MainSectionId; key: string; label: string }>;
@@ -1610,6 +1630,7 @@ export default function BakeBoardPage() {
   const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
   const [language, setLanguage] = useState<Language>("en");
   const [mainSection, setMainSection] = useState<MainSectionId>("home");
+  const [labSurfaceVisible, setLabSurfaceVisible] = useState(false);
   const [contributionEnabled, setContributionEnabled] = useState(() => readBrowserStorage("atanor.contribution.enabled") === "true");
   const [contributionPaused, setContributionPaused] = useState(false);
   const [contributionSafeMode, setContributionSafeMode] = useState(() => readBrowserStorage("atanor.contribution.safeMode") !== "false");
@@ -1692,6 +1713,10 @@ export default function BakeBoardPage() {
     const warmupTimers: number[] = [];
     const params = new URLSearchParams(window.location.search);
     const requestedLanguage = params.get("lang") ?? params.get("language");
+    const requestedWorkspace = params.get("workspace") ?? params.get("view");
+    const requestedSurface = params.get("surface") ?? params.get("mode");
+    const labSurfaceRequested = ["lab", "dev", "developer"].includes(requestedWorkspace ?? "") || ["lab", "dev", "developer"].includes(requestedSurface ?? "");
+    setLabSurfaceVisible(labSurfaceRequested);
     const initialLanguage = requestedLanguage === "ko" || requestedLanguage === "en"
       ? requestedLanguage
       : "en";
@@ -1700,6 +1725,10 @@ export default function BakeBoardPage() {
     const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "selfhood", "live-scheduler", "memory-approval", "graphhub", "contribute", "chat", "settings"];
     if (requestedSection && sectionIds.includes(requestedSection as MainSectionId)) {
       const nextSection = requestedSection as MainSectionId;
+      if (internalMainSections.has(nextSection) && !labSurfaceRequested) {
+        setMainSection("home");
+        return;
+      }
       setMainSection(nextSection);
       if (nextSection === "atlas") setWorkspaceMode("daemon");
       if (nextSection === "chat") setRightMode("chat");
@@ -1778,7 +1807,11 @@ export default function BakeBoardPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedWorkspace = params.get("workspace") ?? params.get("view");
+    const requestedSurface = params.get("surface") ?? params.get("mode");
     const requestedApi = params.get("api") ?? params.get("backend");
+    if (["lab", "dev", "developer"].includes(requestedWorkspace ?? "") || ["lab", "dev", "developer"].includes(requestedSurface ?? "")) {
+      setLabSurfaceVisible(true);
+    }
     if (["daemon", "cumulative", "cloud", "cloud-brain", "cloudbrain"].includes(requestedWorkspace ?? "")) {
       setWorkspaceMode("daemon");
     } else if (requestedWorkspace === "lab") {
@@ -5062,6 +5095,9 @@ export default function BakeBoardPage() {
     settings: language === "ko" ? "언어와 로컬 Companion 동기화 상태를 조정합니다." : "Language and local companion sync controls.",
   };
 
+  const visibleMainNav = copy.nav.filter((item) => mainSectionSurface[item.id] === "product");
+  const labMainNav = labSurfaceVisible ? copy.nav.filter((item) => mainSectionSurface[item.id] !== "product") : [];
+
   function setMainLanguage(nextLanguage: Language) {
     setLanguage(nextLanguage);
     writeBrowserStorage("atanor.uiLanguage", nextLanguage);
@@ -5300,10 +5336,20 @@ export default function BakeBoardPage() {
           <span>0.1.2</span>
         </div>
         <nav className="atanor-user-nav" aria-label="ATANOR sections">
-          {copy.nav.map((item) => {
+          {visibleMainNav.map((item) => {
             const Icon = mainNavIcon[item.id];
             return (
               <button key={item.id} data-active={isMainSectionActive(item.id)} onClick={() => openMainSection(item.id)}>
+                <span aria-hidden="true"><Icon size={17} strokeWidth={1.8} /></span>
+                <strong>{item.label}</strong>
+              </button>
+            );
+          })}
+          {labMainNav.length ? <small className="atanor-user-nav-group">{language === "ko" ? "Lab / Developer" : "Lab / Developer"}</small> : null}
+          {labMainNav.map((item) => {
+            const Icon = mainNavIcon[item.id];
+            return (
+              <button key={item.id} data-active={isMainSectionActive(item.id)} data-surface={mainSectionSurface[item.id]} onClick={() => openMainSection(item.id)}>
                 <span aria-hidden="true"><Icon size={17} strokeWidth={1.8} /></span>
                 <strong>{item.label}</strong>
               </button>
@@ -5357,6 +5403,8 @@ export default function BakeBoardPage() {
             {language === "ko" ? "로컬 엔진 동기화 대기" : "Local engine sync pending"}
           </p>
         ) : null}
+
+        {mainSection === "home" ? <AtanorUserStatusCard language={language} /> : null}
 
         {mainSection === "atlas" ? (
           <section className="atanor-atlas-grid">
