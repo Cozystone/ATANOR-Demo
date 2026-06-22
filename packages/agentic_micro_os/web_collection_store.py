@@ -17,6 +17,9 @@ class WebSourceRecord:
     excerpt: str
     collected_at: str
     confidence: float
+    summary: str = ""
+    claims: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     candidate_status: str = "draft"
 
     @classmethod
@@ -24,11 +27,15 @@ class WebSourceRecord:
         normalized = " ".join(visible_text.split())
         excerpt = normalized[:500] if normalized else "empty public snapshot"
         digest = hashlib.sha256(f"{source_url}\n{title}\n{excerpt}".encode("utf-8")).hexdigest()
+        summary = summarize_public_text(excerpt)
         return cls(
             source_url=source_url,
             title=title or source_url,
             content_hash=digest,
             excerpt=excerpt,
+            summary=summary,
+            claims=extract_claims(excerpt),
+            tags=extract_tags(f"{title} {excerpt}"),
             collected_at=utc_now_iso(),
             confidence=max(0.0, min(confidence, 1.0)),
         )
@@ -42,6 +49,9 @@ class CloudBrainCandidateDraft:
     content_hash: str
     excerpt: str
     confidence: float
+    summary: str = ""
+    claims: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     candidate_status: str = "draft"
     production_mutation: bool = False
     approval_required: bool = True
@@ -76,6 +86,9 @@ class WebCollectionStore:
             title=source.title,
             content_hash=source.content_hash,
             excerpt=source.excerpt,
+            summary=source.summary,
+            claims=source.claims,
+            tags=source.tags,
             confidence=source.confidence,
         )
         self.candidate_drafts.append(draft)
@@ -91,3 +104,38 @@ class WebCollectionStore:
             "candidate_drafts": [asdict(draft) for draft in self.candidate_drafts],
             "trajectories": [asdict(trajectory) for trajectory in self.trajectories],
         }
+
+
+def summarize_public_text(text: str) -> str:
+    sentences = [part.strip() for part in text.replace("\n", " ").split(".") if part.strip()]
+    return ". ".join(sentences[:2])[:360] or text[:240]
+
+
+def extract_claims(text: str, max_claims: int = 3) -> list[str]:
+    candidates = [part.strip(" -\t\r\n") for part in text.replace(";", ".").split(".")]
+    return [part[:220] for part in candidates if len(part.split()) >= 5][:max_claims]
+
+
+def extract_tags(text: str) -> list[str]:
+    lowered = text.lower()
+    tags: list[str] = []
+    mapping = {
+        "fish": "fish",
+        "tts": "tts",
+        "speech": "speech",
+        "splatra": "splatra",
+        "particle": "particles",
+        "webgpu": "webgpu",
+        "webgl": "webgl",
+        "compression": "compression",
+        "quantization": "quantization",
+        "mcp": "mcp",
+        "security": "security",
+        "agent": "agents",
+        "privacy": "privacy",
+        "local-first": "local-first",
+    }
+    for needle, tag in mapping.items():
+        if needle in lowered and tag not in tags:
+            tags.append(tag)
+    return tags[:8] or ["public-web"]

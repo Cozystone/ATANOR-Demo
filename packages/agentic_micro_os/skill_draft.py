@@ -33,7 +33,7 @@ def draft_skill_from_sources(goal: str, sources: list[WebSourceRecord]) -> WebSk
         name=f"Research follow-up: {topic}",
         trigger=f"When ATANOR needs updated public context about {topic}.",
         procedure_steps=[
-            "read only allowlisted public pages",
+            "read only public pages that pass URL safety policy",
             "extract title, excerpt, source hash, and confidence",
             "create Cloud Brain candidate drafts through Brain Access Road",
             "request human approval before promotion",

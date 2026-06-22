@@ -168,6 +168,18 @@ def test_web_explorer_status_is_proof_only() -> None:
     assert payload["default_limits"]["max_runtime_sec"] == 21600
 
 
+def test_open_web_explorer_status_is_proof_only_and_budgeted() -> None:
+    payload = _client().get("/api/agentic-os/web-explorer/open/status").json()
+
+    assert payload["available"] is True
+    assert payload["proof_only"] is True
+    assert payload["fixed_allowlist_required"] is False
+    assert payload["live_web_default"] is False
+    assert payload["default_limits"]["max_pages"] == 300
+    assert payload["default_limits"]["max_depth"] == 3
+    assert payload["external_llm"] is False
+
+
 def test_web_explorer_run_once_creates_drafts_without_mutation() -> None:
     client = _client()
     payload = client.post(
@@ -199,3 +211,39 @@ def test_web_explorer_run_once_creates_drafts_without_mutation() -> None:
     drafts_payload = client.get("/api/agentic-os/skills/drafts").json()
     assert run_payload["run"]["run_id"] == run_id
     assert drafts_payload["skill_drafts"]
+
+
+def test_open_web_explorer_run_uses_fixture_and_keeps_safety() -> None:
+    client = _client()
+    payload = client.post(
+        "/api/agentic-os/web-explorer/open/run",
+        json={
+            "goal": "open web research for ATANOR",
+            "seed_urls": ["https://example.com/fish"],
+            "max_pages": 6,
+            "max_depth": 2,
+            "per_domain_delay_sec": 0,
+            "fixtures": [
+                {
+                    "url": "https://example.com/fish",
+                    "html": "<html><title>Fish</title><body>Fish Speech local runtime notes. <a href='https://example.com/splatra'>SPLATRA</a><a href='https://example.com/login'>login</a></body></html>",
+                },
+                {
+                    "url": "https://example.com/splatra",
+                    "html": "<html><title>SPLATRA</title><body>SPLATRA WebGPU particle compression notes.</body></html>",
+                },
+            ],
+        },
+    ).json()
+
+    assert payload["pages_read"] == 2
+    assert payload["pages_rejected"] == 1
+    assert payload["candidate_drafts_count"] == 2
+    assert payload["skill_drafts_count"] == 1
+    assert payload["production_store_mutated"] is False
+    assert payload["candidate_promotion"] is False
+    assert payload["skill_drafts"][0]["status"] == "draft"
+    assert any("login" in block or "credentialed" in block for block in payload["safety_blocks"])
+
+    run_payload = client.get(f"/api/agentic-os/web-explorer/open/runs/{payload['run_id']}").json()
+    assert run_payload["run"]["run_id"] == payload["run_id"]

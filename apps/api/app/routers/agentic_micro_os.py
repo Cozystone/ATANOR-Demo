@@ -14,7 +14,14 @@ from packages.agentic_micro_os.capabilities import CapabilityKernel
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
 from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
 from packages.agentic_micro_os.splatra_evaluator import SplatraCosmosEvaluator, SplatraEvaluationRequest
-from packages.agentic_micro_os.web_explorer_loop import HermesWebExplorerLoop, WebExplorerConfig, WebPageInput
+from packages.agentic_micro_os.web_explorer_loop import (
+    FixtureOpenWebFetcher,
+    HermesWebExplorerLoop,
+    OpenWebExplorerConfig,
+    OpenWebExplorerLoop,
+    WebExplorerConfig,
+    WebPageInput,
+)
 from packages.hermes_intake.scanner import scan_repo
 
 
@@ -62,6 +69,7 @@ MODULE_STATUS = {
 
 WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 WEB_EXPLORER_SKILL_DRAFTS: list[dict[str, Any]] = []
+OPEN_WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 
 
 class DashboardActionRequest(BaseModel):
@@ -124,6 +132,35 @@ class WebExplorerRunOnceApiRequest(BaseModel):
     max_skill_drafts: int = 20
 
 
+class OpenWebFixtureApiInput(BaseModel):
+    url: str
+    html: str
+
+
+class OpenWebExplorerRunApiRequest(BaseModel):
+    goal: str = "open web research for ATANOR local TTS, SPLATRA, Turbovec, MCP security, Hermes-style agents"
+    seed_urls: list[str] = Field(default_factory=lambda: ["https://example.com/fish"])
+    fixtures: list[OpenWebFixtureApiInput] = Field(default_factory=lambda: [
+        OpenWebFixtureApiInput(
+            url="https://example.com/fish",
+            html="<html><title>Fish S2 runtime</title><body>Fish Speech local TTS runtime requires isolated Python and model weights outside the repository. <a href='https://example.com/splatra'>SPLATRA particles</a></body></html>",
+        ),
+        OpenWebFixtureApiInput(
+            url="https://example.com/splatra",
+            html="<html><title>SPLATRA particles</title><body>SPLATRA WebGPU particle rendering uses compression, quantization, and bounded LOD budgets.</body></html>",
+        ),
+    ])
+    max_pages: int = 300
+    max_depth: int = 3
+    max_runtime_sec: int = 21600
+    max_bytes_per_page: int = 250_000
+    per_domain_delay_sec: float = 3.0
+    max_pages_per_domain: int = 50
+    max_candidate_drafts: int = 200
+    max_skill_drafts: int = 50
+    live_web: bool = False
+
+
 @router.get("/status")
 def status() -> dict[str, Any]:
     browser = BrowserReadConnector()
@@ -142,6 +179,8 @@ def status() -> dict[str, Any]:
                 "real_long_daemon": False,
                 "private_credentialed_browsing": False,
                 "aggressive_crawling": False,
+                "open_web_v1": True,
+                "fixed_allowlist_required": False,
             },
         },
         "blocked_actions": [
@@ -269,6 +308,56 @@ def web_explorer_run(run_id: str) -> dict[str, Any]:
 @router.get("/skills/drafts")
 def skill_drafts() -> dict[str, Any]:
     return {**SAFETY_FLAGS, "skill_drafts": WEB_EXPLORER_SKILL_DRAFTS}
+
+
+@router.get("/web-explorer/open/status")
+def open_web_explorer_status() -> dict[str, Any]:
+    return {
+        **SAFETY_FLAGS,
+        "available": True,
+        "proof_only": True,
+        "fixed_allowlist_required": False,
+        "live_web_default": False,
+        "runs": len(OPEN_WEB_EXPLORER_RUNS),
+        "default_limits": {
+            "max_pages": 300,
+            "max_depth": 3,
+            "max_runtime_sec": 21600,
+            "max_bytes_per_page": 250_000,
+            "per_domain_delay_sec": 3,
+            "max_pages_per_domain": 50,
+            "max_candidate_drafts": 200,
+            "max_skill_drafts": 50,
+        },
+        "denylist": ["localhost/internal IPs", "login/account/payment/upload patterns", "download-like URLs", "credentialed tokens/secrets"],
+    }
+
+
+@router.post("/web-explorer/open/run")
+def open_web_explorer_run(request: OpenWebExplorerRunApiRequest) -> dict[str, Any]:
+    config = OpenWebExplorerConfig(
+        goal=request.goal,
+        seed_urls=request.seed_urls,
+        max_pages=max(1, min(request.max_pages, 300)),
+        max_depth=max(0, min(request.max_depth, 3)),
+        max_runtime_sec=max(1, min(request.max_runtime_sec, 21600)),
+        max_bytes_per_page=max(1024, min(request.max_bytes_per_page, 250_000)),
+        per_domain_delay_sec=max(0.0, min(request.per_domain_delay_sec, 30.0)),
+        max_pages_per_domain=max(1, min(request.max_pages_per_domain, 50)),
+        max_candidate_drafts=max(0, min(request.max_candidate_drafts, 200)),
+        max_skill_drafts=max(0, min(request.max_skill_drafts, 50)),
+        fetch_live_web=request.live_web,
+    )
+    fetcher = None if request.live_web else FixtureOpenWebFetcher({fixture.url: fixture.html for fixture in request.fixtures})
+    result = OpenWebExplorerLoop(config, fetcher=fetcher).run().to_dict()
+    OPEN_WEB_EXPLORER_RUNS[str(result["run_id"])] = result
+    WEB_EXPLORER_SKILL_DRAFTS.extend(result["skill_drafts"])  # type: ignore[arg-type]
+    return {**SAFETY_FLAGS, **result}
+
+
+@router.get("/web-explorer/open/runs/{run_id}")
+def open_web_explorer_run_status(run_id: str) -> dict[str, Any]:
+    return {**SAFETY_FLAGS, "run": OPEN_WEB_EXPLORER_RUNS.get(run_id)}
 
 
 @router.post("/action/validate")
