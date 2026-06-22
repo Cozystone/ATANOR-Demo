@@ -1,7 +1,7 @@
 "use client";
 
-import { CSSProperties, useEffect, useMemo, useState } from "react";
-import { Mic, MicOff } from "lucide-react";
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
 
 export type HologramVoiceOrbState =
   | "idle"
@@ -12,145 +12,197 @@ export type HologramVoiceOrbState =
   | "approval_needed"
   | "blocked";
 
-type Language = "en" | "ko";
-
 type HologramVoiceOrbProps = {
-  language: Language;
   state: HologramVoiceOrbState;
   onActivate: () => void;
   onCancel: () => void;
 };
 
-const objectPresets = [
-  { id: "seed", en: "seed crystal", ko: "씨앗 결정" },
-  { id: "book", en: "open book", ko: "열린 책" },
-  { id: "ring", en: "signal ring", ko: "신호 고리" },
-  { id: "tree", en: "memory tree", ko: "기억 나무" },
-  { id: "cube", en: "knowledge cube", ko: "지식 큐브" },
-  { id: "comet", en: "moving comet", ko: "움직이는 혜성" },
-] as const;
+const PARTICLE_COUNT = 4200;
+const SHAPE_COUNT = 6;
+const COLOR_STOPS = [
+  new THREE.Color("#22f3ff"),
+  new THREE.Color("#4ea1ff"),
+  new THREE.Color("#b46cff"),
+  new THREE.Color("#ff2d78"),
+  new THREE.Color("#ffffff"),
+];
 
-const stateText: Record<Language, Record<HologramVoiceOrbState, string>> = {
-  en: {
-    idle: "Ready",
-    listening: "Listening demo",
-    thinking: "Thinking",
-    speaking: "Speaking",
-    resting: "Resting",
-    approval_needed: "Approval needed",
-    blocked: "Blocked",
-  },
-  ko: {
-    idle: "대화 준비",
-    listening: "음성 입력 데모",
-    thinking: "생각 중",
-    speaking: "응답 중",
-    resting: "휴식 중",
-    approval_needed: "승인 필요",
-    blocked: "차단됨",
-  },
-};
-
-function particleStyle(objectId: string, index: number): CSSProperties {
-  const total = 42;
-  const t = index / total;
-  const wave = Math.sin(t * Math.PI * 2);
-  const bend = Math.cos(t * Math.PI * 4);
-  let x = 50;
-  let y = 50;
-  let z = 0;
-  let size = 5 + (index % 4);
-
-  if (objectId === "book") {
-    const side = index % 2 === 0 ? -1 : 1;
-    x = 50 + side * (10 + t * 22);
-    y = 42 + wave * 18 + Math.abs(side) * 4;
-    z = bend * 22;
-  } else if (objectId === "ring") {
-    x = 50 + Math.cos(t * Math.PI * 2) * 30;
-    y = 50 + Math.sin(t * Math.PI * 2) * 18;
-    z = Math.sin(t * Math.PI * 4) * 36;
-  } else if (objectId === "tree") {
-    x = 50 + wave * (8 + t * 18);
-    y = 72 - t * 48;
-    z = bend * 26;
-    size = t < 0.34 ? 6 : 4 + ((index + 1) % 4);
-  } else if (objectId === "cube") {
-    const face = index % 6;
-    x = 50 + ((index % 7) - 3) * 7 + (face < 3 ? -8 : 8);
-    y = 50 + ((Math.floor(index / 7) % 7) - 3) * 6;
-    z = (face - 2.5) * 14;
-  } else if (objectId === "comet") {
-    x = 28 + t * 48;
-    y = 56 - Math.sin(t * Math.PI) * 28 + bend * 3;
-    z = (1 - t) * 46;
-    size = 4 + Math.round((1 - t) * 7);
-  } else {
-    x = 50 + Math.cos(t * Math.PI * 2) * (8 + t * 22);
-    y = 50 + Math.sin(t * Math.PI * 3) * (7 + t * 15);
-    z = bend * 32;
-  }
-
-  return {
-    "--x": `${x}%`,
-    "--y": `${y}%`,
-    "--z": `${z}px`,
-    "--s": `${size}px`,
-    "--delay": `${index * -72}ms`,
-  } as CSSProperties;
+function siriShapePoint(shape: number, t: number, seed: number): THREE.Vector3 {
+  const lobe = Math.floor(t * 4);
+  const local = (t * 4) % 1;
+  const turn = local * Math.PI * 2;
+  const phase = shape * 0.62 + lobe * 1.57 + seed * 0.9;
+  const spread = 0.34 + seed * 0.28;
+  const centers = [
+    new THREE.Vector3(-0.46 + Math.sin(shape) * 0.1, 0.18, 0.15),
+    new THREE.Vector3(0.36, 0.34 + Math.cos(shape) * 0.08, -0.06),
+    new THREE.Vector3(0.18, -0.34, 0.18),
+    new THREE.Vector3(-0.2, -0.12, -0.28),
+  ];
+  const center = centers[lobe].clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), shape * 0.22);
+  const x = center.x + Math.cos(turn + phase) * spread * (1.25 + Math.sin(shape + lobe) * 0.18);
+  const y = center.y + Math.sin(turn * (1.28 + lobe * 0.08) + phase) * spread * 0.78;
+  const z = center.z + Math.sin(turn * 1.7 + phase) * spread * 0.72;
+  const sphericalPull = 0.82 + Math.sin(shape * 1.7 + seed * 4) * 0.08;
+  return new THREE.Vector3(x * sphericalPull, y * sphericalPull, z * sphericalPull);
 }
 
-export default function HologramVoiceOrb({ language, state, onActivate, onCancel }: HologramVoiceOrbProps) {
-  const [objectIndex, setObjectIndex] = useState(0);
-  const [mounted, setMounted] = useState(false);
-  const object = objectPresets[objectIndex];
-  const particles = useMemo(() => Array.from({ length: 42 }, (_, index) => index), []);
-  const label = language === "ko"
-    ? `ATANOR 홀로그램 대화 버튼, 현재 상태 ${stateText.ko[state]}`
-    : `ATANOR hologram conversation button, current state ${stateText.en[state]}`;
-  const visibleObjectName = language === "ko" ? object.ko : object.en;
+function buildGeometry() {
+  const positions = new Float32Array(PARTICLE_COUNT * 3);
+  const morphs = Array.from({ length: SHAPE_COUNT }, () => new Float32Array(PARTICLE_COUNT * 3));
+  const colors = new Float32Array(PARTICLE_COUNT * 3);
+  const sizes = new Float32Array(PARTICLE_COUNT);
+
+  for (let i = 0; i < PARTICLE_COUNT; i += 1) {
+    const t = i / PARTICLE_COUNT;
+    const seed = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const positiveSeed = seed < 0 ? seed + 1 : seed;
+    const color = COLOR_STOPS[i % COLOR_STOPS.length].clone();
+    color.lerp(COLOR_STOPS[(i + 2) % COLOR_STOPS.length], positiveSeed * 0.45);
+
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+    sizes[i] = 0.018 + positiveSeed * 0.035;
+
+    for (let shape = 0; shape < SHAPE_COUNT; shape += 1) {
+      const point = siriShapePoint(shape, t, positiveSeed);
+      morphs[shape][i * 3] = point.x;
+      morphs[shape][i * 3 + 1] = point.y;
+      morphs[shape][i * 3 + 2] = point.z;
+    }
+
+    positions[i * 3] = morphs[0][i * 3];
+    positions[i * 3 + 1] = morphs[0][i * 3 + 1];
+    positions[i * 3 + 2] = morphs[0][i * 3 + 2];
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+  return { geometry, morphs };
+}
+
+export default function HologramVoiceOrb({ state, onActivate, onCancel }: HologramVoiceOrbProps) {
+  const hostRef = useRef<HTMLButtonElement | null>(null);
+  const stateRef = useRef(state);
 
   useEffect(() => {
-    setMounted(true);
-    const timer = window.setInterval(() => {
-      setObjectIndex((current) => {
-        const next = Math.floor(Math.random() * objectPresets.length);
-        return next === current ? (current + 1) % objectPresets.length : next;
-      });
-    }, 4300);
-    return () => window.clearInterval(timer);
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return undefined;
+    const activeHost = host;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+    camera.position.set(0, 0, 7);
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
+    activeHost.appendChild(renderer.domElement);
+
+    const { geometry, morphs } = buildGeometry();
+    const material = new THREE.PointsMaterial({
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.9,
+      size: 0.06,
+      sizeAttenuation: true,
+      transparent: true,
+      vertexColors: true,
+    });
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(1.92, 48, 32),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color("#102a3c"),
+        opacity: 0.22,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    scene.add(glow);
+
+    const clock = new THREE.Clock();
+    let animationId = 0;
+    let activeShape = 0;
+    let nextShape = 1;
+    let morphStart = 0;
+
+    function resize() {
+      const rect = activeHost.getBoundingClientRect();
+      const size = Math.max(280, Math.min(rect.width || 520, rect.height || 520));
+      renderer.setSize(size, size, false);
+      camera.aspect = 1;
+      camera.updateProjectionMatrix();
+    }
+
+    function renderFrame() {
+      const elapsed = clock.getElapsedTime();
+      if (elapsed - morphStart > 4.2) {
+        activeShape = nextShape;
+        nextShape = (nextShape + 1 + Math.floor(elapsed) % (SHAPE_COUNT - 1)) % SHAPE_COUNT;
+        if (nextShape === activeShape) nextShape = (nextShape + 1) % SHAPE_COUNT;
+        morphStart = elapsed;
+      }
+
+      const morphT = Math.min(1, Math.max(0, (elapsed - morphStart) / 1.65));
+      const ease = morphT * morphT * (3 - 2 * morphT);
+      const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+      const from = morphs[activeShape];
+      const to = morphs[nextShape];
+      const pulse = stateRef.current === "listening" ? 1.08 : stateRef.current === "speaking" ? 1.12 : stateRef.current === "thinking" ? 1.06 : 1;
+
+      for (let i = 0; i < PARTICLE_COUNT * 3; i += 3) {
+        positions.array[i] = (from[i] + (to[i] - from[i]) * ease) * pulse;
+        positions.array[i + 1] = (from[i + 1] + (to[i + 1] - from[i + 1]) * ease) * pulse;
+        positions.array[i + 2] = (from[i + 2] + (to[i + 2] - from[i + 2]) * ease) * pulse;
+      }
+      positions.needsUpdate = true;
+
+      material.opacity = stateRef.current === "resting" ? 0.56 : stateRef.current === "blocked" ? 0.72 : 0.86;
+      points.rotation.y = elapsed * 0.24;
+      points.rotation.z = Math.sin(elapsed * 0.37) * 0.08;
+      glow.scale.setScalar(1 + Math.sin(elapsed * 1.15) * 0.025);
+      renderer.render(scene, camera);
+      animationId = window.requestAnimationFrame(renderFrame);
+    }
+
+    resize();
+    renderFrame();
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(activeHost);
+
+    return () => {
+      window.cancelAnimationFrame(animationId);
+      resizeObserver.disconnect();
+      geometry.dispose();
+      material.dispose();
+      glow.geometry.dispose();
+      (glow.material as THREE.Material).dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
   }, []);
 
   return (
-    <div className="hologram-voice-orb-shell" data-state={state}>
-      <button
-        type="button"
-        className="hologram-voice-orb"
-        data-state={state}
-        data-object={object.id}
-        aria-label={label}
-        aria-pressed={state === "listening"}
-        onClick={state === "listening" ? onCancel : onActivate}
-      >
-        <span className="hologram-voice-orb-aura" aria-hidden="true" />
-        <span className="hologram-voice-orb-wave" aria-hidden="true" />
-        <span className="hologram-voice-orb-core" aria-hidden="true">
-          {mounted ? particles.map((particle) => (
-            <span
-              key={`${object.id}-${particle}`}
-              className="hologram-voice-orb-splat"
-              style={particleStyle(object.id, particle)}
-            />
-          )) : null}
-        </span>
-        <span className="hologram-voice-orb-icon" aria-hidden="true">
-          {state === "listening" ? <MicOff size={22} strokeWidth={1.8} /> : <Mic size={22} strokeWidth={1.8} />}
-        </span>
-      </button>
-      <div className="hologram-voice-orb-caption" aria-live="polite">
-        <strong>{stateText[language][state]}</strong>
-        <span>{visibleObjectName}</span>
-      </div>
-    </div>
+    <button
+      ref={hostRef}
+      type="button"
+      className="hologram-voice-orb"
+      data-state={state}
+      aria-label="ATANOR hologram voice orb"
+      aria-pressed={state === "listening"}
+      onClick={state === "listening" ? onCancel : onActivate}
+    />
   );
 }

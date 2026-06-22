@@ -4,7 +4,7 @@ Status: UI proof slice, not production autonomy.
 
 ## Purpose
 
-The default ATANOR screen now starts from conversation instead of internal lab telemetry. The first screen presents a hologram voice orb, a text composer, optional voice controls, short daily context, prepared proposals, pending approvals, and memory safety wording.
+The default ATANOR screen now starts from a black hologram viewer instead of internal lab telemetry or explanatory cards. The first screen presents a Siri-like particle orb, the ATANOR logo, and a minimal text/voice command bar.
 
 Developer-only systems such as Life Signs, Scheduler, Spark, raw proof panels, graph internals, and candidate diagnostics remain available through Lab/Developer routes. They are not the normal user dashboard.
 
@@ -14,8 +14,9 @@ The orb uses a lightweight local splat-field renderer inspired by Cozystone/SPLA
 
 Current implementation:
 
-- renders deterministic Gaussian-like splat particles in the browser;
-- cycles through random object silhouettes on the default screen;
+- renders a Three.js point-cloud hologram in the browser;
+- morphs continuously through SPLATRA-style splat silhouettes;
+- keeps the visible screen nearly text-free;
 - keeps all animation client-side;
 - uses no microphone stream by default;
 - stores no raw audio;
@@ -40,7 +41,7 @@ The hologram supports these visible states:
 - `approval_needed`: amber ring.
 - `blocked`: red warning ring.
 
-The voice control is proof-only. It toggles a local UI demo and shows: "음성 입력은 아직 준비 중입니다. 텍스트 입력은 계속 사용할 수 있습니다." Text input remains the primary path.
+The voice control is proof-only. It toggles a local UI state and does not open a microphone stream. Text input remains the primary path.
 
 ## User-facing Vocabulary
 
