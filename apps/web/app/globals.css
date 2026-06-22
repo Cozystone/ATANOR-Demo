@@ -2836,6 +2836,338 @@ p {
   margin: 0;
 }
 
+.agora-surface {
+  background:
+    radial-gradient(circle at 18% 4%, rgba(239, 68, 68, 0.2), transparent 32%),
+    radial-gradient(circle at 82% 0%, rgba(34, 211, 238, 0.14), transparent 30%),
+    #050506;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  color: #f8fafc;
+  padding: 14px;
+}
+
+.agora-topbar,
+.agora-hero,
+.agora-stats,
+.agora-trending,
+.agora-post,
+.agora-side section,
+.agora-rooms {
+  background: rgba(14, 16, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.35);
+}
+
+.agora-topbar {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  min-height: 56px;
+  padding: 10px 12px;
+}
+
+.agora-wordmark {
+  display: grid;
+  gap: 2px;
+}
+
+.agora-wordmark span {
+  color: #fff;
+  font: 900 1rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.agora-wordmark small,
+.agora-profile,
+.agora-search input,
+.agora-agent-card small,
+.agora-post header small,
+.agora-room-card footer,
+.agora-stats span {
+  color: rgba(226, 232, 240, 0.62);
+  font: 700 0.74rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+.agora-search {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.agora-search svg {
+  color: rgba(255, 255, 255, 0.56);
+  flex: 0 0 auto;
+}
+
+.agora-search input {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  min-height: 38px;
+  min-width: 0;
+  outline: none;
+  width: 100%;
+}
+
+.agora-profile,
+.agora-kicker,
+.agora-instruction span,
+.agora-post footer span,
+.agora-side p,
+.agora-agent-card span {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.agora-profile {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 9px 12px;
+}
+
+.agora-hero {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+  min-height: 320px;
+  overflow: visible;
+  padding: clamp(18px, 3vw, 30px);
+  position: relative;
+}
+
+.agora-hero::after {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(249, 115, 22, 0.08), rgba(34, 211, 238, 0.14));
+  border-radius: 999px;
+  content: "";
+  filter: blur(20px);
+  height: 220px;
+  opacity: 0.78;
+  pointer-events: none;
+  position: absolute;
+  right: -72px;
+  top: -90px;
+  width: 320px;
+}
+
+.agora-hero-copy {
+  display: grid;
+  gap: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.agora-kicker,
+.agora-instruction span,
+.agora-agent-card span,
+.agora-post header span {
+  color: #fed7aa;
+  font: 850 0.72rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  text-transform: uppercase;
+}
+
+.agora-hero h2 {
+  color: #fff;
+  font: 900 clamp(2.2rem, 4.4vw, 4.5rem)/0.98 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: 0;
+  margin: 0;
+  max-width: 900px;
+}
+
+.agora-hero p,
+.agora-instruction p,
+.agora-post p,
+.agora-room-card p,
+.agora-agent-card p {
+  color: rgba(248, 250, 252, 0.72);
+  font: 650 0.94rem/1.58 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  margin: 0;
+}
+
+.agora-hero p {
+  max-width: 760px;
+}
+
+.agora-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.agora-cta-row button {
+  background: #f8fafc;
+  border: 0;
+  border-radius: 999px;
+  color: #09090b;
+  font: 900 0.86rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.agora-cta-row button[data-secondary="true"] {
+  background: rgba(255, 255, 255, 0.075);
+  color: #f8fafc;
+}
+
+.agora-instruction {
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.095);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.agora-instruction code {
+  background: rgba(0, 0, 0, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #bae6fd;
+  font: 750 0.82rem/1.45 "SFMono-Regular", Consolas, monospace;
+  overflow-wrap: anywhere;
+  padding: 12px;
+}
+
+.agora-stats {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.agora-stats div {
+  background: rgba(255, 255, 255, 0.026);
+  display: grid;
+  gap: 2px;
+  padding: 14px;
+}
+
+.agora-stats strong {
+  color: #fff;
+  font: 900 1.45rem Helvetica, Arial, sans-serif;
+}
+
+.agora-trending,
+.agora-rooms,
+.agora-feed,
+.agora-side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.agora-trending,
+.agora-rooms {
+  padding: 14px;
+}
+
+.agora-trending h3,
+.agora-feed h3,
+.agora-side h3,
+.agora-rooms h3 {
+  color: rgba(248, 250, 252, 0.84);
+  font: 900 0.86rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.agora-trending > div,
+.agora-rooms > div {
+  display: grid;
+  gap: 10px;
+}
+
+.agora-trending > div {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
+.agora-agent-card,
+.agora-room-card {
+  background: rgba(255, 255, 255, 0.046);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 13px;
+}
+
+.agora-agent-card strong,
+.agora-post h4,
+.agora-room-card strong {
+  color: #fff;
+  font: 900 1rem/1.24 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.agora-agent-card em {
+  color: #67e8f9;
+  font: 900 0.8rem Helvetica, Arial, sans-serif;
+  font-style: normal;
+}
+
+.agora-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.34fr);
+  min-width: 0;
+}
+
+.agora-post,
+.agora-side section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.agora-post header,
+.agora-post footer,
+.agora-room-card footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agora-post header span,
+.agora-post footer span,
+.agora-room-card footer span {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 999px;
+  padding: 6px 9px;
+}
+
+.agora-post footer span {
+  color: rgba(226, 232, 240, 0.72);
+  font: 750 0.74rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+.agora-side p {
+  color: rgba(226, 232, 240, 0.7);
+  font: 700 0.78rem/1.45 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  margin: 0;
+}
+
+.agora-rooms > div {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .atanor-atlas-grid {
   display: grid;
   gap: 12px;
@@ -7508,6 +7840,21 @@ p {
     grid-template-columns: repeat(3, minmax(170px, 1fr));
   }
 
+  .agora-topbar,
+  .agora-hero,
+  .agora-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agora-profile {
+    justify-self: start;
+  }
+
+  .agora-trending > div,
+  .agora-rooms > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .brain-connection-counts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7550,6 +7897,21 @@ p {
   .atlas-congress-trending > div,
   .brain-connection-counts {
     grid-template-columns: 1fr;
+  }
+
+  .agora-surface {
+    border-radius: 12px;
+    padding: 10px;
+  }
+
+  .agora-stats,
+  .agora-trending > div,
+  .agora-rooms > div {
+    grid-template-columns: 1fr;
+  }
+
+  .agora-hero h2 {
+    font-size: clamp(2rem, 13vw, 3.6rem);
   }
 
   .atlas-post-card,

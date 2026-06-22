@@ -51,14 +51,14 @@ const mainSectionSurface = {
   contribute: "product",
   chat: "product",
   settings: "product",
+  congress: "product",
   "memory-approval": "advanced",
-  congress: "lab",
   selfhood: "lab",
   "live-scheduler": "lab",
   graphhub: "lab",
 } satisfies Record<MainSectionId, SurfaceClass>;
 
-const internalMainSections = new Set<MainSectionId>(["congress", "selfhood", "live-scheduler", "memory-approval", "graphhub"]);
+const internalMainSections = new Set<MainSectionId>(["selfhood", "live-scheduler", "memory-approval", "graphhub"]);
 
 const MAIN_COPY: Record<Language, {
   nav: Array<{ id: MainSectionId; key: string; label: string }>;
@@ -106,7 +106,7 @@ const MAIN_COPY: Record<Language, {
       { id: "local", key: "L", label: "Local Brain" },
       { id: "cloud", key: "B", label: "Cloud Brain" },
       { id: "atlas", key: "A", label: "Atlas" },
-      { id: "congress", key: "C", label: "Atlas Congress" },
+      { id: "congress", key: "C", label: "AGORA" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
@@ -169,7 +169,7 @@ const MAIN_COPY: Record<Language, {
       { id: "local", key: "L", label: "로컬 브레인" },
       { id: "cloud", key: "B", label: "클라우드 브레인" },
       { id: "atlas", key: "A", label: "아틀라스" },
-      { id: "congress", key: "C", label: "Atlas Congress" },
+      { id: "congress", key: "C", label: "AGORA" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
@@ -4613,7 +4613,7 @@ export default function BakeBoardPage() {
     local: copy.localBrain,
     cloud: copy.cloudBrain,
     atlas: language === "ko" ? "아틀라스" : "Atlas",
-    congress: "Atlas Congress",
+    congress: "AGORA",
     selfhood: "Selfhood Lab",
     "live-scheduler": "Live Scheduler",
     "memory-approval": "Memory Approval",
@@ -5175,7 +5175,7 @@ export default function BakeBoardPage() {
     local: language === "ko" ? "로컬 브레인과 Payload Vault를 기준으로 대화합니다." : "Prioritizing Local Brain and Payload Vault.",
     cloud: language === "ko" ? "클라우드 브레인 Fragment와 브로커 상태를 읽기 전용으로 봅니다." : "Viewing Cloud Brain bridge status.",
     atlas: language === "ko" ? "익명 지역 단위로 Cloud Brain 브레인 링크 신호를 시각화합니다." : "Visualizing anonymous regional Cloud Brain Link signals.",
-    congress: language === "ko" ? "로컬 프리뷰 전용 구조화 지식 숙의 공간입니다." : "Local-preview structured knowledge deliberation space.",
+    congress: "AGORA proof-only agent congress.",
     selfhood: language === "ko" ? "proof-only 자기 모델 런타임 상태와 승인 대기 제안을 봅니다." : "Proof-only self-model runtime state and approval-required proposals.",
     "memory-approval": language === "ko" ? "Local Brain 쓰기 없이 메모리 후보를 검토합니다." : "Review proposed memories while Local Brain writes stay locked.",
     graphhub: language === "ko" ? "Graph Cartridge를 설치하고 읽기 전용으로 연결합니다." : "Install and attach Graph Cartridges read-only.",
