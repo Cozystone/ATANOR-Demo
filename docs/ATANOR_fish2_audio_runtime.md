@@ -2,6 +2,28 @@
 
 Status: dashboard playback contract, local runtime not bundled.
 
+Latest local install preflight: `2026-06-22 23:30 KST`.
+
+Verdict: `BLOCKED_NO_SAFE_ENV` / `BLOCKED_MODEL_MISSING`.
+
+The current ATANOR desktop environment is not a safe Fish 2 install target yet:
+
+- OS: Windows 11 host, WSL present.
+- Python: global Miniconda `3.13.12`, not a project venv or dedicated Fish env.
+- Torch: `2.11.0+cu128`, CUDA available.
+- GPU: NVIDIA GeForce RTX 5080, about `15.92 GiB` VRAM visible to PyTorch.
+- Fish packages: `fish_speech=false`, `fish_audio_sdk=false`,
+  `fishaudio=false`.
+- Model path: none of `ATANOR_FISH2_MODEL_DIR`, `ATANOR_FISH15_MODEL_DIR`, or
+  `FISH_SPEECH_MODEL_DIR` is configured.
+- Disk free: about `159.81 GiB`.
+
+Official Fish Audio S2 installation guidance expects Linux or WSL, Python 3.12
+Conda/UV setup, and about 24GB GPU memory for CUDA inference. Because this
+machine is currently running ATANOR through a global Windows Python 3.13
+environment and no local model path exists, this slice intentionally did not
+install Fish into global Python and did not download model weights.
+
 ATANOR's hologram orb can enter a visual `speaking` state before any real
 audio exists. The product must keep four states separate:
 
@@ -73,6 +95,17 @@ To enable real playback later, install a local Fish runtime outside the repo and
 configure a local model path such as `ATANOR_FISH2_MODEL_DIR` or
 `FISH_SPEECH_MODEL_DIR`. The concrete Fish synthesis API must then be wired to
 write only temporary ignored audio and return a browser-playable URL.
+
+Recommended safe install path for the next attempt:
+
+1. Create a dedicated Fish environment, preferably WSL/Ubuntu or a separate
+   Conda env, rather than using ATANOR's global Windows Python.
+2. Use the Fish Speech official source and Python 3.12-compatible install path.
+3. Place model weights outside the ATANOR repository, then set
+   `ATANOR_FISH2_MODEL_DIR`.
+4. Run one short Korean synthesis into an ignored temp/runtime directory.
+5. Only after that proof succeeds, wire the adapter to return
+   `audio_available=true` and a temporary browser-playable URL.
 
 ## Next Steps
 
