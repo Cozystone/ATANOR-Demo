@@ -7,6 +7,7 @@ import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import CloudBrainSphereScene, { type CloudBrainSphereStats } from "./CloudBrainSphereScene";
 import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode, type Rag3DVisualState } from "./Rag3DScene";
+import SelfhoodRuntimePanel from "./SelfhoodRuntimePanel";
 import { TauriUpdatePrompt } from "./TauriUpdatePrompt";
 
 type StageState = "idle" | "running" | "warning" | "complete";
@@ -17,7 +18,7 @@ type RightMode = "process" | "chat";
 type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
 type Language = "en" | "ko";
-type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "graphhub" | "contribute" | "chat" | "settings";
+type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "selfhood" | "graphhub" | "contribute" | "chat" | "settings";
 type GraphPresentationMode = "home_unified_overview" | "local_private_memory" | "cloud_world_knowledge" | "unified_projection";
 
 const mainNavIcon = {
@@ -27,6 +28,7 @@ const mainNavIcon = {
   cloud: Cloud,
   atlas: Globe2,
   congress: UsersRound,
+  selfhood: UserCircle,
   graphhub: Package,
   contribute: Share2,
   chat: MessageCircle,
@@ -80,6 +82,7 @@ const MAIN_COPY: Record<Language, {
       { id: "cloud", key: "B", label: "Cloud Brain" },
       { id: "atlas", key: "A", label: "Atlas" },
       { id: "congress", key: "C", label: "Atlas Congress" },
+      { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "graphhub", key: "H", label: "Graph Hub" },
       { id: "contribute", key: "P", label: "Brain Link" },
       { id: "settings", key: "S", label: "Settings" },
@@ -140,6 +143,7 @@ const MAIN_COPY: Record<Language, {
       { id: "cloud", key: "B", label: "클라우드 브레인" },
       { id: "atlas", key: "A", label: "아틀라스" },
       { id: "congress", key: "C", label: "Atlas Congress" },
+      { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "graphhub", key: "H", label: "Graph Hub" },
       { id: "contribute", key: "P", label: "브레인 링크" },
       { id: "settings", key: "S", label: "설정" },
@@ -1685,7 +1689,7 @@ export default function BakeBoardPage() {
       : "en";
     setLanguage(initialLanguage);
     const requestedSection = params.get("section");
-    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "graphhub", "contribute", "chat", "settings"];
+    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "selfhood", "graphhub", "contribute", "chat", "settings"];
     if (requestedSection && sectionIds.includes(requestedSection as MainSectionId)) {
       const nextSection = requestedSection as MainSectionId;
       setMainSection(nextSection);
@@ -4480,6 +4484,7 @@ export default function BakeBoardPage() {
     cloud: copy.cloudBrain,
     atlas: language === "ko" ? "아틀라스" : "Atlas",
     congress: "Atlas Congress",
+    selfhood: "Selfhood Lab",
     graphhub: "Graph Hub",
     contribute: language === "ko" ? "브레인 링크" : "Brain Link",
     chat: language === "ko" ? "채팅" : "Chat",
@@ -5038,6 +5043,7 @@ export default function BakeBoardPage() {
     cloud: language === "ko" ? "공용 Cloud Fragment와 브로커 상태를 읽기 전용으로 봅니다." : "Viewing Cloud Brain bridge status.",
     atlas: language === "ko" ? "익명 지역 단위로 Cloud Brain 브레인 링크 신호를 시각화합니다." : "Visualizing anonymous regional Cloud Brain Link signals.",
     congress: language === "ko" ? "로컬 프리뷰 전용 구조화 지식 숙의 공간입니다." : "Local-preview structured knowledge deliberation space.",
+    selfhood: language === "ko" ? "proof-only 자기 모델 런타임 상태와 승인 대기 제안을 봅니다." : "Proof-only self-model runtime state and approval-required proposals.",
     graphhub: language === "ko" ? "Graph Cartridge를 설치하고 읽기 전용으로 연결합니다." : "Install and attach Graph Cartridges read-only.",
     contribute: language === "ko" ? "유휴 자원을 안전하게 Cloud Brain 검증에 연결합니다." : "Link safe idle compute to the Cloud Brain.",
     chat: language === "ko" ? "로컬 브레인과 대화합니다." : "Chat with the Local Brain.",
@@ -5431,6 +5437,8 @@ export default function BakeBoardPage() {
           </section>
         ) : mainSection === "congress" ? (
           <AtlasCongressPanel language={language} />
+        ) : mainSection === "selfhood" ? (
+          <SelfhoodRuntimePanel language={language} />
         ) : mainSection === "graphhub" ? (
           <section className="atanor-graph-hub">
             <header className="atanor-graph-hub-hero">
