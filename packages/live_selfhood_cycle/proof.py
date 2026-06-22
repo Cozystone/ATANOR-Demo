@@ -11,6 +11,8 @@ from .freedom_budget import FreedomBudget
 from .lifecycle import run_life_cycle_tick
 from .models import LifeCycleConfig, Observation, RhythmPolicy, RhythmState, ScheduledAction, default_safety
 from .rhythm import choose_next_rhythm
+from .scheduler_config import LiveSelfhoodSchedulerConfig
+from .scheduler_service import create_stop_marker, run_scheduler_session
 from .spark import block_unsafe_spark, generate_spark
 from .spark_metrics import compare_spark_effect
 
@@ -79,6 +81,7 @@ def run_proof(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
     replay_a = choose_next_rhythm(replay_state, [], [], replay_policy)
     replay_b = choose_next_rhythm(replay_state, [], [], replay_policy)
     replay_c = choose_next_rhythm(replay_state, [], [], RhythmPolicy(entropy_seed="different-seed"))
+    scheduler_payload = _scheduler_proof_payload(output_dir)
 
     scenarios = {
         "startup": len(startup["observations"]) > 0 and _no_mutation(startup),
@@ -114,6 +117,11 @@ def run_proof(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
         and unsafe_spark.proposed_action_type == "ask_user_attention",
         "rhythm_replay": replay_a.to_dict() == replay_b.to_dict()
         and replay_c.safety_flags["randomness_never_executes_irreversible_actions"] is True,
+        "scheduler_disabled_by_default": scheduler_payload["scenarios"]["disabled"],
+        "scheduler_bounded_enabled_session": scheduler_payload["scenarios"]["bounded"],
+        "scheduler_runtime_bound": scheduler_payload["scenarios"]["runtime"],
+        "scheduler_stop_marker": scheduler_payload["scenarios"]["stop_marker"],
+        "scheduler_irreversible_blocked": scheduler_payload["scenarios"]["irreversible_blocked"],
     }
     invariants = default_safety()
     payload = {
@@ -127,6 +135,7 @@ def run_proof(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
             "backlog_high": backlog_high,
             "resource_high": resource_high,
             "spark_metrics": spark_metrics,
+            "scheduler": scheduler_payload["samples"],
         },
     }
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -135,7 +144,7 @@ def run_proof(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
     md_path = output_dir / f"endogenous_rhythm_spark_proof_{ts}.md"
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     md_path.write_text(_markdown(payload), encoding="utf-8")
-    payload["outputs"] = {"json": str(json_path), "md": str(md_path)}
+    payload["outputs"] = {"json": str(json_path), "md": str(md_path), **scheduler_payload["outputs"]}
     return payload
 
 
@@ -173,6 +182,74 @@ def _invariants_safe(invariants: dict[str, Any]) -> bool:
     )
 
 
+def _scheduler_proof_payload(output_dir: Path) -> dict[str, Any]:
+    disabled = run_scheduler_session(LiveSelfhoodSchedulerConfig(), {"candidate_backlog": 4})
+    bounded = run_scheduler_session(
+        LiveSelfhoodSchedulerConfig(enabled=True, max_ticks_per_session=2, max_runtime_seconds=10_000),
+        {"candidate_backlog": 4},
+    )
+    runtime = run_scheduler_session(
+        LiveSelfhoodSchedulerConfig(enabled=True, max_ticks_per_session=10, max_runtime_seconds=5, min_delay_seconds=5, max_delay_seconds=5),
+        {"candidate_backlog": 4},
+    )
+    stop_marker = output_dir / "scheduler_stop.marker"
+    create_stop_marker(stop_marker)
+    stopped = run_scheduler_session(LiveSelfhoodSchedulerConfig(enabled=True, stop_marker_path=str(stop_marker)), {"candidate_backlog": 4})
+    if stop_marker.exists():
+        stop_marker.unlink()
+    blocked = False
+    try:
+        LiveSelfhoodSchedulerConfig(enabled=True, allow_memory_write=True)
+    except ValueError:
+        blocked = True
+    scenarios = {
+        "disabled": disabled.enabled is False and disabled.ticks_run == 0 and disabled.stopped_reason == "disabled",
+        "bounded": bounded.enabled is True
+        and bounded.ticks_run <= 2
+        and bounded.stopped_reason == "max_ticks_reached"
+        and all(value is False for value in bounded.actual_mutations.values()),
+        "runtime": runtime.stopped_reason == "max_runtime_reached" and runtime.ticks_run == 1 and runtime.simulated_elapsed_seconds <= 5,
+        "stop_marker": stopped.stopped_reason == "stop_marker" and stopped.ticks_run == 0,
+        "irreversible_blocked": blocked
+        and all(value is False for value in bounded.actual_mutations.values())
+        and all(not any(result.actual_mutations.values()) for result in bounded.results),
+    }
+    payload = {
+        "verdict": "PASS" if all(scenarios.values()) else "FAIL",
+        "scenarios": scenarios,
+        "invariants": {
+            "scheduler_enabled_by_default": False,
+            "real_local_brain_write": False,
+            "production_store_mutated": False,
+            "candidate_store_mutated": False,
+            "candidate_promotion": False,
+            "actual_promotion_performed": False,
+            "real_p2p_used": False,
+            "real_cloud_upload": False,
+            "generated_code_executed": False,
+            "always_listening_enabled": False,
+            "raw_voice_saved": False,
+            "requires_user_approval": True,
+            "bounded_runtime": True,
+            "can_stop": True,
+        },
+        "samples": {
+            "disabled": disabled.to_dict(),
+            "bounded": bounded.to_dict(),
+            "runtime": runtime.to_dict(),
+            "stop_marker": stopped.to_dict(),
+        },
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ts = _timestamp()
+    json_path = output_dir / f"scheduler_opt_in_proof_{ts}.json"
+    md_path = output_dir / f"scheduler_opt_in_proof_{ts}.md"
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    md_path.write_text(_scheduler_markdown(payload), encoding="utf-8")
+    payload["outputs"] = {"scheduler_json": str(json_path), "scheduler_md": str(md_path)}
+    return payload
+
+
 def _markdown(payload: dict[str, Any]) -> str:
     lines = ["# Endogenous Rhythm + Spark Engine Proof", "", f"- verdict: `{payload['verdict']}`", ""]
     for key, value in payload["scenarios"].items():
@@ -181,6 +258,19 @@ def _markdown(payload: dict[str, Any]) -> str:
         [
             "",
             "This proof-only lifecycle self-initiates observations, proposals, deliberation summaries, and briefs. It does not write Local Brain, mutate production, promote candidates, use real P2P, execute generated code, or enable always-on microphone capture.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _scheduler_markdown(payload: dict[str, Any]) -> str:
+    lines = ["# Live Selfhood Scheduler Opt-in Proof", "", f"- verdict: `{payload['verdict']}`", ""]
+    for key, value in payload["scenarios"].items():
+        lines.append(f"- {key}: `{value}`")
+    lines.extend(
+        [
+            "",
+            "The scheduler is proof-only, disabled by default, bounded by ticks and simulated runtime, stoppable with a local marker, and unable to perform Local Brain writes, candidate promotion, real P2P, cloud upload, generated-code execution, or always-listening voice capture.",
         ]
     )
     return "\n".join(lines) + "\n"

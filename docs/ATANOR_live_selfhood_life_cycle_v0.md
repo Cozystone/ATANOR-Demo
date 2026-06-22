@@ -187,6 +187,52 @@ The action queue is non-mutating. Queue items may be proposed, waiting for user,
 approved for a future gate, rejected, deferred, or blocked. Even approved items
 have `can_apply_now=false`.
 
+## Opt-in Background Scheduler
+
+The Live Selfhood scheduler is a proof-only in-process session runner, not an
+OS daemon and not a startup task. Its default is:
+
+- `scheduler_enabled=false`
+
+When explicitly enabled for a local proof session, it repeatedly invokes the
+Life Cycle engine according to the endogenous rhythm decision from the previous
+tick. The next rhythm delay is simulated for tests and proofs; the scheduler
+does not sleep for long real intervals and does not launch a persistent process
+by default.
+
+Every scheduler session is bounded by:
+
+- `max_ticks_per_session`
+- `max_runtime_seconds`
+- `min_delay_seconds`
+- `max_delay_seconds`
+- a local stop marker
+
+The stop marker exists only as local proof support so a session can halt
+cleanly. This is the first graceful-stop mechanism; it is not an OS service or
+always-running agent.
+
+The scheduler cannot perform irreversible actions. It can only create
+observations, deliberation summaries, briefs, sparks, and reviewable proposals.
+It keeps these invariants fixed:
+
+- `real_local_brain_write=false`
+- `production_store_mutated=false`
+- `candidate_store_mutated=false`
+- `candidate_promotion=false`
+- `actual_promotion_performed=false`
+- `real_p2p_used=false`
+- `real_cloud_upload=false`
+- `generated_code_executed=false`
+- `always_listening_enabled=false`
+- `raw_voice_saved=false`
+- `requires_user_approval=true`
+
+The scheduler is therefore an adaptive rhythm loop with a freedom budget, not an
+uncontrolled agent. The freedom budget limits internal actions, sparks,
+deliberations, briefs, sandbox plans, and user-attention requests so autonomy
+cannot become spam or runaway execution.
+
 ## Briefs
 
 Morning briefs include:
@@ -263,8 +309,8 @@ That is functional autonomy, not a claim of real consciousness.
 ## Future Route
 
 - Live Selfhood Cycle Lab UI route
-- background service with explicit user opt-in
+- notification/event API for the opt-in scheduler
 - user-configurable autonomy level
-- notification system
+- real background service only after a separate user-approved gate
 - real memory gate after operator confirmation
 - real promotion apply after signed manifest and rollback
