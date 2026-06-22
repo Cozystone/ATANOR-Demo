@@ -18,55 +18,60 @@ type HologramVoiceOrbProps = {
   onCancel: () => void;
 };
 
-const PARTICLE_COUNT = 9600;
-const SHELL_PARTICLE_COUNT = 5200;
-const SHAPE_COUNT = 6;
-const COLOR_STOPS = [
-  new THREE.Color("#25f4ff"),
-  new THREE.Color("#42a8ff"),
-  new THREE.Color("#bf73ff"),
-  new THREE.Color("#ff64d8"),
+const RIBBON_PARTICLES = 24000;
+const SHELL_PARTICLES = 18000;
+const AURA_PARTICLES = 5200;
+const SHAPE_COUNT = 7;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const PALETTE = [
+  new THREE.Color("#20f4ff"),
+  new THREE.Color("#3aa8ff"),
+  new THREE.Color("#bd6dff"),
+  new THREE.Color("#ff4f9d"),
 ];
 
-function siriShapePoint(shape: number, t: number, seed: number): THREE.Vector3 {
-  const ribbon = Math.floor(seed * 3);
-  const phase = shape * 0.72 + ribbon * 2.05;
-  const angle = t * Math.PI * 2.45 + phase;
-  const band = (seed - Math.floor(seed * 3) / 3) * 3 - 0.5;
-  const radius = 1.05 + Math.sin(angle * 2.1 + shape) * 0.13;
-  const twist = Math.sin(t * Math.PI * 2 + phase) * 0.42;
-  const vertical = Math.sin(angle * 1.1 + phase) * (0.36 + ribbon * 0.035) + band * 0.16;
-  const x = Math.cos(angle + twist) * radius * (0.82 + ribbon * 0.045);
-  const z = Math.sin(angle + twist) * radius * (0.42 + ribbon * 0.08);
-  const y = vertical;
+function fract(value: number) {
+  return value - Math.floor(value);
+}
+
+function seeded(index: number, salt = 0) {
+  return fract(Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453123);
+}
+
+function siriRibbonPoint(shape: number, t: number, seed: number): THREE.Vector3 {
+  const band = Math.floor(seed * 4);
+  const local = fract(seed * 4);
+  const phase = shape * 0.58 + band * 1.72 + local * 0.8;
+  const angle = t * Math.PI * (2.2 + band * 0.18) + phase;
+  const ribbonWidth = (local - 0.5) * (0.26 + Math.sin(angle + shape) * 0.045);
+  const radius = 1.04 + Math.sin(angle * 1.7 + phase) * 0.2 + Math.cos(angle * 0.67 + shape) * 0.05;
+  const squash = 0.48 + band * 0.06;
+  const x = Math.cos(angle + Math.sin(angle * 0.73 + phase) * 0.32) * radius;
+  const z = Math.sin(angle + Math.cos(angle * 0.82 + phase) * 0.22) * radius * squash;
+  const y = Math.sin(angle * 1.05 + phase) * (0.48 - band * 0.035) + ribbonWidth;
   const point = new THREE.Vector3(x, y, z);
-  point.applyAxisAngle(new THREE.Vector3(0, 0, 1), -0.42 + ribbon * 0.34 + Math.sin(shape) * 0.06);
-  point.applyAxisAngle(new THREE.Vector3(1, 0, 0), 0.45 + ribbon * 0.2);
-  point.multiplyScalar(1.12);
+  point.applyAxisAngle(new THREE.Vector3(0, 0, 1), -0.58 + band * 0.34 + Math.sin(shape * 0.9) * 0.1);
+  point.applyAxisAngle(new THREE.Vector3(1, 0, 0), 0.38 + Math.cos(shape * 0.7) * 0.18);
+  point.multiplyScalar(1.08);
   return point;
 }
 
-function buildGeometry() {
-  const positions = new Float32Array(PARTICLE_COUNT * 3);
-  const morphs = Array.from({ length: SHAPE_COUNT }, () => new Float32Array(PARTICLE_COUNT * 3));
-  const colors = new Float32Array(PARTICLE_COUNT * 3);
-  const sizes = new Float32Array(PARTICLE_COUNT);
+function buildRibbonGeometry() {
+  const positions = new Float32Array(RIBBON_PARTICLES * 3);
+  const colors = new Float32Array(RIBBON_PARTICLES * 3);
+  const morphs = Array.from({ length: SHAPE_COUNT }, () => new Float32Array(RIBBON_PARTICLES * 3));
 
-  for (let i = 0; i < PARTICLE_COUNT; i += 1) {
-    const t = i / PARTICLE_COUNT;
-    const seed = (Math.sin(i * 12.9898) * 43758.5453) % 1;
-    const positiveSeed = seed < 0 ? seed + 1 : seed;
-    const ribbon = Math.floor(positiveSeed * 3);
-    const color = COLOR_STOPS[ribbon].clone();
-    color.lerp(COLOR_STOPS[ribbon + 1], 0.18 + positiveSeed * 0.28);
-
+  for (let i = 0; i < RIBBON_PARTICLES; i += 1) {
+    const t = i / RIBBON_PARTICLES;
+    const seed = seeded(i);
+    const band = Math.min(2, Math.floor(seed * 3));
+    const color = PALETTE[band].clone().lerp(PALETTE[band + 1], 0.18 + seeded(i, 4) * 0.32);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
-    sizes[i] = 0.014 + positiveSeed * 0.018;
 
     for (let shape = 0; shape < SHAPE_COUNT; shape += 1) {
-      const point = siriShapePoint(shape, t, positiveSeed);
+      const point = siriRibbonPoint(shape, t, seed);
       morphs[shape][i * 3] = point.x;
       morphs[shape][i * 3 + 1] = point.y;
       morphs[shape][i * 3 + 2] = point.z;
@@ -80,42 +85,66 @@ function buildGeometry() {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
   return { geometry, morphs };
 }
 
-function buildShellGeometry() {
-  const positions = new Float32Array(SHELL_PARTICLE_COUNT * 3);
-  const colors = new Float32Array(SHELL_PARTICLE_COUNT * 3);
-  const sizes = new Float32Array(SHELL_PARTICLE_COUNT);
-  const shellColor = new THREE.Color("#5ee7ff");
-  const rimColor = new THREE.Color("#8d7cff");
-  const golden = Math.PI * (3 - Math.sqrt(5));
+function buildShellGeometry(count: number, radius: number, opacityBias = 0) {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const rim = new THREE.Color("#5ee7ff");
+  const glass = new THREE.Color("#dcecff");
+  const violet = new THREE.Color("#6557ff");
 
-  for (let i = 0; i < SHELL_PARTICLE_COUNT; i += 1) {
-    const t = (i + 0.5) / SHELL_PARTICLE_COUNT;
-    const theta = i * golden;
+  for (let i = 0; i < count; i += 1) {
+    const t = (i + 0.5) / count;
+    const theta = i * GOLDEN_ANGLE;
     const y = 1 - 2 * t;
     const ring = Math.sqrt(Math.max(0, 1 - y * y));
-    const radius = 1.86 + Math.sin(theta * 2.1) * 0.012;
-    const x = Math.cos(theta) * ring * radius;
-    const z = Math.sin(theta) * ring * radius;
+    const wobble = Math.sin(theta * 1.7 + i * 0.003) * 0.01;
+    const r = radius + wobble;
+    const x = Math.cos(theta) * ring * r;
+    const z = Math.sin(theta) * ring * r;
     positions[i * 3] = x;
-    positions[i * 3 + 1] = y * radius;
+    positions[i * 3 + 1] = y * r;
     positions[i * 3 + 2] = z;
 
-    const edgeGlow = Math.pow(Math.abs(x) * 0.52 + Math.abs(y) * 0.2, 1.4);
-    const color = shellColor.clone().lerp(rimColor, Math.min(1, edgeGlow * 0.55));
+    const rimWeight = Math.min(1, Math.pow(Math.abs(x) / r, 2.2) + Math.pow(Math.abs(y) / r, 3) * 0.35 + opacityBias);
+    const color = glass.clone().lerp(rim, rimWeight * 0.65).lerp(violet, Math.max(0, z / r) * 0.22);
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
-    sizes[i] = 0.0045 + edgeGlow * 0.0065;
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+  return geometry;
+}
+
+function buildAuraGeometry() {
+  const positions = new Float32Array(AURA_PARTICLES * 3);
+  const colors = new Float32Array(AURA_PARTICLES * 3);
+  const cyan = new THREE.Color("#18e8ff");
+  const rose = new THREE.Color("#ff3d85");
+
+  for (let i = 0; i < AURA_PARTICLES; i += 1) {
+    const u = seeded(i, 2);
+    const v = seeded(i, 3);
+    const theta = Math.PI * 2 * u;
+    const phi = Math.acos(2 * v - 1);
+    const r = 1.96 + seeded(i, 8) * 0.5;
+    positions[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
+    positions[i * 3 + 1] = Math.cos(phi) * r;
+    positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
+    const color = cyan.clone().lerp(rose, seeded(i, 5) * 0.35);
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   return geometry;
 }
 
@@ -133,66 +162,86 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const activeHost = host;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-    camera.position.set(0, 0, 7);
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+    camera.position.set(0, 0, 7.2);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x000000, 0);
     activeHost.appendChild(renderer.domElement);
 
-    const { geometry, morphs } = buildGeometry();
-    const material = new THREE.PointsMaterial({
+    const root = new THREE.Group();
+    scene.add(root);
+
+    const auraGeometry = buildAuraGeometry();
+    const auraMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      opacity: 0.9,
-      size: 0.045,
+      opacity: 0.11,
+      size: 0.024,
       sizeAttenuation: true,
       transparent: true,
       vertexColors: true,
     });
-    const points = new THREE.Points(geometry, material);
-    scene.add(points);
+    const aura = new THREE.Points(auraGeometry, auraMaterial);
+    root.add(aura);
 
-    const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(1.92, 48, 32),
-      new THREE.MeshBasicMaterial({
-        color: new THREE.Color("#102a3c"),
-        opacity: 0.09,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    scene.add(glow);
-
-    const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(1.84, 96, 64),
-      new THREE.MeshBasicMaterial({
-        color: new THREE.Color("#4ec9ff"),
-        opacity: 0.055,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    );
-    scene.add(shell);
-
-    const shellGeometry = buildShellGeometry();
-    const shellParticleMaterial = new THREE.PointsMaterial({
+    const shellGeometry = buildShellGeometry(SHELL_PARTICLES, 1.82, 0.08);
+    const shellMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      opacity: 0.22,
-      size: 0.022,
+      opacity: 0.34,
+      size: 0.012,
       sizeAttenuation: true,
       transparent: true,
       vertexColors: true,
     });
-    const shellParticles = new THREE.Points(shellGeometry, shellParticleMaterial);
-    scene.add(shellParticles);
+    const shell = new THREE.Points(shellGeometry, shellMaterial);
+    root.add(shell);
+
+    const rimGeometry = buildShellGeometry(Math.floor(SHELL_PARTICLES * 0.42), 1.86, 0.2);
+    const rimMaterial = new THREE.PointsMaterial({
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.42,
+      size: 0.018,
+      sizeAttenuation: true,
+      transparent: true,
+      vertexColors: true,
+    });
+    const rim = new THREE.Points(rimGeometry, rimMaterial);
+    root.add(rim);
+
+    const { geometry: ribbonGeometry, morphs } = buildRibbonGeometry();
+    const ribbonMaterial = new THREE.PointsMaterial({
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.92,
+      size: 0.027,
+      sizeAttenuation: true,
+      transparent: true,
+      vertexColors: true,
+    });
+    const ribbons = new THREE.Points(ribbonGeometry, ribbonMaterial);
+    root.add(ribbons);
+
+    const coreGeometry = buildShellGeometry(1800, 0.16, 0.5);
+    const coreMaterial = new THREE.PointsMaterial({
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.72,
+      size: 0.042,
+      sizeAttenuation: true,
+      transparent: true,
+      vertexColors: true,
+    });
+    const core = new THREE.Points(coreGeometry, coreMaterial);
+    root.add(core);
 
     const clock = new THREE.Clock();
+    const targetRotation = { x: -0.08, y: 0.22 };
+    const currentRotation = { x: -0.08, y: 0.22 };
+    const pointer = { active: false, x: 0, y: 0, moved: false };
     let animationId = 0;
     let activeShape = 0;
     let nextShape = 1;
@@ -200,46 +249,101 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
 
     function resize() {
       const rect = activeHost.getBoundingClientRect();
-      const size = Math.max(280, Math.min(rect.width || 520, rect.height || 520));
-      renderer.setSize(size, size, false);
-      camera.aspect = 1;
+      const width = Math.max(320, rect.width || 900);
+      const height = Math.max(320, rect.height || 700);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.position.z = width > height ? 6.4 : 7.2;
       camera.updateProjectionMatrix();
     }
 
-    function renderFrame() {
-      const elapsed = clock.getElapsedTime();
-      if (elapsed - morphStart > 4.2) {
+    function updateRibbonMorph(elapsed: number) {
+      if (elapsed - morphStart > 4.4) {
         activeShape = nextShape;
         nextShape = (nextShape + 1 + Math.floor(elapsed) % (SHAPE_COUNT - 1)) % SHAPE_COUNT;
         if (nextShape === activeShape) nextShape = (nextShape + 1) % SHAPE_COUNT;
         morphStart = elapsed;
       }
 
-      const morphT = Math.min(1, Math.max(0, (elapsed - morphStart) / 1.65));
+      const morphT = Math.min(1, Math.max(0, (elapsed - morphStart) / 1.85));
       const ease = morphT * morphT * (3 - 2 * morphT);
-      const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+      const positions = ribbonGeometry.getAttribute("position") as THREE.BufferAttribute;
       const from = morphs[activeShape];
       const to = morphs[nextShape];
-      const pulse = stateRef.current === "listening" ? 1.08 : stateRef.current === "speaking" ? 1.12 : stateRef.current === "thinking" ? 1.06 : 1;
+      const state = stateRef.current;
+      const pulse = state === "listening" ? 1.08 : state === "speaking" ? 1.12 : state === "thinking" ? 1.055 : 1;
+      const fluid = Math.sin(elapsed * 1.6) * 0.028;
 
-      for (let i = 0; i < PARTICLE_COUNT * 3; i += 3) {
+      for (let i = 0; i < RIBBON_PARTICLES * 3; i += 3) {
+        const wave = Math.sin(elapsed * 1.35 + i * 0.0009) * fluid;
         positions.array[i] = (from[i] + (to[i] - from[i]) * ease) * pulse;
-        positions.array[i + 1] = (from[i + 1] + (to[i + 1] - from[i + 1]) * ease) * pulse;
+        positions.array[i + 1] = (from[i + 1] + (to[i + 1] - from[i + 1]) * ease + wave) * pulse;
         positions.array[i + 2] = (from[i + 2] + (to[i + 2] - from[i + 2]) * ease) * pulse;
       }
       positions.needsUpdate = true;
+    }
 
-      material.opacity = stateRef.current === "resting" ? 0.56 : stateRef.current === "blocked" ? 0.72 : 0.86;
-      points.rotation.y = elapsed * 0.28;
-      points.rotation.z = Math.sin(elapsed * 0.37) * 0.08;
-      glow.scale.setScalar(1 + Math.sin(elapsed * 1.15) * 0.025);
-      shell.rotation.y = elapsed * 0.08;
-      shell.rotation.x = Math.sin(elapsed * 0.31) * 0.035;
-      shellParticles.rotation.y = -elapsed * 0.04;
-      shellParticles.rotation.x = Math.sin(elapsed * 0.2) * 0.025;
+    function renderFrame() {
+      const elapsed = clock.getElapsedTime();
+      updateRibbonMorph(elapsed);
+
+      targetRotation.y += 0.0018;
+      currentRotation.x += (targetRotation.x - currentRotation.x) * 0.055;
+      currentRotation.y += (targetRotation.y - currentRotation.y) * 0.055;
+      root.rotation.x = currentRotation.x + Math.sin(elapsed * 0.23) * 0.025;
+      root.rotation.y = currentRotation.y;
+      root.rotation.z = Math.sin(elapsed * 0.31) * 0.05;
+
+      const breath = 1 + Math.sin(elapsed * 1.04) * 0.018;
+      root.scale.setScalar(breath);
+      ribbons.rotation.y = elapsed * 0.12;
+      shell.rotation.y = -elapsed * 0.035;
+      rim.rotation.y = elapsed * 0.052;
+      aura.rotation.y = -elapsed * 0.018;
+      core.rotation.y = elapsed * 0.4;
+
+      const state = stateRef.current;
+      ribbonMaterial.opacity = state === "resting" ? 0.62 : state === "blocked" ? 0.7 : 0.9;
+      shellMaterial.opacity = state === "thinking" ? 0.39 : 0.31;
+      auraMaterial.opacity = state === "listening" || state === "speaking" ? 0.17 : 0.1;
+
       renderer.render(scene, camera);
       animationId = window.requestAnimationFrame(renderFrame);
     }
+
+    function handlePointerDown(event: PointerEvent) {
+      pointer.active = true;
+      pointer.moved = false;
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      activeHost.setPointerCapture(event.pointerId);
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      if (!pointer.active) return;
+      const dx = event.clientX - pointer.x;
+      const dy = event.clientY - pointer.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) pointer.moved = true;
+      targetRotation.y += dx * 0.006;
+      targetRotation.x += dy * 0.004;
+      targetRotation.x = Math.max(-0.72, Math.min(0.72, targetRotation.x));
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      pointer.active = false;
+      try {
+        activeHost.releasePointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture can already be released by the browser.
+      }
+    }
+
+    activeHost.addEventListener("pointerdown", handlePointerDown);
+    activeHost.addEventListener("pointermove", handlePointerMove);
+    activeHost.addEventListener("pointerup", handlePointerUp);
+    activeHost.addEventListener("pointercancel", handlePointerUp);
 
     resize();
     renderFrame();
@@ -249,14 +353,20 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     return () => {
       window.cancelAnimationFrame(animationId);
       resizeObserver.disconnect();
-      geometry.dispose();
-      material.dispose();
-      glow.geometry.dispose();
-      (glow.material as THREE.Material).dispose();
-      shell.geometry.dispose();
-      (shell.material as THREE.Material).dispose();
+      activeHost.removeEventListener("pointerdown", handlePointerDown);
+      activeHost.removeEventListener("pointermove", handlePointerMove);
+      activeHost.removeEventListener("pointerup", handlePointerUp);
+      activeHost.removeEventListener("pointercancel", handlePointerUp);
+      ribbonGeometry.dispose();
+      ribbonMaterial.dispose();
       shellGeometry.dispose();
-      shellParticleMaterial.dispose();
+      shellMaterial.dispose();
+      rimGeometry.dispose();
+      rimMaterial.dispose();
+      auraGeometry.dispose();
+      auraMaterial.dispose();
+      coreGeometry.dispose();
+      coreMaterial.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -268,7 +378,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
       type="button"
       className="hologram-voice-orb"
       data-state={state}
-      aria-label="ATANOR hologram voice orb"
+      aria-label="ATANOR particle hologram"
       aria-pressed={state === "listening"}
       onClick={state === "listening" ? onCancel : onActivate}
     />
