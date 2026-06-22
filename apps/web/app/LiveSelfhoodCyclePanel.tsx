@@ -17,6 +17,31 @@ const needs = [
   ["memory_review_needed", "0.76", "Prepare memory approval queue."],
 ];
 
+const rhythm = {
+  mode: "curious",
+  energy: "0.78",
+  curiosity: "0.71",
+  uncertainty: "0.42",
+  backlogPressure: "0.64",
+  resourcePressure: "0.10",
+  nextDelay: "92 sec",
+  reason: "backlog + curiosity shortened the next tick",
+};
+
+const spark = {
+  type: "revisit_stale_candidate",
+  novelty: "0.82",
+  proposedAction: "prepare_promotion_review",
+  reason: "stale candidate exists; proposal only",
+};
+
+const budget = [
+  ["sparks_today", "3 / 12"],
+  ["attention_requests", "1 / 4"],
+  ["deliberations", "2 / 8"],
+  ["briefs", "1 / 6"],
+];
+
 const actions = [
   ["recommend_repo_hygiene", "waiting_user", "No cleanup performed."],
   ["prepare_promotion_review", "waiting_user", "No candidate promotion."],
@@ -48,6 +73,10 @@ const copy = {
     brief: "Morning Brief",
     safety: "Safety Gates",
     approvals: "Pending User Approvals",
+    rhythm: "Rhythm Mode",
+    spark: "Latest Spark",
+    budget: "Freedom Budget",
+    why: "Why I Woke / Rest",
   },
   ko: {
     eyebrow: "proof-only autonomous lifecycle",
@@ -62,6 +91,10 @@ const copy = {
     brief: "Morning Brief",
     safety: "Safety Gates",
     approvals: "Pending User Approvals",
+    rhythm: "Rhythm Mode",
+    spark: "Latest Spark",
+    budget: "Freedom Budget",
+    why: "Why I Woke / Rest",
   },
 } satisfies Record<Language, Record<string, string>>;
 
@@ -124,6 +157,34 @@ export default function LiveSelfhoodCyclePanel({ language }: { language: Languag
       </aside>
 
       <article style={styles.panel}>
+        <h3>{t.rhythm}</h3>
+        <div style={styles.grid}>
+          {[
+            ["mode", rhythm.mode],
+            ["energy", rhythm.energy],
+            ["curiosity", rhythm.curiosity],
+            ["uncertainty", rhythm.uncertainty],
+            ["backlog_pressure", rhythm.backlogPressure],
+            ["resource_pressure", rhythm.resourcePressure],
+            ["next_tick_delay", rhythm.nextDelay],
+          ].map(([label, value]) => (
+            <section key={label} style={styles.card}>
+              <span style={styles.muted}>{label}</span>
+              <strong style={{ display: "block", marginTop: 6 }}>{value}</strong>
+            </section>
+          ))}
+        </div>
+      </article>
+
+      <aside style={styles.panel}>
+        <h3>{t.spark}</h3>
+        <p style={styles.row}><span>type</span><strong>{spark.type}</strong></p>
+        <p style={styles.row}><span>novelty</span><strong>{spark.novelty}</strong></p>
+        <p style={styles.row}><span>action</span><strong>{spark.proposedAction}</strong></p>
+        <p style={styles.muted}>{spark.reason}</p>
+      </aside>
+
+      <article style={styles.panel}>
         <h3>{t.observations}</h3>
         <div style={styles.grid}>
           {observations.map(([name, status, detail]) => (
@@ -145,6 +206,24 @@ export default function LiveSelfhoodCyclePanel({ language }: { language: Languag
             <span style={styles.muted}>{reason}</span>
           </p>
         ))}
+      </aside>
+
+      <article style={styles.panel}>
+        <h3>{t.budget}</h3>
+        <div style={styles.grid}>
+          {budget.map(([label, value]) => (
+            <section key={label} style={styles.card}>
+              <span style={styles.muted}>{label}</span>
+              <strong style={{ display: "block", marginTop: 6 }}>{value}</strong>
+            </section>
+          ))}
+        </div>
+      </article>
+
+      <aside style={styles.panel}>
+        <h3>{t.why}</h3>
+        <p><strong>Why I woke</strong><br />{rhythm.reason}</p>
+        <p><strong>Why I am resting</strong><br />If resource pressure rises, next delay increases and spark generation pauses.</p>
       </aside>
 
       <article style={styles.panel}>

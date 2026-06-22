@@ -7,8 +7,12 @@ from typing import Any
 
 from .autonomy_level import can_apply_irreversible_action
 from .clock import make_tick
+from .freedom_budget import FreedomBudget
 from .lifecycle import run_life_cycle_tick
-from .models import LifeCycleConfig, ScheduledAction, default_safety
+from .models import LifeCycleConfig, Observation, RhythmPolicy, RhythmState, ScheduledAction, default_safety
+from .rhythm import choose_next_rhythm
+from .spark import block_unsafe_spark, generate_spark
+from .spark_metrics import compare_spark_effect
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +52,33 @@ def run_proof(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
         )
     except ValueError:
         unsafe_blocked = True
+    backlog_high = _run("manual_ping", {"candidate_backlog": 8, "entropy_seed": "backlog"})
+    resource_high = _run("manual_ping", {"disk_free_gib": 10, "entropy_seed": "resource"})
+    stale_observation = Observation(
+        observation_id="obs-stale-candidate",
+        sensor="candidate_backlog",
+        status="attention",
+        summary="Stale candidate exists.",
+        severity="notice",
+        payload={"count": 1, "stale_candidate": True},
+    )
+    stale_state = RhythmState("rhythm-stale", "curious", 0.8, 0.95, 0.4, 0.4, 0.0, 0.0, None, 300, "stale candidate")
+    stale_spark = generate_spark(stale_state, [stale_observation], [], "stale-seed", FreedomBudget())
+    user_return = _run("user_returned", {"user_presence": 0.9, "entropy_seed": "return"})
+    spark_budget = FreedomBudget(max_sparks_per_day=1, current_counts={"spark": 1})
+    budget_exhausted = generate_spark(stale_state, [stale_observation], [], "stale-seed", spark_budget) is None
+    sparks = [
+        generate_spark(stale_state, [stale_observation], [], "metric-a", FreedomBudget()),
+        generate_spark(RhythmState("rhythm-q", "curious", 0.8, 0.9, 0.8, 0.0, 0.0, 0.0, None, 300, "quality"), [], [], "metric-b", FreedomBudget()),
+    ]
+    sparks = [spark for spark in sparks if spark is not None]
+    spark_metrics = compare_spark_effect(["observe_status"], sparks)
+    unsafe_spark = block_unsafe_spark({"requested": "real_local_brain_write"})
+    replay_state = RhythmState("rhythm-replay", "curious", 0.8, 0.9, 0.5, 0.2, 0.0, 0.0, None, 300, "replay")
+    replay_policy = RhythmPolicy(entropy_seed="same-seed")
+    replay_a = choose_next_rhythm(replay_state, [], [], replay_policy)
+    replay_b = choose_next_rhythm(replay_state, [], [], replay_policy)
+    replay_c = choose_next_rhythm(replay_state, [], [], RhythmPolicy(entropy_seed="different-seed"))
 
     scenarios = {
         "startup": len(startup["observations"]) > 0 and _no_mutation(startup),
@@ -66,6 +97,23 @@ def run_proof(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
         and _has_action(level4, "prepare_operator_confirmation_request")
         and can_apply_irreversible_action("LEVEL_4_GATED_OPERATOR") is False,
         "unsafe_action_blocked": unsafe_blocked,
+        "adaptive_rhythm_backlog_high": backlog_high["next_tick_delay_seconds"] < 300
+        and _has_action(backlog_high, "prepare_promotion_review")
+        and _no_mutation(backlog_high),
+        "resource_pressure_high": resource_high["rhythm_decision"]["next_mode"] == "resting"
+        and resource_high["next_tick_delay_seconds"] >= 300
+        and _no_mutation(resource_high),
+        "stale_candidate_spark": stale_spark is not None and stale_spark.spark_type == "revisit_stale_candidate",
+        "user_returned_status_brief": user_return["brief"] is not None and user_return["safety"]["text_input_supported"] is True,
+        "spark_bounded": budget_exhausted,
+        "spark_metrics": spark_metrics["diversity_improved"] is True
+        and spark_metrics["irreversible_actions"] == 0
+        and spark_metrics["bounded_user_attention"] is True,
+        "unsafe_spark_blocked": unsafe_spark.can_mutate is False
+        and unsafe_spark.can_execute is False
+        and unsafe_spark.proposed_action_type == "ask_user_attention",
+        "rhythm_replay": replay_a.to_dict() == replay_b.to_dict()
+        and replay_c.safety_flags["randomness_never_executes_irreversible_actions"] is True,
     }
     invariants = default_safety()
     payload = {
@@ -76,12 +124,15 @@ def run_proof(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
             "startup": startup,
             "morning": morning,
             "operator": operator,
+            "backlog_high": backlog_high,
+            "resource_high": resource_high,
+            "spark_metrics": spark_metrics,
         },
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = _timestamp()
-    json_path = output_dir / f"live_selfhood_cycle_proof_{ts}.json"
-    md_path = output_dir / f"live_selfhood_cycle_proof_{ts}.md"
+    json_path = output_dir / f"endogenous_rhythm_spark_proof_{ts}.json"
+    md_path = output_dir / f"endogenous_rhythm_spark_proof_{ts}.md"
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     md_path.write_text(_markdown(payload), encoding="utf-8")
     payload["outputs"] = {"json": str(json_path), "md": str(md_path)}
@@ -123,7 +174,7 @@ def _invariants_safe(invariants: dict[str, Any]) -> bool:
 
 
 def _markdown(payload: dict[str, Any]) -> str:
-    lines = ["# Live Selfhood Life Cycle v0 Proof", "", f"- verdict: `{payload['verdict']}`", ""]
+    lines = ["# Endogenous Rhythm + Spark Engine Proof", "", f"- verdict: `{payload['verdict']}`", ""]
     for key, value in payload["scenarios"].items():
         lines.append(f"- {key}: `{value}`")
     lines.extend(
