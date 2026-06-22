@@ -39,9 +39,6 @@ export default function AtanorUserStatusCard({ language }: { language: Language 
 
   return (
     <section className="atanor-ai-dashboard" aria-label="ATANOR hologram dashboard">
-      <div className="atanor-hologram-logo" aria-label="ATANOR">
-        <span>ATANOR</span>
-      </div>
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceDemo} onCancel={cancelVoiceDemo} />
       </div>

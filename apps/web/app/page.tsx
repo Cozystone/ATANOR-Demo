@@ -103,8 +103,8 @@ const MAIN_COPY: Record<Language, {
   en: {
     nav: [
       { id: "home", key: "D", label: "Dashboard" },
-      { id: "local", key: "L", label: "Personal Memory" },
-      { id: "cloud", key: "B", label: "Shared Knowledge" },
+      { id: "local", key: "L", label: "Local Brain" },
+      { id: "cloud", key: "B", label: "Cloud Brain" },
       { id: "atlas", key: "A", label: "Atlas" },
       { id: "congress", key: "C", label: "Atlas Congress" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
@@ -132,8 +132,8 @@ const MAIN_COPY: Record<Language, {
     generating: "Generating",
     placeholder: "Ask ATANOR about the current memory graph...",
     sync: "Sync",
-    localBrain: "Personal Memory",
-    cloudBrain: "Shared Knowledge",
+    localBrain: "Local Brain",
+    cloudBrain: "Cloud Brain",
     learningEngine: "Learning Engine",
     generationEngine: "Generation Engine",
     fragmentSync: "Fragment Sync",
@@ -143,8 +143,8 @@ const MAIN_COPY: Record<Language, {
     ready: "Ready",
     synced: "Synced",
     graphSettled: "Graph settled",
-    localNode: "Personal Memory Node",
-    cloudNode: "Shared Knowledge Node",
+    localNode: "Local Brain Node",
+    cloudNode: "Cloud Brain Node",
     fragmentNode: "Cloud Fragment",
     graphHint: "Drag to rotate / Scroll to zoom / Click node to inspect",
     strongRelation: "Relation Strong",
@@ -166,8 +166,8 @@ const MAIN_COPY: Record<Language, {
   ko: {
     nav: [
       { id: "home", key: "D", label: "대시보드" },
-      { id: "local", key: "L", label: "개인 기억" },
-      { id: "cloud", key: "B", label: "공용 지식" },
+      { id: "local", key: "L", label: "로컬 브레인" },
+      { id: "cloud", key: "B", label: "클라우드 브레인" },
       { id: "atlas", key: "A", label: "아틀라스" },
       { id: "congress", key: "C", label: "Atlas Congress" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
@@ -193,10 +193,10 @@ const MAIN_COPY: Record<Language, {
     chatSubtitle: "로컬 그래프에 질문하세요. Ghost Shell과 Payload Vault 문맥을 읽어 답합니다.",
     send: "보내기",
     generating: "생성 중",
-    placeholder: "현재 로컬 메모리에 대해 질문하세요...",
+    placeholder: "현재 로컬 브레인에 대해 질문하세요...",
     sync: "동기화",
-    localBrain: "개인 기억",
-    cloudBrain: "공용 지식",
+    localBrain: "로컬 브레인",
+    cloudBrain: "클라우드 브레인",
     learningEngine: "학습 엔진",
     generationEngine: "생성 엔진",
     fragmentSync: "프래그먼트 동기화",
@@ -206,8 +206,8 @@ const MAIN_COPY: Record<Language, {
     ready: "준비됨",
     synced: "동기화됨",
     graphSettled: "그래프 안정화",
-    localNode: "개인 기억 노드",
-    cloudNode: "공용 지식 노드",
+    localNode: "로컬 브레인 노드",
+    cloudNode: "클라우드 브레인 노드",
     fragmentNode: "클라우드 프래그먼트",
     graphHint: "드래그 회전 / 스크롤 확대 / 노드 선택",
     strongRelation: "강한 관계",
@@ -234,8 +234,8 @@ const INITIAL_CHAT_PROMPT: Record<Language, string> = {
 };
 
 const INITIAL_ASSISTANT_MESSAGE: Record<Language, string> = {
-  en: "Ask ATANOR through the local memory graph. It resolves Ghost Shell paths, fetches Payload Vault context, and answers through the local generation layer.",
-  ko: "ATANOR에게 로컬 메모리를 기준으로 질문하세요. Ghost Shell 경로와 Payload Vault 문맥을 읽고 로컬 생성 계층에서 답변합니다.",
+  en: "Ask ATANOR through the Local Brain graph. It resolves Ghost Shell paths, fetches Payload Vault context, and answers through the local generation layer.",
+  ko: "ATANOR에게 로컬 브레인을 기준으로 질문하세요. Ghost Shell 경로와 Payload Vault 문맥을 읽고 로컬 생성 계층에서 답변합니다.",
 };
 
 const EFFECTIVE_MAIN_COPY: typeof MAIN_COPY = MAIN_COPY;
@@ -4332,14 +4332,14 @@ export default function BakeBoardPage() {
       return {
         graphTitle: language === "ko" ? "로컬 브레인 지식 그래프" : "Local Brain Knowledge Graph",
         graphSubtitle: language === "ko"
-          ? "개인 Ghost Shell과 Payload Vault 안에서만 탐색하고 답합니다."
-          : "Searches and answers only inside the private Ghost Shell and Payload Vault.",
+          ? "로컬 브레인과 Payload Vault 안에서만 탐색하고 답합니다."
+          : "Searches and answers only inside the Local Brain and Payload Vault.",
         localLabel: language === "ko" ? "로컬 브레인" : "Local Brain",
-        localDetail: language === "ko" ? "개인 메모리 / 프로젝트 문맥" : "Private Memory / Project Context",
+        localDetail: language === "ko" ? "로컬 브레인 / 프로젝트 문맥" : "Local Brain / Project Context",
         cloudLabel: language === "ko" ? "클라우드 비활성" : "Cloud Disabled",
         cloudDetail: language === "ko" ? "명시적으로 켜기 전까지 사용하지 않음" : "Not used unless explicitly enabled",
         centerLabel: "Local Anchor",
-        localNode: language === "ko" ? "개인 메모리" : "Private Memory",
+        localNode: language === "ko" ? "로컬 브레인" : "Local Brain",
         cloudNode: language === "ko" ? "비활성 Cloud" : "Disabled Cloud",
         fragmentNode: "Payload Vault",
       };
@@ -4348,7 +4348,7 @@ export default function BakeBoardPage() {
       return {
         graphTitle: language === "ko" ? "클라우드 브레인 지식 그래프" : "Cloud Brain Knowledge Graph",
         graphSubtitle: language === "ko"
-          ? "공용 온톨로지 후보와 public fragment 흐름을 읽기 전용으로 관찰합니다."
+          ? "클라우드 브레인 후보와 fragment 흐름을 읽기 전용으로 관찰합니다."
           : "Observes public ontology candidates and public fragment flow in read-only mode.",
         localLabel: language === "ko" ? "엣지 미러" : "Edge Mirror",
         localDetail: language === "ko" ? "읽기 전용 소비자" : "Read-only consumer",
@@ -4356,7 +4356,7 @@ export default function BakeBoardPage() {
         cloudDetail: "Public Ontology / World Knowledge",
         centerLabel: "Public Anchor",
         localNode: language === "ko" ? "엣지 미러" : "Edge Mirror",
-        cloudNode: language === "ko" ? "공용 지식 노드" : "Public Knowledge",
+        cloudNode: language === "ko" ? "클라우드 브레인 노드" : "Cloud Brain",
         fragmentNode: language === "ko" ? "실시간 Fragment" : "Live Fragment",
       };
     }
@@ -4471,7 +4471,7 @@ export default function BakeBoardPage() {
         ? String(activeAction).toUpperCase()
         : "Adaptive Local-Cloud Ratio";
   const activeTaskRouteText = graphPresentationMode === "local_private_memory"
-    ? (language === "ko" ? "Local private memory only" : "Local private memory only")
+    ? (language === "ko" ? "로컬 브레인 전용" : "Local Brain only")
     : graphPresentationMode === "cloud_world_knowledge"
       ? (language === "ko" ? "클라우드 브레인 뷰어 / 읽기 전용 proof store" : "Cloud Brain viewer / read-only proof store")
       : graphPresentationMode === "home_unified_overview" || graphPresentationMode === "unified_projection"
@@ -4556,7 +4556,7 @@ export default function BakeBoardPage() {
       : copy.chatTitle;
   let lowerPanelSubtitle = isCloudViewerSection
     ? (language === "ko"
-      ? "공용 온톨로지 후보를 읽기 전용으로 관찰합니다. 질문 생성은 로컬 브레인에서만 실행됩니다."
+      ? "클라우드 브레인 후보를 읽기 전용으로 관찰합니다. 질문 생성은 로컬 브레인에서만 실행됩니다."
       : "Read-only view of shared ontology candidates. Generative chat stays inside the Local Brain.")
     : isOntologyChatSection
       ? (language === "ko"
@@ -4576,7 +4576,7 @@ export default function BakeBoardPage() {
           ? "로컬 브레인 채팅"
           : copy.chatTitle;
     lowerPanelSubtitle = isCloudViewerSection
-      ? "공용 온톨로지 후보를 읽기 전용으로 관찰합니다. 질문 생성은 로컬 브레인에서만 실행됩니다."
+      ? "클라우드 브레인 후보를 읽기 전용으로 관찰합니다. 질문 생성은 로컬 브레인에서만 실행됩니다."
       : isOntologyChatSection
         ? "그래프를 보면서 활성 노드와 Payload Vault 문맥을 기준으로 질문합니다."
         : isLocalChatSection
@@ -4587,8 +4587,8 @@ export default function BakeBoardPage() {
     ? ["브레인 라우팅 설명", "관련 메모리 보기", "앵커는 어떻게 선택해?"]
     : ["Explain unified-brain routing", "Show related memories", "How are anchors selected?"];
   const localPromptChips = language === "ko"
-    ? ["내 로컬 메모리 구조 설명", "Payload Vault에는 뭐가 저장돼?", "최근 학습한 개념 보여줘"]
-    : ["Explain my local memory", "What is stored in Payload Vault?", "Show recently learned concepts"];
+    ? ["내 로컬 브레인 구조 설명", "Payload Vault에는 뭐가 저장돼?", "최근 학습한 개념 보여줘"]
+    : ["Explain my Local Brain", "What is stored in Payload Vault?", "Show recently learned concepts"];
   const activePromptChips = isLocalChatSection ? localPromptChips : ontologyPromptChips;
   const cloudViewerRows = [
     {
@@ -4609,7 +4609,7 @@ export default function BakeBoardPage() {
     },
   ];
   const localBrainLayerCatalog = [
-    { id: "local_user", label: language === "ko" ? "개인 로컬" : "Local User" },
+    { id: "local_user", label: language === "ko" ? "로컬 브레인" : "Local Brain" },
     { id: "working_memory_local", label: language === "ko" ? "작업 메모리" : "Working Memory" },
     { id: "local_base", label: language === "ko" ? "기본 지식" : "Base Brain" },
     { id: "seed", label: language === "ko" ? "시드 앵커" : "Seed" },
@@ -5090,8 +5090,8 @@ export default function BakeBoardPage() {
     "live-scheduler": "Inspect opt-in Live Selfhood scheduler bounds and safety locks.",
     home: language === "ko" ? "그래프, 런타임, 생성 상태를 한 화면에서 봅니다." : "Overview of graph, runtime, and generation state.",
     graph: language === "ko" ? "통합 온톨로지 그래프를 탐색합니다." : "3D ontology graph exploration mode.",
-    local: language === "ko" ? "로컬 기억과 Payload Vault를 기준으로 대화합니다." : "Prioritizing local memory and Payload Vault.",
-    cloud: language === "ko" ? "공용 Cloud Fragment와 브로커 상태를 읽기 전용으로 봅니다." : "Viewing Cloud Brain bridge status.",
+    local: language === "ko" ? "로컬 브레인과 Payload Vault를 기준으로 대화합니다." : "Prioritizing Local Brain and Payload Vault.",
+    cloud: language === "ko" ? "클라우드 브레인 Fragment와 브로커 상태를 읽기 전용으로 봅니다." : "Viewing Cloud Brain bridge status.",
     atlas: language === "ko" ? "익명 지역 단위로 Cloud Brain 브레인 링크 신호를 시각화합니다." : "Visualizing anonymous regional Cloud Brain Link signals.",
     congress: language === "ko" ? "로컬 프리뷰 전용 구조화 지식 숙의 공간입니다." : "Local-preview structured knowledge deliberation space.",
     selfhood: language === "ko" ? "proof-only 자기 모델 런타임 상태와 승인 대기 제안을 봅니다." : "Proof-only self-model runtime state and approval-required proposals.",
@@ -5103,7 +5103,7 @@ export default function BakeBoardPage() {
   };
 
   const visibleMainNav = copy.nav.filter((item) => mainSectionSurface[item.id] === "product");
-  const labMainNav = labSurfaceVisible ? copy.nav.filter((item) => mainSectionSurface[item.id] !== "product") : [];
+  const labMainNav: typeof copy.nav = [];
 
   function setMainLanguage(nextLanguage: Language) {
     setLanguage(nextLanguage);
@@ -5412,32 +5412,6 @@ export default function BakeBoardPage() {
         ) : null}
 
         {mainSection === "home" ? <AtanorUserStatusCard language={language} /> : null}
-
-        {mainSection === "local" || mainSection === "cloud" ? (
-          <BrainConnectionStatus
-            activeBrain={mainSection}
-            cloud={{
-              candidateAvailable: candidateOverlayAvailable,
-              candidateCaseFrames: Number(cloudCandidateStatus?.candidate_case_frames ?? 0),
-              concepts: semanticStoreConceptCount,
-              evidence: semanticCloudEvidence,
-              pending: mainSection === "cloud" && tabBrainGraphPending,
-              relations: semanticStoreRelationCount,
-              source: cloudProviderName,
-            }}
-            labMode={labSurfaceVisible}
-            language={language}
-            local={{
-              initialized: localBrainInitialized,
-              nodes: localBrainStatusNodeCount,
-              pending: mainSection === "local" && tabBrainGraphPending,
-              relations: localBrainStatusRelationCount,
-            }}
-            localBackendMessage={localBackendDisplay}
-            localBackendStatus={localBackendStatus}
-            localBackendUrl={localBackendUrl}
-          />
-        ) : null}
 
         {mainSection === "atlas" ? (
           <section className="atanor-atlas-grid">
@@ -6044,7 +6018,7 @@ export default function BakeBoardPage() {
               ) : (
                 <div className="atanor-local-chat-scope">
                   <span>{language === "ko" ? "로컬 전용" : "LOCAL ONLY"}</span>
-                  <strong>{language === "ko" ? "개인 Ghost Shell과 Payload Vault 안에서만 답변합니다." : "Answers only from private Ghost Shell and Payload Vault."}</strong>
+                  <strong>{language === "ko" ? "로컬 브레인과 Payload Vault 안에서만 답변합니다." : "Answers only from Local Brain and Payload Vault."}</strong>
                 </div>
               )}
               <div className="atanor-user-chat-scroll" ref={chatScrollRef}>
@@ -6251,6 +6225,32 @@ export default function BakeBoardPage() {
               </section>
             ) : null}
           </article>
+
+          {mainSection === "local" || mainSection === "cloud" ? (
+            <BrainConnectionStatus
+              activeBrain={mainSection}
+              cloud={{
+                candidateAvailable: candidateOverlayAvailable,
+                candidateCaseFrames: Number(cloudCandidateStatus?.candidate_case_frames ?? 0),
+                concepts: semanticStoreConceptCount,
+                evidence: semanticCloudEvidence,
+                pending: mainSection === "cloud" && tabBrainGraphPending,
+                relations: semanticStoreRelationCount,
+                source: cloudProviderName,
+              }}
+              labMode={labSurfaceVisible}
+              language={language}
+              local={{
+                initialized: localBrainInitialized,
+                nodes: localBrainStatusNodeCount,
+                pending: mainSection === "local" && tabBrainGraphPending,
+                relations: localBrainStatusRelationCount,
+              }}
+              localBackendMessage={localBackendDisplay}
+              localBackendStatus={localBackendStatus}
+              localBackendUrl={localBackendUrl}
+            />
+          ) : null}
 
           {showRightRail ? (
           <aside className="atanor-user-right-rail" data-variant={isOntologyChatSection ? "ontology" : isCloudViewerSection ? "cloud" : "default"}>
@@ -6815,8 +6815,8 @@ export default function BakeBoardPage() {
                 {semanticGrowthError ? <small className="atanor-cloud-growth-inline" data-error="true">{semanticGrowthError}</small> : null}
                 <p>
                   {language === "ko"
-                    ? "Cloud Brain은 현재 공용 후보와 proof store 상태를 관찰하는 읽기 전용 화면입니다. 질문 생성과 개인 메모리 검색은 로컬 브레인에서만 실행됩니다."
-                    : "Cloud Brain is an observation surface for shared knowledge candidates and edge sync. Answer generation and private memory search run only in Local Brain."}
+                    ? "Cloud Brain은 현재 클라우드 브레인 후보와 proof store 상태를 관찰하는 읽기 전용 화면입니다. 질문 생성과 로컬 브레인 검색은 로컬 브레인에서만 실행됩니다."
+                    : "Cloud Brain is an observation surface for Cloud Brain candidates and edge sync. Answer generation and Local Brain search run only in Local Brain."}
                 </p>
               </div>
             ) : (

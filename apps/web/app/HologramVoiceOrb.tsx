@@ -29,23 +29,16 @@ const COLOR_STOPS = [
 ];
 
 function siriShapePoint(shape: number, t: number, seed: number): THREE.Vector3 {
-  const lobe = Math.floor(t * 4);
-  const local = (t * 4) % 1;
-  const turn = local * Math.PI * 2;
-  const phase = shape * 0.62 + lobe * 1.57 + seed * 0.9;
-  const spread = 0.34 + seed * 0.28;
-  const centers = [
-    new THREE.Vector3(-0.46 + Math.sin(shape) * 0.1, 0.18, 0.15),
-    new THREE.Vector3(0.36, 0.34 + Math.cos(shape) * 0.08, -0.06),
-    new THREE.Vector3(0.18, -0.34, 0.18),
-    new THREE.Vector3(-0.2, -0.12, -0.28),
-  ];
-  const center = centers[lobe].clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), shape * 0.22);
-  const x = center.x + Math.cos(turn + phase) * spread * (1.25 + Math.sin(shape + lobe) * 0.18);
-  const y = center.y + Math.sin(turn * (1.28 + lobe * 0.08) + phase) * spread * 0.78;
-  const z = center.z + Math.sin(turn * 1.7 + phase) * spread * 0.72;
-  const sphericalPull = 0.82 + Math.sin(shape * 1.7 + seed * 4) * 0.08;
-  return new THREE.Vector3(x * sphericalPull, y * sphericalPull, z * sphericalPull);
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const theta = (t * PARTICLE_COUNT * golden + shape * 0.38) % (Math.PI * 2);
+  const y = 1 - 2 * t;
+  const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
+  const shell = 0.42 + Math.pow(seed, 0.36) * 0.92;
+  const ripple = 1 + Math.sin(theta * 3 + shape * 1.4) * 0.045 + Math.cos(y * 9 + shape) * 0.035;
+  const x = Math.cos(theta) * radiusAtY * shell * ripple;
+  const z = Math.sin(theta) * radiusAtY * shell * ripple;
+  const yy = y * shell * (0.96 + Math.sin(theta * 2 + shape) * 0.035);
+  return new THREE.Vector3(x, yy, z);
 }
 
 function buildGeometry() {
