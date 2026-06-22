@@ -21,6 +21,10 @@ def test_status_is_proof_only_and_external_models_disabled() -> None:
     assert payload["hermes_runtime_executed"] is False
     assert payload["hermes_code_copied"] is False
     assert payload["modules"]["splatra_cosmos_cell"] == "available"
+    assert payload["modules"]["browser_read"] == "proof_only"
+    assert payload["modules"]["mcp_allowlist_gateway"] == "proof_only"
+    assert payload["modules"]["splatra_evaluator"] == "proof_only"
+    assert payload["tool_gateway_phase1"]["browser_read"]["browser_automation"] is False
 
 
 def test_action_validation_accepts_safe_dashboard_action() -> None:
@@ -89,3 +93,65 @@ def test_hermes_intake_status_never_executes_runtime() -> None:
 
     assert payload["hermes_runtime_executed"] is False
     assert payload["hermes_code_copied"] is False
+
+
+def test_browser_read_api_reads_public_snapshot_only() -> None:
+    payload = _client().post(
+        "/api/agentic-os/browser-read",
+        json={
+            "url": "http://127.0.0.1:3041/?section=agent-os",
+            "visible_text": "Agentic Micro-OS proof-only status",
+        },
+    ).json()
+
+    assert payload["allowed"] is True
+    assert payload["browser_automation"] is False
+    assert payload["arbitrary_js_eval"] is False
+    assert payload["observation"]["metadata"]["fetched"] is False
+
+
+def test_browser_read_api_rejects_private_payload() -> None:
+    payload = _client().post(
+        "/api/agentic-os/browser-read",
+        json={
+            "url": "http://127.0.0.1:3041",
+            "visible_text": "raw_private_memory should be blocked",
+        },
+    ).json()
+
+    assert payload["allowed"] is False
+    assert "private" in payload["denied_reason"]
+    assert payload["external_llm"] is False
+
+
+def test_mcp_allowlist_api_validates_without_real_mcp_call() -> None:
+    payload = _client().post("/api/agentic-os/mcp/validate", json={}).json()
+
+    assert payload["allowed"] is True
+    assert payload["real_mcp_called"] is False
+    assert payload["production_store_mutated"] is False
+    assert payload["candidate_promotion"] is False
+
+
+def test_mcp_allowlist_api_rejects_mutation() -> None:
+    payload = _client().post(
+        "/api/agentic-os/mcp/validate",
+        json={"descriptor": "render_preview", "method": "delete", "payload": {"scene": "orb"}},
+    ).json()
+
+    assert payload["allowed"] is False
+    assert "method" in payload["reason"]
+
+
+def test_splatra_evaluator_api_is_proposal_only() -> None:
+    payload = _client().post(
+        "/api/agentic-os/splatra/evaluate",
+        json={"candidate_id": "orb_candidate", "particle_budget": 50000, "target_fps": 60},
+    ).json()
+
+    assert payload["allowed"] is True
+    assert payload["patch_applied"] is False
+    assert payload["generated_code_executed"] is False
+    assert payload["local_brain_write"] is False
+    assert payload["production_store_mutated"] is False
+    assert payload["metrics"]["particle_budget_ok"] is True

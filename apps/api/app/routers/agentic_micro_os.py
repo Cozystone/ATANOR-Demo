@@ -9,8 +9,11 @@ from pydantic import BaseModel, Field
 
 from packages.agentic_micro_os.action_bus import DashboardActionBus
 from packages.agentic_micro_os.brain_access import BrainAccessRequest, BrainAccessRoad
+from packages.agentic_micro_os.browser_read import BrowserReadConnector, BrowserReadRequest
 from packages.agentic_micro_os.capabilities import CapabilityKernel
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
+from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
+from packages.agentic_micro_os.splatra_evaluator import SplatraCosmosEvaluator, SplatraEvaluationRequest
 from packages.hermes_intake.scanner import scan_repo
 
 
@@ -28,7 +31,9 @@ SAFETY_FLAGS = {
     "external_llm": False,
     "external_sllm": False,
     "local_brain_direct_write": False,
+    "local_brain_write": False,
     "production_store_direct_write": False,
+    "production_store_mutated": False,
     "candidate_promotion": False,
     "unrestricted_shell": False,
     "arbitrary_js_eval": False,
@@ -46,6 +51,9 @@ MODULE_STATUS = {
     "tool_gateway": "mock_only",
     "mcp_gateway_mock": "available",
     "browser_gateway_mock": "available",
+    "browser_read": "proof_only",
+    "mcp_allowlist_gateway": "proof_only",
+    "splatra_evaluator": "proof_only",
     "cloud_gateway_mock": "available",
     "hermes_intake": "architecture_extracted",
 }
@@ -71,11 +79,41 @@ class LoopProposeRequest(BaseModel):
     max_cycles: int = 1
 
 
+class BrowserReadApiRequest(BaseModel):
+    url: str = "http://127.0.0.1:3041/?section=agent-os"
+    visible_text: str = "Agentic Micro-OS proof-only status"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    max_chars: int = 1200
+
+
+class MCPValidateApiRequest(BaseModel):
+    descriptor: str = "render_preview"
+    descriptor_hash: str | None = None
+    method: str = "render_preview"
+    payload: dict[str, Any] = Field(default_factory=lambda: {"scene": "orb"})
+
+
+class SplatraEvaluateApiRequest(BaseModel):
+    candidate_id: str = "splatra_candidate_0"
+    particle_budget: int = 50_000
+    target_fps: int = 60
+    include_city_proof: bool = False
+    emotion_probe: dict[str, float] = Field(default_factory=lambda: {"valence": 0.2, "arousal": 0.6, "audio_energy": 0.0})
+
+
 @router.get("/status")
 def status() -> dict[str, Any]:
+    browser = BrowserReadConnector()
+    mcp = MCPAllowlistGateway()
+    splatra = SplatraCosmosEvaluator()
     return {
         **SAFETY_FLAGS,
         "modules": MODULE_STATUS,
+        "tool_gateway_phase1": {
+            "browser_read": browser.status(),
+            "mcp_allowlist": mcp.status(),
+            "splatra_evaluator": splatra.status(),
+        },
         "blocked_actions": [
             "unrestricted_shell",
             "arbitrary_js_eval",
@@ -86,6 +124,67 @@ def status() -> dict[str, Any]:
             "auto_push",
         ],
     }
+
+
+@router.get("/browser-read/status")
+def browser_read_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **BrowserReadConnector().status()}
+
+
+@router.post("/browser-read")
+def browser_read(request: BrowserReadApiRequest) -> dict[str, Any]:
+    kernel = CapabilityKernel()
+    token = kernel.issue("browser_read", reason="agentic-os browser-read proof")
+    result = BrowserReadConnector(kernel=kernel).read(
+        BrowserReadRequest(
+            url=request.url,
+            visible_text=request.visible_text,
+            metadata=request.metadata,
+            max_chars=request.max_chars,
+        ),
+        token,
+    )
+    return {**SAFETY_FLAGS, **result.to_dict()}
+
+
+@router.get("/mcp/status")
+def mcp_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **MCPAllowlistGateway().status()}
+
+
+@router.post("/mcp/validate")
+def mcp_validate(request: MCPValidateApiRequest) -> dict[str, Any]:
+    kernel = CapabilityKernel()
+    token = kernel.issue("mcp_allowlist_validate", reason="agentic-os MCP allowlist proof")
+    descriptors = default_descriptors()
+    descriptor_hash = request.descriptor_hash or descriptors.get(request.descriptor, descriptors["render_preview"]).descriptor_hash
+    result = MCPAllowlistGateway(descriptors=descriptors, kernel=kernel).validate(
+        MCPValidationRequest(
+            descriptor=request.descriptor,
+            descriptor_hash=descriptor_hash,
+            method=request.method,
+            payload=request.payload,
+        ),
+        token,
+    )
+    return {**SAFETY_FLAGS, **result.to_dict()}
+
+
+@router.post("/splatra/evaluate")
+def splatra_evaluate(request: SplatraEvaluateApiRequest) -> dict[str, Any]:
+    kernel = CapabilityKernel()
+    token = kernel.issue("splatra_cosmos_evaluate", reason="agentic-os SPLATRA evaluator proof")
+    result = SplatraCosmosEvaluator(kernel=kernel).evaluate(
+        SplatraEvaluationRequest(
+            candidate_id=request.candidate_id,
+            particle_budget=request.particle_budget,
+            target_fps=request.target_fps,
+            include_city_proof=request.include_city_proof,
+            emotion_probe=request.emotion_probe,
+        ),
+        token,
+    )
+    return {**SAFETY_FLAGS, **result.to_dict()}
 
 
 @router.post("/action/validate")

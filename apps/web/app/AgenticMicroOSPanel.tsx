@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type Language = "en" | "ko";
 type AnyRecord = Record<string, any>;
+type SmokeKey = "dashboard" | "browser" | "mcp" | "splatra";
 
 type Props = {
   language: Language;
@@ -17,9 +18,9 @@ const moduleLabels = [
   ["splatra_cosmos_cell", "SPLATRA Cosmos Cell"],
   ["dashboard_action_bus", "Dashboard Action Bus"],
   ["tool_gateway", "Tool Gateway"],
-  ["mcp_gateway_mock", "MCP Gateway"],
-  ["browser_gateway_mock", "Browser Gateway"],
-  ["cloud_gateway_mock", "Cloud Gateway"],
+  ["browser_read", "Browser Read"],
+  ["mcp_allowlist_gateway", "MCP Allowlist"],
+  ["splatra_evaluator", "SPLATRA Evaluator"],
   ["hermes_intake", "Hermes Intake"],
 ] as const;
 
@@ -32,9 +33,21 @@ async function jsonFetch(baseUrl: string, path: string, init?: RequestInit): Pro
   return response.json();
 }
 
+function ResultLine({ result }: { result: AnyRecord | null }) {
+  if (!result) return <p>idle</p>;
+  const accepted = result.allowed === true || result.status === "read_public_snapshot" || result.status === "evaluated";
+  const reason = result.reason || result.denied_reason || result.decision || result.status;
+  return <p>{accepted ? "accepted" : "rejected"}{reason ? ` · ${reason}` : ""}</p>;
+}
+
 export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props) {
   const [status, setStatus] = useState<AnyRecord | null>(null);
-  const [validation, setValidation] = useState<AnyRecord | null>(null);
+  const [results, setResults] = useState<Record<SmokeKey, AnyRecord | null>>({
+    dashboard: null,
+    browser: null,
+    mcp: null,
+    splatra: null,
+  });
 
   useEffect(() => {
     jsonFetch(localBackendUrl, "/api/agentic-os/status").then(setStatus).catch(() => setStatus({ error: "local_backend_unavailable" }));
@@ -45,41 +58,57 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     return list.length ? list : ["unrestricted_shell", "arbitrary_js_eval", "local_brain_direct_write", "production_store_direct_write", "auto_commit", "auto_push"];
   }, [status]);
 
-  async function validateThinkingAction() {
-    const result = await jsonFetch(localBackendUrl, "/api/agentic-os/action/validate", {
+  async function runSmoke(key: SmokeKey, path: string, body: AnyRecord) {
+    const result = await jsonFetch(localBackendUrl, path, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action_type: "set_orb_state", payload: { state: "thinking" } }),
+      body: JSON.stringify(body),
     }).catch((error) => ({ allowed: false, reason: String(error) }));
-    setValidation(result);
+    setResults((current) => ({ ...current, [key]: result }));
   }
 
   const t = language === "ko"
     ? {
       title: "Agentic Micro-OS",
-      subtitle: "증명 전용 상태 표면입니다. 실제 Hermes 실행, MCP, 브라우저 자동화, 셸, 기억 쓰기는 꺼져 있습니다.",
+      subtitle: "증명 전용 도구 게이트웨이입니다. 브라우저 읽기, MCP 검증, SPLATRA 평가는 허용되지만 실행 권한과 기억 변경은 차단됩니다.",
       proof: "proof-only",
       modules: "모듈 상태",
       blocked: "차단된 동작",
-      validate: "Dashboard Action Bus 검사",
-      smoke: "set_orb_state(\"thinking\") 검증",
-      accepted: "accepted",
-      rejected: "rejected",
-      boundaryA: "에이전트는 SPLATRA Cosmos Cell 안에서만 자유롭게 실험합니다.",
-      boundaryB: "Local Brain과 Cloud Brain은 승인된 접근 경로로만 연결됩니다.",
+      dashboard: "Dashboard Action Bus",
+      browser: "Browser Read",
+      mcp: "MCP Allowlist",
+      splatra: "SPLATRA Evaluator",
+      safety: "Safety Contract",
+      dashboardSmoke: "set_orb_state 검증",
+      browserSmoke: "공개 화면 스냅샷 읽기",
+      mcpSmoke: "MCP descriptor 검증",
+      splatraSmoke: "Cosmos 후보 평가",
+      browserText: "이미 보이는 public 텍스트만 요약합니다. 브라우저 자동조작과 JS 실행은 없습니다.",
+      mcpText: "descriptor hash, method, private payload 여부만 검사합니다. 실제 MCP 서버는 호출하지 않습니다.",
+      splatraText: "SPLATRA 후보를 점수화하지만 패치 적용이나 생성 코드 실행은 하지 않습니다.",
+      boundaryA: "Local Brain, Cloud Brain, 후보 승격은 승인 게이트 밖에서 실행되지 않습니다.",
+      boundaryB: "외부 LLM/sLLM, Hermes runtime, 임의 shell, 임의 JS는 비활성입니다.",
     }
     : {
       title: "Agentic Micro-OS",
-      subtitle: "Proof-only status surface. Real Hermes runtime, MCP, browser automation, shell, and memory writes are disabled.",
+      subtitle: "Proof-only tool gateway. Browser read, MCP validation, and SPLATRA evaluation are available, while execution and memory mutation stay blocked.",
       proof: "proof-only",
       modules: "Module Status",
       blocked: "Blocked Actions",
-      validate: "Dashboard Action Bus Check",
-      smoke: "Validate set_orb_state(\"thinking\")",
-      accepted: "accepted",
-      rejected: "rejected",
-      boundaryA: "The agent can explore freely only inside the SPLATRA Cosmos Cell.",
-      boundaryB: "Local Brain and Cloud Brain connect only through approved access roads.",
+      dashboard: "Dashboard Action Bus",
+      browser: "Browser Read",
+      mcp: "MCP Allowlist",
+      splatra: "SPLATRA Evaluator",
+      safety: "Safety Contract",
+      dashboardSmoke: "Validate set_orb_state",
+      browserSmoke: "Read public screen snapshot",
+      mcpSmoke: "Validate MCP descriptor",
+      splatraSmoke: "Evaluate Cosmos candidate",
+      browserText: "Summarizes only caller-provided public visible text. No browser automation or JavaScript execution.",
+      mcpText: "Checks descriptor hash, method, and private payload boundaries. No real MCP server is called.",
+      splatraText: "Scores SPLATRA candidates without applying patches or executing generated code.",
+      boundaryA: "Local Brain, Cloud Brain, and candidate promotion are never mutated outside approval gates.",
+      boundaryB: "External LLM/sLLM, Hermes runtime, unrestricted shell, and arbitrary JavaScript stay disabled.",
     };
 
   return (
@@ -114,23 +143,49 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
         </article>
 
         <article className="agentic-os-card">
-          <h3>{t.validate}</h3>
-          <button type="button" className="agentic-os-action" onClick={() => validateThinkingAction()}>
-            {t.smoke}
+          <h3>{t.dashboard}</h3>
+          <button type="button" className="agentic-os-action" onClick={() => runSmoke("dashboard", "/api/agentic-os/action/validate", { action_type: "set_orb_state", payload: { state: "thinking" } })}>
+            {t.dashboardSmoke}
           </button>
-          <p>
-            {validation ? (validation.allowed ? t.accepted : t.rejected) : "idle"}
-            {validation?.reason ? ` · ${validation.reason}` : ""}
-          </p>
+          <ResultLine result={results.dashboard} />
         </article>
 
         <article className="agentic-os-card">
-          <h3>Safety Contract</h3>
+          <h3>{t.browser}</h3>
+          <p>{t.browserText}</p>
+          <button type="button" className="agentic-os-action" onClick={() => runSmoke("browser", "/api/agentic-os/browser-read", { url: "http://127.0.0.1:3041/?section=agent-os", visible_text: "Agentic Micro-OS proof-only visible status" })}>
+            {t.browserSmoke}
+          </button>
+          <ResultLine result={results.browser} />
+        </article>
+
+        <article className="agentic-os-card">
+          <h3>{t.mcp}</h3>
+          <p>{t.mcpText}</p>
+          <button type="button" className="agentic-os-action" onClick={() => runSmoke("mcp", "/api/agentic-os/mcp/validate", { descriptor: "render_preview", method: "render_preview", payload: { scene: "orb" } })}>
+            {t.mcpSmoke}
+          </button>
+          <ResultLine result={results.mcp} />
+        </article>
+
+        <article className="agentic-os-card">
+          <h3>{t.splatra}</h3>
+          <p>{t.splatraText}</p>
+          <button type="button" className="agentic-os-action" onClick={() => runSmoke("splatra", "/api/agentic-os/splatra/evaluate", { candidate_id: "orb_candidate", particle_budget: 50000, target_fps: 60 })}>
+            {t.splatraSmoke}
+          </button>
+          <ResultLine result={results.splatra} />
+        </article>
+
+        <article className="agentic-os-card">
+          <h3>{t.safety}</h3>
           <p>{t.boundaryA}</p>
           <p>{t.boundaryB}</p>
           <div className="agentic-os-flags">
             <span>external_llm={String(status?.external_llm ?? false)}</span>
-            <span>hermes_runtime_executed={String(status?.hermes_runtime_executed ?? false)}</span>
+            <span>external_sllm={String(status?.external_sllm ?? false)}</span>
+            <span>local_brain_write={String(status?.local_brain_write ?? false)}</span>
+            <span>production_store_mutated={String(status?.production_store_mutated ?? false)}</span>
             <span>auto_push={String(status?.auto_push ?? false)}</span>
           </div>
         </article>
