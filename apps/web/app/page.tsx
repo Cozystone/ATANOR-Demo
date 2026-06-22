@@ -3168,10 +3168,7 @@ export default function BakeBoardPage() {
   function handleHologramMessage(message: string): boolean {
     const uiCommand = resolveAtanorUiCommand(message);
     if (!uiCommand) {
-      setChatInput(message);
-      window.setTimeout(() => openMainSection("local"), 120);
-      setSignalTraceText(language === "ko" ? "\uB85C\uCEEC \uBE0C\uB808\uC778 \uB300\uD654 \uC900\uBE44" : "Preparing Local Brain chat");
-      return true;
+      return false;
     }
     setChatMessages((messages) => [
       ...messages,

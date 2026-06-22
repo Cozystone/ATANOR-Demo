@@ -11,6 +11,16 @@ type AtanorUserStatusCardProps = {
   onMessageSubmit?: (message: string) => boolean;
 };
 
+const validOrbStates = new Set<HologramVoiceOrbState>([
+  "idle",
+  "listening",
+  "thinking",
+  "speaking",
+  "resting",
+  "approval_needed",
+  "blocked",
+]);
+
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
@@ -36,14 +46,33 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setOrbState("resting");
   }
 
-  function submitMessage(event: FormEvent<HTMLFormElement>) {
+  async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = message.trim();
-    if (trimmed && onMessageSubmit?.(trimmed)) {
+    if (!trimmed) return;
+
+    if (onMessageSubmit?.(trimmed)) {
       setMessage("");
+      return;
     }
+
     setOrbState("thinking");
-    window.setTimeout(() => setOrbState("resting"), 1800);
+    try {
+      const response = await fetch("/api/selfhood/thought-dry-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: trimmed, language }),
+      });
+      if (!response.ok) throw new Error(`thought dry-run failed: ${response.status}`);
+      const payload = await response.json();
+      const nextState = String(payload?.orb_state ?? "");
+      setOrbState(validOrbStates.has(nextState as HologramVoiceOrbState) ? nextState as HologramVoiceOrbState : "speaking");
+      setMessage("");
+      window.setTimeout(() => setOrbState("resting"), 2600);
+    } catch {
+      setOrbState("blocked");
+      window.setTimeout(() => setOrbState("resting"), 2400);
+    }
   }
 
   return (
