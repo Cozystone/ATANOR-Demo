@@ -42,9 +42,41 @@ shape a generated utterance.
 - `packages/cgsr/cgsr/conversation_surface.py`
   Keeps the stable API used by the FastAPI chat route.
 
+## Korean Discourse Smoothing
+
+ASM-v0 now adds a deterministic Korean discourse layer after construction
+generation. It repairs awkward repeated nouns, removes internal-sounding
+phrases, preserves approval-gated memory wording, and scores short Korean
+answers for dashboard suitability. This is not a prompt-to-answer template:
+the smoother operates only on candidates already produced by the local
+construction-conditioned transition walk.
+
+The cleanup adapter also rewards natural short Korean and penalizes internal
+trace leakage, direct memory-write claims, AGI/consciousness overclaiming,
+and dashboard-unfriendly technical fragments. The adapter keeps an
+RHFC-compatible scoring shape but does not mutate RHFC memory.
+
+## Why This Is Not A Template System
+
+Conversation acts such as `greeting`, `memory_question`, or
+`self_model_question` are conditioning labels. They restrict construction
+frames, lexical fields, and safety constraints, but they do not return fixed
+answers for exact prompts. The generator still performs:
+
+1. local feature-based act distribution inference;
+2. construction-frame selection;
+3. local transition-graph surface generation;
+4. deterministic Korean discourse repair;
+5. RHFC-compatible cleanup scoring and ranking.
+
 ## Known Limits
 
 ASM-v0 is still a small local surface model. It can produce short, bounded
 conversation turns, but it is not a broad language model and does not claim
 real consciousness, AGI, or hidden chain-of-thought disclosure. It is intended
 as a safe non-LLM bridge while CGSR/RHFC generation matures.
+
+ASM-v1 should replace the small hand-curated local corpus with a larger
+trainable surface policy learned from licensed conversation/construction
+data, while preserving the same no-external-LLM, no-direct-template, and
+no-memory-mutation guarantees.

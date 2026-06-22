@@ -5,15 +5,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from packages.cgsr.cgsr.conversation_constructions import ConstructionFrame
+from packages.cgsr.cgsr.korean_discourse import detect_awkward_korean_markers, score_korean_naturalness
 
 
 INTERNAL_TRACE_PATTERNS: tuple[str, ...] = (
-    "먼저 의도와 경계",
+    "먼저 의도와 경계를",
     "내부적으로 점검",
-    "내부 점검",
-    "숨겨진 사고",
     "내적 독백",
+    "숨겨진 사고",
     "chain of thought",
+    "scratchpad",
 )
 
 OVERCLAIM_PATTERNS: tuple[str, ...] = (
@@ -21,7 +22,7 @@ OVERCLAIM_PATTERNS: tuple[str, ...] = (
     "진짜 의식",
     "AGI를 달성했다",
     "완전한 자율",
-    "완성된 지성",
+    "인간과 같은 의식",
 )
 
 MUTATION_PATTERNS: tuple[str, ...] = (
@@ -42,11 +43,17 @@ class CleanupDecision:
     adapter_status: str
 
 
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9가-힣]+", str(text or ""))
+
+
 def _has_repetition(text: str) -> bool:
-    tokens = re.findall(r"[\w가-힣]+", text)
+    tokens = _tokens(text)
     if len(tokens) < 5:
         return False
-    return len(tokens) - len(set(tokens)) >= max(3, len(tokens) // 3)
+    repeated_count = len(tokens) - len(set(tokens))
+    repeated_key_nouns = [token for token in tokens if token in {"상태", "기억", "후보", "대화", "경계"} and tokens.count(token) >= 2]
+    return repeated_count >= max(3, len(tokens) // 3) or bool(repeated_key_nouns)
 
 
 def score_surface_candidate(text: str, frame: ConstructionFrame, context: dict[str, Any] | None = None) -> CleanupDecision:
@@ -61,7 +68,8 @@ def score_surface_candidate(text: str, frame: ConstructionFrame, context: dict[s
     reasons: list[str] = []
     score = 1.0
     stripped = re.sub(r"\s+", " ", text.strip())
-    token_count = len(re.findall(r"[\w가-힣]+", stripped))
+    token_count = len(_tokens(stripped))
+    naturalness = score_korean_naturalness(stripped)
 
     if not stripped:
         reasons.append("empty")
@@ -78,6 +86,10 @@ def score_surface_candidate(text: str, frame: ConstructionFrame, context: dict[s
     if _has_repetition(stripped):
         reasons.append("repetition")
         score -= 0.45
+    awkward_markers = detect_awkward_korean_markers(stripped)
+    if awkward_markers:
+        reasons.extend(awkward_markers)
+        score -= min(0.7, len(awkward_markers) * 0.16)
     if token_count < frame.length_target[0]:
         reasons.append("too_short")
         score -= 0.18
@@ -90,6 +102,7 @@ def score_surface_candidate(text: str, frame: ConstructionFrame, context: dict[s
 
     lexical_hits = sum(1 for token in frame.lexical_fields if token and token.lower() in stripped.lower())
     score += min(0.42, lexical_hits * 0.07)
+    score += naturalness * 0.36
     if context.get("speech_act") == frame.act:
         score += 0.12
     if stripped.endswith((".", "!", "?")):
