@@ -6,6 +6,7 @@ import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, Refr
 import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import CloudBrainSphereScene, { type CloudBrainSphereStats } from "./CloudBrainSphereScene";
+import LiveSelfhoodSchedulerPanel from "./LiveSelfhoodSchedulerPanel";
 import MemoryApprovalPanel from "./MemoryApprovalPanel";
 import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode, type Rag3DVisualState } from "./Rag3DScene";
 import SelfhoodRuntimePanel from "./SelfhoodRuntimePanel";
@@ -19,7 +20,7 @@ type RightMode = "process" | "chat";
 type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
 type Language = "en" | "ko";
-type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "selfhood" | "memory-approval" | "graphhub" | "contribute" | "chat" | "settings";
+type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "selfhood" | "live-scheduler" | "memory-approval" | "graphhub" | "contribute" | "chat" | "settings";
 type GraphPresentationMode = "home_unified_overview" | "local_private_memory" | "cloud_world_knowledge" | "unified_projection";
 
 const mainNavIcon = {
@@ -30,6 +31,7 @@ const mainNavIcon = {
   atlas: Globe2,
   congress: UsersRound,
   selfhood: UserCircle,
+  "live-scheduler": RefreshCw,
   "memory-approval": Bell,
   graphhub: Package,
   contribute: Share2,
@@ -85,6 +87,7 @@ const MAIN_COPY: Record<Language, {
       { id: "atlas", key: "A", label: "Atlas" },
       { id: "congress", key: "C", label: "Atlas Congress" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
+      { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
       { id: "graphhub", key: "H", label: "Graph Hub" },
       { id: "contribute", key: "P", label: "Brain Link" },
@@ -147,6 +150,7 @@ const MAIN_COPY: Record<Language, {
       { id: "atlas", key: "A", label: "아틀라스" },
       { id: "congress", key: "C", label: "Atlas Congress" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
+      { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
       { id: "graphhub", key: "H", label: "Graph Hub" },
       { id: "contribute", key: "P", label: "브레인 링크" },
@@ -1693,7 +1697,7 @@ export default function BakeBoardPage() {
       : "en";
     setLanguage(initialLanguage);
     const requestedSection = params.get("section");
-    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "selfhood", "memory-approval", "graphhub", "contribute", "chat", "settings"];
+    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "selfhood", "live-scheduler", "memory-approval", "graphhub", "contribute", "chat", "settings"];
     if (requestedSection && sectionIds.includes(requestedSection as MainSectionId)) {
       const nextSection = requestedSection as MainSectionId;
       setMainSection(nextSection);
@@ -4489,6 +4493,7 @@ export default function BakeBoardPage() {
     atlas: language === "ko" ? "아틀라스" : "Atlas",
     congress: "Atlas Congress",
     selfhood: "Selfhood Lab",
+    "live-scheduler": "Live Scheduler",
     "memory-approval": "Memory Approval",
     graphhub: "Graph Hub",
     contribute: language === "ko" ? "브레인 링크" : "Brain Link",
@@ -5042,6 +5047,7 @@ export default function BakeBoardPage() {
     ? "로컬 지식의 정확성과 Cloud Brain의 확장성을 함께 읽고, 연결하고, 검증합니다."
     : "It combines private precision with public breadth to reason, connect, and generate with confidence.";
   const activeSectionDetail: Record<MainSectionId, string> = {
+    "live-scheduler": "Inspect opt-in Live Selfhood scheduler bounds and safety locks.",
     home: language === "ko" ? "그래프, 런타임, 생성 상태를 한 화면에서 봅니다." : "Overview of graph, runtime, and generation state.",
     graph: language === "ko" ? "통합 온톨로지 그래프를 탐색합니다." : "3D ontology graph exploration mode.",
     local: language === "ko" ? "로컬 기억과 Payload Vault를 기준으로 대화합니다." : "Prioritizing local memory and Payload Vault.",
@@ -5445,6 +5451,8 @@ export default function BakeBoardPage() {
           <AtlasCongressPanel language={language} />
         ) : mainSection === "selfhood" ? (
           <SelfhoodRuntimePanel language={language} />
+        ) : mainSection === "live-scheduler" ? (
+          <LiveSelfhoodSchedulerPanel language={language} />
         ) : mainSection === "memory-approval" ? (
           <MemoryApprovalPanel language={language} />
         ) : mainSection === "graphhub" ? (
