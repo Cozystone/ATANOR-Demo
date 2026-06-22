@@ -323,7 +323,16 @@ def test_live_selfhood_greeting_uses_native_conversation_surface(tmp_path, monke
     assert payload["answer_engine"]["production_store_mutated"] is False
     assert payload["answer_engine"]["candidate_promotion"] is False
     assert payload["answer_engine"]["internal_trace_exposed"] is False
-    assert payload["voice_output"]["tts_engine"] == "fish_2"
+    assert payload["voice_output"]["requested"] is True
+    assert payload["voice_output"]["enabled"] is True
+    assert payload["voice_output"]["selected_engine"] in {"none", "fish_2", "fish_1_5"}
+    assert payload["voice_output"]["audio_available"] is False
+    assert payload["voice_output"]["audio_url"] is None
+    assert payload["voice_output"]["error_reason"] in {"fish_runtime_missing", "fish_model_missing", "synthesis_adapter_not_wired"}
+    assert payload["voice_output"]["text_fallback"] is True
+    assert payload["voice_output"]["microphone_enabled"] is False
+    assert payload["voice_output"]["always_listening_enabled"] is False
+    assert payload["voice_output"]["raw_voice_saved"] is False
     assert payload["voice_output"]["external_service"] is False
     assert payload["voice_output"]["generated_audio_persisted"] is False
     assert payload["local_brain_write"] is False

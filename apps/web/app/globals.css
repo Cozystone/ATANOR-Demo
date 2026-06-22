@@ -8012,6 +8012,21 @@ p {
   z-index: 6;
 }
 
+.atanor-hologram-voice-status {
+  bottom: clamp(76px, 10vh, 112px);
+  color: rgba(194, 226, 239, 0.64);
+  font: 650 0.78rem/1.4 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  left: 50%;
+  letter-spacing: 0;
+  margin: 0;
+  max-width: min(440px, 42vw);
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
 .hologram-voice-orb {
   align-items: center;
   background: transparent;
@@ -8190,5 +8205,10 @@ p {
     max-width: calc(100% - 56px);
     right: auto;
     text-align: center;
+  }
+
+  .atanor-hologram-voice-status {
+    bottom: 76px;
+    max-width: calc(100% - 56px);
   }
 }

@@ -246,31 +246,91 @@ def _live_selfhood_speech_act(question: str, language: str) -> str:
 def _voice_runtime_snapshot(text: str, language: str) -> dict[str, Any]:
     """Describe optional Fish TTS readiness without loading models or saving audio."""
 
-    try:
-        availability = check_voice_runtime_availability()
-    except Exception as exc:  # pragma: no cover - optional runtime isolation
-        return {
-            "requested": True,
-            "tts_engine": "fish_2",
-            "available": False,
-            "audio_stream_available": False,
-            "visual_speaking_recommended": bool(text),
-            "external_service": False,
-            "generated_audio_persisted": False,
-            "unavailable_reason": type(exc).__name__,
-        }
-    fish2 = availability.get("fish_2")
-    available = bool(fish2 and fish2.available)
-    return {
+    base = {
+        "enabled": True,
         "requested": True,
-        "tts_engine": "fish_2",
-        "available": available,
+        "selected_engine": "none",
+        "tts_engine": "none",
+        "runtime_available": False,
+        "available": False,
+        "fish_2_available": False,
+        "fish_1_5_available": False,
+        "audio_available": False,
+        "audio_output_available": False,
         "audio_stream_available": False,
+        "audio_url": None,
+        "audio_mime": None,
+        "audio_duration_ms": None,
+        "error_reason": None,
+        "reason": None,
+        "install_hint": None,
+        "text_fallback": True,
+        "text_fallback_available": True,
         "visual_speaking_recommended": bool(text),
         "external_service": False,
         "generated_audio_persisted": False,
+        "raw_voice_saved": False,
+        "microphone_enabled": False,
+        "always_listening_enabled": False,
+        "voice_optional": True,
+        "text_input_supported": True,
         "language": "ko-KR" if language == "ko" else "en-US",
-        "unavailable_reason": None if available else ",".join(fish2.missing_modules if fish2 else ["fish_2_status_unavailable"]),
+        "status": "unavailable_missing_package",
+        "user_message": (
+            "음성 엔진이 아직 설치되어 있지 않습니다. 텍스트 응답은 계속 사용할 수 있습니다."
+            if language == "ko"
+            else "The voice engine is not installed yet. Text replies remain available."
+        ),
+    }
+    try:
+        availability = check_voice_runtime_availability()
+    except Exception as exc:  # pragma: no cover - optional runtime isolation
+        return {**base, "status": "synthesis_failed", "error_reason": type(exc).__name__, "reason": str(exc)}
+    fish2 = availability.get("fish_2")
+    fish15 = availability.get("fish_1_5")
+    selected = fish2 if fish2 and fish2.available else fish15 if fish15 and fish15.available else None
+    if selected is None:
+        reason = fish2.reason if fish2 else "fish_2_status_unavailable"
+        error_reason = (
+            "fish_runtime_missing"
+            if fish2 and fish2.status == "unavailable_missing_package"
+            else "fish_model_missing"
+            if fish2 and fish2.status == "unavailable_missing_model"
+            else fish2.status
+            if fish2
+            else "fish_runtime_missing"
+        )
+        return {
+            **base,
+            "fish_2_available": bool(fish2 and fish2.available),
+            "fish_1_5_available": bool(fish15 and fish15.available),
+            "status": fish2.status if fish2 else "unavailable_missing_package",
+            "reason": reason,
+            "error_reason": error_reason,
+            "install_hint": fish2.install_hint if fish2 else "Install Fish runtime before enabling audio.",
+            "unavailable_reason": reason,
+        }
+
+    # Runtime is configured, but this slice does not guess a Fish synthesis API.
+    # Keep text/visual fallback unless a future adapter returns a real audio URL.
+    return {
+        **base,
+        "selected_engine": selected.runtime_id,
+        "tts_engine": selected.runtime_id,
+        "runtime_available": True,
+        "available": True,
+        "fish_2_available": bool(fish2 and fish2.available),
+        "fish_1_5_available": bool(fish15 and fish15.available),
+        "status": "available_not_loaded",
+        "reason": "Fish runtime configured, but audio synthesis is not wired in this proof slice",
+        "error_reason": "synthesis_adapter_not_wired",
+        "install_hint": "Wire the installed Fish synthesis API to return an ignored temp audio URL.",
+        "unavailable_reason": "synthesis_adapter_not_wired",
+        "user_message": (
+            "음성 합성 연결은 아직 준비 중입니다. 텍스트 응답으로 계속합니다."
+            if language == "ko"
+            else "Voice synthesis wiring is still pending. Continuing with text replies."
+        ),
     }
 
 
