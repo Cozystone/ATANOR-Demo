@@ -50,6 +50,7 @@ from app.routers.guard import router as guard_router
 from app.routers.harvest import router as harvest_router
 from app.routers.hybrid_network import router as hybrid_network_router
 from app.routers.learning import router as learning_router
+from app.routers.local_memory_approval import router as local_memory_approval_router
 from app.routers.memory import router as memory_router
 from app.routers.neuro import router as neuro_router
 from app.routers.ontology import router as ontology_router
@@ -150,6 +151,7 @@ app.include_router(harvest_router)
 app.include_router(hybrid_network_router)
 app.include_router(brain_sync_router)
 app.include_router(learning_router)
+app.include_router(local_memory_approval_router)
 app.include_router(cloud_brain_router)
 app.include_router(contribution_router)
 app.include_router(cortex_router)
