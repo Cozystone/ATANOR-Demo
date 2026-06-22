@@ -6,6 +6,7 @@ import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, Refr
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
+import BrainConnectionStatus from "./BrainConnectionStatus";
 import CloudBrainSphereScene, { type CloudBrainSphereStats } from "./CloudBrainSphereScene";
 import LiveSelfhoodSchedulerPanel from "./LiveSelfhoodSchedulerPanel";
 import MemoryApprovalPanel from "./MemoryApprovalPanel";
@@ -3603,6 +3604,12 @@ export default function BakeBoardPage() {
   const displayMemoryEdgeCount = visibleGraph3D.edges.length;
   const semanticStoreConceptCount = Number(semanticCloudStatus?.concepts ?? 0);
   const semanticStoreRelationCount = Number(semanticCloudStatus?.relations ?? 0);
+  const localBrainStatusNodeCount = Array.isArray(brainGraphLocal?.nodes)
+    ? brainGraphLocal.nodes.length
+    : Number(memoryStatus?.node_count ?? localGraphState?.node_count ?? 0);
+  const localBrainStatusRelationCount = Array.isArray(brainGraphLocal?.edges)
+    ? brainGraphLocal.edges.length
+    : Number(memoryStatus?.edge_count ?? localGraphState?.edge_count ?? 0);
   const graphHeaderNodeCount = mainSection === "cloud" && semanticStoreConceptCount > 0
     ? semanticStoreConceptCount
     : displayMemoryNodeCount;
@@ -5406,6 +5413,32 @@ export default function BakeBoardPage() {
 
         {mainSection === "home" ? <AtanorUserStatusCard language={language} /> : null}
 
+        {mainSection === "local" || mainSection === "cloud" ? (
+          <BrainConnectionStatus
+            activeBrain={mainSection}
+            cloud={{
+              candidateAvailable: candidateOverlayAvailable,
+              candidateCaseFrames: Number(cloudCandidateStatus?.candidate_case_frames ?? 0),
+              concepts: semanticStoreConceptCount,
+              evidence: semanticCloudEvidence,
+              pending: mainSection === "cloud" && tabBrainGraphPending,
+              relations: semanticStoreRelationCount,
+              source: cloudProviderName,
+            }}
+            labMode={labSurfaceVisible}
+            language={language}
+            local={{
+              initialized: localBrainInitialized,
+              nodes: localBrainStatusNodeCount,
+              pending: mainSection === "local" && tabBrainGraphPending,
+              relations: localBrainStatusRelationCount,
+            }}
+            localBackendMessage={localBackendDisplay}
+            localBackendStatus={localBackendStatus}
+            localBackendUrl={localBackendUrl}
+          />
+        ) : null}
+
         {mainSection === "atlas" ? (
           <section className="atanor-atlas-grid">
             <article className="atanor-atlas-hero">
@@ -5990,7 +6023,7 @@ export default function BakeBoardPage() {
               </details>
             </article>
           </section>
-        ) : (
+        ) : mainSection === "home" ? null : (
         <>
         <section className="atanor-user-grid">
           {showInlineChatPanel ? (

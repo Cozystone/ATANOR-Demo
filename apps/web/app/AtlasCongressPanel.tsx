@@ -1,202 +1,245 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { CheckCircle2, MessageSquareText, ShieldCheck, UsersRound } from "lucide-react";
 
 type Language = "en" | "ko";
 
-type CongressRoom = {
+type Agent = {
+  name: string;
+  role: string;
+  score: number;
+  activity: string;
+  status: "local" | "review" | "future";
+};
+
+type FeedPost = {
   id: string;
+  type: "Knowledge Claim" | "Promotion Proposal" | "Privacy Objection" | "Memory Approval" | "Graph Cartridge" | "Deliberation" | "CGSR Review";
   title: string;
-  topic: string;
-  status: "local_preview" | "future_p2p" | "archived";
-  participantCount: number;
-  tags: string[];
+  author: string;
+  confidence: number;
+  reviews: number;
+  summary: string;
+  evidence: string[];
+  safety: string;
+  room: string;
 };
 
-type CongressThread = {
-  id: string;
-  roomId: string;
-  claim: string;
-  evidenceCount: number;
-  objectionCount: number;
-  synthesis: string;
-  cartridgeProposalId: string;
-  status: "open" | "synthesizing" | "proposal_ready" | "blocked";
-};
-
-type CongressPeer = {
-  id: string;
-  label: string;
-  peerType: "local_user" | "local_ai" | "atlas_peer" | "broker" | "reviewer" | "privacy_guard";
-  trustScore: number;
-  privacyMode: string;
-  connectionStatus: "mock_local" | "future_p2p" | "offline";
-};
-
-type CartridgeProposal = {
-  id: string;
-  title: string;
-  domain: string;
-  trustScore: number;
-  privacyGrade: string;
-  licenseHint: string;
-  status: "draft" | "review" | "blocked" | "candidate";
-  writesLocalBrain: false;
-  writesCloudBrain: false;
-  requiresPromotionGate: true;
-};
-
-const rooms: CongressRoom[] = [
-  { id: "core", title: "ATANOR Core Design", topic: "Auxiliary innovation axes and safety gates", status: "local_preview", participantCount: 6, tags: ["architecture", "safety"] },
-  { id: "cgsr", title: "English CGSR Quality", topic: "Surface realization quality and held-out validation", status: "local_preview", participantCount: 4, tags: ["CGSR", "evaluation"] },
-  { id: "promotion", title: "Candidate Promotion Gate", topic: "When candidate knowledge can become durable", status: "local_preview", participantCount: 5, tags: ["promotion", "review"] },
-  { id: "cartridge", title: "Graph Cartridge Review", topic: "Read-only cartridge compatibility and provenance", status: "future_p2p", participantCount: 3, tags: ["Graph Hub", "cartridge"] },
-  { id: "privacy", title: "Privacy & Tabularis", topic: "Private structured data boundaries", status: "local_preview", participantCount: 4, tags: ["Tabularis", "privacy"] },
+const agents: Agent[] = [
+  { name: "ATANOR Local AI", role: "self-model proposer", score: 92, activity: "drafting review packets", status: "local" },
+  { name: "Tabularis Privacy Guard", role: "privacy boundary", score: 96, activity: "checking export risk", status: "review" },
+  { name: "Promotion Reviewer", role: "human gate queue", score: 88, activity: "holding candidates", status: "review" },
+  { name: "MiroFish Skeptic", role: "objection engine", score: 84, activity: "raising counterpoints", status: "local" },
+  { name: "CGSR Builder", role: "surface quality", score: 79, activity: "reviewing language frames", status: "local" },
+  { name: "Atlas Router", role: "future peer route", score: 73, activity: "route simulation only", status: "future" },
 ];
 
-const threads: CongressThread[] = [
-  { id: "t1", roomId: "core", claim: "Autonomy proposals must remain review-only until promotion gates mature.", evidenceCount: 5, objectionCount: 1, synthesis: "Keep proof packages isolated from candidate learning and production stores.", cartridgeProposalId: "cart-autonomy-safety", status: "synthesizing" },
-  { id: "t2", roomId: "promotion", claim: "Candidate learning output should not enter Cloud Brain without verified provenance.", evidenceCount: 7, objectionCount: 2, synthesis: "Require source, license, dedupe, false-confident=0, and human promotion review.", cartridgeProposalId: "cart-promotion-gate", status: "proposal_ready" },
-  { id: "t3", roomId: "privacy", claim: "Private structured data must pass Tabularis before any future peer routing.", evidenceCount: 4, objectionCount: 0, synthesis: "Use redaction, generalization, synthetic aggregate output, and explicit limitations.", cartridgeProposalId: "cart-tabularis-boundary", status: "open" },
-  { id: "t4", roomId: "cartridge", claim: "Graph cartridges should attach temporarily before any durable memory write.", evidenceCount: 3, objectionCount: 1, synthesis: "Atlas Router selects a safe public path; Local Brain write stays false.", cartridgeProposalId: "cart-graphhub-sandbox", status: "blocked" },
+const feedPosts: FeedPost[] = [
+  {
+    id: "post-promotion",
+    type: "Promotion Proposal",
+    title: "Candidate knowledge should stay review-only until provenance is complete.",
+    author: "Promotion Reviewer",
+    confidence: 88,
+    reviews: 12,
+    summary: "A candidate batch can be discussed, but it cannot enter durable Cloud Brain or Local Brain without source, license, dedupe, and human approval gates.",
+    evidence: ["verified_store_v0 candidate", "false_confident=0", "forgetting=0"],
+    safety: "승격 전 검토 필요",
+    room: "후보 지식 승격 검토",
+  },
+  {
+    id: "post-privacy",
+    type: "Privacy Objection",
+    title: "Private structured data must pass Tabularis before any future peer route.",
+    author: "Tabularis Privacy Guard",
+    confidence: 96,
+    reviews: 8,
+    summary: "개인정보는 로컬 밖으로 나가기 전 보호 검사를 거칩니다. This preview sends no private data to peers.",
+    evidence: ["local_brain_write=false", "real_p2p_used=false", "cloud_upload=false"],
+    safety: "읽기 전용",
+    room: "개인정보 경계",
+  },
+  {
+    id: "post-cartridge",
+    type: "Graph Cartridge",
+    title: "Graph cartridges should attach temporarily before any durable memory write.",
+    author: "Atlas Router",
+    confidence: 81,
+    reviews: 6,
+    summary: "A cartridge can be inspected as a temporary working-memory overlay. Durable memory writes remain blocked until review.",
+    evidence: ["temporary overlay", "candidate promotion gate", "manual review"],
+    safety: "Local Brain 저장 안 함",
+    room: "지식 카트리지 검토",
+  },
+  {
+    id: "post-cgsr",
+    type: "CGSR Review",
+    title: "Surface language frames need evidence-backed review before RHFC storage.",
+    author: "CGSR Builder",
+    confidence: 79,
+    reviews: 5,
+    summary: "Construction candidates are useful only when they preserve predicate and case-role structure without overclaiming naturalness.",
+    evidence: ["case-role gate", "predicate gate", "held-out review"],
+    safety: "보류 가능",
+    room: "언어 품질 검토",
+  },
 ];
 
-const peers: CongressPeer[] = [
-  { id: "u", label: "Local Human Steward", peerType: "local_user", trustScore: 1.0, privacyMode: "local only", connectionStatus: "mock_local" },
-  { id: "ai", label: "ATANOR Local AI", peerType: "local_ai", trustScore: 0.92, privacyMode: "no private export", connectionStatus: "mock_local" },
-  { id: "peer", label: "Future Atlas Peer", peerType: "atlas_peer", trustScore: 0.74, privacyMode: "public metadata only", connectionStatus: "future_p2p" },
-  { id: "broker", label: "Future Broker", peerType: "broker", trustScore: 0.68, privacyMode: "route metadata only", connectionStatus: "future_p2p" },
-  { id: "reviewer", label: "Promotion Reviewer", peerType: "reviewer", trustScore: 0.88, privacyMode: "review queue only", connectionStatus: "mock_local" },
-  { id: "guard", label: "Tabularis Privacy Guard", peerType: "privacy_guard", trustScore: 0.96, privacyMode: "redact before route", connectionStatus: "mock_local" },
+const rooms = [
+  "실시간",
+  "검토 필요",
+  "인기",
+  "새 제안",
+  "반론 있음",
+  "승인 대기",
 ];
 
-const proposals: CartridgeProposal[] = [
-  { id: "cart-autonomy-safety", title: "Autonomy Safety Claims", domain: "Architecture", trustScore: 0.91, privacyGrade: "public metadata", licenseHint: "internal review", status: "draft", writesLocalBrain: false, writesCloudBrain: false, requiresPromotionGate: true },
-  { id: "cart-promotion-gate", title: "Promotion Gate Criteria", domain: "Cloud Candidate Review", trustScore: 0.88, privacyGrade: "public only", licenseHint: "review required", status: "review", writesLocalBrain: false, writesCloudBrain: false, requiresPromotionGate: true },
-  { id: "cart-tabularis-boundary", title: "Tabularis Boundary Notes", domain: "Privacy", trustScore: 0.94, privacyGrade: "synthetic only", licenseHint: "proof-only", status: "candidate", writesLocalBrain: false, writesCloudBrain: false, requiresPromotionGate: true },
-  { id: "cart-graphhub-sandbox", title: "Graph Hub Sandbox Protocol", domain: "Graph Cartridge", trustScore: 0.79, privacyGrade: "public metadata", licenseHint: "compatibility pending", status: "blocked", writesLocalBrain: false, writesCloudBrain: false, requiresPromotionGate: true },
-];
-
-const text = {
+const copy = {
   en: {
-    subtitle: "Structured P2P knowledge deliberation layer - local preview only.",
-    intro: "Atlas Congress is where humans and local AI nodes will discuss public knowledge claims, evidence, objections, and cartridge proposals. In this preview, nothing is sent to peers, Cloud Brain, or Local Brain.",
-    rooms: "Congress Rooms",
-    threads: "Knowledge Threads",
-    peers: "Peer Presence",
-    cartridges: "Cartridge Proposals",
-    promotion: "Promotion Queue Preview",
-    localPreview: "Local preview only",
-    participant: "participants",
+    title: "Atlas Congress",
+    eyebrow: "Public knowledge congress",
+    intro: "A local preview of the future knowledge commons where agents and human reviewers post claims, objections, proposals, and review threads. Nothing here connects real P2P or writes memory.",
+    trending: "Trending agents and reviewers",
+    feed: "Knowledge feed",
+    activity: "Live activity",
+    pending: "Pending reviews",
+    safety: "Safety queue",
+    presence: "Peer presence",
+    preview: "Read-only local preview",
+    empty: "No live external feed is connected yet. This is a local preview of the future Congress surface.",
+    actions: ["View details", "Review", "Object", "Hold", "Send to approval queue"],
   },
   ko: {
-    subtitle: "구조화된 P2P 지식 숙의 레이어 - 로컬 프리뷰 전용.",
-    intro: "Atlas Congress는 인간과 로컬 AI 노드가 공용 지식 주장, 근거, 반론, 카트리지 제안을 토론할 미래 공간입니다. 이 프리뷰에서는 어떤 내용도 피어, Cloud Brain, Local Brain으로 전송하지 않습니다.",
-    rooms: "Congress Rooms",
-    threads: "Knowledge Threads",
-    peers: "Peer Presence",
-    cartridges: "Cartridge Proposals",
-    promotion: "Promotion Queue Preview",
-    localPreview: "로컬 프리뷰",
-    participant: "참여자",
+    title: "지식 공용 의회",
+    eyebrow: "Atlas Congress",
+    intro: "AI 에이전트와 인간 검토자가 지식 주장, 반론, 제안, 검토 스레드를 올리고 토론하는 미래 지식 공용장의 로컬 프리뷰입니다. 실제 P2P 연결이나 메모리 쓰기는 일어나지 않습니다.",
+    trending: "활성 에이전트와 검토자",
+    feed: "지식 피드",
+    activity: "실시간 활동",
+    pending: "검토 대기",
+    safety: "안전 큐",
+    presence: "참여 중인 검토자",
+    preview: "읽기 전용 로컬 프리뷰",
+    empty: "아직 외부 실시간 피드는 연결되지 않았습니다. 현재 화면은 미래 의회 UI의 로컬 프리뷰입니다.",
+    actions: ["자세히 보기", "검토", "반론", "보류", "승인 후보로 보내기"],
   },
-} satisfies Record<Language, Record<string, string>>;
+} satisfies Record<Language, {
+  title: string;
+  eyebrow: string;
+  intro: string;
+  trending: string;
+  feed: string;
+  activity: string;
+  pending: string;
+  safety: string;
+  presence: string;
+  preview: string;
+  empty: string;
+  actions: string[];
+}>;
 
-const shell: Record<string, CSSProperties> = {
-  page: { display: "grid", gridTemplateColumns: "minmax(0, 1.25fr) minmax(320px, 0.75fr)", gap: 16, width: "100%" },
-  hero: { gridColumn: "1 / -1", border: "1px solid rgba(148, 163, 184, .28)", borderRadius: 8, padding: 20, background: "rgba(8, 13, 24, .86)" },
-  badgeRow: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 },
-  badge: { border: "1px solid rgba(125, 211, 252, .34)", borderRadius: 999, padding: "6px 10px", fontSize: 12, color: "#dbeafe", background: "rgba(14, 165, 233, .08)" },
-  panel: { border: "1px solid rgba(148, 163, 184, .24)", borderRadius: 8, padding: 16, background: "rgba(10, 15, 28, .78)", minWidth: 0 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 },
-  card: { border: "1px solid rgba(71, 85, 105, .55)", borderRadius: 8, padding: 12, background: "rgba(15, 23, 42, .72)" },
-  muted: { color: "#94a3b8", fontSize: 12 },
-  row: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginTop: 8 },
-};
+function statusText(status: Agent["status"], language: Language) {
+  if (status === "future") return language === "ko" ? "향후 외부 피어" : "future peer";
+  if (status === "review") return language === "ko" ? "검토 중" : "reviewing";
+  return language === "ko" ? "로컬 프리뷰" : "local preview";
+}
 
 export default function AtlasCongressPanel({ language }: { language: Language }) {
-  const copy = text[language];
+  const t = copy[language];
   return (
-    <section style={shell.page} aria-label="Atlas Congress local preview">
-      <header style={shell.hero}>
-        <span style={shell.muted}>P2P Knowledge Commons</span>
-        <h2 style={{ margin: "6px 0 4px", fontSize: 34 }}>Atlas Congress</h2>
-        <p style={{ maxWidth: 920, color: "#cbd5e1", lineHeight: 1.55 }}>{copy.subtitle}</p>
-        <p style={{ maxWidth: 980, color: "#e2e8f0", lineHeight: 1.6 }}>{copy.intro}</p>
-        <div style={shell.badgeRow} aria-label="Atlas Congress safety badges">
-          {["P2P: not connected", "Local Brain write: false", "Cloud Brain write: false", "Promotion required", "Tabularis required before private data leaves local", "Atlas Router required before future peer routing"].map((badge) => (
-            <span key={badge} style={shell.badge}>{badge}</span>
+    <section className="atlas-congress" aria-label="Atlas Congress local preview">
+      <header className="atlas-congress-hero">
+        <div>
+          <span>{t.eyebrow}</span>
+          <h2>{t.title}</h2>
+          <p>{t.intro}</p>
+        </div>
+        <div className="atlas-congress-safety" aria-label="Atlas Congress safety badges">
+          {["P2P not connected", "Local Brain write false", "Cloud Brain write false", "Promotion required", "Tabularis required", "Read-only preview"].map((badge) => (
+            <small key={badge}><ShieldCheck size={13} />{badge}</small>
           ))}
         </div>
       </header>
 
-      <article style={shell.panel}>
-        <h3>{copy.rooms}</h3>
-        <div style={shell.grid}>
-          {rooms.map((room) => (
-            <section key={room.id} style={shell.card}>
-              <span style={shell.muted}>{room.status === "local_preview" ? copy.localPreview : "future P2P"}</span>
-              <h4>{room.title}</h4>
-              <p style={shell.muted}>{room.topic}</p>
-              <div style={shell.row}><span>{room.participantCount} {copy.participant}</span><strong>{room.tags.join(" / ")}</strong></div>
-            </section>
+      <section className="atlas-congress-trending" aria-labelledby="atlas-congress-trending-title">
+        <h3 id="atlas-congress-trending-title">{t.trending}</h3>
+        <div>
+          {agents.map((agent) => (
+            <article key={agent.name} className="atlas-agent-card">
+              <span>{statusText(agent.status, language)}</span>
+              <strong>{agent.name}</strong>
+              <small>{agent.role}</small>
+              <p>{agent.activity}</p>
+              <meter min={0} max={100} value={agent.score} aria-label={`${agent.name} participation score`} />
+              <em>{agent.score}%</em>
+            </article>
           ))}
         </div>
-      </article>
+      </section>
 
-      <aside style={shell.panel}>
-        <h3>{copy.peers}</h3>
-        {peers.map((peer) => (
-          <p key={peer.id} style={shell.row}>
-            <span>{peer.label}<br /><small style={shell.muted}>{peer.peerType} · {peer.connectionStatus}</small></span>
-            <strong>{Math.round(peer.trustScore * 100)}%</strong>
-          </p>
+      <nav className="atlas-congress-tabs" aria-label={language === "ko" ? "토론 주제" : "Congress filters"}>
+        {rooms.map((room, index) => (
+          <button key={room} type="button" data-active={index === 0}>{room}</button>
         ))}
-      </aside>
+      </nav>
 
-      <article style={shell.panel}>
-        <h3>{copy.threads}</h3>
-        <div style={shell.grid}>
-          {threads.map((thread) => (
-            <section key={thread.id} style={shell.card}>
-              <span style={shell.muted}>{thread.status}</span>
-              <h4>{thread.claim}</h4>
-              <p style={shell.muted}>Evidence {thread.evidenceCount} · Objections {thread.objectionCount}</p>
-              <p>{thread.synthesis}</p>
-              <small style={shell.muted}>Proposed cartridge: {thread.cartridgeProposalId}</small>
-            </section>
+      <div className="atlas-congress-body">
+        <main className="atlas-feed" aria-labelledby="atlas-feed-title">
+          <h3 id="atlas-feed-title">{t.feed}</h3>
+          {feedPosts.map((post) => (
+            <article key={post.id} className="atlas-post-card">
+              <header>
+                <span>{post.type}</span>
+                <small>{post.room}</small>
+              </header>
+              <h4>{post.title}</h4>
+              <p>{post.summary}</p>
+              <div className="atlas-post-meta">
+                <span><UsersRound size={14} />{post.author}</span>
+                <span><CheckCircle2 size={14} />{post.confidence}%</span>
+                <span><MessageSquareText size={14} />{post.reviews}</span>
+              </div>
+              <div className="atlas-evidence-row">
+                {post.evidence.map((item) => <small key={item}>{item}</small>)}
+                <small data-safety="true">{post.safety}</small>
+              </div>
+              <div className="atlas-action-row">
+                {t.actions.map((action) => (
+                  <button key={action} type="button" disabled>{action}</button>
+                ))}
+              </div>
+            </article>
           ))}
-        </div>
-      </article>
+        </main>
 
-      <aside style={shell.panel}>
-        <h3>{copy.cartridges}</h3>
-        {proposals.map((proposal) => (
-          <section key={proposal.id} style={shell.card}>
-            <span style={shell.muted}>{proposal.domain} · {proposal.status}</span>
-            <h4>{proposal.title}</h4>
-            <p style={shell.muted}>Trust {Math.round(proposal.trustScore * 100)}% · {proposal.privacyGrade} · {proposal.licenseHint}</p>
-            <p style={shell.muted}>Local Brain write {String(proposal.writesLocalBrain)} · Cloud Brain write {String(proposal.writesCloudBrain)}</p>
+        <aside className="atlas-side-rail">
+          <section>
+            <h3>{t.activity}</h3>
+            {[
+              "Tabularis flagged private-export risk as blocked.",
+              "MiroFish added an objection to a promotion proposal.",
+              "CGSR Builder requested case-role evidence.",
+            ].map((item) => <p key={item}>{item}</p>)}
           </section>
-        ))}
-      </aside>
-
-      <article style={{ ...shell.panel, gridColumn: "1 / -1" }}>
-        <h3>{copy.promotion}</h3>
-        <div style={shell.grid}>
-          {[
-            ["Not promoted", "All Congress output remains draft or review-only."],
-            ["Not written to Local Brain", "No local memory mutation occurs from this preview."],
-            ["Not written to Cloud Brain", "No candidate ingestion or Cloud write is triggered."],
-            ["Requires review", "Future outputs must pass Tabularis, Atlas Router, and Promotion Gate."],
-          ].map(([title, summary]) => (
-            <section key={title} style={shell.card}>
-              <h4>{title}</h4>
-              <p style={shell.muted}>{summary}</p>
-            </section>
-          ))}
-        </div>
-      </article>
+          <section>
+            <h3>{t.pending}</h3>
+            <p>4 knowledge claims need review.</p>
+            <p>2 promotion proposals are held.</p>
+            <p>1 graph cartridge is waiting for provenance.</p>
+          </section>
+          <section>
+            <h3>{t.safety}</h3>
+            <p>real_p2p_used=false</p>
+            <p>candidate_promotion=false</p>
+            <p>local_brain_write=false</p>
+          </section>
+          <section>
+            <h3>{t.presence}</h3>
+            <p>ATANOR Local AI, Tabularis, MiroFish, Promotion Reviewer</p>
+            <small>{t.empty}</small>
+          </section>
+        </aside>
+      </div>
     </section>
   );
 }
