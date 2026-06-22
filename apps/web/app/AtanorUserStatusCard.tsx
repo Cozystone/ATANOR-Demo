@@ -6,7 +6,12 @@ import HologramVoiceOrb, { HologramVoiceOrbState } from "./HologramVoiceOrb";
 
 type Language = "en" | "ko";
 
-export default function AtanorUserStatusCard({ language }: { language: Language }) {
+type AtanorUserStatusCardProps = {
+  language: Language;
+  onMessageSubmit?: (message: string) => boolean;
+};
+
+export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
   const placeholder = language === "ko" ? "ATANOR에게 말하기" : "Message ATANOR";
@@ -33,6 +38,10 @@ export default function AtanorUserStatusCard({ language }: { language: Language 
 
   function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const trimmed = message.trim();
+    if (trimmed && onMessageSubmit?.(trimmed)) {
+      setMessage("");
+    }
     setOrbState("thinking");
     window.setTimeout(() => setOrbState("resting"), 1800);
   }

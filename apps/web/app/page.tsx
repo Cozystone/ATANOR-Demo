@@ -3134,6 +3134,64 @@ export default function BakeBoardPage() {
     }, 620);
   }
 
+  function resolveAtanorUiCommand(question: string): { section: MainSectionId; message: string; trace: string } | null {
+    const normalized = question.toLowerCase().replace(/\s+/g, " ").trim();
+    const compact = normalized.replace(/[\s_\-./]/g, "");
+    const actionTokens = [
+      "\uBCF4\uC5EC", "\uC5F4\uC5B4", "\uC774\uB3D9", "\uAC00\uC918", "\uAC00\uC790", "\uB118\uC5B4", "\uCC3E\uC544", "\uC124\uBA85", "\uBCF4\uC790",
+      "open", "show", "go to", "navigate", "switch", "move", "take me", "explain",
+    ];
+    const hasActionIntent = actionTokens.some((token) => normalized.includes(token) || compact.includes(token.replace(/\s+/g, "")));
+    if (!hasActionIntent) return null;
+
+    const targets: Array<{ section: MainSectionId; ko: string; en: string; tokens: string[] }> = [
+      { section: "home", ko: "\uB300\uC2DC\uBCF4\uB4DC", en: "Dashboard", tokens: ["\uB300\uC2DC\uBCF4\uB4DC", "\uD648", "\uCC98\uC74C", "dashboard", "home"] },
+      { section: "local", ko: "\uB85C\uCEEC \uBE0C\uB808\uC778", en: "Local Brain", tokens: ["\uB85C\uCEEC\uBE0C\uB808\uC778", "localbrain", "local"] },
+      { section: "cloud", ko: "\uD074\uB77C\uC6B0\uB4DC \uBE0C\uB808\uC778", en: "Cloud Brain", tokens: ["\uD074\uB77C\uC6B0\uB4DC\uBE0C\uB808\uC778", "cloudbrain", "cloud"] },
+      { section: "atlas", ko: "\uC544\uD2C0\uB77C\uC2A4", en: "Atlas", tokens: ["\uC544\uD2C0\uB77C\uC2A4", "atlas"] },
+      { section: "contribute", ko: "\uBE0C\uB808\uC778 \uB9C1\uD06C", en: "Brain Link", tokens: ["\uBE0C\uB808\uC778\uB9C1\uD06C", "brainlink", "contribute"] },
+      { section: "settings", ko: "\uC124\uC815", en: "Settings", tokens: ["\uC124\uC815", "settings", "setting"] },
+    ];
+    const target = targets.find((item) => item.tokens.some((token) => compact.includes(token.toLowerCase().replace(/\s+/g, ""))));
+    if (!target || target.section === mainSection) return null;
+
+    const label = language === "ko" ? target.ko : target.en;
+    return {
+      section: target.section,
+      message: language === "ko"
+        ? `${label} \uD654\uBA74\uC73C\uB85C \uC774\uB3D9\uD588\uC5B4\uC694. UI \uC870\uC791\uC740 ATANOR \uC571 \uC548\uC5D0\uC11C\uB9CC \uC218\uD589\uD588\uACE0, \uAE30\uC5B5 \uC4F0\uAE30\uB098 \uD6C4\uBCF4 \uC2B9\uACA9\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.`
+        : `I moved to ${label}. This control stays inside the ATANOR app; no memory write or candidate promotion was run.`,
+      trace: language === "ko" ? `${label} UI \uC774\uB3D9` : `Moved to ${label}`,
+    };
+  }
+
+  function handleHologramMessage(message: string): boolean {
+    const uiCommand = resolveAtanorUiCommand(message);
+    if (!uiCommand) {
+      setChatInput(message);
+      window.setTimeout(() => openMainSection("local"), 120);
+      setSignalTraceText(language === "ko" ? "\uB85C\uCEEC \uBE0C\uB808\uC778 \uB300\uD654 \uC900\uBE44" : "Preparing Local Brain chat");
+      return true;
+    }
+    setChatMessages((messages) => [
+      ...messages,
+      { role: "user", text: message },
+      {
+        role: "assistant",
+        text: uiCommand.message,
+        diagnostics: {
+          ui_control_scope: "atanor_app_only",
+          target_section: uiCommand.section,
+          external_browser_control: false,
+          production_mutation: false,
+        },
+      },
+    ]);
+    setSignalTraceText(uiCommand.trace);
+    window.setTimeout(() => openMainSection(uiCommand.section), 120);
+    return true;
+  }
+
   async function sendChat() {
     const question = chatInput.trim();
     if (!question || isGeneratingAnswer) return;
@@ -3142,6 +3200,27 @@ export default function BakeBoardPage() {
     if (learnComplete) setStageProgress("output", Math.max(8, labStageProgress.output));
     activateSignal(signalTraceForQuery(question, displayGraph3D), 4200);
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
+    const uiCommand = resolveAtanorUiCommand(question);
+    if (uiCommand) {
+      window.setTimeout(() => openMainSection(uiCommand.section), 120);
+      setChatInput("");
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          role: "assistant",
+          text: uiCommand.message,
+          diagnostics: {
+            ui_control_scope: "atanor_app_only",
+            target_section: uiCommand.section,
+            external_browser_control: false,
+            production_mutation: false,
+          },
+        },
+      ]);
+      setSignalTraceText(uiCommand.trace);
+      setIsGeneratingAnswer(false);
+      return;
+    }
     try {
       const shouldUseWebSearch = shouldUseWebSearchForQuestion(question, webSearchEnabled);
       const result = await apiJson<AnyRecord>("/api/chat/atanor", {
@@ -5414,7 +5493,7 @@ export default function BakeBoardPage() {
           </p>
         ) : null}
 
-        {mainSection === "home" ? <AtanorUserStatusCard language={language} /> : null}
+        {mainSection === "home" ? <AtanorUserStatusCard language={language} onMessageSubmit={handleHologramMessage} /> : null}
 
         {mainSection === "atlas" ? (
           <section className="atanor-atlas-grid">
@@ -7514,5 +7593,3 @@ export default function BakeBoardPage() {
   );
   */
 }
-
-

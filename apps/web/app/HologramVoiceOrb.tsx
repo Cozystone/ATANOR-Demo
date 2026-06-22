@@ -18,7 +18,8 @@ type HologramVoiceOrbProps = {
   onCancel: () => void;
 };
 
-const PARTICLE_COUNT = 4600;
+const PARTICLE_COUNT = 9600;
+const SHELL_PARTICLE_COUNT = 5200;
 const SHAPE_COUNT = 6;
 const COLOR_STOPS = [
   new THREE.Color("#25f4ff"),
@@ -62,7 +63,7 @@ function buildGeometry() {
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
-    sizes[i] = 0.026 + positiveSeed * 0.032;
+    sizes[i] = 0.014 + positiveSeed * 0.018;
 
     for (let shape = 0; shape < SHAPE_COUNT; shape += 1) {
       const point = siriShapePoint(shape, t, positiveSeed);
@@ -81,6 +82,41 @@ function buildGeometry() {
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
   return { geometry, morphs };
+}
+
+function buildShellGeometry() {
+  const positions = new Float32Array(SHELL_PARTICLE_COUNT * 3);
+  const colors = new Float32Array(SHELL_PARTICLE_COUNT * 3);
+  const sizes = new Float32Array(SHELL_PARTICLE_COUNT);
+  const shellColor = new THREE.Color("#5ee7ff");
+  const rimColor = new THREE.Color("#8d7cff");
+  const golden = Math.PI * (3 - Math.sqrt(5));
+
+  for (let i = 0; i < SHELL_PARTICLE_COUNT; i += 1) {
+    const t = (i + 0.5) / SHELL_PARTICLE_COUNT;
+    const theta = i * golden;
+    const y = 1 - 2 * t;
+    const ring = Math.sqrt(Math.max(0, 1 - y * y));
+    const radius = 1.86 + Math.sin(theta * 2.1) * 0.012;
+    const x = Math.cos(theta) * ring * radius;
+    const z = Math.sin(theta) * ring * radius;
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y * radius;
+    positions[i * 3 + 2] = z;
+
+    const edgeGlow = Math.pow(Math.abs(x) * 0.52 + Math.abs(y) * 0.2, 1.4);
+    const color = shellColor.clone().lerp(rimColor, Math.min(1, edgeGlow * 0.55));
+    colors[i * 3] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+    sizes[i] = 0.0045 + edgeGlow * 0.0065;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+  return geometry;
 }
 
 export default function HologramVoiceOrb({ state, onActivate, onCancel }: HologramVoiceOrbProps) {
@@ -110,7 +146,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       opacity: 0.9,
-      size: 0.06,
+      size: 0.045,
       sizeAttenuation: true,
       transparent: true,
       vertexColors: true,
@@ -131,10 +167,10 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     scene.add(glow);
 
     const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(1.86, 96, 64),
+      new THREE.SphereGeometry(1.84, 96, 64),
       new THREE.MeshBasicMaterial({
-        color: new THREE.Color("#5ecfff"),
-        opacity: 0.105,
+        color: new THREE.Color("#4ec9ff"),
+        opacity: 0.055,
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -143,18 +179,18 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     );
     scene.add(shell);
 
-    const rim = new THREE.Mesh(
-      new THREE.SphereGeometry(1.89, 96, 64),
-      new THREE.MeshBasicMaterial({
-        color: new THREE.Color("#3bdfff"),
-        opacity: 0.006,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        wireframe: true,
-      }),
-    );
-    scene.add(rim);
+    const shellGeometry = buildShellGeometry();
+    const shellParticleMaterial = new THREE.PointsMaterial({
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.22,
+      size: 0.022,
+      sizeAttenuation: true,
+      transparent: true,
+      vertexColors: true,
+    });
+    const shellParticles = new THREE.Points(shellGeometry, shellParticleMaterial);
+    scene.add(shellParticles);
 
     const clock = new THREE.Clock();
     let animationId = 0;
@@ -199,8 +235,8 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
       glow.scale.setScalar(1 + Math.sin(elapsed * 1.15) * 0.025);
       shell.rotation.y = elapsed * 0.08;
       shell.rotation.x = Math.sin(elapsed * 0.31) * 0.035;
-      rim.rotation.y = -elapsed * 0.06;
-      rim.rotation.z = Math.sin(elapsed * 0.2) * 0.04;
+      shellParticles.rotation.y = -elapsed * 0.04;
+      shellParticles.rotation.x = Math.sin(elapsed * 0.2) * 0.025;
       renderer.render(scene, camera);
       animationId = window.requestAnimationFrame(renderFrame);
     }
@@ -219,8 +255,8 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
       (glow.material as THREE.Material).dispose();
       shell.geometry.dispose();
       (shell.material as THREE.Material).dispose();
-      rim.geometry.dispose();
-      (rim.material as THREE.Material).dispose();
+      shellGeometry.dispose();
+      shellParticleMaterial.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
