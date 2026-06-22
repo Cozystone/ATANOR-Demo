@@ -34,11 +34,30 @@ function stripEmotionTag(text: string) {
 function firstSpeechBeat(text: string) {
   const clean = stripEmotionTag(text);
   if (clean.length <= 46) return clean;
-  const naturalBreak = clean.search(/[.!?。？！]\s/);
+  const naturalBreak = clean.search(/[.!?。！？]\s?/);
   if (naturalBreak > 16 && naturalBreak < 64) return clean.slice(0, naturalBreak + 1);
   const commaBreak = clean.search(/[,，、]\s?/);
   if (commaBreak > 16 && commaBreak < 58) return clean.slice(0, commaBreak + 1);
   return `${clean.slice(0, 44).trim()}...`;
+}
+
+function safeStatusLine(language: Language) {
+  return language === "ko"
+    ? "로컬 대화 엔진 연결을 확인하는 중입니다."
+    : "The local conversation engine is being checked.";
+}
+
+function isAsmConversationPayload(payload: Record<string, any>) {
+  const result = payload?.result ?? {};
+  const engine = result?.answer_engine ?? {};
+  return (
+    engine.generation_basis === "local_corpus_construction_transition_model"
+    && engine.external_llm === false
+    && engine.external_sllm === false
+    && engine.rule_based_answer_used === false
+    && engine.template_free_surface === true
+    && engine.internal_trace_exposed === false
+  );
 }
 
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
@@ -47,7 +66,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [voiceMode, setVoiceMode] = useState(false);
   const [speechLine, setSpeechLine] = useState("");
   const placeholder = voiceMode
-    ? language === "ko" ? "음성 모드 · 텍스트도 입력 가능" : "Voice mode · text still works"
+    ? language === "ko" ? "음성 모드 · 텍스트도 입력할 수 있어요" : "Voice mode · text still works"
     : language === "ko" ? "ATANOR에게 말하기" : "Message ATANOR";
 
   useEffect(() => {
@@ -93,28 +112,41 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setOrbState("thinking");
     setSpeechLine(language === "ko" ? "잠깐 생각할게요." : "Let me think.");
     try {
-      const response = await fetch("/api/selfhood/thought-dry-run", {
+      const response = await fetch("/api/chat/atanor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: trimmed, language }),
+        body: JSON.stringify({
+          question: trimmed,
+          language,
+          mode: "conversation",
+          brain_mode: "conversation",
+          include_trace: false,
+        }),
       });
-      if (!response.ok) throw new Error(`thought dry-run failed: ${response.status}`);
+      if (!response.ok) throw new Error(`conversation surface failed: ${response.status}`);
       const payload = await response.json();
-      const nextState = String(payload?.orb_state ?? "");
-      const finalText = String(payload?.final_tagged_text ?? "");
-      setOrbState(validOrbStates.has(nextState as HologramVoiceOrbState) ? nextState as HologramVoiceOrbState : "speaking");
-      setSpeechLine(firstSpeechBeat(finalText));
+      const answer = String(payload?.result?.answer ?? "");
+      if (!answer || !isAsmConversationPayload(payload)) {
+        throw new Error("conversation surface unavailable");
+      }
+      setOrbState("speaking");
+      setSpeechLine(firstSpeechBeat(answer));
       setMessage("");
       window.setTimeout(() => setOrbState("listening"), 2900);
     } catch {
       setOrbState("blocked");
-      setSpeechLine(language === "ko" ? "지금은 응답 경계가 닫혔어요." : "The response boundary is closed right now.");
+      setSpeechLine(safeStatusLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);
     }
   }
 
   return (
-    <section className="atanor-ai-dashboard" aria-label={language === "ko" ? "ATANOR 파티클 본체" : "ATANOR particle body"} data-voice-mode={voiceMode ? "true" : "false"}>
+    <section
+      className="atanor-ai-dashboard"
+      aria-label={language === "ko" ? "ATANOR 파티클 본체" : "ATANOR particle body"}
+      data-voice-mode={voiceMode ? "true" : "false"}
+      data-speaking={orbState === "speaking" ? "true" : "false"}
+    >
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
         {speechLine ? (

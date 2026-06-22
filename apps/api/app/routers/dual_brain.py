@@ -160,6 +160,23 @@ def _is_live_selfhood_conversation(question: str) -> bool:
     compact = _compact_conversation_text(question)
     if not compact:
         return True
+    if compact in {"안녕", "안녕하세요", "하이", "헬로", "반가워", "고마워", "감사", "감사합니다"}:
+        return True
+    lowered = question.strip().lower()
+    if any(
+        term in lowered
+        for term in (
+            "자기 모델",
+            "자아 모델",
+            "자의식",
+            "내적 언어",
+            "생각 중추",
+            "유리 구",
+            "구슬",
+            "음성 모드",
+        )
+    ) and len(question.strip()) <= 80:
+        return True
     if compact in {
         "안녕",
         "안녕하세요",
@@ -200,6 +217,14 @@ def _is_live_selfhood_conversation(question: str) -> bool:
 def _live_selfhood_speech_act(question: str, language: str) -> str:
     compact = _compact_conversation_text(question)
     if language == "ko":
+        if compact in {"안녕", "안녕하세요", "하이", "헬로", "반가워"}:
+            return "greeting"
+        if compact in {"고마워", "감사", "감사합니다"}:
+            return "thanks"
+        if any(term in question for term in ("자기 모델", "자아 모델", "자의식", "내적 언어", "생각 중추")):
+            return "self_model"
+        if any(term in question for term in ("유리 구", "구슬")):
+            return "orb"
         if compact in {"안녕", "안녕하세요", "하이", "헬로", "반가워"}:
             return "greeting"
         if compact in {"고마워", "감사", "감사합니다"}:
@@ -1145,7 +1170,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="question, query, or message is required")
     language = request.language or ("ko" if any("\uac00" <= char <= "\ud7a3" for char in question) else "en")
     three_core_trace = _run_three_core_compact_trace(question)
-    if _is_live_selfhood_conversation(question):
+    if request.mode in {"conversation", "live_selfhood", "dashboard_conversation"} or _is_live_selfhood_conversation(question):
         return _attach_three_core_trace(
             _live_selfhood_payload(request, question=question, language=language),
             request=request,

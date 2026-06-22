@@ -195,7 +195,7 @@ class ThoughtAgent:
                 "local_brain_status": "로컬 브레인은 사용자가 승인한 기억만 다루며, 이 루프는 쓰기를 수행하지 않습니다.",
                 "cloud_brain_status": "클라우드 브레인은 검증된 공용 지식 후보를 다루며, 이 루프는 승격을 수행하지 않습니다.",
                 "safety_reflection": "안전 경계가 먼저입니다. 로컬 브레인, 클라우드 브레인, 외부 연결은 승인 없이 섞지 않습니다.",
-                "general_dialogue": "먼저 의도와 경계를 내부적으로 점검했습니다. 지금은 proof-only 사고 루프로 응답을 준비했습니다.",
+                "general_dialogue": "로컬 대화 엔진 연결을 확인하는 중입니다. 텍스트 입력은 유지되며, 기억이나 지식은 변경되지 않습니다.",
             }
         else:
             responses = {
@@ -204,7 +204,7 @@ class ThoughtAgent:
                 "local_brain_status": "The Local Brain only handles approved memory; this loop performs no write.",
                 "cloud_brain_status": "The Cloud Brain holds verified public-knowledge candidates; this loop performs no promotion.",
                 "safety_reflection": "Safety boundaries come first. Local Brain, Cloud Brain, and external routes stay separated without approval.",
-                "general_dialogue": "I checked intent and boundaries internally first. This is a proof-only thought-loop response.",
+                "general_dialogue": "The local conversation engine is being checked. Text input remains available, and no memory or knowledge is changed.",
             }
         return f"{emotion} {responses[intent]}"
 

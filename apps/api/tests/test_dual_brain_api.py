@@ -329,6 +329,39 @@ def test_live_selfhood_greeting_uses_native_conversation_surface(tmp_path, monke
     assert payload["local_brain_write"] is False
 
 
+def test_dashboard_conversation_mode_forces_asm_v0_surface(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    async def fail_query_graphrag(*args, **kwargs):  # pragma: no cover - should never be called
+        raise AssertionError("dashboard conversation mode must not enter graph retrieval")
+
+    monkeypatch.setattr(dual_brain.alpha_service, "query_graphrag", fail_query_graphrag)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat/atanor",
+        json={
+            "question": "뭐 하고 있어?",
+            "language": "ko",
+            "brain_mode": "conversation",
+            "mode": "conversation",
+            "include_trace": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    assert payload["answer"]
+    assert payload["answer_kind"] == "asm_v0_conversation_surface"
+    assert payload["answer_engine"]["generation_basis"] == "local_corpus_construction_transition_model"
+    assert payload["answer_engine"]["external_llm"] is False
+    assert payload["answer_engine"]["external_sllm"] is False
+    assert payload["answer_engine"]["rule_based_answer_used"] is False
+    assert payload["answer_engine"]["template_free_surface"] is True
+    assert payload["answer_engine"]["internal_trace_exposed"] is False
+    assert payload["local_brain_write"] is False
+
+
 def test_live_selfhood_self_model_generates_without_scratchpad_or_rule_answer(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
