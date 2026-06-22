@@ -4028,6 +4028,82 @@ p {
   letter-spacing: 0.02em;
 }
 
+.atanor-graph-loading-progress {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(110, 231, 255, 0.16);
+  border-radius: 999px;
+  box-shadow: inset 0 0 18px rgba(110, 231, 255, 0.04);
+  display: grid;
+  grid-template-columns: minmax(120px, 210px) 42px;
+  gap: 10px;
+  height: 26px;
+  margin-top: 2px;
+  overflow: hidden;
+  padding: 3px 8px 3px 4px;
+}
+
+.atanor-graph-loading-progress span {
+  background: linear-gradient(90deg, rgba(37, 244, 255, 0.42), rgba(126, 118, 255, 0.76), rgba(255, 100, 216, 0.68));
+  border-radius: inherit;
+  box-shadow: 0 0 20px rgba(72, 202, 255, 0.22);
+  display: block;
+  height: 100%;
+  min-width: 22px;
+  transition: width 0.4s ease;
+}
+
+.atanor-graph-loading-progress em {
+  color: rgba(255, 255, 255, 0.82);
+  font-family: var(--atanor-mono);
+  font-size: 0.68rem;
+  font-style: normal;
+  text-align: right;
+}
+
+.atanor-graph-sync-progress {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.48);
+  border: 1px solid rgba(110, 231, 255, 0.16);
+  border-radius: 999px;
+  bottom: 68px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24), inset 0 0 18px rgba(110, 231, 255, 0.045);
+  color: rgba(255, 255, 255, 0.78);
+  display: grid;
+  font-family: var(--atanor-mono);
+  font-size: 0.68rem;
+  gap: 10px;
+  grid-template-columns: auto minmax(88px, 132px) 34px;
+  left: 50%;
+  letter-spacing: 0.02em;
+  padding: 8px 12px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 7;
+}
+
+.atanor-graph-sync-progress div {
+  background: rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  height: 4px;
+  overflow: hidden;
+}
+
+.atanor-graph-sync-progress i {
+  background: linear-gradient(90deg, rgba(37, 244, 255, 0.64), rgba(88, 155, 255, 0.76), rgba(255, 100, 216, 0.58));
+  border-radius: inherit;
+  box-shadow: 0 0 16px rgba(37, 244, 255, 0.26);
+  display: block;
+  height: 100%;
+  min-width: 18px;
+}
+
+.atanor-graph-sync-progress em {
+  color: rgba(255, 255, 255, 0.9);
+  font-style: normal;
+  text-align: right;
+}
+
 .atanor-empty-loader {
   aspect-ratio: 1;
   display: grid;

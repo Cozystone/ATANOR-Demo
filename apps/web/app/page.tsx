@@ -3629,6 +3629,9 @@ export default function BakeBoardPage() {
     : localBackendStatus === "checking"
       ? (language === "ko" ? "Ghost Shell 주소록을 깨우고 있습니다" : "Waking Ghost Shell topology")
       : (language === "ko" ? "로컬 Companion 응답 대기" : "Waiting for local Companion");
+  const graphLoadingPercent = tabBrainGraphPending
+    ? Math.max(18, Math.min(92, Math.round(graphEdgeOpacity * 100)))
+    : 100;
   const studioGraph3D = useMemo(() => buildStudioTopologyGraph(visibleGraph3D), [visibleGraph3D]);
   const sphereGraph3D = useMemo(() => buildSphericalTopologyGraph(visibleGraph3D, graphPresentationMode), [visibleGraph3D, graphPresentationMode]);
   const usesStudioGraph = mainSection === "home";
@@ -6103,6 +6106,12 @@ export default function BakeBoardPage() {
                   </div>
                   <strong>{graphEmptyTitle}</strong>
                   <small>{graphEmptySubtitle}</small>
+                  {tabBrainGraphPending ? (
+                    <div className="atanor-graph-loading-progress" aria-label={`${graphEmptyTitle} ${graphLoadingPercent}%`}>
+                      <span style={{ width: `${graphLoadingPercent}%` }} />
+                      <em>{graphLoadingPercent}%</em>
+                    </div>
+                  ) : null}
                 </div>
               )}
               {mainSection !== "local" && mainSection !== "cloud" ? (
@@ -6165,6 +6174,13 @@ export default function BakeBoardPage() {
                   {language === "ko" ? "초기화" : "Reset"}
                 </button>
               </div>
+              {tabBrainGraphPending ? (
+                <div className="atanor-graph-sync-progress" aria-label={`${graphEmptyTitle} ${graphLoadingPercent}%`}>
+                  <span>{language === "ko" ? "그래프 로딩" : "Graph loading"}</span>
+                  <div><i style={{ width: `${graphLoadingPercent}%` }} /></div>
+                  <em>{graphLoadingPercent}%</em>
+                </div>
+              ) : null}
               {mainSection === "local" && (cloudAttachedNodeCount > 0 || Number(graphOverlay.seed_anchor_nodes ?? 0) > 0) ? (
                 <div className="atanor-local-overlay-badge">
                   <span>{language === "ko" ? "Working Memory Overlay Active" : "Working Memory Overlay Active"}</span>
@@ -6226,7 +6242,7 @@ export default function BakeBoardPage() {
             ) : null}
           </article>
 
-          {mainSection === "local" || mainSection === "cloud" ? (
+          {mainSection === "local" ? (
             <BrainConnectionStatus
               activeBrain={mainSection}
               cloud={{
@@ -6234,7 +6250,7 @@ export default function BakeBoardPage() {
                 candidateCaseFrames: Number(cloudCandidateStatus?.candidate_case_frames ?? 0),
                 concepts: semanticStoreConceptCount,
                 evidence: semanticCloudEvidence,
-                pending: mainSection === "cloud" && tabBrainGraphPending,
+                pending: false,
                 relations: semanticStoreRelationCount,
                 source: cloudProviderName,
               }}
