@@ -58,17 +58,35 @@ class PromotionDryRunReport:
     risky_items: int
     required_user_approvals: list[str]
     issues: list[PromotionIssue]
+    candidate_input_counts: dict[str, int] = field(default_factory=dict)
+    verified_input_counts: dict[str, int] = field(default_factory=dict)
+    candidate_store_manifest_hash: str = ""
+    verified_store_manifest_hash: str = ""
+    source_run_id: str = ""
+    source_run_status: str = ""
+    sample_size: int | None = None
+    rejected_duplicates: int = 0
+    rejected_no_source: int = 0
+    rejected_conflicts: int = 0
+    rejected_low_quality: int = 0
+    requires_manual_review: int = 0
+    actual_promotion_performed: bool = False
+    dry_run_only: bool = True
     production_store_mutated: bool = False
     local_brain_write: bool = False
     candidate_promotion: bool = False
     external_llm_used: bool = False
+    real_p2p_used: bool = False
+    generated_code_executed: bool = False
     mock_growth: bool = False
 
     def __post_init__(self) -> None:
-        if self.actual_promotion_enabled:
+        if self.actual_promotion_enabled or self.actual_promotion_performed or not self.dry_run_only:
             raise ValueError("dry-run report cannot enable actual promotion")
         if self.production_store_mutated or self.local_brain_write or self.candidate_promotion:
             raise ValueError("dry-run report cannot mutate stores or promote candidates")
+        if self.external_llm_used or self.real_p2p_used or self.generated_code_executed:
+            raise ValueError("dry-run report cannot use external LLMs, real P2P, or generated code execution")
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
