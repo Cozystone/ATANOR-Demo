@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
+import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
 import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import BrainConnectionStatus from "./BrainConnectionStatus";
@@ -22,7 +23,7 @@ type RightMode = "process" | "chat";
 type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
 type Language = "en" | "ko";
-type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "selfhood" | "live-scheduler" | "memory-approval" | "graphhub" | "contribute" | "chat" | "settings";
+type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "agent-os" | "selfhood" | "live-scheduler" | "memory-approval" | "graphhub" | "contribute" | "chat" | "settings";
 type SurfaceClass = "product" | "advanced" | "lab";
 type GraphPresentationMode = "home_unified_overview" | "local_private_memory" | "cloud_world_knowledge" | "unified_projection";
 
@@ -33,6 +34,7 @@ const mainNavIcon = {
   cloud: Cloud,
   atlas: Globe2,
   congress: UsersRound,
+  "agent-os": Package,
   selfhood: UserCircle,
   "live-scheduler": RefreshCw,
   "memory-approval": Bell,
@@ -52,13 +54,14 @@ const mainSectionSurface = {
   chat: "product",
   settings: "product",
   congress: "product",
+  "agent-os": "lab",
   "memory-approval": "advanced",
   selfhood: "lab",
   "live-scheduler": "lab",
   graphhub: "lab",
 } satisfies Record<MainSectionId, SurfaceClass>;
 
-const internalMainSections = new Set<MainSectionId>(["selfhood", "live-scheduler", "memory-approval", "graphhub"]);
+const internalMainSections = new Set<MainSectionId>(["agent-os", "selfhood", "live-scheduler", "memory-approval", "graphhub"]);
 
 const MAIN_COPY: Record<Language, {
   nav: Array<{ id: MainSectionId; key: string; label: string }>;
@@ -107,6 +110,7 @@ const MAIN_COPY: Record<Language, {
       { id: "cloud", key: "B", label: "Cloud Brain" },
       { id: "atlas", key: "A", label: "Atlas" },
       { id: "congress", key: "C", label: "AGORA" },
+      { id: "agent-os", key: "O", label: "Agentic OS" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
@@ -170,6 +174,7 @@ const MAIN_COPY: Record<Language, {
       { id: "cloud", key: "B", label: "클라우드 브레인" },
       { id: "atlas", key: "A", label: "아틀라스" },
       { id: "congress", key: "C", label: "AGORA" },
+      { id: "agent-os", key: "O", label: "Agentic OS" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
@@ -1723,7 +1728,7 @@ export default function BakeBoardPage() {
       : "en";
     setLanguage(initialLanguage);
     const requestedSection = params.get("section");
-    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "selfhood", "live-scheduler", "memory-approval", "graphhub", "contribute", "chat", "settings"];
+    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "agent-os", "selfhood", "live-scheduler", "memory-approval", "graphhub", "contribute", "chat", "settings"];
     if (requestedSection && sectionIds.includes(requestedSection as MainSectionId)) {
       const nextSection = requestedSection as MainSectionId;
       if (internalMainSections.has(nextSection) && !labSurfaceRequested) {
@@ -4611,6 +4616,7 @@ export default function BakeBoardPage() {
     cloud: copy.cloudBrain,
     atlas: language === "ko" ? "아틀라스" : "Atlas",
     congress: "AGORA",
+    "agent-os": "Agentic OS",
     selfhood: "Selfhood Lab",
     "live-scheduler": "Live Scheduler",
     "memory-approval": "Memory Approval",
@@ -5173,6 +5179,7 @@ export default function BakeBoardPage() {
     cloud: language === "ko" ? "클라우드 브레인 Fragment와 브로커 상태를 읽기 전용으로 봅니다." : "Viewing Cloud Brain bridge status.",
     atlas: language === "ko" ? "익명 지역 단위로 Cloud Brain 브레인 링크 신호를 시각화합니다." : "Visualizing anonymous regional Cloud Brain Link signals.",
     congress: "AGORA proof-only agent congress.",
+    "agent-os": "Proof-only Agentic Micro-OS status surface.",
     selfhood: language === "ko" ? "proof-only 자기 모델 런타임 상태와 승인 대기 제안을 봅니다." : "Proof-only self-model runtime state and approval-required proposals.",
     "memory-approval": language === "ko" ? "Local Brain 쓰기 없이 메모리 후보를 검토합니다." : "Review proposed memories while Local Brain writes stay locked.",
     graphhub: language === "ko" ? "Graph Cartridge를 설치하고 읽기 전용으로 연결합니다." : "Install and attach Graph Cartridges read-only.",
@@ -5583,6 +5590,8 @@ export default function BakeBoardPage() {
           </section>
         ) : mainSection === "congress" ? (
           <AtlasCongressPanel language={language} />
+        ) : mainSection === "agent-os" ? (
+          <AgenticMicroOSPanel language={language} localBackendUrl={localBackendUrl} />
         ) : mainSection === "selfhood" ? (
           <SelfhoodRuntimePanel language={language} />
         ) : mainSection === "live-scheduler" ? (
