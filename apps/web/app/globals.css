@@ -8033,9 +8033,64 @@ p {
   outline-offset: -10px;
 }
 
+.atanor-hologram-composer {
+  align-items: center;
+  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  bottom: clamp(24px, 4vh, 48px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 44px minmax(180px, 430px) 44px;
+  left: 50%;
+  min-height: 52px;
+  padding: 4px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
+.atanor-hologram-composer input {
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.92);
+  font: 700 0.92rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  min-width: 0;
+  outline: 0;
+}
+
+.atanor-hologram-composer input::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.atanor-hologram-composer button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
+  width: 44px;
+}
+
+.atanor-hologram-composer button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 @media (max-width: 720px) {
   .hologram-voice-orb {
     min-height: 100%;
     min-width: 100%;
+  }
+
+  .atanor-hologram-composer {
+    grid-template-columns: 42px minmax(150px, 1fr) 42px;
+    width: calc(100% - 36px);
   }
 }
