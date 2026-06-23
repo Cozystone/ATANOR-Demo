@@ -92,7 +92,18 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
         json={
             "stage_layout": "scene_focus",
             "beats": [
-                {"op": "spawn_object", "object_id": "concept_a", "prompt": "concept figure", "archetype": "creature"},
+                {
+                    "op": "spawn_object",
+                    "object_id": "concept_a",
+                    "prompt": "concept figure",
+                    "archetype": "creature",
+                    "scene_directive": {
+                        "directive_owner": "cgsr_visual_imagination_planner",
+                        "basis": "verified_scene_beat",
+                        "narrative_function": "present_verified_fact",
+                        "stage_instruction": "assemble_verified_object",
+                    },
+                },
                 {"op": "focus_camera", "object_id": "concept_a", "camera": {"zoom": 1.4}},
             ],
         },
@@ -107,5 +118,11 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert payload["scene_choreography"]["stage_layout"] == "scene_focus"
     assert payload["scene_choreography"]["orb_anchor"] == "lower_right"
     assert len(payload["scene_choreography"]["beats"]) == 2
+    first_beat = payload["scene_choreography"]["beats"][0]
+    assert first_beat["scene_directive"]["directive_owner"] == "cgsr_visual_imagination_planner"
+    assert first_beat["scene_directive"]["stage_instruction"] == "assemble_verified_object"
+    assert first_beat["scene_directive"]["text_rendering"] == "dom_text_not_particles"
+    assert first_beat["scene_directive"]["particle_text"] is False
+    assert first_beat["scene_directive"]["topic_scene_templates"] is False
     assert payload["local_brain_write"] is False
     assert payload["production_store_mutated"] is False
