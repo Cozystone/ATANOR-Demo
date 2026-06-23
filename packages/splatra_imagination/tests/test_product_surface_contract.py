@@ -118,6 +118,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sameSceneGroup" in field
     assert "sceneBeatModelPoints" in field
     assert "sceneGroupCameraView" in field
+    assert "sceneCameraTransitionBlend" in field
+    assert "previousSceneFocusObject" in field
+    assert "blendedSceneCameraView" in field
+    assert "previous.targetX * (1 - blend)" in field
     assert "sceneMotionFocusBoost" in field
     assert "motionFocusBoost" in field
     assert "zoomCeiling" in field

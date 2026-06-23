@@ -690,6 +690,39 @@ function sceneGroupCameraView(activeObject: SceneRenderObject | null, visibleObj
   };
 }
 
+function sceneCameraTransitionBlend(beat: ScenePlanBeat | null | undefined, sceneElapsed: number) {
+  if (!beat) return 1;
+  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  const transition = beat.op === "focus_camera" || beat.op === "move" || beat.motion_path ? 0.56 : 0.36;
+  return smoothstep((sceneElapsed - start) / transition);
+}
+
+function previousSceneFocusObject(activeObject: SceneRenderObject | null, visibleObjects: SceneRenderObject[]) {
+  if (!activeObject) return null;
+  const activeStart = Number.isFinite(Number(activeObject.beat.t_start)) ? Number(activeObject.beat.t_start) : 0;
+  return visibleObjects
+    .filter((object) => object.id !== activeObject.id)
+    .filter((object) => {
+      const start = Number.isFinite(Number(object.beat.t_start)) ? Number(object.beat.t_start) : 0;
+      return start < activeStart;
+    })
+    .sort((left, right) => Number(right.beat.t_start ?? 0) - Number(left.beat.t_start ?? 0))[0] ?? null;
+}
+
+function blendedSceneCameraView(activeObject: SceneRenderObject | null, visibleObjects: SceneRenderObject[], sceneElapsed: number): SceneCameraView {
+  const current = sceneGroupCameraView(activeObject, visibleObjects, sceneElapsed);
+  const previousObject = previousSceneFocusObject(activeObject, visibleObjects);
+  if (!activeObject || !previousObject) return current;
+  const blend = sceneCameraTransitionBlend(activeObject.beat, sceneElapsed);
+  if (blend >= 0.995) return current;
+  const previous = sceneGroupCameraView(previousObject, visibleObjects, sceneElapsed);
+  return {
+    targetX: previous.targetX * (1 - blend) + current.targetX * blend,
+    targetY: previous.targetY * (1 - blend) + current.targetY * blend,
+    zoom: clamp(previous.zoom * (1 - blend) + current.zoom * blend, 0.82, 1.72),
+  };
+}
+
 function sceneMotionFocusBoost(beat: ScenePlanBeat | null | undefined) {
   if (!beat?.motion_path && beat?.op !== "move") return 0;
   const behavior = String(beat?.particle_behavior ?? "");
@@ -1494,7 +1527,7 @@ function drawSceneFocusParticles(
 
   const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
   const activeObject = visibleObjects.find((object) => object.id === activeObjectId) ?? visibleObjects[0] ?? null;
-  const cameraView = sceneGroupCameraView(activeObject, visibleObjects, sceneElapsed);
+  const cameraView = blendedSceneCameraView(activeObject, visibleObjects, sceneElapsed);
   cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);
   drawSceneGroupRelationField(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, cameraView, centralScale);
   visibleObjects.forEach((object) => {
