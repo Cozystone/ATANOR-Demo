@@ -242,7 +242,7 @@ def _scene_op_for_unit(unit: str, *, index: int, is_last: bool) -> str:
 def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: float) -> dict[str, Any]:
     phrase = unit["prompt"]
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
-    return {
+    beat = {
         "op": op,
         "prompt": phrase,
         "narration": unit["narration"],
@@ -255,6 +255,10 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
         "position": _position_for_phrase(phrase, index),
         "camera": _camera_for_phrase(phrase, index) if op in {"focus_camera", "move"} else {},
     }
+    motion_path = _motion_path_for_unit(unit, index=index) if op == "move" or unit["semantic_role"].startswith("verified_motion") else {}
+    if motion_path:
+        beat["motion_path"] = motion_path
+    return beat
 
 
 def _scene_units(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[dict[str, str]]:
@@ -364,6 +368,43 @@ def _position_for_phrase(phrase: str, index: int) -> list[float]:
     x_bucket = _stable_index(f"x:{index}:{phrase}", 9) - 4
     y_bucket = _stable_index(f"y:{index}:{phrase}", 7) - 3
     return [round(x_bucket * 0.22, 2), round(y_bucket * 0.16, 2), 0.0]
+
+
+def _motion_path_for_unit(unit: dict[str, str], *, index: int) -> dict[str, Any]:
+    narration = unit["narration"]
+    if not _has_any_cue(narration, MOTION_CUES):
+        return {}
+    source_prompt = ""
+    target_prompt = ""
+    from_match = re.search(
+        r"\bfrom\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=\s+(?:toward|towards|to|into|onto)\b|[,.;]|$)",
+        narration,
+        re.IGNORECASE,
+    )
+    if from_match:
+        source_prompt = _clean_phrase(from_match.group(1), limit=72)
+    target_match = re.search(
+        r"\b(?:toward|towards|to|into|onto)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=[,.;]|$)",
+        narration,
+        re.IGNORECASE,
+    )
+    if target_match:
+        target_prompt = _clean_phrase(target_match.group(1), limit=72)
+
+    anchors = _entity_spans(narration)
+    if not source_prompt and len(anchors) >= 2:
+        source_prompt = anchors[-2]
+    if not target_prompt and anchors:
+        target_prompt = anchors[-1]
+    if not source_prompt or not target_prompt or source_prompt.casefold() == target_prompt.casefold():
+        return {}
+    return {
+        "from": _position_for_phrase(source_prompt, index + 37),
+        "to": _position_for_phrase(target_prompt, index + 73),
+        "basis": "verified_motion_phrase",
+        "source_prompt": source_prompt,
+        "target_prompt": target_prompt,
+    }
 
 
 def _camera_for_phrase(phrase: str, index: int) -> dict[str, Any]:

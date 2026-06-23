@@ -26,6 +26,7 @@ class SceneBeat:
     t_start: float = 0.0
     duration: float = 1.0
     position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    motion_path: dict[str, Any] = field(default_factory=dict)
     camera: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -79,6 +80,23 @@ def _coerce_position(value: Any) -> tuple[float, float, float]:
     )
 
 
+def _coerce_motion_path(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    path: dict[str, Any] = {}
+    if "from" in value:
+        path["from"] = _coerce_position(value.get("from"))
+    if "to" in value:
+        path["to"] = _coerce_position(value.get("to"))
+    if "basis" in value:
+        path["basis"] = _clean_text(value.get("basis"), limit=80)
+    if "source_prompt" in value:
+        path["source_prompt"] = _clean_text(value.get("source_prompt"), limit=96)
+    if "target_prompt" in value:
+        path["target_prompt"] = _clean_text(value.get("target_prompt"), limit=96)
+    return path
+
+
 def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     op = str(raw.get("op") or "spawn_object")
     if op not in {"spawn_object", "morph", "move", "focus_camera", "label", "despawn"}:
@@ -102,6 +120,7 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         t_start=_coerce_float(raw.get("t_start"), index * 1.25, minimum=0.0, maximum=600.0),
         duration=_coerce_float(raw.get("duration"), 1.0, minimum=0.1, maximum=60.0),
         position=_coerce_position(raw.get("position")),
+        motion_path=_coerce_motion_path(raw.get("motion_path")),
         camera=raw.get("camera") if isinstance(raw.get("camera"), dict) else {},
     )
 

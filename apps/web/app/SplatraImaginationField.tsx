@@ -51,6 +51,13 @@ type ScenePlanBeat = {
   t_start?: number;
   duration?: number;
   position?: number[];
+  motion_path?: {
+    from?: number[];
+    to?: number[];
+    basis?: string;
+    source_prompt?: string;
+    target_prompt?: string;
+  };
   camera?: Record<string, any>;
 };
 
@@ -388,6 +395,22 @@ function sceneObjectPosition(beat: ScenePlanBeat | null | undefined) {
   return {
     x: Number.isFinite(Number(position[0])) ? Number(position[0]) : 0,
     y: Number.isFinite(Number(position[1])) ? Number(position[1]) : 0,
+  };
+}
+
+function sceneMotionPathPoint(beat: ScenePlanBeat | null | undefined, elapsedSeconds: number) {
+  const from = Array.isArray(beat?.motion_path?.from) ? beat?.motion_path?.from ?? [] : [];
+  const to = Array.isArray(beat?.motion_path?.to) ? beat?.motion_path?.to ?? [] : [];
+  if (from.length < 2 || to.length < 2) return sceneObjectPosition(beat);
+  const progress = sceneObjectProgress(beat as ScenePlanBeat, elapsedSeconds);
+  const arc = Math.sin(progress * Math.PI) * 0.22;
+  const fromX = Number.isFinite(Number(from[0])) ? Number(from[0]) : 0;
+  const fromY = Number.isFinite(Number(from[1])) ? Number(from[1]) : 0;
+  const toX = Number.isFinite(Number(to[0])) ? Number(to[0]) : 0;
+  const toY = Number.isFinite(Number(to[1])) ? Number(to[1]) : 0;
+  return {
+    x: fromX * (1 - progress) + toX * progress,
+    y: fromY * (1 - progress) + toY * progress + arc,
   };
 }
 
@@ -791,7 +814,7 @@ function drawSceneObjectCloud(
   const alphaMultiplier = sceneObjectAlpha(object.beat, sceneElapsed, active);
   if (alphaMultiplier <= 0.02) return;
   const roleStyle = sceneRoleStyle(object.beat, active);
-  const position = sceneObjectPosition(object.beat);
+  const position = sceneMotionPathPoint(object.beat, sceneElapsed);
   const transform = sceneTransform(object.beat, true, sceneElapsed);
   const beatProgress = sceneObjectProgress(object.beat, sceneElapsed);
   const motionSwing = object.beat.op === "move" ? Math.sin(beatProgress * Math.PI) : 0;
@@ -865,7 +888,7 @@ function drawSceneFocusParticles(
 
   const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
   const centers = visibleObjects.map((object) => {
-    const position = sceneObjectPosition(object.beat);
+    const position = sceneMotionPathPoint(object.beat, sceneElapsed);
     const transform = sceneTransform(object.beat, true, sceneElapsed);
     return {
       id: object.id,

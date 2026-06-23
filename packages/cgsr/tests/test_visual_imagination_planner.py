@@ -180,6 +180,11 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(prompt == "tree" for prompt in prompts)
     assert any("apple fell" in prompt for prompt in prompts)
     assert any(beat["op"] == "move" and "apple fell" in beat["prompt"] for beat in beats)
+    motion_beats = [beat for beat in beats if beat["op"] == "move" and beat.get("motion_path")]
+    assert motion_beats
+    assert all(beat["motion_path"]["basis"] == "verified_motion_phrase" for beat in motion_beats)
+    assert any(beat["motion_path"].get("source_prompt") for beat in motion_beats)
+    assert any(beat["motion_path"].get("target_prompt") for beat in motion_beats)
     assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
