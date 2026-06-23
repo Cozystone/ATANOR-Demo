@@ -29,15 +29,44 @@ STOP_TOKENS = {
     "how",
     "please",
     "대해",
-    "대한",
     "설명",
     "설명해줘",
     "알려줘",
+    "보여줘",
     "무엇",
     "뭐야",
     "어떻게",
     "그리고",
 }
+KOREAN_SUFFIXES = (
+    "으로는",
+    "로는",
+    "으로",
+    "에서",
+    "에게",
+    "에는",
+    "이다",
+    "입니다",
+    "하고",
+    "까지",
+    "부터",
+    "처럼",
+    "보다",
+    "이며",
+    "이나",
+    "거나",
+    "은",
+    "는",
+    "이",
+    "가",
+    "을",
+    "를",
+    "의",
+    "에",
+    "로",
+    "과",
+    "와",
+)
 
 
 @dataclass(frozen=True)
@@ -68,35 +97,7 @@ def _read_jsonl(path: Path, *, limit: int = 10000) -> list[dict[str, Any]]:
 
 def _normalize_token(token: str) -> str:
     token = token.casefold().strip()
-    for suffix in (
-        "으로서",
-        "으로써",
-        "으로",
-        "에서",
-        "에게",
-        "에는",
-        "이다",
-        "입니다",
-        "하고",
-        "까지",
-        "부터",
-        "처럼",
-        "보다",
-        "이며",
-        "이나",
-        "거나",
-        "와",
-        "과",
-        "은",
-        "는",
-        "이",
-        "가",
-        "을",
-        "를",
-        "의",
-        "에",
-        "로",
-    ):
+    for suffix in KOREAN_SUFFIXES:
         if len(token) > len(suffix) + 1 and token.endswith(suffix):
             return token[: -len(suffix)]
     return token

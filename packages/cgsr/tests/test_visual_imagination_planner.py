@@ -8,33 +8,11 @@ from packages.cgsr.cgsr.conversation_router import route_conversation_request
 from packages.cgsr.cgsr.visual_imagination_planner import plan_visual_imagination
 
 
-def test_visual_planner_abstains_without_grounded_general_knowledge() -> None:
-    route = route_conversation_request("Explain gravity with a visual scene")
-    context = gather_grounded_context("Explain gravity with a visual scene", route)
-
-    plan = plan_visual_imagination(
-        "Explain gravity with a visual scene",
-        route=route,
-        grounded_context=context,
-        diagnostics={
-            "external_llm_used": False,
-            "external_sllm_used": False,
-            "rule_based_answer_used": False,
-        },
-        answer_available=True,
-    )
-
-    assert plan.enabled is False
-    assert plan.scene_choreography is None
-    assert plan.diagnostics["topic_scene_templates"] is False
-
-
-def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
-    question = "Use SPLATRA to visualize gravity as moving particles"
+def _plan(question: str, store_path: Path | None = None):
     route = route_conversation_request(question)
-    context = gather_grounded_context(question, route)
-
-    plan = plan_visual_imagination(
+    runtime = {"verified_store_path": str(store_path)} if store_path else None
+    context = gather_grounded_context(question, route, runtime=runtime)
+    return plan_visual_imagination(
         question,
         route=route,
         grounded_context=context,
@@ -45,6 +23,19 @@ def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
         },
         answer_available=True,
     )
+
+
+def test_visual_planner_abstains_without_grounded_general_knowledge() -> None:
+    plan = _plan("Explain gravity with a visual scene")
+
+    assert plan.enabled is False
+    assert plan.scene_choreography is None
+    assert plan.diagnostics["topic_scene_templates"] is False
+
+
+def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
+    question = "Use SPLATRA to visualize gravity as moving particles"
+    plan = _plan(question)
 
     assert plan.enabled is True
     assert plan.scene_choreography is not None
@@ -74,21 +65,7 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
         + "\n",
         encoding="utf-8",
     )
-    question = "What is the law of gravity?"
-    route = route_conversation_request(question)
-    context = gather_grounded_context(question, route, runtime={"verified_store_path": str(tmp_path)})
-
-    plan = plan_visual_imagination(
-        question,
-        route=route,
-        grounded_context=context,
-        diagnostics={
-            "external_llm_used": False,
-            "external_sllm_used": False,
-            "rule_based_answer_used": False,
-        },
-        answer_available=True,
-    )
+    plan = _plan("What is the law of gravity?", tmp_path)
 
     assert plan.enabled is True
     assert plan.scene_choreography is not None
@@ -102,6 +79,7 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["text_anchor"] == "lower_left"
     assert plan.scene_choreography["topic_scene_templates"] is False
+    assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
 
 
 def test_visual_planner_uses_contentful_korean_scene_anchors(tmp_path: Path) -> None:
@@ -117,24 +95,34 @@ def test_visual_planner_uses_contentful_korean_scene_anchors(tmp_path: Path) -> 
         + "\n",
         encoding="utf-8",
     )
-    question = "중력의 법칙에 대해 설명해줘"
-    route = route_conversation_request(question)
-    context = gather_grounded_context(question, route, runtime={"verified_store_path": str(tmp_path)})
-
-    plan = plan_visual_imagination(
-        question,
-        route=route,
-        grounded_context=context,
-        diagnostics={
-            "external_llm_used": False,
-            "external_sllm_used": False,
-            "rule_based_answer_used": False,
-        },
-        answer_available=True,
-    )
+    plan = _plan("중력의 법칙에 대해 설명해줘", tmp_path)
 
     assert plan.enabled is True
     assert plan.scene_choreography is not None
     prompts = [beat["prompt"] for beat in plan.scene_choreography["beats"]]
     assert all(prompt not in {"따라서", "단계", "첫 번째"} for prompt in prompts)
     assert any("뉴턴" in prompt or "중력" in prompt for prompt in prompts)
+
+
+def test_visual_planner_only_adds_motion_when_verified_fact_contains_motion(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": "아이작 뉴턴은 중력 법칙과 관련해 사과가 나무에서 떨어지는 장면을 관찰했다. 그 사건은 물체가 지구 쪽으로 끌리는 현상을 설명하는 단서가 되었다.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "뉴턴"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("중력의 법칙에 대해 설명해줘", tmp_path)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    beats = plan.scene_choreography["beats"]
+    assert any(beat["op"] == "move" for beat in beats)
+    assert any("사과" in beat["narration"] for beat in beats)
+    assert any("떨어지는" in beat["narration"] for beat in beats)
+    assert all(beat["source_fact"] for beat in beats)

@@ -7,7 +7,7 @@ from typing import Any
 
 from packages.cgsr.cgsr.conversation_grounding import GroundedContext
 from packages.cgsr.cgsr.conversation_router import ConversationRoute
-from packages.splatra_imagination import ARCHETYPES, compile_scene_choreography
+from packages.splatra_imagination import compile_scene_choreography
 from packages.splatra_imagination.models import Archetype
 
 
@@ -29,6 +29,7 @@ VISUAL_ROUTE_TYPES = {
     "voice_status",
     "general_knowledge_question",
 }
+
 ANCHOR_STOPWORDS = {
     "therefore",
     "however",
@@ -44,7 +45,6 @@ ANCHOR_STOPWORDS = {
     "첫",
     "번째",
     "단계",
-    "항",
     "기존",
     "대한",
     "대해",
@@ -52,6 +52,79 @@ ANCHOR_STOPWORDS = {
     "이는",
     "그",
     "중",
+}
+
+KOREAN_SUFFIXES = (
+    "으로는",
+    "로는",
+    "으로",
+    "에서",
+    "에게",
+    "에는",
+    "이다",
+    "입니다",
+    "하고",
+    "까지",
+    "부터",
+    "처럼",
+    "보다",
+    "이며",
+    "이나",
+    "거나",
+    "은",
+    "는",
+    "이",
+    "가",
+    "을",
+    "를",
+    "의",
+    "에",
+    "로",
+)
+
+MOTION_CUES = {
+    "fall",
+    "falls",
+    "falling",
+    "move",
+    "moves",
+    "moving",
+    "orbit",
+    "orbits",
+    "rotate",
+    "rotates",
+    "attract",
+    "attracts",
+    "pull",
+    "pulls",
+    "drop",
+    "drops",
+    "떨어",
+    "낙하",
+    "움직",
+    "이동",
+    "회전",
+    "공전",
+    "끌",
+    "당기",
+    "작용",
+}
+
+RELATION_CUES = {
+    "formulated",
+    "discovered",
+    "defined",
+    "called",
+    "known",
+    "means",
+    "is",
+    "are",
+    "발견",
+    "정의",
+    "기술",
+    "나타내",
+    "의미",
+    "불리",
 }
 
 
@@ -75,26 +148,12 @@ def _clean_phrase(value: str, *, limit: int = 96) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())[:limit]
 
 
-def _visual_phrases(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[str]:
-    phrases: list[str] = []
-    clean_question = _clean_phrase(question)
-    if route_type == "splatra_request" and clean_question:
-        phrases.append(clean_question)
-    for fact in grounded_context.facts:
-        clean = _clean_phrase(fact)
-        if clean:
-            phrases.append(clean)
-    if not phrases:
-        if clean_question:
-            phrases.append(clean_question)
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for phrase in phrases:
-        key = phrase.casefold()
-        if key not in seen:
-            seen.add(key)
-            deduped.append(phrase)
-    return deduped[:4]
+def _normalize_anchor_token(token: str) -> str:
+    token = token.strip()
+    for suffix in KOREAN_SUFFIXES:
+        if len(token) > len(suffix) + 1 and token.endswith(suffix):
+            return token[: -len(suffix)]
+    return token
 
 
 def _fact_units(fact: str) -> list[str]:
@@ -104,8 +163,8 @@ def _fact_units(fact: str) -> list[str]:
     if not clean:
         return []
     parts = re.split(r"(?<=[.!?。！？])\s+|[;；]\s*", clean)
-    units = [_clean_phrase(part, limit=160) for part in parts if _clean_phrase(part, limit=160)]
-    return units[:4] or [clean[:160]]
+    units = [_clean_phrase(part, limit=180) for part in parts if _clean_phrase(part, limit=180)]
+    return units[:4] or [clean[:180]]
 
 
 def _entity_spans(text: str) -> list[str]:
@@ -114,18 +173,19 @@ def _entity_spans(text: str) -> list[str]:
     spans: list[str] = []
     for match in re.finditer(r"\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,})){0,3}\b", text):
         spans.append(match.group(0))
-    for match in re.finditer(r"[가-힣A-Za-z0-9][가-힣A-Za-z0-9·\-]{2,}(?:\s+[가-힣A-Za-z0-9][가-힣A-Za-z0-9·\-]{2,}){0,2}", text):
+    for match in re.finditer(r"[0-9A-Za-z가-힣][0-9A-Za-z가-힣·\-]{1,}(?:\s+[0-9A-Za-z가-힣][0-9A-Za-z가-힣·\-]{1,}){0,2}", text):
         candidate = match.group(0).strip()
-        if len(candidate) >= 3:
+        if len(candidate) >= 2:
             spans.append(candidate)
 
     cleaned: list[str] = []
     for span in spans:
+        tokens = [_normalize_anchor_token(token) for token in span.split()]
         tokens = [
-            re.sub(r"(으로서|으로써|으로|에서|에게|에는|이다|입니다|하고|까지|부터|처럼|보다|이며|이나|거나|와|과|은|는|이|가|을|를|의|에|로)$", "", token)
-            for token in span.split()
+            token
+            for token in tokens
+            if token and token.casefold() not in ANCHOR_STOPWORDS and len(token) >= 2
         ]
-        tokens = [token for token in tokens if token and token.casefold() not in ANCHOR_STOPWORDS]
         if not tokens:
             continue
         cleaned.append(_clean_phrase(" ".join(tokens[:3]), limit=72))
@@ -137,7 +197,44 @@ def _entity_spans(text: str) -> list[str]:
         if key not in seen:
             seen.add(key)
             deduped.append(_clean_phrase(span, limit=72))
-    return deduped[:3]
+    return deduped[:4]
+
+
+def _has_any_cue(text: str, cues: set[str]) -> bool:
+    folded = text.casefold()
+    return any(cue in folded for cue in cues)
+
+
+def _scene_op_for_unit(unit: str, *, index: int, is_last: bool) -> str:
+    """Choose a visual operation from linguistic evidence, not topic templates."""
+
+    if index == 0:
+        return "spawn_object"
+    if is_last:
+        return "focus_camera"
+    if _has_any_cue(unit, MOTION_CUES):
+        return "move"
+    if _has_any_cue(unit, RELATION_CUES):
+        return "morph"
+    return "morph"
+
+
+def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: float) -> dict[str, Any]:
+    phrase = unit["prompt"]
+    object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
+    return {
+        "op": op,
+        "prompt": phrase,
+        "narration": unit["narration"],
+        "object_id": f"grounded_visual_{index}_{_stable_index(object_seed, 100000):05d}",
+        "semantic_role": unit["semantic_role"],
+        "source_fact": unit["source_fact"],
+        "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index),
+        "t_start": round(t_start, 2),
+        "duration": 1.35 if op == "move" else 1.25,
+        "position": _position_for_phrase(phrase, index),
+        "camera": _camera_for_phrase(phrase, index) if op in {"focus_camera", "move"} else {},
+    }
 
 
 def _scene_units(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[dict[str, str]]:
@@ -158,22 +255,26 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
         clean_fact = _clean_phrase(fact, limit=420)
         for unit in _fact_units(clean_fact):
             anchors = _entity_spans(unit)
-            prompt = anchors[0] if anchors else unit
+            prompt = " / ".join(anchors[:2]) if len(anchors) >= 2 else anchors[0] if anchors else unit
+            semantic_role = "verified_entity_relation" if len(anchors) >= 2 else "verified_fact_unit"
+            if _has_any_cue(unit, MOTION_CUES):
+                semantic_role = "verified_motion_event"
             units.append(
                 {
                     "prompt": prompt,
                     "narration": _clean_phrase(unit, limit=180),
                     "source_fact": clean_fact,
-                    "semantic_role": "verified_fact_unit",
+                    "semantic_role": semantic_role,
                 }
             )
 
     if not units:
-        for phrase in _visual_phrases(question, route_type=route_type, grounded_context=grounded_context):
+        clean_question = _clean_phrase(question)
+        if clean_question:
             units.append(
                 {
-                    "prompt": phrase,
-                    "narration": _narration_for_phrase(phrase),
+                    "prompt": clean_question,
+                    "narration": clean_question,
                     "source_fact": "",
                     "semantic_role": "surface_phrase",
                 }
@@ -186,14 +287,15 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
         if key not in seen:
             seen.add(key)
             deduped.append(unit)
-    return deduped[:5]
+    return deduped[:6]
 
 
-def _archetype_for_phrase(phrase: str, index: int) -> Archetype:
+def _archetype_for_phrase(phrase: str, semantic_role: str, index: int) -> Archetype:
     # This is deliberately not a topic dictionary. It only chooses a bounded
-    # visual carrier deterministically so the scene planner does not smuggle in
+    # visual carrier deterministically so the planner does not smuggle in
     # prompt-specific templates such as "gravity -> Newton/apple/tree".
-    return PRODUCT_ARCHETYPES[_stable_index(f"{index}:{phrase}", len(PRODUCT_ARCHETYPES))]
+    role_seed = semantic_role if semantic_role in {"verified_motion_event", "verified_entity_relation"} else "grounded"
+    return PRODUCT_ARCHETYPES[_stable_index(f"{role_seed}:{index}:{phrase}", len(PRODUCT_ARCHETYPES))]
 
 
 def _position_for_phrase(phrase: str, index: int) -> list[float]:
@@ -213,10 +315,6 @@ def _camera_for_phrase(phrase: str, index: int) -> dict[str, Any]:
     }
 
 
-def _narration_for_phrase(phrase: str) -> str:
-    return _clean_phrase(phrase, limit=180)
-
-
 def plan_visual_imagination(
     question: str,
     *,
@@ -227,9 +325,9 @@ def plan_visual_imagination(
 ) -> VisualImaginationPlan:
     """Plan whether the response may use SPLATRA without inventing scene content.
 
-    The planner is intentionally content-conservative. It can ask the dashboard
-    for a larger visual stage and convert grounded phrases into generic
-    SPLATRA beats, but it does not encode subject templates or final answers.
+    The planner is content-conservative. It can ask the dashboard for a larger
+    visual stage and convert grounded facts into entity/action beats, but it
+    does not encode subject templates or final answers.
     """
 
     route_type = route.route_type
@@ -249,7 +347,7 @@ def plan_visual_imagination(
             reason="no_grounded_visual_plan_available",
             scene_choreography=None,
             diagnostics={
-                "visual_imagination_planner": "cgsr_visual_imagination_v0",
+                "visual_imagination_planner": "cgsr_visual_imagination_v1",
                 "route_type": route_type,
                 "grounding_quality": grounding_quality,
                 "topic_scene_templates": False,
@@ -268,33 +366,18 @@ def plan_visual_imagination(
         ]
     beats: list[dict[str, Any]] = []
     for index, unit in enumerate(scene_units):
-        phrase = unit["prompt"]
-        op = "spawn_object" if index == 0 else "morph"
-        if index == len(scene_units) - 1 and index > 0:
-            op = "focus_camera"
-        object_seed = f"{index}:{unit['prompt']}:{unit['narration']}"
-        beats.append(
-            {
-                "op": op,
-                "prompt": phrase,
-                "narration": unit["narration"],
-                "object_id": f"grounded_visual_{index}_{_stable_index(object_seed, 100000):05d}",
-                "semantic_role": unit["semantic_role"],
-                "source_fact": unit["source_fact"],
-                "archetype": _archetype_for_phrase(phrase, index),
-                "t_start": round(index * 1.35, 2),
-                "duration": 1.25,
-                "position": _position_for_phrase(phrase, index),
-                "camera": _camera_for_phrase(phrase, index) if op == "focus_camera" else {},
-            }
-        )
+        op = _scene_op_for_unit(unit["narration"], index=index, is_last=index == len(scene_units) - 1 and index > 0)
+        t_start = index * 1.35
+        beats.append(_make_scene_beat(unit, index=index, op=op, t_start=t_start))
+        if op != "move" and _has_any_cue(unit["narration"], MOTION_CUES):
+            beats.append(_make_scene_beat(unit, index=index, op="move", t_start=t_start + 0.68))
     if not beats:
         return VisualImaginationPlan(
             enabled=False,
             reason="empty_visual_phrases",
             scene_choreography=None,
             diagnostics={
-                "visual_imagination_planner": "cgsr_visual_imagination_v0",
+                "visual_imagination_planner": "cgsr_visual_imagination_v1",
                 "route_type": route_type,
                 "grounding_quality": grounding_quality,
                 "topic_scene_templates": False,
@@ -316,10 +399,11 @@ def plan_visual_imagination(
         reason="grounded_visual_affordance",
         scene_choreography=choreography,
         diagnostics={
-            "visual_imagination_planner": "cgsr_visual_imagination_v0",
+            "visual_imagination_planner": "cgsr_visual_imagination_v1",
             "route_type": route_type,
             "grounding_quality": grounding_quality,
             "topic_scene_templates": False,
+            "scene_authoring_basis": "verified_fact_entity_action_extraction",
             "beats": len(beats),
             "source": "grounded_context_or_user_surface",
         },

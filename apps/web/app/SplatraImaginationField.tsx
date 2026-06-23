@@ -338,10 +338,11 @@ function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boole
   const rawX = Number(position[0] ?? cameraTarget[0] ?? 0);
   const rawY = Number(position[1] ?? cameraTarget[1] ?? 0);
   const rawZoom = Number(camera.zoom ?? camera.distance ?? 1);
-  const opBias = beat.op === "focus_camera" ? 1.08 : beat.op === "despawn" ? 0.82 : 1;
+  const opBias = beat.op === "focus_camera" ? 1.08 : beat.op === "move" ? 1.16 : beat.op === "despawn" ? 0.82 : 1;
+  const motionBias = beat.op === "move" ? 1.45 : 1;
   return {
-    offsetX: clamp(Number.isFinite(rawX) ? rawX * 0.08 : 0, -0.24, 0.24),
-    offsetY: clamp(Number.isFinite(rawY) ? -rawY * 0.08 : 0, -0.2, 0.2),
+    offsetX: clamp(Number.isFinite(rawX) ? rawX * 0.08 * motionBias : 0, -0.3, 0.3),
+    offsetY: clamp(Number.isFinite(rawY) ? -rawY * 0.08 * motionBias : 0, -0.24, 0.24),
     zoom: clamp((Number.isFinite(rawZoom) ? rawZoom : 1) * opBias, 0.72, 1.36),
   };
 }
