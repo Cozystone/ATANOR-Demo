@@ -55,6 +55,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneMotionPathPoint" in field
     assert "drawSceneMotionPathFlow" in field
     assert "cameraView" in field
+    assert "scenePlanCentralScale" in field
+    assert "centralSceneScale" in field
+    assert "dashboard_layout" in field
+    assert "central_scale" in field
     assert "drawSceneFocusParticles" in field
     assert "data-scene-objects" in field
     assert "data-scene-beat" in field
@@ -81,6 +85,8 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert '[data-speech-placement="upper_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_right"] .atanor-hologram-speech' in css
     assert '[data-scene-intent="wide_particle_stage"] .hologram-voice-orb' in css
+    assert "--atanor-scene-orb-size" in css
+    assert "--atanor-scene-field-opacity" in css
     assert "atanor-hologram-composer" in css
 
 

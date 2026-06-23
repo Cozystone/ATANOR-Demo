@@ -67,6 +67,11 @@ type ScenePlan = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
   primary_surface?: string;
+  dashboard_layout?: {
+    scene?: {
+      central_scale?: number;
+    };
+  };
   beats?: ScenePlanBeat[];
 };
 
@@ -189,6 +194,11 @@ const STATE_CONTROLS: Record<VisualState, { valence: number; arousal: number; cu
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function scenePlanCentralScale(scenePlan: ScenePlan | null | undefined) {
+  const value = Number(scenePlan?.dashboard_layout?.scene?.central_scale ?? 1);
+  return Number.isFinite(value) ? clamp(value, 0.86, 1.22) : 1;
 }
 
 function smoothstep(value: number) {
@@ -999,6 +1009,7 @@ function drawSceneObjectCloud(
   active: boolean,
   controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
   cameraView: SceneCameraView,
+  centralScale = 1,
 ) {
   const alphaMultiplier = sceneObjectAlpha(object.beat, sceneElapsed, active);
   if (alphaMultiplier <= 0.02) return;
@@ -1023,7 +1034,7 @@ function drawSceneObjectCloud(
   const cy = center.y;
   const transform = sceneTransform(object.beat, true, sceneElapsed);
   const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale;
-  const scale = Math.min(width, height) * 0.11 * transform.zoom * scaleBias;
+  const scale = Math.min(width, height) * 0.11 * transform.zoom * centralScale * scaleBias;
   const rotation = elapsed * (0.12 + controls.arousal * 0.11) + stableUnit(object.id, 5) * Math.PI * 2;
   const tilt = Math.sin(elapsed * 0.16 + stableUnit(object.id, 9) * 4) * 0.18;
   const pulse = 1 + Math.sin(elapsed * (2.1 + roleStyle.trail) + stableUnit(object.id, 17) * 4) * (active ? 0.035 : 0.018) * roleStyle.focus;
@@ -1078,6 +1089,7 @@ function drawSceneMotionPathFlow(
   sceneElapsed: number,
   active: boolean,
   cameraView: SceneCameraView,
+  centralScale = 1,
 ) {
   const from = Array.isArray(object.beat.motion_path?.from) ? object.beat.motion_path?.from ?? [] : [];
   const to = Array.isArray(object.beat.motion_path?.to) ? object.beat.motion_path?.to ?? [] : [];
@@ -1105,7 +1117,7 @@ function drawSceneMotionPathFlow(
     const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
     points.push([canvasPoint.x, canvasPoint.y]);
   }
-  const baseAlpha = active ? 0.18 : 0.075;
+  const baseAlpha = (active ? 0.18 : 0.075) * centralScale;
   drawParticlePolyline(ctx, points, [76, 230, 255], baseAlpha, unit, Math.floor(stableUnit(object.id, 73) * 1000), elapsed);
 
   const streamCount = active ? 13 : 7;
@@ -1122,7 +1134,7 @@ function drawSceneMotionPathFlow(
       ctx,
       canvasPoint.x,
       canvasPoint.y,
-      unit * (0.0022 + fade * 0.0038),
+      unit * (0.0022 + fade * 0.0038) * centralScale,
       index % 3 === 0 ? [255, 104, 177] : [76, 230, 255],
       (active ? 0.38 : 0.18) * fade,
     );
@@ -1138,6 +1150,7 @@ function drawSceneFocusParticles(
   elapsed: number,
   sceneElapsed: number,
   controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  centralScale = 1,
 ) {
   ctx.clearRect(0, 0, width, height);
   const centerGlow = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) * 0.48);
@@ -1150,12 +1163,13 @@ function drawSceneFocusParticles(
   const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
   const activeObject = visibleObjects.find((object) => object.id === activeObjectId) ?? visibleObjects[0] ?? null;
   const cameraView = sceneCameraView(activeObject?.beat, true, sceneElapsed);
+  cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);
   visibleObjects.forEach((object) => {
-    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, cameraView);
+    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, cameraView, centralScale);
   });
 
   visibleObjects.forEach((object) => {
-    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, controls, cameraView);
+    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, controls, cameraView, centralScale);
   });
 }
 
@@ -1194,6 +1208,7 @@ export default function SplatraImaginationField({
   const particles = frame?.object?.particles?.length ? frame.object.particles : fallbackParticles(archetype, budget);
   const activeArchetype = frame?.object?.archetype ?? archetype;
   const stageMode = sceneFocus || scenePlan?.stage_layout === "scene_focus";
+  const centralSceneScale = scenePlanCentralScale(scenePlan);
   const activeSceneBeat = activeSceneBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[activeSceneBeatIndex] : null;
   const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
   const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, activeSceneBeatIndex)) : null;
@@ -1319,7 +1334,7 @@ export default function SplatraImaginationField({
       const sceneElapsed = sceneStartedAt ? Math.max(0, (performance.now() - sceneStartedAt) / 1000) : elapsed;
       const activeTransform = sceneTransform(activeSceneBeat, stageMode, sceneElapsed);
       if (stageMode && sceneObjects.length) {
-        drawSceneFocusParticles(ctx, sceneObjects, activeSceneObjectId, width, height, elapsed, sceneElapsed, controls);
+        drawSceneFocusParticles(ctx, sceneObjects, activeSceneObjectId, width, height, elapsed, sceneElapsed, controls, centralSceneScale);
       } else {
         drawParticles(
           ctx,
@@ -1338,7 +1353,7 @@ export default function SplatraImaginationField({
     };
     render();
     return () => window.cancelAnimationFrame(animationId);
-  }, [activeArchetype, activeSceneBeat, activeSceneObjectId, controls, interactive, mode, particles, reducedMotion, sceneObjects, sceneStartedAt, stageMode]);
+  }, [activeArchetype, activeSceneBeat, activeSceneObjectId, centralSceneScale, controls, interactive, mode, particles, reducedMotion, sceneObjects, sceneStartedAt, stageMode]);
 
   function handleClick() {
     if (state === "listening") {
