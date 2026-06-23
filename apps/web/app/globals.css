@@ -149,11 +149,109 @@ button {
   opacity: 0.45;
 }
 
+.agentic-os-action.danger {
+  border-color: rgba(255, 105, 105, 0.42);
+  background: rgba(255, 66, 88, 0.14);
+  color: #ffe8ec;
+}
+
 .agentic-os-actions,
 .agentic-os-review-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.agentic-os-permission-card {
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
+.agentic-os-permission-card.is-tier4 {
+  border-color: rgba(255, 74, 94, 0.52);
+  box-shadow:
+    0 0 0 1px rgba(255, 74, 94, 0.12),
+    0 24px 70px rgba(255, 43, 76, 0.14);
+}
+
+.agentic-os-permission-header {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.agentic-os-permission-header strong {
+  align-self: start;
+  border: 1px solid rgba(169, 226, 255, 0.32);
+  border-radius: 999px;
+  color: #a9e2ff;
+  font-size: 0.72rem;
+  padding: 6px 9px;
+}
+
+.agentic-os-tier4-warning {
+  border: 1px solid rgba(255, 74, 94, 0.46);
+  border-radius: 8px;
+  background: rgba(255, 44, 74, 0.16);
+  color: #ffe4e9;
+  font-weight: 900;
+  padding: 12px;
+}
+
+.agentic-os-permission-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(220px, 1fr) minmax(110px, 140px) auto;
+}
+
+.agentic-os-permission-form input,
+.agentic-os-permission-form select {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f8fbff;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.agentic-os-switch-grid,
+.agentic-os-capability-matrix {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.agentic-os-switch-grid label,
+.agentic-os-capability-matrix span {
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(235, 244, 255, 0.76);
+  display: flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.agentic-os-switch-grid input {
+  accent-color: #29f5c4;
+}
+
+.agentic-os-capability-matrix span {
+  color: rgba(235, 244, 255, 0.68);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .agentic-os-permission-form,
+  .agentic-os-switch-grid,
+  .agentic-os-capability-matrix {
+    grid-template-columns: 1fr;
+  }
 }
 
 .agentic-os-review-card {

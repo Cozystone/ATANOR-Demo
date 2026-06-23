@@ -13,6 +13,12 @@ from packages.agentic_micro_os.browser_read import BrowserReadConnector, Browser
 from packages.agentic_micro_os.capabilities import CapabilityKernel
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
 from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
+from packages.agentic_micro_os.permission_gate import (
+    AutonomySubSwitches,
+    AutonomyTier,
+    PermissionGate,
+    PermissionScope,
+)
 from packages.agentic_micro_os.review_queue import ReviewQueue, ReviewStatus
 from packages.agentic_micro_os.splatra_evaluator import SplatraCosmosEvaluator, SplatraEvaluationRequest
 from packages.agentic_micro_os.web_explorer_loop import (
@@ -73,6 +79,7 @@ WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 WEB_EXPLORER_SKILL_DRAFTS: list[dict[str, Any]] = []
 OPEN_WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 REVIEW_QUEUE = ReviewQueue()
+PERMISSION_GATE = PermissionGate()
 
 
 class DashboardActionRequest(BaseModel):
@@ -177,6 +184,35 @@ class ReviewImportWebRunApiRequest(BaseModel):
     run_payload: dict[str, Any] | None = None
 
 
+class PermissionTierSetApiRequest(BaseModel):
+    tier: str = "DRAFT_PROPOSAL"
+    operator_id: str = "operator"
+
+
+class FullHostEnableApiRequest(BaseModel):
+    enabled_by: str = "operator"
+    typed_phrase: str = ""
+    duration_sec: int = 600
+    sub_switches: dict[str, bool] = Field(default_factory=dict)
+
+
+class FullHostDisableApiRequest(BaseModel):
+    operator_id: str = "operator"
+    reason: str = "operator disabled"
+
+
+class PermissionVerifyActionApiRequest(BaseModel):
+    scope: str = "read_summary"
+    action: str = "status check"
+    operator_id: str = "operator"
+    signed_token: str | None = None
+
+
+class EmergencyStopApiRequest(BaseModel):
+    operator_id: str = "operator"
+    reason: str = "operator emergency stop"
+
+
 @router.get("/status")
 def status() -> dict[str, Any]:
     browser = BrowserReadConnector()
@@ -208,7 +244,64 @@ def status() -> dict[str, Any]:
             "auto_commit",
             "auto_push",
         ],
+        "permission_gate": PERMISSION_GATE.status(),
     }
+
+
+@router.get("/permission/tier")
+def permission_tier() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **PERMISSION_GATE.status()}
+
+
+@router.post("/permission/tier/set")
+def permission_tier_set(request: PermissionTierSetApiRequest) -> dict[str, Any]:
+    try:
+        result = PERMISSION_GATE.set_tier(AutonomyTier(request.tier), operator_id=request.operator_id)
+    except ValueError as exc:
+        return {**SAFETY_FLAGS, "allowed": False, "reason": str(exc), **PERMISSION_GATE.status()}
+    return {**SAFETY_FLAGS, **result}
+
+
+@router.post("/permission/full-host/enable")
+def permission_full_host_enable(request: FullHostEnableApiRequest) -> dict[str, Any]:
+    result = PERMISSION_GATE.enable_full_host(
+        enabled_by=request.enabled_by,
+        typed_phrase=request.typed_phrase,
+        duration_sec=request.duration_sec,
+        sub_switches=AutonomySubSwitches.from_mapping(request.sub_switches),
+    )
+    return {**SAFETY_FLAGS, **result}
+
+
+@router.post("/permission/full-host/disable")
+def permission_full_host_disable(request: FullHostDisableApiRequest) -> dict[str, Any]:
+    result = PERMISSION_GATE.disable_full_host(operator_id=request.operator_id, reason=request.reason)
+    return {**SAFETY_FLAGS, **result}
+
+
+@router.get("/permission/full-host/status")
+def permission_full_host_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **PERMISSION_GATE.status()}
+
+
+@router.post("/permission/full-host/emergency-stop")
+def permission_full_host_emergency_stop(request: EmergencyStopApiRequest) -> dict[str, Any]:
+    result = PERMISSION_GATE.trigger_emergency_stop(operator_id=request.operator_id, reason=request.reason)
+    return {**SAFETY_FLAGS, **result}
+
+
+@router.post("/permission/verify-action")
+def permission_verify_action(request: PermissionVerifyActionApiRequest) -> dict[str, Any]:
+    try:
+        result = PERMISSION_GATE.verify_action(
+            PermissionScope(request.scope),
+            action=request.action,
+            operator_id=request.operator_id,
+            signed_token=request.signed_token,
+        )
+    except ValueError as exc:
+        return {**SAFETY_FLAGS, "allowed": False, "reason": str(exc), **PERMISSION_GATE.status()}
+    return {**SAFETY_FLAGS, **result}
 
 
 @router.get("/browser-read/status")

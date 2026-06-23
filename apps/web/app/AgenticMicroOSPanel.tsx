@@ -26,6 +26,21 @@ const moduleLabels = [
   ["hermes_intake", "Hermes Intake"],
 ] as const;
 
+const autonomyTiers = ["OBSERVE_ONLY", "DRAFT_PROPOSAL", "SIGNED_DELEGATION"] as const;
+const autonomySwitches = [
+  "shell",
+  "full_file_read",
+  "full_file_write",
+  "git_commit",
+  "git_push",
+  "local_brain_write",
+  "cloud_production_write",
+  "external_network",
+  "browser_control",
+  "mcp_tools",
+  "code_execution",
+] as const;
+
 function joinApiUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/$/, "")}${path}`;
 }
@@ -74,8 +89,13 @@ function MetricStrip({ result }: { result: AnyRecord | null }) {
 
 export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props) {
   const [status, setStatus] = useState<AnyRecord | null>(null);
+  const [permissionStatus, setPermissionStatus] = useState<AnyRecord | null>(null);
   const [reviewStatus, setReviewStatus] = useState<AnyRecord | null>(null);
   const [reviewItems, setReviewItems] = useState<AnyRecord[]>([]);
+  const [typedPhrase, setTypedPhrase] = useState("");
+  const [durationSec, setDurationSec] = useState("600");
+  const [subSwitches, setSubSwitches] = useState<Record<string, boolean>>({});
+  const [permissionResult, setPermissionResult] = useState<AnyRecord | null>(null);
   const [results, setResults] = useState<Record<SmokeKey, AnyRecord | null>>({
     dashboard: null,
     browser: null,
@@ -86,6 +106,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
 
   useEffect(() => {
     jsonFetch(localBackendUrl, "/api/agentic-os/status").then(setStatus).catch(() => setStatus({ error: "local_backend_unavailable" }));
+    refreshPermissionGate().catch(() => undefined);
     refreshReviewQueue().catch(() => undefined);
   }, [localBackendUrl]);
 
@@ -107,6 +128,57 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/review/items").catch((error) => ({ error: String(error), items: [] }));
     setReviewStatus(payload);
     setReviewItems(Array.isArray(payload.items) ? payload.items : []);
+  }
+
+  async function refreshPermissionGate() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/permission/tier").catch((error) => ({ error: String(error) }));
+    setPermissionStatus(payload);
+    return payload;
+  }
+
+  async function setPermissionTier(tier: string) {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/permission/tier/set", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tier, operator_id: "lab_operator" }),
+    }).catch((error) => ({ allowed: false, reason: String(error) }));
+    setPermissionResult(payload);
+    await refreshPermissionGate().catch(() => undefined);
+  }
+
+  async function enableFullHost() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/permission/full-host/enable", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        enabled_by: "lab_operator",
+        typed_phrase: typedPhrase,
+        duration_sec: Number(durationSec) || 0,
+        sub_switches: subSwitches,
+      }),
+    }).catch((error) => ({ allowed: false, reason: String(error) }));
+    setPermissionResult(payload);
+    await refreshPermissionGate().catch(() => undefined);
+  }
+
+  async function disableFullHost() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/permission/full-host/disable", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operator_id: "lab_operator", reason: "lab operator disabled" }),
+    }).catch((error) => ({ allowed: false, reason: String(error) }));
+    setPermissionResult(payload);
+    await refreshPermissionGate().catch(() => undefined);
+  }
+
+  async function triggerEmergencyStop() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/permission/full-host/emergency-stop", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operator_id: "lab_operator", reason: "lab emergency stop" }),
+    }).catch((error) => ({ allowed: false, reason: String(error) }));
+    setPermissionResult(payload);
+    await refreshPermissionGate().catch(() => undefined);
   }
 
   async function importLatestOpenWebRun() {
@@ -209,6 +281,76 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
           <div className="agentic-os-lock-list">
             {blockedActions.map((item: string) => <span key={item}>{item}</span>)}
           </div>
+        </article>
+
+        <article className={`agentic-os-card agentic-os-permission-card ${permissionStatus?.tier4_active ? "is-tier4" : ""}`}>
+          <div className="agentic-os-permission-header">
+            <div>
+              <h3>Autonomy Permission Gate</h3>
+              <p>Operator-confirmed permission tier. Tier 4 is time-limited, logged, and blocked by emergency stop.</p>
+            </div>
+            <strong>{permissionStatus?.tier ?? "unknown"}</strong>
+          </div>
+          {permissionStatus?.tier4_active ? (
+            <div className="agentic-os-tier4-warning">
+              FULL HOST AUTHORITY ENABLED. ATANOR may access and modify this PC within enabled sub-switches until the timer expires.
+            </div>
+          ) : null}
+          <div className="agentic-os-actions">
+            {autonomyTiers.map((tier) => (
+              <button type="button" className="agentic-os-action" key={tier} onClick={() => setPermissionTier(tier)}>
+                {tier}
+              </button>
+            ))}
+            <button type="button" className="agentic-os-action danger" onClick={() => disableFullHost()}>
+              disable full host
+            </button>
+            <button type="button" className="agentic-os-action danger" onClick={() => triggerEmergencyStop()}>
+              emergency stop
+            </button>
+          </div>
+          <div className="agentic-os-permission-form">
+            <input
+              aria-label="full host confirmation phrase"
+              value={typedPhrase}
+              onChange={(event) => setTypedPhrase(event.target.value)}
+              placeholder="ENABLE FULL HOST AUTHORITY FOR ATANOR"
+            />
+            <select aria-label="full host duration" value={durationSec} onChange={(event) => setDurationSec(event.target.value)}>
+              <option value="600">10 min</option>
+              <option value="1800">30 min</option>
+              <option value="7200">2 hours</option>
+              <option value="21600">6 hours</option>
+            </select>
+            <button type="button" className="agentic-os-action danger" onClick={() => enableFullHost()}>
+              enable Tier 4
+            </button>
+          </div>
+          <div className="agentic-os-switch-grid">
+            {autonomySwitches.map((name) => (
+              <label key={name}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(subSwitches[name])}
+                  onChange={(event) => setSubSwitches((current) => ({ ...current, [name]: event.target.checked }))}
+                />
+                <span>{name}</span>
+              </label>
+            ))}
+          </div>
+          <div className="agentic-os-flags">
+            <span>active={String(permissionStatus?.tier4_active ?? false)}</span>
+            <span>expires={permissionStatus?.session?.expires_at ?? "-"}</span>
+            <span>audit={permissionStatus?.audit_log_path ?? "-"}</span>
+            <span>emergency_stop={String(permissionStatus?.emergency_stop_triggered ?? false)}</span>
+          </div>
+          <div className="agentic-os-capability-matrix">
+            <span>Tier 1: read summaries only</span>
+            <span>Tier 2: review drafts and patch proposals only</span>
+            <span>Tier 3: signed scoped delegation</span>
+            <span>Tier 4: typed phrase + duration + sub-switches</span>
+          </div>
+          <ResultLine result={permissionResult} />
         </article>
 
         <article className="agentic-os-card">
