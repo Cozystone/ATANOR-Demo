@@ -403,14 +403,27 @@ function firstSceneNarration(scenePlan: SceneChoreographyPayload) {
   return beats[0]?.text ?? "";
 }
 
-function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout) {
+function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, layoutTelemetry?: LayoutTelemetry) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const firstBeat = beats[0] ?? {};
+  const layoutFeedback = layoutTelemetry ?? {
+    blockers: 0,
+    collisionState: stageLayout === "scene_focus" ? "unmeasured" : "conversation_default",
+    offscreen: 0,
+    overlap: 0,
+  };
   return {
     stage_layout: stageLayout,
     layout_intent: requestedLayoutIntent(scenePlan),
     layout_decision: requestedLayoutDecision(scenePlan, stageLayout),
     text_rendering: "dom_text_not_particles",
+    layout_feedback: {
+      collision_state: layoutFeedback.collisionState,
+      measured_blockers: layoutFeedback.blockers,
+      overlap_px: layoutFeedback.overlap,
+      offscreen_px: layoutFeedback.offscreen,
+      feedback_basis: "client_dom_scene_collision_telemetry",
+    },
     beat_count: beats.length,
     motion_count: finiteNumber(scenePlan?.scene_extent?.motion_count, beats.filter((beat) => beat.op === "move" || beat.motion_path).length),
     archetype: String(firstBeat.archetype ?? scenePlan?.primary_surface ?? "particle_scene"),
@@ -1131,8 +1144,14 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
             scene_focus: nextStageLayout === "scene_focus",
             layout_decision: requestedLayoutDecision(nextSceneChoreography, nextStageLayout),
             visual_scene_beats: Array.isArray(nextSceneChoreography?.beats) ? nextSceneChoreography?.beats?.length ?? 0 : 0,
+            layout_feedback: {
+              collision_state: layoutTelemetry.collisionState,
+              measured_blockers: layoutTelemetry.blockers,
+              overlap_px: layoutTelemetry.overlap,
+              offscreen_px: layoutTelemetry.offscreen,
+            },
           },
-          splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout),
+          splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry),
           review_queue_pressure: 0,
           permission_tier: "OBSERVE_ONLY",
         }),
