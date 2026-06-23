@@ -130,6 +130,10 @@ MOTION_CUES = {
     "작용",
 }
 
+KOREAN_ORGANIC_TERMS = ("사과나무", "나무", "숲", "가지", "잎", "식물")
+KOREAN_SMALL_OBJECT_TERMS = ("사과", "과일", "돌", "공", "물체", "질량")
+KOREAN_FIGURE_CONTEXT_TERMS = ("앉", "머리", "사람", "인물", "학자", "관찰")
+
 RELATION_CUES = {
     "formulated",
     "discovered",
@@ -191,6 +195,25 @@ def _entity_spans(text: str) -> list[str]:
     """Extract text-local visual anchors; never map topics to invented props."""
 
     spans: list[str] = []
+    for match in re.finditer(r"([가-힣A-Za-z]{2,}(?:\s+[가-힣A-Za-z]{2,}){0,1})(?=[은는])", text):
+        candidate = _clean_phrase(match.group(1), limit=72)
+        if candidate:
+            spans.append(candidate)
+    for term in (*KOREAN_ORGANIC_TERMS, *KOREAN_SMALL_OBJECT_TERMS):
+        if term in text:
+            spans.append(term)
+    for match in re.finditer(r"([가-힣A-Za-z]{2,})(?=[이가을를의])", text):
+        candidate = _clean_phrase(match.group(1), limit=72)
+        if candidate:
+            spans.append(candidate)
+    for match in re.finditer(r"([가-힣A-Za-z]{0,8}나무)(?=에서|에게|밑|아래|위|\s|$)", text):
+        candidate = _clean_phrase(match.group(1), limit=72)
+        if candidate:
+            spans.append(candidate)
+    for match in re.finditer(r"([가-힣A-Za-z]{2,})(?:의\s*)?머리", text):
+        candidate = _clean_phrase(match.group(1), limit=72)
+        if candidate:
+            spans.append(candidate)
     for match in re.finditer(r"\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,})){0,3}\b", text):
         spans.append(match.group(0))
     for match in re.finditer(r"[0-9A-Za-z가-힣][0-9A-Za-z가-힣·\-]{1,}(?:\s+[0-9A-Za-z가-힣][0-9A-Za-z가-힣·\-]{1,}){0,2}", text):
@@ -376,6 +399,18 @@ def _looks_like_named_figure(phrase: str) -> bool:
     return len(tokens) >= 2
 
 
+def _looks_like_korean_figure(phrase: str, narration: str) -> bool:
+    if not re.search(r"[가-힣]", phrase):
+        return False
+    folded_phrase = phrase.casefold()
+    if any(term in folded_phrase for term in (*KOREAN_ORGANIC_TERMS, *KOREAN_SMALL_OBJECT_TERMS)):
+        return False
+    if any(term in narration for term in KOREAN_FIGURE_CONTEXT_TERMS):
+        return True
+    tokens = re.findall(r"[가-힣]{2,}", phrase)
+    return len(tokens) >= 2 and len(phrase) <= 18
+
+
 def _visual_affordance_for_phrase(phrase: str, narration: str, semantic_role: str, op: str) -> str:
     """Infer a visual carrier affordance from the grounded phrase itself.
 
@@ -385,11 +420,11 @@ def _visual_affordance_for_phrase(phrase: str, narration: str, semantic_role: st
     """
 
     folded_phrase = phrase.casefold()
-    if _looks_like_named_figure(phrase):
+    if _looks_like_named_figure(phrase) or _looks_like_korean_figure(phrase, narration):
         return "entity_figure"
-    if any(term in folded_phrase for term in ("tree", "forest", "branch", "trunk", "leaf", "leaves", "canopy", "plant")):
+    if any(term in folded_phrase for term in ("tree", "forest", "branch", "trunk", "leaf", "leaves", "canopy", "plant")) or any(term in phrase for term in KOREAN_ORGANIC_TERMS):
         return "organic_structure"
-    if any(term in folded_phrase for term in ("fruit", "apple", "stone", "ball", "object", "body", "mass")):
+    if any(term in folded_phrase for term in ("fruit", "apple", "stone", "ball", "object", "body", "mass")) or any(term in phrase for term in KOREAN_SMALL_OBJECT_TERMS):
         return "small_moving_object" if op == "move" or "motion" in semantic_role else "small_object"
     if op == "move" or "motion" in semantic_role:
         return "motion_event"
@@ -400,14 +435,18 @@ def _visual_affordance_for_phrase(phrase: str, narration: str, semantic_role: st
 
 def _spatial_relation_for_phrase(phrase: str, narration: str, visual_affordance: str, op: str) -> str:
     folded = f" {narration.casefold()} "
-    if " under " in folded or " beneath " in folded or " below " in folded:
+    has_under_cue = " under " in folded or " beneath " in folded or " below " in folded or "밑" in narration or "아래" in narration
+    has_upper_cue = "위" in narration or "위로" in narration
+    if has_under_cue:
         if visual_affordance == "entity_figure":
             return "under_target"
         if visual_affordance == "organic_structure":
             return "over_anchor"
         if visual_affordance in {"small_object", "small_moving_object"}:
             return "upper_attachment"
-    if op == "move" or " toward " in folded or " towards " in folded:
+    if has_upper_cue and visual_affordance in {"small_object", "small_moving_object"}:
+        return "upper_attachment"
+    if op == "move" or " toward " in folded or " towards " in folded or "쪽으로" in narration or "위로" in narration:
         if visual_affordance in {"small_object", "small_moving_object"}:
             return "path_object"
         if visual_affordance == "entity_figure":
@@ -473,6 +512,12 @@ def _motion_path_for_unit(unit: dict[str, str], *, index: int) -> dict[str, Any]
         return {}
     source_prompt = ""
     target_prompt = ""
+    korean_source = re.search(r"([가-힣A-Za-z]{0,8}나무)(?:에서|로부터|부터)", narration)
+    if korean_source:
+        source_prompt = _clean_phrase(korean_source.group(1), limit=72)
+    korean_target = re.search(r"([가-힣A-Za-z]{2,})(?:의\s*)?머리", narration)
+    if korean_target:
+        target_prompt = _clean_phrase(korean_target.group(1), limit=72)
     from_match = re.search(
         r"\bfrom\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=\s+(?:toward|towards|to|into|onto)\b|[,.;]|$)",
         narration,
@@ -489,6 +534,10 @@ def _motion_path_for_unit(unit: dict[str, str], *, index: int) -> dict[str, Any]
         target_prompt = _clean_phrase(target_match.group(1), limit=72)
 
     anchors = _entity_spans(narration)
+    if not source_prompt and any(term in narration for term in KOREAN_ORGANIC_TERMS):
+        source_prompt = next((term for term in KOREAN_ORGANIC_TERMS if term in narration), "")
+    if not target_prompt:
+        target_prompt = next((anchor for anchor in anchors if _visual_affordance_for_phrase(anchor, narration, "verified_motion_context", "morph") == "entity_figure"), "")
     if not source_prompt and len(anchors) >= 2:
         source_prompt = anchors[-2]
     if not target_prompt and anchors:

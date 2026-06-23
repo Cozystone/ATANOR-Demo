@@ -134,6 +134,39 @@ def test_visual_planner_only_adds_motion_when_verified_fact_contains_motion(tmp_
     assert all(beat["source_fact"] for beat in beats)
 
 
+def test_visual_planner_extracts_korean_figure_tree_apple_motion_without_topic_script(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": (
+                    "아이작 뉴턴은 중력 법칙과 관련해 사과가 나무에서 떨어지는 장면을 관찰했다. "
+                    "어느 날 뉴턴이 사과나무 밑에 앉아 있었고 사과가 뉴턴의 머리 위로 떨어졌다."
+                ),
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "뉴턴 사과나무"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("중력의 법칙에 대해 설명해줘", tmp_path)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    beats = plan.scene_choreography["beats"]
+    assert any("뉴턴" in beat["prompt"] and beat["visual_affordance"] == "entity_figure" for beat in beats)
+    assert any("나무" in beat["prompt"] and beat["visual_affordance"] == "organic_structure" for beat in beats)
+    assert any(beat["prompt"] == "사과" and beat["visual_affordance"] == "small_moving_object" for beat in beats)
+    assert any("뉴턴" in beat["prompt"] and beat["spatial_relation"] == "under_target" for beat in beats)
+    apple_motion = next(beat for beat in beats if beat["prompt"] == "사과" and beat.get("motion_path"))
+    assert "나무" in apple_motion["motion_path"]["source_prompt"]
+    assert "뉴턴" in apple_motion["motion_path"]["target_prompt"]
+    assert apple_motion["motion_path"]["from"][1] > apple_motion["motion_path"]["to"][1]
+    assert plan.scene_choreography["topic_scene_templates"] is False
+    assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
+
+
 def test_visual_planner_text_anchor_is_scene_position_dependent(tmp_path: Path) -> None:
     (tmp_path / "evidence.jsonl").write_text(
         json.dumps(
