@@ -192,6 +192,67 @@ def test_chat_conversation_uses_readonly_verified_store_for_grounded_visual_scen
     assert payload["production_store_mutated"] is False
 
 
+def test_dashboard_conversation_returns_verified_speech_timeline_for_motion_scene(tmp_path, monkeypatch) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": (
+                    "Gravity is associated with Isaac Newton. "
+                    "Isaac Newton sat under an apple tree. "
+                    "An apple fell from the tree toward Newton, and the event helped explain gravitational attraction."
+                ),
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "Newton apple tree"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ATANOR_VERIFIED_STORE_PATH", str(tmp_path))
+
+    async def fail_query_graphrag(*args, **kwargs):  # pragma: no cover - should never be called
+        raise AssertionError("dashboard conversation mode must not enter graph retrieval")
+
+    monkeypatch.setattr(dual_brain.alpha_service, "query_graphrag", fail_query_graphrag)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat/atanor",
+        json={
+            "question": "What is gravity?",
+            "language": "en",
+            "mode": "conversation",
+            "brain_mode": "conversation",
+            "include_trace": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    scene = payload["splatra_scene_plan"]
+    assert scene == payload["scene_choreography"] == payload["visual_scene_plan"]
+    assert scene["stage_layout"] == "scene_focus"
+    assert scene["layout_intent"] == "wide_particle_stage"
+    assert scene["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry"
+    assert scene["dashboard_layout"]["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
+    assert scene["dashboard_layout"]["orb"]["anchor"] == "lower_right"
+    assert scene["topic_scene_templates"] is False
+    assert scene["speech_timeline"]
+    assert all(item["text_source"] == "verified_beat_narration" for item in scene["speech_timeline"])
+    assert all(item["speech_cue_basis"] == "verified_evidence_unit" for item in scene["speech_timeline"])
+    assert any(item["particle_behavior"] == "gravity_arc" for item in scene["speech_timeline"])
+    gravity_item = next(item for item in scene["speech_timeline"] if item["particle_behavior"] == "gravity_arc")
+    assert gravity_item["physics_hint"]["field"] == "downward_attraction"
+    assert gravity_item["motion_path"]["basis"] == "verified_motion_phrase"
+    assert "apple" in gravity_item["text"].casefold()
+    assert payload["answer_engine"]["external_llm"] is False
+    assert payload["answer_engine"]["external_sllm"] is False
+    assert payload["answer_engine"]["rule_based_answer_used"] is False
+    assert payload["local_brain_write"] is False
+    assert payload["production_store_mutated"] is False
+
+
 def test_verified_store_runtime_discovers_sibling_primary_store(tmp_path, monkeypatch) -> None:
     isolated = tmp_path / "ATANOR-live-selfhood-scheduler"
     sibling = tmp_path / "24.Homage1.0" / "data" / "cloud_brain" / "verified_store_v0"
