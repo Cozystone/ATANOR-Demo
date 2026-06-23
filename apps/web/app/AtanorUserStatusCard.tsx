@@ -28,6 +28,13 @@ type VoiceWaveStyle = CSSProperties & {
   "--i": number;
 };
 
+type SceneChoreographyPayload = {
+  stage_layout?: "conversation" | "scene_focus";
+  orb_anchor?: "center" | "lower_right";
+  primary_surface?: string;
+  beats?: Array<Record<string, any>>;
+} | null;
+
 function stripEmotionTag(text: string) {
   return text.replace(/^\[[^\]]+\]\s*/, "").trim();
 }
@@ -114,6 +121,13 @@ function requestedStageLayout(payload: Record<string, any>): StageLayout {
   return "conversation";
 }
 
+function requestedSceneChoreography(payload: Record<string, any>): SceneChoreographyPayload {
+  const result = payload?.result ?? {};
+  const visualPlan = result?.splatra_scene_plan ?? result?.visual_scene_plan ?? result?.scene_choreography ?? null;
+  if (!visualPlan || typeof visualPlan !== "object") return null;
+  return visualPlan as SceneChoreographyPayload;
+}
+
 function emitNeuralEmotionEvent(eventType: string, payloadSummary: string) {
   fetch("/api/neural-emotion/events/emit", {
     method: "POST",
@@ -137,6 +151,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
+  const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speakingVisual = orbState === "speaking" || audioPlaying;
   const cleanPlaceholder = voiceMode
@@ -326,6 +341,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         throw new Error("conversation surface unavailable");
       }
       setStageLayout(requestedStageLayout(payload));
+      setSceneChoreography(requestedSceneChoreography(payload));
       setOrbState("speaking");
       void fetch("/api/inner-voice/emit", {
         method: "POST",
@@ -365,6 +381,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     } catch {
       setOrbState("blocked");
       setStageLayout("conversation");
+      setSceneChoreography(null);
       setSpeechLine(cleanSafeStatusLine(language));
       setVoiceNotice(cleanVoiceFailedLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);
@@ -385,6 +402,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         particleBudget={960}
         interactive={false}
         controlOverride={emotionControls ?? undefined}
+        sceneFocus={stageLayout === "scene_focus"}
+        scenePlan={sceneChoreography}
         className="atanor-dashboard-imagination-field"
       />
       <div className="atanor-hologram-stage">

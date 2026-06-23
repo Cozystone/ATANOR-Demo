@@ -12,6 +12,7 @@ from packages.base_brain.zero_user_answer import answer_with_base_brain
 from packages.cgsr.cgsr.conversation_surface import generate_conversation_surface
 from packages.cgsr.cgsr.conversation_grounding import gather_grounded_context
 from packages.cgsr.cgsr.conversation_router import route_conversation_request
+from packages.cgsr.cgsr.visual_imagination_planner import plan_visual_imagination
 from packages.core_proof.three_core_answer_path import run_prompt_proof
 from packages.voice_loop.local_tts import LocalTTSUnavailable, synthesize_windows_sapi, voice_audio_path
 from packages.voice_loop.runtime_availability import check_voice_runtime_availability
@@ -452,6 +453,13 @@ def _live_selfhood_payload(
     diagnostics = dict(generated.diagnostics or {})
     answer_mode = str(diagnostics.get("answer_mode") or "unknown_fallback")
     grounding_used = bool(diagnostics.get("semantic_grounding_used"))
+    visual_plan = plan_visual_imagination(
+        question,
+        route=route,
+        grounded_context=grounded_context,
+        diagnostics=diagnostics,
+        answer_available=bool(generated.answer),
+    )
     compact_trace = {
         "local_coverage": "semantic_grounded_conversation" if grounding_used else "live_selfhood_conversation",
         "selfhood_loop": {
@@ -478,6 +486,7 @@ def _live_selfhood_payload(
         },
         "q_cortex": {"used": False, "run_id": None, "real_quantum_hardware_used": False},
         "working_memory": {"temporary_context": False, "local_brain_write": False},
+        "visual_imagination": visual_plan.diagnostics,
         "confidence": "medium" if generated.confidence >= 0.5 else "abstained",
         "inner_voice": {
             "emitted": True,
@@ -541,6 +550,8 @@ def _live_selfhood_payload(
                 "q_cortex_used": False,
                 "q_cortex_run_id": None,
             },
+            "scene_choreography": None,
+            "visual_scene_plan": None,
             "answer_engine": engine,
             **{**_flags(), "final_answer_generation_claimed": False},
         }
@@ -570,6 +581,8 @@ def _live_selfhood_payload(
             "q_cortex_used": False,
             "q_cortex_run_id": None,
         },
+        "scene_choreography": visual_plan.scene_choreography,
+        "visual_scene_plan": visual_plan.scene_choreography,
         "answer_engine": engine,
         **_flags(),
     }

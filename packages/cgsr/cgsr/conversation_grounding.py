@@ -252,7 +252,7 @@ def realize_grounded_context(question: str, context: GroundedContext, *, languag
         "splatra_request": "가능합니다. 다만 대화만으로 코드를 바로 바꾸지는 않고, SPLATRA 구슬 변경은 검토 가능한 UI 패치 후보로 남깁니다.",
         "agentic_os_request": "Hermes와 Agentic OS 쪽 작업은 후보와 리뷰 큐 중심입니다. 초안은 만들 수 있지만 설치, 실행, 승격은 검토 뒤에만 가능합니다.",
         "limitation_question": (
-            "현재 ASM-v0는 일반 언어모델이 아닙니다. 외부 LLM이나 sLLM을 쓰지 않고, "
+            "현재 자기 모델은 ASM-v0 기반이며 일반 언어모델이 아닙니다. 외부 LLM이나 sLLM을 쓰지 않고, "
             "검증된 근거, construction 후보, 휴리스틱 act 추론, 로컬 transition surface를 조합합니다. "
             "그래서 아직 hand-authored construction 의존이 남아 있고, 그 한계는 메타데이터로 표시합니다."
         ),

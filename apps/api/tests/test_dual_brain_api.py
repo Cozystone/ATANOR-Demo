@@ -385,6 +385,40 @@ def test_dashboard_conversation_mode_forces_asm_v0_surface(tmp_path, monkeypatch
     assert payload["local_brain_write"] is False
 
 
+def test_dashboard_conversation_can_return_splatra_scene_choreography_without_templates(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    async def fail_query_graphrag(*args, **kwargs):  # pragma: no cover - should never be called
+        raise AssertionError("dashboard conversation mode must not enter graph retrieval")
+
+    monkeypatch.setattr(dual_brain.alpha_service, "query_graphrag", fail_query_graphrag)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat/atanor",
+        json={
+            "question": "Use SPLATRA to visualize this",
+            "language": "en",
+            "brain_mode": "conversation",
+            "mode": "conversation",
+            "include_trace": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    assert payload["answer_kind"] == "asm_v0_conversation_surface"
+    assert payload["scene_choreography"]["stage_layout"] == "scene_focus"
+    assert payload["scene_choreography"]["orb_anchor"] == "lower_right"
+    assert payload["scene_choreography"]["topic_scene_templates"] is False
+    assert payload["visual_scene_plan"] == payload["scene_choreography"]
+    assert payload["compact_trace"]["visual_imagination"]["topic_scene_templates"] is False
+    assert payload["answer_engine"]["external_llm"] is False
+    assert payload["answer_engine"]["external_sllm"] is False
+    assert payload["answer_engine"]["rule_based_answer_used"] is False
+    assert payload["local_brain_write"] is False
+
+
 def test_live_selfhood_self_model_generates_without_scratchpad_or_rule_answer(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 

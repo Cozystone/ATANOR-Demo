@@ -16,7 +16,12 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "atanor-hologram-composer" in status_card
     assert "useTypewriterText" in status_card
     assert "data-stage-layout" in status_card
+    assert "requestedSceneChoreography" in status_card
+    assert "sceneFocus={stageLayout === \"scene_focus\"}" in status_card
+    assert "scenePlan={sceneChoreography}" in status_card
     assert "ParticleText" not in status_card
+    assert "scenePlan?: ScenePlan | null" in field
+    assert "sceneArchetype" in field
     assert "splatra-imagination-product-label" in field
     assert "flowFieldAngle" in field
     assert "drawParticleStroke" in field

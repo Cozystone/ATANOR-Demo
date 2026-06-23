@@ -40,12 +40,27 @@ type ImaginationFrame = {
   safety_flags?: Record<string, boolean>;
 };
 
+type ScenePlanBeat = {
+  archetype?: Archetype;
+  prompt?: string;
+  object_id?: string;
+};
+
+type ScenePlan = {
+  stage_layout?: "conversation" | "scene_focus";
+  orb_anchor?: "center" | "lower_right";
+  primary_surface?: string;
+  beats?: ScenePlanBeat[];
+};
+
 type Props = {
   mode?: ImaginationMode;
   state?: VisualState;
   particleBudget?: number;
   className?: string;
   interactive?: boolean;
+  sceneFocus?: boolean;
+  scenePlan?: ScenePlan | null;
   controlOverride?: Partial<{
     valence: number;
     arousal: number;
@@ -174,6 +189,16 @@ function drawParticleStroke(
 function seeded(index: number, salt = 0) {
   const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453123;
   return value - Math.floor(value);
+}
+
+function sceneArchetype(scenePlan: ScenePlan | null | undefined): Archetype | null {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const explicit = beats.find((beat) => beat.archetype && PRODUCT_ARCHETYPES.includes(beat.archetype))?.archetype;
+  if (explicit) return explicit;
+  const prompt = beats.map((beat) => `${beat.prompt ?? ""} ${beat.object_id ?? ""}`).join(" ").trim();
+  if (!prompt) return null;
+  const hash = Array.from(prompt).reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
+  return PRODUCT_ARCHETYPES[hash % PRODUCT_ARCHETYPES.length];
 }
 
 function fallbackParticles(archetype: Archetype, count: number): Particle[] {
@@ -435,6 +460,7 @@ function drawParticles(
   elapsed: number,
   controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
   ambient = false,
+  guides = false,
 ) {
   ctx.clearRect(0, 0, width, height);
   const cx = width / 2;
@@ -448,7 +474,7 @@ function drawParticles(
   const cosX = Math.cos(tilt);
   const sinX = Math.sin(tilt);
 
-  if (!ambient) {
+  if (!ambient && guides) {
     drawArchetypeGuides(ctx, archetype, width, height, elapsed, controls);
   }
 
@@ -552,6 +578,8 @@ export default function SplatraImaginationField({
   controlOverride,
   onActivate,
   onCancel,
+  sceneFocus = false,
+  scenePlan = null,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [archetype, setArchetype] = useState<Archetype>(() => (mode === "product" ? "constellation" : "orb"));
@@ -573,6 +601,7 @@ export default function SplatraImaginationField({
   }, [controlOverride, state]);
   const particles = frame?.object?.particles?.length ? frame.object.particles : fallbackParticles(archetype, budget);
   const activeArchetype = frame?.object?.archetype ?? archetype;
+  const stageMode = sceneFocus || scenePlan?.stage_layout === "scene_focus";
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -623,7 +652,15 @@ export default function SplatraImaginationField({
   }, [archetype, budget, controls, reducedMotion, seedNonce, state]);
 
   useEffect(() => {
+    const nextSceneArchetype = sceneArchetype(scenePlan);
+    if (!nextSceneArchetype) return;
+    setArchetype(nextSceneArchetype);
+    setSeedNonce((value) => value + 1);
+  }, [scenePlan]);
+
+  useEffect(() => {
     if (mode !== "product" || reducedMotion) return undefined;
+    if (stageMode) return undefined;
     const switchMs = clamp(15000 - Number(controls.curiosity ?? 0.45) * 6400 - Number(controls.speaking_energy ?? 0) * 1800, 7800, 17000);
     const timer = window.setInterval(() => {
       setArchetype((current) => {
@@ -639,7 +676,7 @@ export default function SplatraImaginationField({
       });
     }, switchMs);
     return () => window.clearInterval(timer);
-  }, [controls, mode, reducedMotion]);
+  }, [controls, mode, reducedMotion, stageMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -665,13 +702,14 @@ export default function SplatraImaginationField({
         height,
         reducedMotion ? 0.5 : (performance.now() - startedAt) / 1000,
         controls,
-        !interactive && mode === "product",
+        !stageMode && !interactive && mode === "product",
+        mode === "lab",
       );
       if (!reducedMotion) animationId = window.requestAnimationFrame(render);
     };
     render();
     return () => window.cancelAnimationFrame(animationId);
-  }, [activeArchetype, controls, mode, particles, reducedMotion]);
+  }, [activeArchetype, controls, mode, particles, reducedMotion, stageMode]);
 
   function handleClick() {
     if (state === "listening") {
