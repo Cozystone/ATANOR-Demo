@@ -35,6 +35,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-measured-blockers" in status_card
     assert "data-layout-overlap-px" in status_card
     assert "data-layout-offscreen-px" in status_card
+    assert "layoutCollisionPressureFromTelemetry" in status_card
+    assert "splatraControlsForLayout" in status_card
+    assert "data-layout-collision-pressure" in status_card
     assert "data-layout-self-narration-anchor" in status_card
     assert "activeLayout.textAnchor" in status_card
     assert "activeLayout.selfNarrationAnchor" in status_card
@@ -184,6 +187,12 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "dashboard_layout" in field
     assert "central_scale" in field
     assert "drawSceneFocusParticles" in field
+    assert "type ParticleControls" in field
+    assert "layoutCollisionPressure" in field
+    assert "layoutFieldQuieting" in field
+    assert "layoutFlowRecombine" in field
+    assert "layoutAwareCentralScale" in field
+    assert "data-layout-text-avoidance" in field
     assert "data-scene-objects" in field
     assert "data-active-scene-object" in field
     assert "data-active-scene-role" in field

@@ -111,6 +111,21 @@ type SceneRenderObject = {
   poseBaseParticles?: Particle[];
 };
 
+type ParticleControls = {
+  valence: number;
+  arousal: number;
+  curiosity: number;
+  speaking_energy: number;
+  resting: boolean;
+  fatigue?: number;
+  review_pressure?: number;
+  novelty_found?: number;
+  layout_collision_pressure?: number;
+  layout_field_quieting?: number;
+  layout_flow_recombine?: number;
+  layout_text_avoidance?: string;
+};
+
 type Props = {
   mode?: ImaginationMode;
   state?: VisualState;
@@ -120,16 +135,7 @@ type Props = {
   sceneFocus?: boolean;
   scenePlan?: ScenePlan | null;
   activeSpeechBeatIndex?: number;
-  controlOverride?: Partial<{
-    valence: number;
-    arousal: number;
-    curiosity: number;
-    speaking_energy: number;
-    resting: boolean;
-    fatigue: number;
-    review_pressure: number;
-    novelty_found: number;
-  }>;
+  controlOverride?: Partial<ParticleControls>;
   onActivate?: () => void;
   onCancel?: () => void;
 };
@@ -212,6 +218,22 @@ const STATE_CONTROLS: Record<VisualState, { valence: number; arousal: number; cu
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function layoutCollisionPressure(controls: ParticleControls) {
+  const value = Number(controls.layout_collision_pressure ?? 0);
+  return Number.isFinite(value) ? clamp(value, 0, 1) : 0;
+}
+
+function layoutFieldQuieting(controls: ParticleControls) {
+  const explicit = Number(controls.layout_field_quieting ?? NaN);
+  if (Number.isFinite(explicit)) return clamp(explicit, 0, 1);
+  return layoutCollisionPressure(controls) * 0.62;
+}
+
+function layoutFlowRecombine(controls: ParticleControls) {
+  const value = Number(controls.layout_flow_recombine ?? 0);
+  return Number.isFinite(value) ? clamp(value, 0, 0.7) : 0;
 }
 
 function scenePlanCentralScale(scenePlan: ScenePlan | null | undefined) {
@@ -393,13 +415,18 @@ function drawAmbientAirbendField(
   width: number,
   height: number,
   elapsed: number,
-  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  controls: ParticleControls,
 ) {
   const unit = Math.min(width, height);
   const cx = width / 2;
   const cy = height / 2;
-  const count = Math.round(clamp((width * height) / 6200, 120, 360));
-  const attraction = controls.resting ? 0.1 : 0.18 + controls.curiosity * 0.18 + controls.speaking_energy * 0.2;
+  const pressure = layoutCollisionPressure(controls);
+  const fieldQuieting = layoutFieldQuieting(controls);
+  const flowRecombine = layoutFlowRecombine(controls);
+  const count = Math.round(clamp((width * height) / (6200 + fieldQuieting * 2200), 96, 360));
+  const attraction = controls.resting
+    ? 0.1
+    : 0.18 + controls.curiosity * 0.18 + controls.speaking_energy * 0.2 + flowRecombine * 0.18;
   const fieldBreath = (Math.sin(elapsed * 0.22) + 1) * 0.5;
 
   for (let index = 0; index < count; index += 1) {
@@ -414,7 +441,7 @@ function drawAmbientAirbendField(
     let y = baseY * (1 - attraction) + targetY * attraction;
 
     const centerDistance = Math.hypot(x - cx, y - cy);
-    const bodyClearRadius = unit * 0.25;
+    const bodyClearRadius = unit * (0.25 + pressure * 0.08);
     if (centerDistance < bodyClearRadius) {
       const push = (bodyClearRadius - centerDistance) / Math.max(1, bodyClearRadius);
       const angle = Math.atan2(y - cy, x - cx) || orbitAngle;
@@ -430,9 +457,10 @@ function drawAmbientAirbendField(
         ? [138, 117, 255]
         : [76, 230, 255];
     const size = unit * (0.00075 + seeded(index, 7110) * 0.0012);
-    const length = unit * (0.006 + controls.curiosity * 0.008 + fieldBreath * 0.004 + controls.speaking_energy * 0.008);
+    const length = unit * (0.006 + controls.curiosity * 0.008 + fieldBreath * 0.004 + controls.speaking_energy * 0.008 + flowRecombine * 0.008);
     const alpha = (controls.resting ? 0.026 : 0.038 + controls.arousal * 0.016 + controls.speaking_energy * 0.025)
-      * (0.48 + seeded(index, 7111) * 0.82);
+      * (0.48 + seeded(index, 7111) * 0.82)
+      * (1 - fieldQuieting * 0.34);
     drawParticleStroke(ctx, x, y, fieldAngle, length, size, color, alpha);
   }
 }
@@ -1108,7 +1136,7 @@ function drawArchetypeGuides(
   width: number,
   height: number,
   elapsed: number,
-  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  controls: ParticleControls,
 ) {
   const cx = width / 2;
   const cy = height / 2;
@@ -1205,15 +1233,18 @@ function drawParticles(
   width: number,
   height: number,
   elapsed: number,
-  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  controls: ParticleControls,
   ambient = false,
   guides = false,
   transform: SceneTransform = { offsetX: 0, offsetY: 0, zoom: 1 },
 ) {
   ctx.clearRect(0, 0, width, height);
+  const pressure = layoutCollisionPressure(controls);
+  const fieldQuieting = layoutFieldQuieting(controls);
+  const flowRecombine = layoutFlowRecombine(controls);
   const cx = width / 2 + transform.offsetX * width;
   const cy = height / 2 + transform.offsetY * height;
-  const scale = Math.min(width, height) * (ambient ? 0.18 : 0.26) * transform.zoom;
+  const scale = Math.min(width, height) * (ambient ? 0.18 : 0.26) * transform.zoom * (1 - pressure * 0.08);
   const rotation = elapsed * (controls.resting ? 0.08 : 0.18 + controls.arousal * 0.16);
   const tilt = Math.sin(elapsed * 0.21) * 0.18;
   const pulse = 1 + Math.sin(elapsed * 3.6) * controls.speaking_energy * 0.045;
@@ -1254,17 +1285,19 @@ function drawParticles(
       const edgeBias = Math.abs(homeX - cx) / Math.max(1, width / 2);
       const verticalBias = Math.abs(homeY - cy) / Math.max(1, height / 2);
       const recombineWave = (Math.sin(elapsed * 0.18) + 1) * 0.5;
-      const recombine = controls.resting ? 0.08 : 0.14 + controls.curiosity * 0.16 + controls.speaking_energy * 0.16 + recombineWave * 0.08;
+      const recombine = controls.resting
+        ? 0.08
+        : 0.14 + controls.curiosity * 0.16 + controls.speaking_energy * 0.16 + recombineWave * 0.08 + flowRecombine * 0.22;
       const orbitX = cx + x * scale * 2.6;
       const orbitY = cy + y * scale * 1.9;
       const drift = Math.sin(elapsed * 0.23 + homeX * 0.002 + homeY * 0.003) * 18;
       px = homeX * (1 - recombine) + orbitX * recombine + drift;
       py = homeY * (1 - recombine) + orbitY * recombine + Math.cos(elapsed * 0.17 + homeX * 0.002) * 12;
       size = clamp(point.scale * (0.42 + depth * 0.74 + controls.speaking_energy * 0.24), 0.45, 2.2);
-      alpha = clamp(point.a * (0.14 + depth * 0.44) * (0.74 + edgeBias * 0.22 + verticalBias * 0.12), 0.035, 0.48);
+      alpha = clamp(point.a * (0.14 + depth * 0.44) * (0.74 + edgeBias * 0.22 + verticalBias * 0.12) * (1 - fieldQuieting * 0.28), 0.03, 0.48);
       const centerDistance = Math.hypot(px - cx, py - cy);
-      const bodyClearRadius = Math.min(width, height) * 0.34;
-      const bodyFeather = Math.min(width, height) * 0.16;
+      const bodyClearRadius = Math.min(width, height) * (0.34 + pressure * 0.08);
+      const bodyFeather = Math.min(width, height) * (0.16 + pressure * 0.04);
       const clearance = clamp((centerDistance - bodyClearRadius) / bodyFeather, 0.05, 1);
       alpha *= clearance;
       if (clearance < 0.08) size *= 0.62;
@@ -1277,7 +1310,7 @@ function drawParticles(
     ];
     if (ambient) {
       const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9);
-      const trailLength = clamp(size * (3.6 + controls.curiosity * 3.8 + controls.speaking_energy * 2.4), 1.8, 12);
+      const trailLength = clamp(size * (3.6 + controls.curiosity * 3.8 + controls.speaking_energy * 2.4 + flowRecombine * 2.2), 1.8, 13);
       drawParticleStroke(ctx, px, py, angle, trailLength, size, color, alpha);
     } else {
       ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
@@ -1301,7 +1334,7 @@ function drawParticles(
     return;
   }
 
-  const shellRadius = Math.min(width, height) * (0.215 + controls.speaking_energy * 0.012);
+  const shellRadius = Math.min(width, height) * (0.215 + controls.speaking_energy * 0.012) * (1 - pressure * 0.04);
   const glow = ctx.createRadialGradient(cx, cy, shellRadius * 0.2, cx, cy, shellRadius * 1.35);
   glow.addColorStop(0, "rgba(255,255,255,0.18)");
   glow.addColorStop(0.42, "rgba(44,231,255,0.055)");
@@ -1321,7 +1354,7 @@ function drawSceneObjectCloud(
   elapsed: number,
   sceneElapsed: number,
   active: boolean,
-  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  controls: ParticleControls,
   cameraView: SceneCameraView,
   centralScale = 1,
 ) {
@@ -1349,7 +1382,8 @@ function drawSceneObjectCloud(
   const cy = center.y;
   const transform = sceneTransform(object.beat, true, sceneElapsed);
   const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale * (sourceHold > 0 ? 0.84 : 1);
-  const scale = Math.min(width, height) * 0.11 * transform.zoom * centralScale * scaleBias;
+  const pressure = layoutCollisionPressure(controls);
+  const scale = Math.min(width, height) * 0.11 * transform.zoom * centralScale * scaleBias * (1 - pressure * 0.08);
   const rotation = elapsed * (0.12 + controls.arousal * 0.11) + stableUnit(object.id, 5) * Math.PI * 2;
   const tilt = Math.sin(elapsed * 0.16 + stableUnit(object.id, 9) * 4) * 0.18;
   const pulse = 1 + Math.sin(elapsed * (2.1 + roleStyle.trail) + stableUnit(object.id, 17) * 4) * (active ? 0.035 : 0.018) * roleStyle.focus;
@@ -1391,7 +1425,7 @@ function drawSceneObjectCloud(
       Math.floor(point.b * 255),
     ];
     const size = clamp(point.scale * (0.66 + depth * 1.08) * scaleBias, 0.52, active ? 4.1 : 2.8);
-    const alpha = clamp(point.a * (0.16 + depth * 0.66) * alphaMultiplier * roleStyle.alpha, 0.025, active ? 0.82 : 0.5);
+    const alpha = clamp(point.a * (0.16 + depth * 0.66) * alphaMultiplier * roleStyle.alpha * (1 - layoutFieldQuieting(controls) * 0.18), 0.025, active ? 0.82 : 0.5);
     const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9 + stableUnit(object.id, 31));
     drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6 + roleStyle.trail * 1.7), 1.6, 11), size, color, alpha);
   });
@@ -1576,12 +1610,15 @@ function drawSceneFocusSwarm(
   height: number,
   elapsed: number,
   sceneElapsed: number,
-  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  controls: ParticleControls,
   cameraView: SceneCameraView,
   centralScale = 1,
 ) {
   if (!activeObject) return;
   const unit = Math.min(width, height);
+  const pressure = layoutCollisionPressure(controls);
+  const fieldQuieting = layoutFieldQuieting(controls);
+  const flowRecombine = layoutFlowRecombine(controls);
   const center = sceneObjectCanvasCenter(activeObject, width, height, sceneElapsed, cameraView);
   const groupObjects = sceneActiveGroupObjects(activeObject, visibleObjects);
   const attractors = (groupObjects.length ? groupObjects : [activeObject])
@@ -1589,8 +1626,8 @@ function drawSceneFocusSwarm(
   const behavior = String(activeObject.beat.particle_behavior ?? "");
   const moving = activeObject.beat.op === "move" || Boolean(activeObject.beat.motion_path);
   const roleStyle = sceneRoleStyle(activeObject.beat, true);
-  const count = Math.round(clamp(unit * (moving ? 0.22 : 0.16) * centralScale, 80, 180));
-  const fieldRadius = unit * clamp(0.1 + roleStyle.focus * 0.045 + controls.curiosity * 0.025, 0.1, 0.2) * centralScale;
+  const count = Math.round(clamp(unit * (moving ? 0.22 : 0.16) * centralScale * (1 - fieldQuieting * 0.22), 64, 180));
+  const fieldRadius = unit * clamp(0.1 + roleStyle.focus * 0.045 + controls.curiosity * 0.025 + flowRecombine * 0.025, 0.1, 0.22) * centralScale;
   const salt = Math.floor(stableUnit(activeObject.id, 991) * 10000);
   const pulse = 0.55 + Math.sin(elapsed * 1.1 + salt) * 0.18 + controls.speaking_energy * 0.18;
   ctx.globalCompositeOperation = "lighter";
@@ -1602,7 +1639,7 @@ function drawSceneFocusSwarm(
     const tide = Math.sin(elapsed * 0.47 + local * Math.PI * 4 + salt) * unit * 0.022 * centralScale;
     const rawX = attractor.x + Math.cos(orbit) * ring + Math.sin(orbit * 1.7) * tide;
     const rawY = attractor.y + Math.sin(orbit * 0.78) * ring * 0.62 + Math.cos(orbit * 1.3) * tide;
-    const pull = 0.42 + pulse * 0.16;
+    const pull = 0.42 + pulse * 0.16 - pressure * 0.08;
     const px = rawX * (1 - pull) + center.x * pull;
     const py = rawY * (1 - pull) + center.y * pull;
     const fieldAngle = flowFieldAngle(px, py, elapsed, salt * 0.001 + index * 0.13);
@@ -1610,10 +1647,11 @@ function drawSceneFocusSwarm(
       ? (index % 4 === 0 ? [255, 255, 255] : [76, 230, 255])
       : index % 5 === 0 ? [255, 104, 177] : [76, 230, 255];
     const size = unit * (0.001 + seeded(index, salt + 13) * 0.0018) * centralScale;
-    const length = unit * (0.006 + controls.curiosity * 0.006 + (moving ? 0.005 : 0.002)) * centralScale;
+    const length = unit * (0.006 + controls.curiosity * 0.006 + (moving ? 0.005 : 0.002) + flowRecombine * 0.005) * centralScale;
     const alpha = (0.026 + roleStyle.focus * 0.03 + controls.speaking_energy * 0.02)
       * (0.35 + seeded(index, salt + 17) * 0.65)
-      * centralScale;
+      * centralScale
+      * (1 - fieldQuieting * 0.28);
     drawParticleStroke(ctx, px, py, fieldAngle, length, size, color, alpha);
   }
   ctx.globalCompositeOperation = "source-over";
@@ -1627,13 +1665,16 @@ function drawSceneFocusParticles(
   height: number,
   elapsed: number,
   sceneElapsed: number,
-  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  controls: ParticleControls,
   centralScale = 1,
 ) {
   ctx.clearRect(0, 0, width, height);
+  const pressure = layoutCollisionPressure(controls);
+  const fieldQuieting = layoutFieldQuieting(controls);
+  const layoutAwareCentralScale = centralScale * (1 - pressure * 0.12);
   const centerGlow = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) * 0.48);
-  centerGlow.addColorStop(0, "rgba(255,255,255,0.035)");
-  centerGlow.addColorStop(0.38, "rgba(43,223,255,0.03)");
+  centerGlow.addColorStop(0, `rgba(255,255,255,${0.035 * (1 - fieldQuieting * 0.36)})`);
+  centerGlow.addColorStop(0.38, `rgba(43,223,255,${0.03 * (1 - fieldQuieting * 0.34)})`);
   centerGlow.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = centerGlow;
   ctx.fillRect(0, 0, width, height);
@@ -1642,17 +1683,17 @@ function drawSceneFocusParticles(
   const visibleObjects = sceneVisibleTrackObjects(visibleCandidates, activeObjectId, sceneElapsed);
   const activeObject = visibleObjects.find((object) => object.id === activeObjectId) ?? visibleObjects[0] ?? null;
   const cameraView = blendedSceneCameraView(activeObject, visibleObjects, sceneElapsed);
-  cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);
-  drawSceneGroupRelationField(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, cameraView, centralScale);
-  drawSceneFocusSwarm(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, controls, cameraView, centralScale);
+  cameraView.zoom = clamp(cameraView.zoom * layoutAwareCentralScale, 0.82, 1.82);
+  drawSceneGroupRelationField(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, cameraView, layoutAwareCentralScale);
+  drawSceneFocusSwarm(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, controls, cameraView, layoutAwareCentralScale);
   visibleObjects.forEach((object) => {
     const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
-    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, cameraView, centralScale);
+    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, cameraView, layoutAwareCentralScale);
   });
 
   visibleObjects.forEach((object) => {
     const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
-    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, controls, cameraView, centralScale);
+    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, controls, cameraView, layoutAwareCentralScale);
   });
 }
 
@@ -1679,7 +1720,7 @@ export default function SplatraImaginationField({
   const [sceneStartedAt, setSceneStartedAt] = useState(0);
   const [activeSceneBeatIndex, setActiveSceneBeatIndex] = useState(-1);
   const budget = particleBudget ?? (mode === "lab" ? 1400 : 520);
-  const controls = useMemo(() => {
+  const controls = useMemo<ParticleControls>(() => {
     const base = STATE_CONTROLS[state] ?? STATE_CONTROLS.idle;
     if (!controlOverride) return base;
     return {
@@ -1868,6 +1909,8 @@ export default function SplatraImaginationField({
       data-active-scene-behavior={activeSceneBehavior}
       data-active-scene-track={activeSceneTrackId || "none"}
       data-active-scene-focus-basis={activeSceneFocusBasis}
+      data-layout-collision-pressure={layoutCollisionPressure(controls)}
+      data-layout-text-avoidance={String(controls.layout_text_avoidance ?? "clear")}
       data-active-scene-group={activeSceneGroupId || "none"}
       data-active-scene-group-size={activeSceneGroupSize}
     >

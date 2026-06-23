@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
 import HologramVoiceOrb, { HologramVoiceOrbState } from "./HologramVoiceOrb";
@@ -814,6 +814,35 @@ function effectiveOrbMovementForTelemetry(stageLayout: StageLayout, requestedMov
   return requestedMovement;
 }
 
+function layoutCollisionPressureFromTelemetry(telemetry: LayoutTelemetry) {
+  const statePressure =
+    telemetry.collisionState === "dom_text_clipped" ? 1
+      : telemetry.collisionState === "dom_text_overlap_risk" ? 0.76
+        : telemetry.collisionState === "dom_text_minimized_overlap" ? 0.32
+          : 0;
+  const measuredPressure = Math.max(
+    clampNumber(telemetry.offscreen / 180, 0, 1),
+    clampNumber(telemetry.overlap / 1600, 0, 0.86),
+  );
+  const blockerPressure = clampNumber(Math.max(0, telemetry.blockers - 2) / 7, 0, 0.24);
+  return clampNumber(Math.max(statePressure, measuredPressure) + blockerPressure, 0, 1);
+}
+
+function splatraControlsForLayout(emotionControls: Record<string, any> | null, telemetry: LayoutTelemetry) {
+  const collisionPressure = layoutCollisionPressureFromTelemetry(telemetry);
+  const base = emotionControls ?? {};
+  const quieting = collisionPressure * 0.62;
+  return {
+    ...base,
+    layout_collision_pressure: collisionPressure,
+    layout_field_quieting: quieting,
+    layout_text_avoidance: collisionPressure > 0 ? "dom_text_canvas_feedback" : "clear",
+    layout_flow_recombine: 0.12 + collisionPressure * 0.42,
+    curiosity: clampNumber(Number(base.curiosity ?? 0.45) * (1 - quieting * 0.22), 0.16, 1),
+    speaking_energy: clampNumber(Number(base.speaking_energy ?? 0) * (1 - quieting * 0.16), 0, 1),
+  };
+}
+
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
@@ -847,6 +876,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     : language === "ko" ? "ATANOR\uC5D0\uAC8C \uB9D0\uD558\uAE30" : "Message ATANOR";
   const typedSpeechLine = useTypewriterText(speechLine, 24);
   const typedSelfNarration = useTypewriterText(selfNarration, 28);
+  const splatraDashboardControls = useMemo(
+    () => splatraControlsForLayout(emotionControls, layoutTelemetry),
+    [emotionControls, layoutTelemetry],
+  );
 
   useEffect(() => {
     if (orbState !== "listening") return;
@@ -1266,6 +1299,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-measured-blockers={layoutTelemetry.blockers}
       data-layout-overlap-px={layoutTelemetry.overlap}
       data-layout-offscreen-px={layoutTelemetry.offscreen}
+      data-layout-collision-pressure={splatraDashboardControls.layout_collision_pressure}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
       data-text-layout-basis="dom_text_canvas_metrics_preallocated_no_particle_text"
@@ -1276,7 +1310,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         mode="product"
         particleBudget={1280}
         interactive={false}
-        controlOverride={emotionControls ?? undefined}
+        controlOverride={splatraDashboardControls}
         sceneFocus={stageLayout === "scene_focus"}
         scenePlan={sceneChoreography}
         activeSpeechBeatIndex={sceneSpeechBeatIndex}
