@@ -244,6 +244,7 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
     visual_affordance = _visual_affordance_for_phrase(phrase, unit["narration"], unit["semantic_role"], op)
     spatial_relation = _spatial_relation_for_phrase(phrase, unit["narration"], visual_affordance, op)
+    position = _position_for_unit(phrase, index, visual_affordance, spatial_relation)
     beat = {
         "op": op,
         "prompt": phrase,
@@ -256,8 +257,8 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
         "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index, visual_affordance),
         "t_start": round(t_start, 2),
         "duration": 1.35 if op == "move" else 1.25,
-        "position": _position_for_unit(phrase, index, visual_affordance, spatial_relation),
-        "camera": _camera_for_phrase(phrase, index) if op in {"focus_camera", "move"} else {},
+        "position": position,
+        "camera": _camera_for_unit(position, visual_affordance, op, spatial_relation, index) if op in {"focus_camera", "move"} else {},
     }
     motion_path = _motion_path_for_unit(unit, index=index) if op == "move" or unit["semantic_role"].startswith("verified_motion") else {}
     if motion_path:
@@ -488,11 +489,18 @@ def _motion_path_for_unit(unit: dict[str, str], *, index: int) -> dict[str, Any]
     }
 
 
-def _camera_for_phrase(phrase: str, index: int) -> dict[str, Any]:
-    zoom_bucket = _stable_index(f"z:{index}:{phrase}", 5)
+def _camera_for_unit(position: list[float], visual_affordance: str, op: str, spatial_relation: str, index: int) -> dict[str, Any]:
+    zoom_bucket = _stable_index(f"z:{index}:{visual_affordance}:{spatial_relation}:{op}", 5)
+    affordance_bonus = {
+        "small_object": 0.18,
+        "small_moving_object": 0.22,
+        "entity_figure": 0.1,
+        "organic_structure": 0.06,
+    }.get(visual_affordance, 0.0)
+    op_bonus = 0.14 if op == "focus_camera" else 0.08 if op == "move" else 0.0
     return {
-        "target": _position_for_phrase(phrase, index),
-        "zoom": round(0.94 + zoom_bucket * 0.07, 2),
+        "target": position,
+        "zoom": round(0.94 + zoom_bucket * 0.07 + affordance_bonus + op_bonus, 2),
     }
 
 

@@ -76,6 +76,12 @@ type SceneTransform = {
   zoom: number;
 };
 
+type SceneCameraView = {
+  targetX: number;
+  targetY: number;
+  zoom: number;
+};
+
 type SceneRenderObject = {
   archetype: Archetype;
   beat: ScenePlanBeat;
@@ -392,6 +398,25 @@ function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boole
   };
 }
 
+function sceneCameraView(beat: ScenePlanBeat | null | undefined, stageMode: boolean, elapsedSeconds = 0): SceneCameraView {
+  if (!stageMode || !beat) return { targetX: 0, targetY: 0, zoom: 1 };
+  const position = Array.isArray(beat.position) ? beat.position : [];
+  const camera = beat.camera && typeof beat.camera === "object" ? beat.camera : {};
+  const cameraTarget = Array.isArray(camera.target) ? camera.target : [];
+  const rawTargetX = Number(cameraTarget[0] ?? position[0] ?? 0);
+  const rawTargetY = Number(cameraTarget[1] ?? position[1] ?? 0);
+  const rawZoom = Number(camera.zoom ?? 1);
+  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  const duration = Math.max(0.1, Number.isFinite(Number(beat.duration)) ? Number(beat.duration) : 1.2);
+  const progress = smoothstep((elapsedSeconds - start) / duration);
+  const focusBias = beat.op === "focus_camera" ? 0.16 : beat.op === "move" ? 0.08 : 0;
+  return {
+    targetX: Number.isFinite(rawTargetX) ? rawTargetX * progress : 0,
+    targetY: Number.isFinite(rawTargetY) ? rawTargetY * progress : 0,
+    zoom: clamp(1 + ((Number.isFinite(rawZoom) ? rawZoom : 1) + focusBias - 1) * progress, 0.82, 1.56),
+  };
+}
+
 function sceneObjectPosition(beat: ScenePlanBeat | null | undefined) {
   const position = Array.isArray(beat?.position) ? beat?.position ?? [] : [];
   return {
@@ -423,11 +448,14 @@ function scenePointToCanvas(
   height: number,
   sceneElapsed: number,
   swing = { x: 0, y: 0 },
+  cameraView: SceneCameraView = { targetX: 0, targetY: 0, zoom: 1 },
 ) {
   const transform = sceneTransform(beat, true, sceneElapsed);
+  const viewX = (point.x - cameraView.targetX) * cameraView.zoom;
+  const viewY = (point.y - cameraView.targetY) * cameraView.zoom;
   return {
-    x: width / 2 + (point.x * 0.34 + transform.offsetX * 0.52 + swing.x) * width,
-    y: height / 2 + (-point.y * 0.28 + transform.offsetY * 0.52 + swing.y) * height,
+    x: width / 2 + (viewX * 0.34 + transform.offsetX * 0.38 + swing.x) * width,
+    y: height / 2 + (-viewY * 0.28 + transform.offsetY * 0.38 + swing.y) * height,
   };
 }
 
@@ -970,6 +998,7 @@ function drawSceneObjectCloud(
   sceneElapsed: number,
   active: boolean,
   controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  cameraView: SceneCameraView,
 ) {
   const alphaMultiplier = sceneObjectAlpha(object.beat, sceneElapsed, active);
   if (alphaMultiplier <= 0.02) return;
@@ -988,6 +1017,7 @@ function drawSceneObjectCloud(
       x: motionSwing * (flowSalt - 0.5) * 0.11,
       y: motionSwing * (stableUnit(object.id, 47) - 0.5) * 0.08,
     },
+    cameraView,
   );
   const cx = center.x;
   const cy = center.y;
@@ -1047,6 +1077,7 @@ function drawSceneMotionPathFlow(
   elapsed: number,
   sceneElapsed: number,
   active: boolean,
+  cameraView: SceneCameraView,
 ) {
   const from = Array.isArray(object.beat.motion_path?.from) ? object.beat.motion_path?.from ?? [] : [];
   const to = Array.isArray(object.beat.motion_path?.to) ? object.beat.motion_path?.to ?? [] : [];
@@ -1071,7 +1102,7 @@ function drawSceneMotionPathFlow(
       x: fromPoint.x * (1 - t) + toPoint.x * t,
       y: fromPoint.y * (1 - t) + toPoint.y * t + arc,
     };
-    const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed);
+    const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
     points.push([canvasPoint.x, canvasPoint.y]);
   }
   const baseAlpha = active ? 0.18 : 0.075;
@@ -1085,7 +1116,7 @@ function drawSceneMotionPathFlow(
       x: fromPoint.x * (1 - local) + toPoint.x * local,
       y: fromPoint.y * (1 - local) + toPoint.y * local + arc,
     };
-    const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed);
+    const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
     const fade = 1 - index / Math.max(1, streamCount);
     drawGuideParticle(
       ctx,
@@ -1117,12 +1148,14 @@ function drawSceneFocusParticles(
   ctx.fillRect(0, 0, width, height);
 
   const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
+  const activeObject = visibleObjects.find((object) => object.id === activeObjectId) ?? visibleObjects[0] ?? null;
+  const cameraView = sceneCameraView(activeObject?.beat, true, sceneElapsed);
   visibleObjects.forEach((object) => {
-    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId);
+    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, cameraView);
   });
 
   visibleObjects.forEach((object) => {
-    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, controls);
+    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, controls, cameraView);
   });
 }
 

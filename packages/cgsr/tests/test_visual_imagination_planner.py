@@ -197,6 +197,11 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(beat["motion_path"].get("target_prompt") for beat in motion_beats)
     apple_motion = next(beat for beat in motion_beats if "apple fell" in beat["prompt"])
     assert apple_motion["motion_path"]["from"][1] > apple_motion["motion_path"]["to"][1]
+    assert tuple(apple_motion["camera"]["target"]) == tuple(apple_motion["position"])
+    assert apple_motion["camera"]["zoom"] > 1.0
+    focus_beats = [beat for beat in beats if beat["op"] == "focus_camera"]
+    assert focus_beats
+    assert all(tuple(beat["camera"]["target"]) == tuple(beat["position"]) for beat in focus_beats)
     assert plan.scene_choreography["layout_intent"] == "wide_particle_stage"
     assert plan.scene_choreography["scene_extent"]["motion_count"] >= 1
     assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())

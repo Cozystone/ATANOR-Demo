@@ -35,6 +35,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneArchetype" in field
     assert "activeSceneBeatIndex" in field
     assert "sceneTransform" in field
+    assert "sceneCameraView" in field
+    assert "type SceneCameraView" in field
     assert "SceneRenderObject" in field
     assert "buildSceneRenderObjects" in field
     assert "sceneParticlesForBeat" in field
@@ -52,6 +54,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "motion_path" in field
     assert "sceneMotionPathPoint" in field
     assert "drawSceneMotionPathFlow" in field
+    assert "cameraView" in field
     assert "drawSceneFocusParticles" in field
     assert "data-scene-objects" in field
     assert "data-scene-beat" in field
