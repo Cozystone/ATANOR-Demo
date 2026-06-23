@@ -36,6 +36,7 @@ from packages.agentic_micro_os.web_explorer_loop import (
     WebPageInput,
 )
 from packages.hermes_intake.scanner import scan_repo
+from packages.splatra_imagination import ARCHETYPES, ImaginationGenerator, ImaginationSeed, default_safety_flags, run_imagination_proof
 
 
 router = APIRouter(prefix="/api/agentic-os", tags=["agentic-micro-os"])
@@ -76,6 +77,7 @@ MODULE_STATUS = {
     "browser_read": "proof_only",
     "mcp_allowlist_gateway": "proof_only",
     "splatra_evaluator": "proof_only",
+    "splatra_imagination_field": "proof_only",
     "web_explorer_loop": "proof_only",
     "cloud_gateway_mock": "available",
     "hermes_intake": "architecture_extracted",
@@ -152,6 +154,24 @@ class SplatraEvaluateApiRequest(BaseModel):
     target_fps: int = 60
     include_city_proof: bool = False
     emotion_probe: dict[str, float] = Field(default_factory=lambda: {"valence": 0.2, "arousal": 0.6, "audio_energy": 0.0})
+
+
+class SplatraImaginationGenerateApiRequest(BaseModel):
+    seed_id: str = "api_imagination_0"
+    archetype: str = "orb"
+    randomness: float = 0.5
+    valence: float = 0.0
+    arousal: float = 0.45
+    curiosity: float = 0.5
+    speaking_energy: float = 0.0
+    state: str = "imagining"
+    particle_budget: int = 1600
+    lod_target: int = 0
+    include_particles: bool = True
+
+
+class SplatraImaginationEvaluateApiRequest(BaseModel):
+    particle_budget: int = 900
 
 
 class WebExplorerPageApiInput(BaseModel):
@@ -534,6 +554,60 @@ def splatra_evaluate(request: SplatraEvaluateApiRequest) -> dict[str, Any]:
         token,
     )
     return {**SAFETY_FLAGS, **result.to_dict()}
+
+
+@router.get("/splatra/imagination/status")
+def splatra_imagination_status() -> dict[str, Any]:
+    return {
+        **SAFETY_FLAGS,
+        **default_safety_flags(),
+        "available": True,
+        "proof_only": True,
+        "label": "imagination",
+        "source": "procedural",
+        "is_verified_knowledge": False,
+        "archetypes": list(ARCHETYPES),
+        "product_budget": 1600,
+        "lab_budget": 6500,
+    }
+
+
+@router.post("/splatra/imagination/generate")
+def splatra_imagination_generate(request: SplatraImaginationGenerateApiRequest) -> dict[str, Any]:
+    if request.archetype not in ARCHETYPES:
+        return {
+            **SAFETY_FLAGS,
+            **default_safety_flags(),
+            "allowed": False,
+            "reason": "unsupported archetype",
+            "archetypes": list(ARCHETYPES),
+        }
+    seed = ImaginationSeed(
+        seed_id=request.seed_id,
+        archetype=request.archetype,  # type: ignore[arg-type]
+        randomness=max(0.0, min(1.0, request.randomness)),
+        valence=max(-1.0, min(1.0, request.valence)),
+        arousal=max(0.0, min(1.0, request.arousal)),
+        curiosity=max(0.0, min(1.0, request.curiosity)),
+        speaking_energy=max(0.0, min(1.0, request.speaking_energy)),
+        state=request.state if request.state in {"imagining", "resting", "speaking", "thinking", "previewing", "blocked"} else "imagining",  # type: ignore[arg-type]
+        particle_budget=max(16, min(request.particle_budget, 100_000)),
+        lod_target=max(0, request.lod_target),
+        created_at="api_procedural_seed",
+    )
+    frame = ImaginationGenerator(max_particle_budget=100_000).generate_frame(seed)
+    return {
+        **SAFETY_FLAGS,
+        **default_safety_flags(),
+        "allowed": True,
+        "frame": frame.to_dict(include_particles=request.include_particles),
+    }
+
+
+@router.post("/splatra/imagination/evaluate")
+def splatra_imagination_evaluate(request: SplatraImaginationEvaluateApiRequest) -> dict[str, Any]:
+    proof = run_imagination_proof(particle_budget=max(16, min(request.particle_budget, 10_000)))
+    return {**SAFETY_FLAGS, **default_safety_flags(), **proof}
 
 
 @router.get("/web-explorer/status")

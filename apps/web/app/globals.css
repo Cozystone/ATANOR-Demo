@@ -8407,6 +8407,197 @@ p {
   outline-offset: -10px;
 }
 
+.splatra-imagination-field {
+  display: grid;
+  min-height: 280px;
+  min-width: 280px;
+  position: relative;
+}
+
+.splatra-imagination-field[data-mode="product"] {
+  height: clamp(360px, 66vmin, 680px);
+  left: 50%;
+  position: absolute;
+  top: 47%;
+  transform: translate(-50%, -52%);
+  width: clamp(360px, 66vmin, 680px);
+}
+
+.atanor-dashboard-imagination-field {
+  bottom: 0 !important;
+  height: 100% !important;
+  inset: 0;
+  left: 0 !important;
+  min-height: 100dvh;
+  opacity: 0.34;
+  pointer-events: none;
+  position: absolute !important;
+  right: 0 !important;
+  top: 0 !important;
+  transform: none !important;
+  width: 100% !important;
+  z-index: 0;
+}
+
+.atanor-dashboard-imagination-field .splatra-imagination-canvas-button {
+  border-radius: 0;
+}
+
+.atanor-dashboard-imagination-field .splatra-imagination-canvas-button::before,
+.atanor-dashboard-imagination-field .splatra-imagination-canvas-button::after {
+  content: none;
+}
+
+.splatra-imagination-canvas-button {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.055), transparent 34%),
+    radial-gradient(circle at 50% 50%, rgba(22, 238, 255, 0.05), transparent 54%);
+  border: 0;
+  border-radius: 999px;
+  cursor: grab;
+  display: grid;
+  height: 100%;
+  outline: 0;
+  overflow: hidden;
+  padding: 0;
+  place-items: center;
+  position: relative;
+  width: 100%;
+}
+
+.splatra-imagination-canvas-button::before {
+  background:
+    radial-gradient(circle at 46% 42%, rgba(255, 255, 255, 0.12), transparent 10%),
+    radial-gradient(circle at 50% 50%, transparent 57%, rgba(83, 226, 255, 0.16) 58%, transparent 65%),
+    linear-gradient(115deg, transparent 20%, rgba(255, 255, 255, 0.12) 36%, transparent 48%);
+  border-radius: inherit;
+  content: "";
+  inset: 11%;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.splatra-imagination-canvas-button::after {
+  border: 1px solid rgba(173, 237, 255, 0.14);
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 28px rgba(255, 255, 255, 0.04),
+    0 0 72px rgba(31, 226, 255, 0.08);
+  content: "";
+  inset: 13%;
+  pointer-events: none;
+  position: absolute;
+  z-index: 3;
+}
+
+.splatra-imagination-canvas-button canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.splatra-imagination-canvas-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.78);
+  outline-offset: -10px;
+}
+
+.splatra-imagination-field[data-state="speaking"] .splatra-imagination-canvas-button::after,
+.splatra-imagination-field[data-state="listening"] .splatra-imagination-canvas-button::after {
+  animation: splatraGlassSpeak 980ms ease-in-out infinite;
+}
+
+.agentic-os-splatra-imagination-card {
+  min-height: 520px;
+}
+
+.agentic-os-splatra-imagination-card .splatra-imagination-field {
+  border: 1px solid rgba(114, 230, 255, 0.12);
+  border-radius: 8px;
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.splatra-imagination-field[data-mode="lab"] .splatra-imagination-canvas-button {
+  border-radius: 8px;
+}
+
+.splatra-imagination-field[data-mode="lab"] .splatra-imagination-canvas-button::before,
+.splatra-imagination-field[data-mode="lab"] .splatra-imagination-canvas-button::after {
+  border-radius: 8px;
+}
+
+.splatra-imagination-lab {
+  align-items: end;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.78));
+  bottom: 0;
+  color: rgba(242, 250, 255, 0.9);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  left: 0;
+  padding: 18px;
+  position: absolute;
+  right: 0;
+  z-index: 5;
+}
+
+.splatra-imagination-lab small,
+.splatra-imagination-lab span {
+  color: rgba(219, 236, 245, 0.62);
+  display: block;
+  font: 700 0.72rem/1.4 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+.splatra-imagination-lab strong {
+  display: block;
+  font: 850 1.12rem/1.2 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  margin: 4px 0;
+}
+
+.splatra-imagination-lab label {
+  display: grid;
+  gap: 6px;
+}
+
+.splatra-imagination-lab select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.splatra-imagination-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
+
+.splatra-imagination-flags span {
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 5px 8px;
+}
+
+@keyframes splatraGlassSpeak {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 28px rgba(255, 255, 255, 0.04),
+      0 0 72px rgba(31, 226, 255, 0.08);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 36px rgba(255, 255, 255, 0.07),
+      0 0 96px rgba(31, 226, 255, 0.16);
+    transform: scale(1.018);
+  }
+}
+
 .atanor-hologram-composer {
   align-items: center;
   backdrop-filter: blur(18px);

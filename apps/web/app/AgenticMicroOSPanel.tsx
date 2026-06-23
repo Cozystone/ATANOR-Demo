@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SplatraImaginationField from "./SplatraImaginationField";
 
 type Language = "en" | "ko";
 type AnyRecord = Record<string, any>;
@@ -22,6 +23,7 @@ const moduleLabels = [
   ["browser_read", "Browser Read"],
   ["mcp_allowlist_gateway", "MCP Allowlist"],
   ["splatra_evaluator", "SPLATRA Evaluator"],
+  ["splatra_imagination_field", "SPLATRA Imagination"],
   ["web_explorer_loop", "Open-Web Explorer"],
   ["hermes_intake", "Hermes Intake"],
 ] as const;
@@ -347,6 +349,12 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
       </header>
 
       <div className="agentic-os-grid">
+        <article className="agentic-os-card agentic-os-splatra-imagination-card">
+          <h3>SPLATRA Imagination Field</h3>
+          <p>Procedural particle imagination preview. It is proof-only visual state, not verified knowledge, memory mutation, or generated code execution.</p>
+          <SplatraImaginationField mode="lab" state="thinking" particleBudget={1200} />
+        </article>
+
         <article className="agentic-os-card">
           <h3>{t.modules}</h3>
           <div className="agentic-os-module-grid">

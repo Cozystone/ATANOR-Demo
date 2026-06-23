@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
 import HologramVoiceOrb, { HologramVoiceOrbState } from "./HologramVoiceOrb";
+import SplatraImaginationField from "./SplatraImaginationField";
 
 type Language = "en" | "ko";
 
@@ -218,6 +219,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
     >
+      <SplatraImaginationField
+        state={orbState}
+        mode="product"
+        particleBudget={960}
+        interactive={false}
+        className="atanor-dashboard-imagination-field"
+      />
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
         {speechLine ? (
