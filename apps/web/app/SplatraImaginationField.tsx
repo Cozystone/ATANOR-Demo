@@ -67,6 +67,13 @@ type SceneTransform = {
   zoom: number;
 };
 
+type SceneRenderObject = {
+  archetype: Archetype;
+  beat: ScenePlanBeat;
+  id: string;
+  particles: Particle[];
+};
+
 type Props = {
   mode?: ImaginationMode;
   state?: VisualState;
@@ -374,6 +381,56 @@ function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boole
     offsetY: clamp((Number.isFinite(rawY) ? -rawY * 0.08 * motionBias : 0) + moveY, -0.28, 0.28),
     zoom: clamp((Number.isFinite(rawZoom) ? rawZoom : 1) * opBias * (beat.op === "move" ? 1 + progress * 0.05 : 1), 0.72, 1.42),
   };
+}
+
+function sceneObjectPosition(beat: ScenePlanBeat | null | undefined) {
+  const position = Array.isArray(beat?.position) ? beat?.position ?? [] : [];
+  return {
+    x: Number.isFinite(Number(position[0])) ? Number(position[0]) : 0,
+    y: Number.isFinite(Number(position[1])) ? Number(position[1]) : 0,
+  };
+}
+
+function sceneObjectProgress(beat: ScenePlanBeat, elapsedSeconds: number) {
+  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  const duration = Math.max(0.1, Number.isFinite(Number(beat.duration)) ? Number(beat.duration) : 1.2);
+  return smoothstep((elapsedSeconds - start) / duration);
+}
+
+function sceneObjectAlpha(beat: ScenePlanBeat, elapsedSeconds: number, active: boolean) {
+  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  if (elapsedSeconds < start - 0.16) return 0;
+  const reveal = sceneObjectProgress(beat, elapsedSeconds);
+  const base = beat.op === "despawn" ? 1 - reveal : Math.max(0.24, reveal);
+  return clamp(base * (active ? 1 : 0.48), 0, 1);
+}
+
+function sceneObjectId(beat: ScenePlanBeat, index: number) {
+  return `${beat.object_id || beat.prompt || "scene"}:${index}`;
+}
+
+function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const seen = new Set<string>();
+  const maxObjects = Math.min(10, Math.max(1, beats.length));
+  const perObjectBudget = clamp(Math.floor(Math.max(280, budget * 1.8) / maxObjects), 96, 260);
+  return beats
+    .slice(0, maxObjects)
+    .map((beat, index) => {
+      const archetype = beat.archetype && PRODUCT_ARCHETYPES.includes(beat.archetype) ? beat.archetype : sceneArchetype(scenePlan, index) ?? "abstract_memory_cloud";
+      const id = sceneObjectId(beat, index);
+      return {
+        archetype,
+        beat,
+        id,
+        particles: fallbackParticles(archetype, perObjectBudget),
+      };
+    })
+    .filter((object) => {
+      if (seen.has(object.id)) return false;
+      seen.add(object.id);
+      return true;
+    });
 }
 
 function fallbackParticles(archetype: Archetype, count: number): Particle[] {
@@ -708,6 +765,99 @@ function drawParticles(
   drawParticleEllipse(ctx, cx, cy, shellRadius, shellRadius, 0, [128, 226, 255], 0.22, Math.min(width, height), 901, elapsed);
 }
 
+function drawSceneObjectCloud(
+  ctx: CanvasRenderingContext2D,
+  object: SceneRenderObject,
+  width: number,
+  height: number,
+  elapsed: number,
+  sceneElapsed: number,
+  active: boolean,
+  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+) {
+  const alphaMultiplier = sceneObjectAlpha(object.beat, sceneElapsed, active);
+  if (alphaMultiplier <= 0.02) return;
+  const position = sceneObjectPosition(object.beat);
+  const transform = sceneTransform(object.beat, true, sceneElapsed);
+  const cx = width / 2 + (position.x * 0.34 + transform.offsetX * 0.52) * width;
+  const cy = height / 2 + (-position.y * 0.28 + transform.offsetY * 0.52) * height;
+  const scaleBias = active ? 1.12 : 0.78;
+  const scale = Math.min(width, height) * 0.11 * transform.zoom * scaleBias;
+  const rotation = elapsed * (0.12 + controls.arousal * 0.11) + stableUnit(object.id, 5) * Math.PI * 2;
+  const tilt = Math.sin(elapsed * 0.16 + stableUnit(object.id, 9) * 4) * 0.18;
+  const pulse = 1 + Math.sin(elapsed * 2.1 + stableUnit(object.id, 17) * 4) * (active ? 0.035 : 0.018);
+  const cosY = Math.cos(rotation);
+  const sinY = Math.sin(rotation);
+  const cosX = Math.cos(tilt);
+  const sinX = Math.sin(tilt);
+
+  for (const point of object.particles) {
+    let x = point.x;
+    let y = point.y;
+    let z = point.z;
+    const rx = x * cosY - z * sinY;
+    const rz = x * sinY + z * cosY;
+    x = rx;
+    z = rz;
+    const ry = y * cosX - z * sinX;
+    z = y * sinX + z * cosX;
+    y = ry;
+    const depth = clamp((z + 2.4) / 4.8, 0.08, 1);
+    const px = cx + x * scale * pulse;
+    const py = cy + y * scale * pulse;
+    const color: [number, number, number] = [
+      Math.floor(point.r * 255),
+      Math.floor(point.g * 255),
+      Math.floor(point.b * 255),
+    ];
+    const size = clamp(point.scale * (0.66 + depth * 1.08) * scaleBias, 0.52, active ? 4.1 : 2.8);
+    const alpha = clamp(point.a * (0.16 + depth * 0.66) * alphaMultiplier, 0.025, active ? 0.82 : 0.46);
+    const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9 + stableUnit(object.id, 31));
+    drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6), 1.6, 9), size, color, alpha);
+  }
+}
+
+function drawSceneFocusParticles(
+  ctx: CanvasRenderingContext2D,
+  sceneObjects: SceneRenderObject[],
+  activeObjectId: string | null,
+  width: number,
+  height: number,
+  elapsed: number,
+  sceneElapsed: number,
+  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+) {
+  ctx.clearRect(0, 0, width, height);
+  const centerGlow = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) * 0.48);
+  centerGlow.addColorStop(0, "rgba(255,255,255,0.035)");
+  centerGlow.addColorStop(0.38, "rgba(43,223,255,0.03)");
+  centerGlow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = centerGlow;
+  ctx.fillRect(0, 0, width, height);
+
+  const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
+  const centers = visibleObjects.map((object) => {
+    const position = sceneObjectPosition(object.beat);
+    const transform = sceneTransform(object.beat, true, sceneElapsed);
+    return {
+      id: object.id,
+      point: [
+        width / 2 + (position.x * 0.34 + transform.offsetX * 0.52) * width,
+        height / 2 + (-position.y * 0.28 + transform.offsetY * 0.52) * height,
+      ] as [number, number],
+    };
+  });
+  centers.forEach((center, index) => {
+    const next = centers[index + 1];
+    if (!next) return;
+    drawParticleSegment(ctx, center.point, next.point, [76, 230, 255], 0.07, Math.min(width, height), index * 41 + 17, elapsed);
+  });
+
+  visibleObjects.forEach((object) => {
+    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, controls);
+  });
+}
+
 export default function SplatraImaginationField({
   mode = "product",
   state = "idle",
@@ -744,6 +894,8 @@ export default function SplatraImaginationField({
   const activeArchetype = frame?.object?.archetype ?? archetype;
   const stageMode = sceneFocus || scenePlan?.stage_layout === "scene_focus";
   const activeSceneBeat = activeSceneBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[activeSceneBeatIndex] : null;
+  const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
+  const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, activeSceneBeatIndex)) : null;
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -865,23 +1017,27 @@ export default function SplatraImaginationField({
       const elapsed = reducedMotion ? 0.5 : (performance.now() - startedAt) / 1000;
       const sceneElapsed = sceneStartedAt ? Math.max(0, (performance.now() - sceneStartedAt) / 1000) : elapsed;
       const activeTransform = sceneTransform(activeSceneBeat, stageMode, sceneElapsed);
-      drawParticles(
-        ctx,
-        particles,
-        activeArchetype,
-        width,
-        height,
-        elapsed,
-        controls,
-        !stageMode && !interactive && mode === "product",
-        mode === "lab",
-        activeTransform,
-      );
+      if (stageMode && sceneObjects.length) {
+        drawSceneFocusParticles(ctx, sceneObjects, activeSceneObjectId, width, height, elapsed, sceneElapsed, controls);
+      } else {
+        drawParticles(
+          ctx,
+          particles,
+          activeArchetype,
+          width,
+          height,
+          elapsed,
+          controls,
+          !stageMode && !interactive && mode === "product",
+          mode === "lab",
+          activeTransform,
+        );
+      }
       if (!reducedMotion) animationId = window.requestAnimationFrame(render);
     };
     render();
     return () => window.cancelAnimationFrame(animationId);
-  }, [activeArchetype, activeSceneBeat, controls, interactive, mode, particles, reducedMotion, sceneStartedAt, stageMode]);
+  }, [activeArchetype, activeSceneBeat, activeSceneObjectId, controls, interactive, mode, particles, reducedMotion, sceneObjects, sceneStartedAt, stageMode]);
 
   function handleClick() {
     if (state === "listening") {
@@ -894,7 +1050,7 @@ export default function SplatraImaginationField({
   const canvas = <canvas ref={canvasRef} />;
 
   return (
-    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state}>
+    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length}>
       {interactive ? (
         <button
           type="button"
