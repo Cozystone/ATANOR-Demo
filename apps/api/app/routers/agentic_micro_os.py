@@ -44,6 +44,7 @@ from packages.splatra_imagination import (
     ARCHETYPES,
     ImaginationGenerator,
     ImaginationSeed,
+    compile_scene_choreography,
     compile_splatra_command,
     default_safety_flags,
     run_imagination_proof,
@@ -202,6 +203,15 @@ class SplatraImaginationCommandApiRequest(BaseModel):
     particle_budget: int = 1600
     mode: str = "product"
     include_particles: bool = True
+    scene_command: str = "spawn_object"
+    archetype: str | None = None
+
+
+class SplatraSceneChoreographyApiRequest(BaseModel):
+    stage_layout: str = "conversation"
+    orb_anchor: str = "center"
+    primary_surface: str = "conversation"
+    beats: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class WebExplorerPageApiInput(BaseModel):
@@ -867,10 +877,14 @@ def splatra_imagination_evaluate(request: SplatraImaginationEvaluateApiRequest) 
 
 @router.post("/splatra/imagination/command")
 def splatra_imagination_command(request: SplatraImaginationCommandApiRequest) -> dict[str, Any]:
+    scene_command = request.scene_command if request.scene_command in {"spawn_object", "morph", "render_knowledge_hologram"} else "spawn_object"
+    archetype = request.archetype if request.archetype in ARCHETYPES else None
     plan, frame = compile_splatra_command(
         request.command,
         particle_budget=max(64, min(request.particle_budget, 100_000)),
         mode=request.mode,
+        scene_command=scene_command,  # type: ignore[arg-type]
+        archetype=archetype,  # type: ignore[arg-type]
     )
     frame_payload = frame.to_dict(include_particles=request.include_particles)
     visible_summary = _splatra_visible_summary(frame_payload)
@@ -891,6 +905,28 @@ def splatra_imagination_command(request: SplatraImaginationCommandApiRequest) ->
         "command_plan": plan.to_dict(),
         "frame": frame_payload,
         **visible_summary,
+    }
+
+
+@router.post("/splatra/imagination/choreography")
+def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> dict[str, Any]:
+    plan = compile_scene_choreography(request.model_dump())
+    emit_runtime_event(
+        source="splatra_imagination",
+        event_type="splatra_generation_success",
+        payload_summary=f"choreography_beats={len(plan.beats)}; layout={plan.stage_layout}",
+        intensity=0.42,
+    )
+    return {
+        **SAFETY_FLAGS,
+        **default_safety_flags(),
+        "allowed": True,
+        "agent_can_use": True,
+        "splatra_choreography_adapter": True,
+        "external_splatra_called": False,
+        "raw_buffer_in_agent_context": False,
+        "topic_scene_templates": False,
+        "scene_choreography": plan.to_dict(),
     }
 
 

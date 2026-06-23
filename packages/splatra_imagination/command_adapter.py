@@ -12,19 +12,6 @@ from .models import Archetype, ImaginationFrame, ImaginationSeed, default_safety
 SceneCommand = Literal["spawn_object", "morph", "render_knowledge_hologram"]
 
 
-ARCHETYPE_HINTS: dict[Archetype, tuple[str, ...]] = {
-    "orb": ("sphere", "orb", "ball", "구", "구슬", "공"),
-    "tower": ("tower", "spire", "building", "탑", "기둥"),
-    "tree": ("tree", "branch", "forest", "나무", "가지", "숲"),
-    "creature": ("creature", "animal", "character", "mascot", "생물", "동물", "캐릭터"),
-    "circuit": ("circuit", "chip", "network", "trace", "회로", "칩", "네트워크"),
-    "city_block": ("city", "street", "skyline", "block", "도시", "거리", "건물"),
-    "constellation": ("constellation", "star", "galaxy", "별자리", "별", "은하"),
-    "machine_core": ("machine", "engine", "reactor", "core", "기계", "엔진", "코어", "원자로"),
-    "abstract_memory_cloud": ("cloud", "memory", "nebula", "thought", "구름", "기억", "성운", "생각"),
-}
-
-
 @dataclass(frozen=True)
 class SplatraCommandPlan:
     plan_id: str
@@ -52,22 +39,11 @@ def _normalize_command(command: str) -> str:
     return re.sub(r"\s+", " ", command.strip())[:480]
 
 
-def _select_command_archetype(command: str) -> Archetype:
-    lower = command.lower()
-    for archetype, hints in ARCHETYPE_HINTS.items():
-        if any(hint.lower() in lower for hint in hints):
-            return archetype
+def _select_command_archetype(command: str, explicit_archetype: Archetype | None = None) -> Archetype:
+    if explicit_archetype:
+        return explicit_archetype
     selected = select_archetype(f"splatra_command:{command}", curiosity=0.72)
     return "constellation" if selected == "orb" else selected
-
-
-def _scene_command_for(command: str) -> SceneCommand:
-    lower = command.lower()
-    if any(token in lower for token in ("graph", "knowledge", "관계", "그래프", "지식")):
-        return "render_knowledge_hologram"
-    if any(token in lower for token in ("morph", "change", "변형", "바꿔", "변해")):
-        return "morph"
-    return "spawn_object"
 
 
 def compile_splatra_command(
@@ -75,28 +51,27 @@ def compile_splatra_command(
     *,
     particle_budget: int = 1600,
     mode: str = "product",
+    scene_command: SceneCommand = "spawn_object",
+    archetype: Archetype | None = None,
 ) -> tuple[SplatraCommandPlan, ImaginationFrame]:
-    """Compile an ATANOR visual command into a SPLATRA-style scene action.
+    """Compile an ATANOR visual command into a bounded SPLATRA scene action.
 
-    This adapter follows Cozystone/SPLATRA's contract: the agent receives a
-    scene/action summary and a cartridge handle contract, never raw 3D buffers.
-    It does not call an external LLM, sLLM, image model, Local Brain, production
-    store, or candidate promotion path.
+    This function intentionally does not infer topic-specific content such as
+    "gravity means apple tree". Upstream ATANOR scene planning must author
+    those beats. This adapter only validates and packages a command/action
+    contract, keeping raw 3D buffers out of the agent context.
     """
 
-    normalized = _normalize_command(command)
-    if not normalized:
-        normalized = "abstract particle object"
-    archetype = _select_command_archetype(normalized)
-    scene_command = _scene_command_for(normalized)
-    plan_id = _stable_id("splatra_cmd", f"{scene_command}:{archetype}:{normalized}")
+    normalized = _normalize_command(command) or "abstract particle object"
+    selected_archetype = _select_command_archetype(normalized, archetype)
+    plan_id = _stable_id("splatra_cmd", f"{scene_command}:{selected_archetype}:{normalized}")
     object_id = _stable_id("obj", normalized)
     scene_action = {
         "op": scene_command,
         "args": {
             "id": object_id,
             "prompt": normalized,
-            "archetype": archetype,
+            "archetype": selected_archetype,
             "position": [0.0, 0.0, 0.0],
             "quality": "procedural_proof",
             "particle_budget": max(64, min(int(particle_budget), 100_000)),
@@ -113,10 +88,11 @@ def compile_splatra_command(
         "side_channel": "viewer pulls cartridge; agent context gets summary only",
         "raw_buffers_in_agent_context": False,
         "spl2_or_spl3_cartridge_ready": False,
+        "topic_scene_templates": False,
     }
     seed = ImaginationSeed(
         seed_id=plan_id,
-        archetype=archetype,
+        archetype=selected_archetype,
         randomness=0.61,
         valence=0.12,
         arousal=0.62 if mode == "product" else 0.7,
@@ -139,7 +115,7 @@ def compile_splatra_command(
             plan_id=plan_id,
             command=normalized,
             scene_command=scene_command,
-            archetype=archetype,
+            archetype=selected_archetype,
             prompt=normalized,
             scene_action=scene_action,
             splatra_contract=splatra_contract,

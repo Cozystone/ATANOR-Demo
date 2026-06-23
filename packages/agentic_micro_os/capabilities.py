@@ -31,6 +31,7 @@ ALLOWED_PROOF_CAPABILITIES = {
     "mcp_call_mock",
     "splatra_cosmos_evaluate",
     "splatra_scene_command",
+    "splatra_scene_choreography",
     "cloud_brain_verified_read_summary",
     "cloud_brain_candidate_write_draft",
     "local_brain_read_redacted_summary",

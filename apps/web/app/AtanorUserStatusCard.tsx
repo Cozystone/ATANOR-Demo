@@ -4,10 +4,10 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
 import HologramVoiceOrb, { HologramVoiceOrbState } from "./HologramVoiceOrb";
-import ParticleText from "./ParticleText";
 import SplatraImaginationField from "./SplatraImaginationField";
 
 type Language = "en" | "ko";
+type StageLayout = "conversation" | "scene_focus";
 
 type AtanorUserStatusCardProps = {
   language: Language;
@@ -40,6 +40,29 @@ function firstSpeechBeat(text: string) {
   const commaBreak = clean.search(/[,\u3001]\s?/);
   if (commaBreak > 16 && commaBreak < 58) return clean.slice(0, commaBreak + 1);
   return `${clean.slice(0, 44).trim()}...`;
+}
+
+function useTypewriterText(text: string, stepMs = 22) {
+  const [visible, setVisible] = useState("");
+
+  useEffect(() => {
+    if (!text) {
+      setVisible("");
+      return undefined;
+    }
+    let index = 0;
+    setVisible("");
+    const timer = window.setInterval(() => {
+      index += 1;
+      setVisible(text.slice(0, index));
+      if (index >= text.length) {
+        window.clearInterval(timer);
+      }
+    }, stepMs);
+    return () => window.clearInterval(timer);
+  }, [text, stepMs]);
+
+  return visible;
 }
 
 function isAsmConversationPayload(payload: Record<string, any>) {
@@ -81,6 +104,16 @@ function cleanVoiceFailedLine(language: Language) {
     : "Voice synthesis failed. Continuing with text replies.";
 }
 
+function requestedStageLayout(payload: Record<string, any>): StageLayout {
+  const result = payload?.result ?? {};
+  const visualPlan = result?.splatra_scene_plan ?? result?.visual_scene_plan ?? result?.scene_choreography ?? null;
+  if (!visualPlan || typeof visualPlan !== "object") return "conversation";
+  if (visualPlan.stage_layout === "scene_focus") return "scene_focus";
+  if (visualPlan.orb_anchor === "lower_right") return "scene_focus";
+  if (visualPlan.primary_surface === "splatra_stage") return "scene_focus";
+  return "conversation";
+}
+
 function emitNeuralEmotionEvent(eventType: string, payloadSummary: string) {
   fetch("/api/neural-emotion/events/emit", {
     method: "POST",
@@ -103,11 +136,15 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [selfNarration, setSelfNarration] = useState("");
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
+  const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speakingVisual = orbState === "speaking" || audioPlaying;
   const cleanPlaceholder = voiceMode
-    ? language === "ko" ? "\uC74C\uC131 \uBAA8\uB4DC · \uD14D\uC2A4\uD2B8\uB3C4 \uC785\uB825\uD560 \uC218 \uC788\uC5B4\uC694" : "Voice mode · text still works"
+    ? language === "ko" ? "\uC74C\uC131 \uBAA8\uB4DC - \uD14D\uC2A4\uD2B8\uB3C4 \uC785\uB825\uD560 \uC218 \uC788\uC5B4\uC694" : "Voice mode - text still works"
     : language === "ko" ? "ATANOR\uC5D0\uAC8C \uB9D0\uD558\uAE30" : "Message ATANOR";
+  const typedSpeechLine = useTypewriterText(speechLine, 24);
+  const typedSelfNarration = useTypewriterText(selfNarration, 28);
+
   useEffect(() => {
     if (orbState !== "listening") return;
     const thinkingTimer = window.setTimeout(() => setOrbState("thinking"), 1500);
@@ -186,7 +223,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setVoiceMode(true);
     setOrbState("listening");
     setVoiceNotice("");
-    setSpeechLine(language === "ko" ? "듣고 있어." : "I'm listening.");
+    setSpeechLine(language === "ko" ? "\uB4E3\uACE0 \uC788\uC5B4." : "I'm listening.");
   }
 
   function cancelVoiceMode() {
@@ -268,7 +305,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setVoiceMode(true);
     setOrbState("thinking");
     setVoiceNotice("");
-    setSpeechLine(language === "ko" ? "잠깐 생각할게." : "Let me think.");
+    setSpeechLine(language === "ko" ? "\uC7A0\uAE50 \uC0DD\uAC01\uD560\uAC8C." : "Let me think.");
     primeVoiceAudioElement();
     try {
       const response = await fetch("/api/chat/atanor", {
@@ -288,6 +325,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       if (!answer || !isAsmConversationPayload(payload)) {
         throw new Error("conversation surface unavailable");
       }
+      setStageLayout(requestedStageLayout(payload));
       setOrbState("speaking");
       void fetch("/api/inner-voice/emit", {
         method: "POST",
@@ -326,6 +364,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
     } catch {
       setOrbState("blocked");
+      setStageLayout("conversation");
       setSpeechLine(cleanSafeStatusLine(language));
       setVoiceNotice(cleanVoiceFailedLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);
@@ -335,9 +374,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   return (
     <section
       className="atanor-ai-dashboard"
-      aria-label={language === "ko" ? "ATANOR 입자 본체" : "ATANOR particle body"}
+      aria-label={language === "ko" ? "ATANOR \uC785\uC790 \uBCF8\uCCB4" : "ATANOR particle body"}
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
+      data-stage-layout={stageLayout}
     >
       <SplatraImaginationField
         state={orbState}
@@ -349,25 +389,15 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       />
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
-        {selfNarration ? (
-          <ParticleText
-            text={selfNarration}
-            tone="self"
-            className="atanor-hologram-self-narration"
-            speedMs={28}
-            maxLines={3}
-            aria-live="polite"
-          />
+        {typedSelfNarration ? (
+          <p className="atanor-hologram-self-narration" aria-live="polite">
+            {typedSelfNarration}
+          </p>
         ) : null}
-        {speechLine ? (
-          <ParticleText
-            text={speechLine}
-            tone="speech"
-            className="atanor-hologram-speech"
-            speedMs={24}
-            maxLines={2}
-            aria-live="polite"
-          />
+        {typedSpeechLine ? (
+          <p className="atanor-hologram-speech" aria-live="polite">
+            {typedSpeechLine}
+          </p>
         ) : null}
         {voiceNotice ? (
           <p className="atanor-hologram-voice-status" aria-live="polite">
@@ -376,7 +406,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         ) : null}
       </div>
       <form className="atanor-hologram-composer" data-voice-mode={voiceMode ? "true" : "false"} onSubmit={submitMessage}>
-        <button type="button" aria-label={language === "ko" ? "음성 대화 모드" : "Voice conversation mode"} onClick={voiceMode ? cancelVoiceMode : startVoiceMode}>
+        <button type="button" aria-label={language === "ko" ? "\uC74C\uC131 \uB300\uD654 \uBAA8\uB4DC" : "Voice conversation mode"} onClick={voiceMode ? cancelVoiceMode : startVoiceMode}>
           <Mic size={18} strokeWidth={1.8} />
         </button>
         <div className="atanor-voice-wave" aria-hidden="true">
@@ -390,7 +420,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           onChange={(event) => setMessage(event.target.value)}
           placeholder={cleanPlaceholder}
         />
-        <button type="submit" aria-label={language === "ko" ? "보내기" : "Send"}>
+        <button type="submit" aria-label={language === "ko" ? "\uBCF4\uB0B4\uAE30" : "Send"}>
           <Send size={18} strokeWidth={1.8} />
         </button>
       </form>

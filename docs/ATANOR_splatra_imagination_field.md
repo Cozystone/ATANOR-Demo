@@ -47,7 +47,7 @@ It may not execute generated code, mutate production stores, write Local Brain m
 
 Product home uses a bounded particle budget and rotates through recognizable archetypes without exposing internal controls. It preserves a clear radius around the central orb and input bar so the conversation surface remains readable.
 
-Product home renders generative visual elements as particles. The surrounding dashboard field uses short particle strokes in a deterministic flow field instead of hard connector lines, inspired by the CodePen particle-swarm reference. Visible speech and self narration use a Pretext-inspired canvas layout path: text is line-wrapped with canvas measurement, sampled into particles, and animated into glyph shapes. The accessible text remains available for screen readers.
+Product home renders generative visual elements as particles. The surrounding dashboard field uses short particle strokes in a deterministic flow field instead of hard connector lines, inspired by the CodePen particle-swarm reference. Speech and self narration remain ordinary accessible text with a typewriter reveal; text is not converted into particles because the particle system is reserved for generated visual matter.
 
 Lab mode exposes archetype selection, switch/random controls, particle count, compression ratio, LOD summary, visual intensity, clear radius, and a warning when the object is too subtle for product use.
 
@@ -73,6 +73,14 @@ It does not call external LLMs, sLLMs, image models, Local Brain writes, Cloud p
 Product mode no longer draws constellation guide lines around the central orb. Those guide lines are kept for Lab inspection only because they were visually distracting on the user-facing dashboard.
 
 The command path is intended to let ATANOR use SPLATRA as a bounded dashboard manipulator: move, morph, or recompose particles inside the UI surface without shell execution, production mutation, or hidden model calls.
+
+## Scene Choreography Boundary
+
+`POST /api/agentic-os/splatra/imagination/choreography` accepts an agent-authored scene plan and validates it into bounded beats such as `spawn_object`, `morph`, `move`, `focus_camera`, `label`, and `despawn`.
+
+This layer does not invent topic-specific scenes. For example, it does not hard-code that a gravity question should become Newton, an apple, or a tree. The conversation/scene planner must author those beats from ATANOR's own non-LLM conversation stack, and this adapter only clamps timing, positions, object ids, archetypes, and layout.
+
+When a plan asks for `scene_focus`, the dashboard can move the central orb toward the lower-right side and reserve the center of the product surface for SPLATRA particles. The input bar stays visible, and spoken text remains normal text rather than particle glyphs.
 
 ## Future Gates
 
