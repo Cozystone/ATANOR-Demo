@@ -40,31 +40,55 @@ def _construction_retrieval_metadata(
     language: str,
     context: dict[str, Any] | None,
     grounding_context: GroundedContext | None,
+    fallback_answer: str | None = None,
 ) -> dict[str, Any]:
     route_type = route.route_type if route else "unknown"
     audience = str((context or {}).get("audience") or (context or {}).get("workspace") or "product")
+    disabled = bool((context or {}).get("disable_self_grown_construction"))
+    if disabled:
+        return {
+            "self_grown_construction_retrieved": False,
+            "self_grown_construction_used": False,
+            "construction_candidate_id": None,
+            "construction_status": "disabled",
+            "construction_production_active": False,
+            "construction_auto_promoted": False,
+            "production_construction_activation": False,
+            "human_review_required": True,
+            "hand_authored_construction_used": True,
+            "hand_authored_construction_used_disclosed": True,
+            "hand_authored_fallback_used": True,
+            "self_grown_candidate_preview_only": False,
+            "construction_retrieval": {"retrieval_disabled": True},
+        }
     retrieval = retrieve_constructions(
         route_type=route_type,
         language=language,
         act=route_type,
         audience="lab" if audience == "lab" else "product",
         grounding_context=grounding_context.to_dict() if grounding_context else {},
+        fallback_answer=fallback_answer,
     )
     return {
         "self_grown_construction_retrieved": retrieval["retrieved_self_grown_construction"],
+        "self_grown_construction_used": retrieval["self_grown_construction_used"],
         "construction_candidate_id": retrieval["construction_candidate_id"],
         "construction_status": retrieval["candidate_status"],
         "construction_production_active": False,
         "construction_auto_promoted": False,
-        "self_grown_candidate_preview_only": True,
+        "production_construction_activation": False,
+        "self_grown_candidate_preview_only": retrieval["retrieved_self_grown_construction"]
+        and not retrieval["self_grown_construction_used"],
         "human_review_required": True,
-        "hand_authored_construction_used": True,
+        "hand_authored_construction_used": retrieval["hand_authored_construction_used"],
         "hand_authored_construction_used_disclosed": True,
-        "template_risk": (
-            retrieval["top_candidates"][0]["template_risk"]
-            if retrieval["top_candidates"]
-            else None
-        ),
+        "hand_authored_fallback_used": retrieval["hand_authored_fallback_used"],
+        "retrieval_mode": retrieval["retrieval_mode"],
+        "activation_reason": retrieval["activation_reason"],
+        "rejection_reasons": retrieval["rejection_reasons"],
+        "template_risk": retrieval["template_risk"],
+        "grounding_score": retrieval["grounding_score"],
+        "safety_risk": retrieval["safety_risk"],
         "construction_retrieval": retrieval,
     }
 
@@ -111,25 +135,38 @@ def generate_conversation_surface(
             "route": route.to_dict(),
             **metadata,
         }
-        diagnostics.update(
-            _construction_retrieval_metadata(
-                route=route,
-                language=language,
-                context=context,
-                grounding_context=grounded_context,
-            )
-        )
         if not grounded_answer:
+            diagnostics.update(
+                _construction_retrieval_metadata(
+                    route=route,
+                    language=language,
+                    context=context,
+                    grounding_context=grounded_context,
+                )
+            )
             return ConversationSurfaceResult(
                 answer=None,
                 confidence=0.0,
                 diagnostics={**diagnostics, "abstain_reason": "no_grounded_answer_available"},
             )
+        construction_metadata = _construction_retrieval_metadata(
+            route=route,
+            language=language,
+            context=context,
+            grounding_context=grounded_context,
+            fallback_answer=grounded_answer,
+        )
+        diagnostics.update(construction_metadata)
         quality_confidence = {"none": 0.0, "low": 0.48, "medium": 0.64, "high": 0.76}.get(
             grounded_context.grounding_quality,
             0.42,
         )
-        return ConversationSurfaceResult(answer=grounded_answer, confidence=quality_confidence, diagnostics=diagnostics)
+        selected_answer = (
+            diagnostics["construction_retrieval"].get("candidate_answer")
+            if diagnostics.get("self_grown_construction_used")
+            else grounded_answer
+        )
+        return ConversationSurfaceResult(answer=selected_answer, confidence=quality_confidence, diagnostics=diagnostics)
 
     asm_result = generate_surface(query, asm_context)
     fallback_context = grounded_context
@@ -164,6 +201,7 @@ def generate_conversation_surface(
             language=language,
             context=context,
             grounding_context=grounded_context,
+            fallback_answer=asm_result.answer,
         )
     )
     if fallback_route is not None:
@@ -177,8 +215,13 @@ def generate_conversation_surface(
             diagnostics={**diagnostics, "abstain_reason": "no_safe_construction_surface"},
         )
     top_score = asm_result.candidates[0].score if asm_result.candidates else None
+    selected_answer = (
+        diagnostics["construction_retrieval"].get("candidate_answer")
+        if diagnostics.get("self_grown_construction_used")
+        else asm_result.answer
+    )
     return ConversationSurfaceResult(
-        answer=asm_result.answer,
+        answer=selected_answer,
         confidence=_confidence_from_score(top_score),
         diagnostics=diagnostics,
     )

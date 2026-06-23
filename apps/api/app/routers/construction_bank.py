@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.routers.agentic_micro_os import REVIEW_QUEUE
+from packages.construction_bank.compare import compare_construction_retrieval
 from packages.construction_bank.extractor import extract_construction_candidates
 from packages.construction_bank.models import INVARIANTS, get_default_construction_bank
 from packages.construction_bank.promotion_guard import promotion_requirements
@@ -27,6 +28,7 @@ class RetrieveRequest(BaseModel):
     language: str = "ko"
     act: str | None = None
     audience: str = "lab"
+    mode: str | None = None
     grounding_context: dict[str, Any] = Field(default_factory=dict)
     recent_output_history: list[str] = Field(default_factory=list)
     limit: int = Field(default=3, ge=1, le=10)
@@ -34,6 +36,12 @@ class RetrieveRequest(BaseModel):
 
 class ExportReviewRequest(BaseModel):
     candidate_id: str
+
+
+class CompareRequest(BaseModel):
+    prompt: str
+    mode: str = "lab"
+    route_type: str | None = None
 
 
 @router.get("/status")
@@ -77,6 +85,7 @@ def construction_bank_retrieve(request: RetrieveRequest) -> dict[str, Any]:
             language=request.language,
             act=request.act,
             audience=request.audience,
+            mode=request.mode,
             grounding_context=request.grounding_context,
             recent_output_history=request.recent_output_history,
             limit=request.limit,
@@ -97,6 +106,16 @@ def construction_bank_export_review_item(request: ExportReviewRequest) -> dict[s
         "production_active": False,
         "mutation_performed": False,
     }
+
+
+@router.post("/compare")
+def construction_bank_compare(request: CompareRequest) -> dict[str, Any]:
+    return compare_construction_retrieval(
+        request.prompt,
+        mode=request.mode,
+        route_type=request.route_type,
+        bank=get_default_construction_bank(),
+    )
 
 
 @router.get("/proof")

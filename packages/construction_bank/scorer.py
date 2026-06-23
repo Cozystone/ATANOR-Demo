@@ -48,7 +48,7 @@ def score_usefulness(text: str, source_refs: list[str], slot_schema: list[str]) 
 def score_naturalness(text: str, language: str) -> float:
     if not text.strip():
         return 0.0
-    awkward = sum(text.count(token) for token in ("??", "  ", "�", "媛", "釉", "吏", "濡"))
+    awkward = sum(text.count(token) for token in ("??", "  ", chr(0xFFFD), "媛", "釉", "吏", "濡"))
     length = len(text.strip())
     base = 0.72 if 12 <= length <= 420 else 0.52
     if language == "ko" and re.search(r"[가-힣]", text):

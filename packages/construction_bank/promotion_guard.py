@@ -11,6 +11,7 @@ def assert_no_production_activation(candidate: ConstructionCandidate) -> None:
 def promotion_requirements() -> dict[str, object]:
     return {
         "construction_auto_promoted": False,
+        "production_construction_activation": False,
         "production_activation_allowed": False,
         "requires_future_signed_manifest": True,
         "requires_operator_approval": True,

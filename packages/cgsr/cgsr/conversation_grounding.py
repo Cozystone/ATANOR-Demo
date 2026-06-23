@@ -242,6 +242,28 @@ def realize_grounded_context(question: str, context: GroundedContext, *, languag
     """
 
     del question, language
+    clean_answers = {
+        "local_cloud_brain_explanation": (
+            "로컬 브레인은 사용자 개인 기억 쪽이고, 승인 없이는 저장하거나 바꾸지 않습니다. "
+            "클라우드 브레인은 출처와 검증 상태를 가진 공용 지식 쪽이며, 후보와 승격 게이트를 거쳐야 반영됩니다."
+        ),
+        "memory_request": "바로 저장하지 않습니다. 그 내용은 기억 후보로만 만들 수 있고, 실제 로컬 브레인 쓰기는 사용자 승인 뒤에만 가능합니다.",
+        "voice_status": "텍스트 대화는 사용할 수 있습니다. Fish 음성은 선택 기능이고, 합성이 준비되지 않으면 구슬 반응과 텍스트로 먼저 이어갑니다.",
+        "splatra_request": "가능합니다. 다만 대화만으로 코드를 바로 바꾸지는 않고, SPLATRA 구슬 변경은 검토 가능한 UI 패치 후보로 남깁니다.",
+        "agentic_os_request": "Hermes와 Agentic OS 쪽 작업은 후보와 리뷰 큐 중심입니다. 초안은 만들 수 있지만 설치, 실행, 승격은 검토 뒤에만 가능합니다.",
+        "limitation_question": (
+            "현재 ASM-v0는 일반 언어모델이 아닙니다. 외부 LLM이나 sLLM을 쓰지 않고, "
+            "검증된 근거, construction 후보, 휴리스틱 act 추론, 로컬 transition surface를 조합합니다. "
+            "그래서 아직 hand-authored construction 의존이 남아 있고, 그 한계는 메타데이터로 표시합니다."
+        ),
+        "nonsensical_question": "보통 고양이가 스스로 하늘을 나는 것은 현실 전제로는 맞지 않습니다. 이야기나 비유라면 그 맥락을 먼저 정하면 됩니다.",
+        "project_status": "승인 대기 항목은 있을 수 있지만, 이 대화 경로만으로 전체 목록을 단정하지는 않겠습니다. 리뷰 큐를 읽을 수 있을 때만 구체적으로 말할 수 있습니다.",
+        "unsafe_or_private_request": "그 요청은 바로 처리할 수 없습니다. 비밀값이나 개인 데이터는 명확한 승인과 안전 경계가 있을 때만 다룹니다.",
+        "general_knowledge_question": "확인 가능한 근거가 부족합니다. 지금은 추측으로 답하지 않고, 검증된 출처나 더 구체적인 맥락이 필요합니다.",
+        "unknown": "확인 가능한 근거가 부족합니다. 지금은 추측으로 답하지 않고, 검증된 출처나 더 구체적인 맥락이 필요합니다.",
+    }
+    if context.route_type in clean_answers:
+        return clean_answers[context.route_type]
     if context.route_type == "local_cloud_brain_explanation":
         return (
             "로컬 브레인은 사용자 개인 기억 쪽이라 승인 없이는 쓰지 않습니다. "
