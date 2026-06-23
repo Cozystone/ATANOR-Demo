@@ -11,6 +11,7 @@ from packages.agentic_micro_os.action_bus import DashboardActionBus
 from packages.agentic_micro_os.brain_access import BrainAccessRequest, BrainAccessRoad
 from packages.agentic_micro_os.browser_read import BrowserReadConnector, BrowserReadRequest
 from packages.agentic_micro_os.capabilities import CapabilityKernel
+from packages.agentic_micro_os.host_executor import HostExecutionRequest, HostExecutor
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
 from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
 from packages.agentic_micro_os.permission_gate import (
@@ -80,6 +81,18 @@ WEB_EXPLORER_SKILL_DRAFTS: list[dict[str, Any]] = []
 OPEN_WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 REVIEW_QUEUE = ReviewQueue()
 PERMISSION_GATE = PermissionGate()
+
+
+def _make_host_executor(base_path: Path | None = None) -> HostExecutor:
+    root = base_path or PROJECT_ROOT
+    return HostExecutor(
+        gate=PERMISSION_GATE,
+        project_root=PROJECT_ROOT,
+        runtime_tmp_dir=root / "runtime" / "agentic_micro_os" / "tmp",
+    )
+
+
+HOST_EXECUTOR = _make_host_executor()
 
 
 class DashboardActionRequest(BaseModel):
@@ -213,6 +226,16 @@ class EmergencyStopApiRequest(BaseModel):
     reason: str = "operator emergency stop"
 
 
+class HostExecutorExecuteApiRequest(BaseModel):
+    action_type: str = "echo"
+    path: str = ""
+    content: str = ""
+    max_bytes: int = 4096
+    max_entries: int = 50
+    safe_test_token: str = ""
+    operator_id: str = "operator"
+
+
 @router.get("/status")
 def status() -> dict[str, Any]:
     browser = BrowserReadConnector()
@@ -302,6 +325,35 @@ def permission_verify_action(request: PermissionVerifyActionApiRequest) -> dict[
     except ValueError as exc:
         return {**SAFETY_FLAGS, "allowed": False, "reason": str(exc), **PERMISSION_GATE.status()}
     return {**SAFETY_FLAGS, **result}
+
+
+@router.get("/host-executor/status")
+def host_executor_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **HOST_EXECUTOR.status()}
+
+
+@router.post("/host-executor/execute")
+def host_executor_execute(request: HostExecutorExecuteApiRequest) -> dict[str, Any]:
+    result = HOST_EXECUTOR.execute(
+        HostExecutionRequest(
+            action_type=request.action_type,
+            path=request.path,
+            content=request.content,
+            max_bytes=request.max_bytes,
+            max_entries=request.max_entries,
+            safe_test_token=request.safe_test_token,
+            operator_id=request.operator_id,
+        )
+    )
+    return {
+        **SAFETY_FLAGS,
+        **result.to_dict(),
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "auto_commit": False,
+        "auto_push": False,
+    }
 
 
 @router.get("/browser-read/status")

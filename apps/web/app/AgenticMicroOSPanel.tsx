@@ -40,6 +40,7 @@ const autonomySwitches = [
   "mcp_tools",
   "code_execution",
 ] as const;
+const hostSafeTestToken = "SIGNED_SAFE_TEST";
 
 function joinApiUrl(baseUrl: string, path: string) {
   return `${baseUrl.replace(/\/$/, "")}${path}`;
@@ -96,6 +97,8 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
   const [durationSec, setDurationSec] = useState("600");
   const [subSwitches, setSubSwitches] = useState<Record<string, boolean>>({});
   const [permissionResult, setPermissionResult] = useState<AnyRecord | null>(null);
+  const [hostExecutorStatus, setHostExecutorStatus] = useState<AnyRecord | null>(null);
+  const [hostExecutorResult, setHostExecutorResult] = useState<AnyRecord | null>(null);
   const [results, setResults] = useState<Record<SmokeKey, AnyRecord | null>>({
     dashboard: null,
     browser: null,
@@ -107,6 +110,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
   useEffect(() => {
     jsonFetch(localBackendUrl, "/api/agentic-os/status").then(setStatus).catch(() => setStatus({ error: "local_backend_unavailable" }));
     refreshPermissionGate().catch(() => undefined);
+    refreshHostExecutor().catch(() => undefined);
     refreshReviewQueue().catch(() => undefined);
   }, [localBackendUrl]);
 
@@ -179,6 +183,23 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     }).catch((error) => ({ allowed: false, reason: String(error) }));
     setPermissionResult(payload);
     await refreshPermissionGate().catch(() => undefined);
+    await refreshHostExecutor().catch(() => undefined);
+  }
+
+  async function refreshHostExecutor() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/host-executor/status").catch((error) => ({ error: String(error) }));
+    setHostExecutorStatus(payload);
+    return payload;
+  }
+
+  async function executeHostAction(body: AnyRecord) {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/host-executor/execute", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch((error) => ({ allowed: false, executed: false, denied_reason: String(error) }));
+    setHostExecutorResult(payload);
+    await refreshHostExecutor().catch(() => undefined);
   }
 
   async function importLatestOpenWebRun() {
@@ -351,6 +372,52 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
             <span>Tier 4: typed phrase + duration + sub-switches</span>
           </div>
           <ResultLine result={permissionResult} />
+        </article>
+
+        <article className="agentic-os-card agentic-os-host-executor-card">
+          <div className="agentic-os-permission-header">
+            <div>
+              <h3>Host Executor v0</h3>
+              <p>Harmless owner-approved diagnostics only. Destructive operations, production writes, Local Brain writes, commits, and pushes are rejected.</p>
+            </div>
+            <strong>{hostExecutorStatus?.available ? "AVAILABLE" : "WAITING"}</strong>
+          </div>
+          <div className="agentic-os-flags">
+            <span>tier={permissionStatus?.tier ?? "-"}</span>
+            <span>tier4={String(permissionStatus?.tier4_active ?? false)}</span>
+            <span>emergency_stop={String(permissionStatus?.emergency_stop_triggered ?? false)}</span>
+            <span>tmp={hostExecutorStatus?.runtime_tmp_dir ?? "-"}</span>
+          </div>
+          <div className="agentic-os-actions">
+            <button type="button" className="agentic-os-action" onClick={() => executeHostAction({ action_type: "echo", content: "ATANOR host executor echo", safe_test_token: hostSafeTestToken })}>
+              echo
+            </button>
+            <button type="button" className="agentic-os-action" onClick={() => executeHostAction({ action_type: "git_status", safe_test_token: hostSafeTestToken })}>
+              git status
+            </button>
+            <button type="button" className="agentic-os-action" onClick={() => executeHostAction({ action_type: "write_temp_file", path: "lab-note.txt", content: "host executor lab proof", safe_test_token: hostSafeTestToken })}>
+              write temp file
+            </button>
+            <button type="button" className="agentic-os-action" onClick={() => executeHostAction({ action_type: "read_text_file", path: `${hostExecutorStatus?.runtime_tmp_dir ?? "runtime/agentic_micro_os/tmp"}/lab-note.txt`, safe_test_token: hostSafeTestToken })}>
+              read temp file
+            </button>
+            <button type="button" className="agentic-os-action danger" onClick={() => executeHostAction({ action_type: "run_arbitrary_command", content: "whoami", safe_test_token: hostSafeTestToken })}>
+              reject arbitrary shell
+            </button>
+            <button type="button" className="agentic-os-action danger" onClick={() => executeHostAction({ action_type: "delete_file", path: "runtime/agentic_micro_os/tmp/lab-note.txt", safe_test_token: hostSafeTestToken })}>
+              reject delete
+            </button>
+            <button type="button" className="agentic-os-action danger" onClick={() => executeHostAction({ action_type: "cloud_production_write", safe_test_token: hostSafeTestToken })}>
+              reject production write
+            </button>
+          </div>
+          {hostExecutorResult ? (
+            <div className="agentic-os-host-result">
+              <strong>{hostExecutorResult.allowed ? "allowed" : "denied"} · executed={String(hostExecutorResult.executed ?? false)}</strong>
+              <p>{hostExecutorResult.denied_reason || hostExecutorResult.stdout_excerpt || hostExecutorResult.reason || "no output"}</p>
+              <span>{(hostExecutorResult.path_refs ?? []).join(" · ")}</span>
+            </div>
+          ) : <p>idle</p>}
         </article>
 
         <article className="agentic-os-card">

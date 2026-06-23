@@ -34,3 +34,9 @@ The default tier is `DRAFT_PROPOSAL`. In that state ATANOR can draft review item
 ## Destructive Actions
 
 Destructive delete is intentionally not implemented in the v0 helper surface. Future support must require secondary confirmation, exact path preview, backup/rollback plan, and audit entry before any destructive operation.
+
+## Host Executor v0
+
+The first host executor layer is harmless-only. It can run diagnostics such as `echo` and `git_status`, and it can write only under `runtime/agentic_micro_os/tmp/`. It rejects arbitrary commands, deletes, credential reads, uploads, production writes, Local Brain writes, git commit, and git push.
+
+The purpose of v0 is to prove that executable local actions can be routed through the permission gate without creating a silent broad-authority path.

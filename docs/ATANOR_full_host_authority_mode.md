@@ -1,6 +1,6 @@
 # ATANOR Full Host Authority Mode
 
-Status: v0 permission layer only. No dangerous demo commands are implemented.
+Status: v0 permission layer plus harmless Host Executor v0. No destructive commands are implemented.
 
 Full Host Authority is an explicit operator-root mode for the owner's local machine. It exists so ATANOR can be granted broad local capability on purpose, while preventing accidental, silent, remote, or model-only escalation.
 
@@ -35,6 +35,8 @@ Tier 4 does not allow:
 
 ## v0 Execution Boundary
 
-The v0 implementation verifies permission and records audit events. It includes only harmless test helpers for `echo`, `git status`, and temp-file writes in test-controlled paths. It does not expose an arbitrary shell execution API.
+The v0 implementation verifies permission and records audit events. Host Executor v0 includes only harmless actions: `echo`, `git_status`, bounded text reads, bounded directory listing, runtime-temp writes, runtime-temp backup patch creation, and emergency stop checks.
+
+It does not expose arbitrary shell execution, destructive delete, unrestricted PowerShell, credential reads, private uploads, Local Brain writes, Cloud production writes, git commit, or git push.
 
 This preserves the design principle: full host authority can exist, but it must be operator-confirmed, scoped by sub-switch, visible, logged, and stoppable.

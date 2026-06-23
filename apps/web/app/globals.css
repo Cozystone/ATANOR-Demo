@@ -246,6 +246,32 @@ button {
   font-weight: 800;
 }
 
+.agentic-os-host-executor-card {
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
+.agentic-os-host-result {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  padding: 12px;
+}
+
+.agentic-os-host-result strong {
+  color: #eafffb;
+}
+
+.agentic-os-host-result span {
+  color: rgba(235, 244, 255, 0.56);
+  font-family: "Consolas", "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .agentic-os-permission-form,
   .agentic-os-switch-grid,
