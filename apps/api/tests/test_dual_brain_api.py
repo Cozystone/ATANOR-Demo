@@ -186,6 +186,9 @@ def test_chat_conversation_uses_readonly_verified_store_for_grounded_visual_scen
     assert scene["stage_layout"] == "scene_focus"
     assert scene["topic_scene_templates"] is False
     assert any("Isaac Newton" in beat["prompt"] for beat in scene["beats"])
+    assert all("apple" not in beat["prompt"].casefold() for beat in scene["beats"])
+    assert all("apple" not in item["text"].casefold() for item in scene["speech_timeline"])
+    assert all(item.get("particle_behavior") != "gravity_arc" for item in scene["speech_timeline"])
     assert payload["external_llm_used"] is False
     assert payload["external_sllm_used"] is False
     assert payload["local_brain_write"] is False
