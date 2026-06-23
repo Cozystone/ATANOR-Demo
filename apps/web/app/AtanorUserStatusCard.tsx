@@ -38,6 +38,20 @@ type RectLike = {
   width: number;
 };
 
+type DashboardLayoutMetrics = {
+  speechMaxVw: number;
+  speechRightVw: number;
+  speechBottomVh: number;
+  speechUpperLeftTopVh: number;
+  speechUpperRightTopVh: number;
+  speechLowerLeftBottomVh: number;
+  speechLowerCenterBottomVh: number;
+  selfNarrationTopVh: number;
+  selfNarrationRightVw: number;
+  selfNarrationMaxVw: number;
+  fieldOpacity: number;
+};
+
 type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
 
 type SceneChoreographyPayload = {
@@ -71,6 +85,16 @@ type SceneChoreographyPayload = {
       max_vw?: number;
       right_vw?: number;
       bottom_vh?: number;
+      upper_left_top_vh?: number;
+      upper_right_top_vh?: number;
+      lower_left_bottom_vh?: number;
+      lower_center_bottom_vh?: number;
+    };
+    self_narration?: {
+      anchor?: TextAnchor;
+      top_vh?: number;
+      right_vw?: number;
+      max_vw?: number;
     };
     scene?: {
       field_opacity?: number;
@@ -324,29 +348,53 @@ function finiteNumber(value: unknown, fallback: number) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function dashboardLayoutMetrics(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout): DashboardLayoutMetrics {
+  const layout = scenePlan?.dashboard_layout ?? {};
+  const speech = layout.speech ?? {};
+  const selfNarration = layout.self_narration ?? {};
+  const scene = layout.scene ?? {};
+  const wideScene = stageLayout === "scene_focus" && requestedLayoutIntent(scenePlan) === "wide_particle_stage";
+  const speechMaxVw = clampNumber(finiteNumber(speech.max_vw, wideScene ? 36 : 48), 24, 54);
+  return {
+    speechMaxVw,
+    speechRightVw: clampNumber(finiteNumber(speech.right_vw, wideScene ? 24 : 29), 18, 34),
+    speechBottomVh: clampNumber(finiteNumber(speech.bottom_vh, wideScene ? 16 : 18), 11, 22),
+    speechUpperLeftTopVh: clampNumber(finiteNumber(speech.upper_left_top_vh, wideScene ? 20 : 23), 14, 28),
+    speechUpperRightTopVh: clampNumber(finiteNumber(speech.upper_right_top_vh, wideScene ? 21 : 17), 12, 32),
+    speechLowerLeftBottomVh: clampNumber(finiteNumber(speech.lower_left_bottom_vh, wideScene ? 19 : 16), 11, 28),
+    speechLowerCenterBottomVh: clampNumber(finiteNumber(speech.lower_center_bottom_vh, wideScene ? 20 : 17), 12, 30),
+    selfNarrationTopVh: clampNumber(finiteNumber(selfNarration.top_vh, wideScene ? 14 : 16), 8, 24),
+    selfNarrationRightVw: clampNumber(finiteNumber(selfNarration.right_vw, wideScene ? 6.8 : 8), 4.8, 14),
+    selfNarrationMaxVw: clampNumber(finiteNumber(selfNarration.max_vw, wideScene ? 24 : 28), 18, 34),
+    fieldOpacity: clampNumber(finiteNumber(scene.field_opacity, wideScene ? 0.96 : 0.9), 0.64, 1),
+  };
+}
+
 function dashboardLayoutVars(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout): CSSProperties {
   if (stageLayout !== "scene_focus") return {};
   const layout = scenePlan?.dashboard_layout ?? {};
   const orb = layout.orb ?? {};
-  const speech = layout.speech ?? {};
-  const scene = layout.scene ?? {};
+  const metrics = dashboardLayoutMetrics(scenePlan, stageLayout);
   const orbSizeVmin = clampNumber(finiteNumber(orb.size_vmin, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 18.0 : 23.0), 12, 28);
   const orbMinPx = clampNumber(finiteNumber(orb.min_px, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 132 : 168), 104, 230);
   const orbMaxPx = clampNumber(finiteNumber(orb.max_px, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 218 : 260), 140, 310);
   const orbRightVw = clampNumber(finiteNumber(orb.right_vw, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 10 : 12), 5.5, 16);
   const orbBottomVh = clampNumber(finiteNumber(orb.bottom_vh, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 16 : 19), 9, 23);
-  const speechMaxVw = clampNumber(finiteNumber(speech.max_vw, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 36 : 48), 24, 54);
-  const speechRightVw = clampNumber(finiteNumber(speech.right_vw, 29), 18, 34);
-  const speechBottomVh = clampNumber(finiteNumber(speech.bottom_vh, 18), 11, 22);
-  const fieldOpacity = clampNumber(finiteNumber(scene.field_opacity, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 0.96 : 0.9), 0.64, 1);
   return {
     ["--atanor-scene-orb-size" as string]: `clamp(${orbMinPx}px, ${orbSizeVmin}vmin, ${orbMaxPx}px)`,
     ["--atanor-scene-orb-right" as string]: `clamp(86px, ${orbRightVw}vw, 168px)`,
     ["--atanor-scene-orb-bottom" as string]: `clamp(188px, ${orbBottomVh}vh, 224px)`,
-    ["--atanor-scene-speech-max" as string]: `${speechMaxVw}vw`,
-    ["--atanor-scene-speech-right" as string]: `${speechRightVw}vw`,
-    ["--atanor-scene-speech-bottom" as string]: `${speechBottomVh}vh`,
-    ["--atanor-scene-field-opacity" as string]: String(fieldOpacity),
+    ["--atanor-scene-speech-max" as string]: `${metrics.speechMaxVw}vw`,
+    ["--atanor-scene-speech-right" as string]: `${metrics.speechRightVw}vw`,
+    ["--atanor-scene-speech-bottom" as string]: `${metrics.speechBottomVh}vh`,
+    ["--atanor-scene-speech-upper-left-top" as string]: `${metrics.speechUpperLeftTopVh}vh`,
+    ["--atanor-scene-speech-upper-right-top" as string]: `${metrics.speechUpperRightTopVh}vh`,
+    ["--atanor-scene-speech-lower-left-bottom" as string]: `${metrics.speechLowerLeftBottomVh}vh`,
+    ["--atanor-scene-speech-lower-center-bottom" as string]: `${metrics.speechLowerCenterBottomVh}vh`,
+    ["--atanor-scene-self-top" as string]: `${metrics.selfNarrationTopVh}vh`,
+    ["--atanor-scene-self-right" as string]: `${metrics.selfNarrationRightVw}vw`,
+    ["--atanor-scene-self-max" as string]: `${metrics.selfNarrationMaxVw}vw`,
+    ["--atanor-scene-field-opacity" as string]: String(metrics.fieldOpacity),
   };
 }
 
@@ -367,15 +415,15 @@ function rectFromDom(rect: DOMRect): RectLike {
   };
 }
 
-function candidateSpeechRect(anchor: TextAnchor, speechSize: RectLike, dashboard: RectLike): RectLike {
+function candidateSpeechRect(anchor: TextAnchor, speechSize: RectLike, dashboard: RectLike, metrics: DashboardLayoutMetrics): RectLike {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const leftInset = cssClampPx(28, viewportWidth * 0.06, 92);
   const rightInset = cssClampPx(42, viewportWidth * 0.08, 126);
-  const upperLeftTop = cssClampPx(156, viewportHeight * 0.23, 236);
-  const upperRightTop = cssClampPx(112, viewportHeight * 0.17, 188);
-  const lowerLeftBottom = cssClampPx(120, viewportHeight * 0.16, 178);
-  const lowerCenterBottom = cssClampPx(128, viewportHeight * 0.17, 188);
+  const upperLeftTop = cssClampPx(112, viewportHeight * (metrics.speechUpperLeftTopVh / 100), 252);
+  const upperRightTop = cssClampPx(96, viewportHeight * (metrics.speechUpperRightTopVh / 100), 276);
+  const lowerLeftBottom = cssClampPx(104, viewportHeight * (metrics.speechLowerLeftBottomVh / 100), 260);
+  const lowerCenterBottom = cssClampPx(112, viewportHeight * (metrics.speechLowerCenterBottomVh / 100), 278);
   const width = speechSize.width;
   const height = speechSize.height;
   let left = dashboard.left + leftInset;
@@ -438,8 +486,9 @@ function scoreSpeechAnchor(
   dashboard: RectLike,
   blockers: RectLike[],
   preferred: TextAnchor,
+  metrics: DashboardLayoutMetrics,
 ) {
-  const rect = candidateSpeechRect(anchor, speechSize, dashboard);
+  const rect = candidateSpeechRect(anchor, speechSize, dashboard, metrics);
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const offscreen =
@@ -557,6 +606,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         return;
       }
       const dashboardBox = rectFromDom(dashboard.getBoundingClientRect());
+      const layoutMetrics = dashboardLayoutMetrics(sceneChoreography, stageLayout);
       const baseBlockers = [
         dashboard.querySelector(".hologram-voice-orb")?.getBoundingClientRect(),
         composerRef.current?.getBoundingClientRect(),
@@ -576,10 +626,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         const next = candidates
           .map((anchor) => ({
             anchor,
-            score: scoreSpeechAnchor(anchor, speechBox, dashboardBox, speechBlockers, preferred),
+            score: scoreSpeechAnchor(anchor, speechBox, dashboardBox, speechBlockers, preferred, layoutMetrics),
           }))
           .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferred;
-        nextSpeechRect = candidateSpeechRect(next, speechBox, dashboardBox);
+        nextSpeechRect = candidateSpeechRect(next, speechBox, dashboardBox, layoutMetrics);
         setSpeechPlacement((current) => (current === next ? current : next));
       }
 
@@ -590,7 +640,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         const nextSelf = selfCandidates
           .map((anchor) => ({
             anchor,
-            score: scoreSpeechAnchor(anchor, selfBox, dashboardBox, selfBlockers, preferredSelfNarration),
+            score: scoreSpeechAnchor(anchor, selfBox, dashboardBox, selfBlockers, preferredSelfNarration, layoutMetrics),
           }))
           .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferredSelfNarration;
         setSelfNarrationPlacement((current) => (current === nextSelf ? current : nextSelf));

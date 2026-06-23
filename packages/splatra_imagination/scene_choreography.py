@@ -231,6 +231,13 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     speech_max_vw = round(50.0 - load * 14.0, 2)
     speech_right_vw = round(29.0 - load * 5.0, 2)
     speech_bottom_vh = round(18.0 - load * 2.0, 2)
+    upper_left_top_vh = round(23.0 - load * 4.2, 2)
+    upper_right_top_vh = round(17.0 + load * 3.8, 2)
+    lower_left_bottom_vh = round(16.0 + load * 3.2, 2)
+    lower_center_bottom_vh = round(17.0 + load * 3.4, 2)
+    self_narration_top_vh = round(16.0 - load * 2.2, 2)
+    self_narration_right_vw = round(8.0 - load * 1.4, 2)
+    self_narration_max_vw = round(28.0 - load * 4.0, 2)
 
     return {
         "planning_basis": "scene_geometry_extent",
@@ -250,6 +257,22 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
             "max_vw": speech_max_vw,
             "right_vw": speech_right_vw,
             "bottom_vh": speech_bottom_vh,
+            "upper_left_top_vh": upper_left_top_vh,
+            "upper_right_top_vh": upper_right_top_vh,
+            "lower_left_bottom_vh": lower_left_bottom_vh,
+            "lower_center_bottom_vh": lower_center_bottom_vh,
+        },
+        "self_narration": {
+            "anchor": "upper_right" if load >= 0.72 else "upper_left",
+            "top_vh": self_narration_top_vh,
+            "right_vw": self_narration_right_vw,
+            "max_vw": self_narration_max_vw,
+        },
+        "stage_safe_region": {
+            "primary": "center_particle_stage",
+            "orb_exclusion": "lower_right",
+            "text_exclusion": text_anchor,
+            "composer_exclusion": "bottom_center",
         },
         "scene": {
             "field_opacity": round(0.9 + load * 0.07, 3),

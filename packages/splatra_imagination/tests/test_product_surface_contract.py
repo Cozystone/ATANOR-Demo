@@ -45,6 +45,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-decision" in status_card
     assert "requestedLayoutDecision" in status_card
     assert "requestedLayoutBasis" in status_card
+    assert "DashboardLayoutMetrics" in status_card
+    assert "dashboardLayoutMetrics" in status_card
+    assert "speechUpperLeftTopVh" in status_card
+    assert "selfNarrationMaxVw" in status_card
     assert "client_scene_geometry_fallback" in status_card
     assert "ParticleText" not in status_card
     assert "scenePlan?: ScenePlan | null" in field
@@ -120,6 +124,10 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert '[data-scene-intent="wide_particle_stage"] .hologram-voice-orb' in css
     assert "--atanor-scene-orb-size" in css
     assert "--atanor-scene-field-opacity" in css
+    assert "--atanor-scene-speech-upper-left-top" in css
+    assert "--atanor-scene-speech-upper-right-top" in css
+    assert "--atanor-scene-speech-lower-center-bottom" in css
+    assert "--atanor-scene-self-max" in css
     assert "atanor-hologram-composer" in css
 
 
