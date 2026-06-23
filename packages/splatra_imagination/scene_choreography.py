@@ -27,6 +27,8 @@ class SceneBeat:
     source_fact: str = ""
     speech_cue: bool = True
     speech_cue_basis: str = "verified_evidence_unit"
+    scene_group_id: str = ""
+    scene_group_role: str = ""
     archetype: Archetype | None = None
     t_start: float = 0.0
     duration: float = 1.0
@@ -121,6 +123,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     source_fact = _clean_text(raw.get("source_fact") or "", limit=360)
     speech_cue = bool(raw.get("speech_cue", True))
     speech_cue_basis = _clean_text(raw.get("speech_cue_basis") or "verified_evidence_unit", limit=80)
+    scene_group_id = _clean_text(raw.get("scene_group_id") or "", limit=96)
+    scene_group_role = _clean_text(raw.get("scene_group_role") or "", limit=80)
     return SceneBeat(
         op=op,  # type: ignore[arg-type]
         prompt=prompt,
@@ -132,6 +136,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         source_fact=source_fact,
         speech_cue=speech_cue,
         speech_cue_basis=speech_cue_basis,
+        scene_group_id=scene_group_id,
+        scene_group_role=scene_group_role,
         archetype=archetype,  # type: ignore[arg-type]
         t_start=_coerce_float(raw.get("t_start"), index * 1.25, minimum=0.0, maximum=600.0),
         duration=_coerce_float(raw.get("duration"), 1.0, minimum=0.1, maximum=60.0),

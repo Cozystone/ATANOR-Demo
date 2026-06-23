@@ -26,6 +26,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "setSceneSpeechBeatIndex(nextSpeechBeat.beatIndex)" in status_card
     assert "data-scene-speech-beat" in status_card
     assert "speech_cue: bool = True" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "scene_group_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
     assert '"/api/inner-voice/generate-frame"' in status_card
     assert '"/api/inner-voice/emit"' not in status_card
@@ -67,6 +68,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "semantic_role" in field
     assert "visual_affordance" in field
     assert "spatial_relation" in field
+    assert "scene_group_id" in field
+    assert "sameSceneGroup" in field
     assert "small_moving_object" in field
     assert "motion_path" in field
     assert "sceneMotionPathPoint" in field

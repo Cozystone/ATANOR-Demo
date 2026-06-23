@@ -229,10 +229,18 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(beat["op"] == "move" and "apple fell" in beat["prompt"] for beat in beats)
     assert all("speech_cue" in beat for beat in beats)
     assert all("speech_cue_basis" in beat for beat in beats)
+    assert all("scene_group_id" in beat for beat in beats)
+    assert all("scene_group_role" in beat for beat in beats)
     assert all(beat["speech_cue"] is True for beat in beats if beat["semantic_role"] in {"verified_entity_relation", "verified_motion_event"})
     assert all(beat["speech_cue"] is False for beat in beats if beat["semantic_role"] in {"verified_entity_anchor", "verified_motion_anchor", "verified_motion_context"})
     assert any(beat["speech_cue_basis"] == "visual_anchor_only" and beat["prompt"] == "tree" for beat in beats)
     assert any(beat["speech_cue_basis"] == "verified_evidence_unit" and "apple fell" in beat["prompt"] for beat in beats)
+    speech_groups = {beat["scene_group_id"] for beat in beats if beat["scene_group_role"] == "speech_unit"}
+    visual_anchor_groups = {beat["scene_group_id"] for beat in beats if beat["scene_group_role"] == "visual_anchor"}
+    assert speech_groups
+    assert visual_anchor_groups <= speech_groups
+    tree_group = next(beat["scene_group_id"] for beat in beats if beat["prompt"] == "tree")
+    assert any(beat["scene_group_id"] == tree_group and beat["scene_group_role"] == "speech_unit" for beat in beats)
     motion_beats = [beat for beat in beats if beat["op"] == "move" and beat.get("motion_path")]
     assert motion_beats
     assert all(beat["motion_path"]["basis"] == "verified_motion_phrase" for beat in motion_beats)

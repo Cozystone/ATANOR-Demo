@@ -168,6 +168,11 @@ def _stable_index(value: str, size: int) -> int:
     return int.from_bytes(digest[:4], "big") % max(1, size)
 
 
+def _scene_group_id(narration: str, source_fact: str) -> str:
+    digest = hashlib.sha256(f"{source_fact}::{narration}".encode("utf-8")).hexdigest()[:12]
+    return f"verified_scene_group_{digest}"
+
+
 def _clean_phrase(value: str, *, limit: int = 96) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())[:limit]
 
@@ -298,6 +303,8 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
         "source_fact": unit["source_fact"],
         "speech_cue": bool(unit.get("speech_cue", True)),
         "speech_cue_basis": unit.get("speech_cue_basis", "verified_evidence_unit"),
+        "scene_group_id": unit.get("scene_group_id") or _scene_group_id(unit["narration"], unit["source_fact"]),
+        "scene_group_role": unit.get("scene_group_role", "speech_unit" if unit.get("speech_cue", True) else "visual_anchor"),
         "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index, visual_affordance),
         "t_start": round(t_start, 2),
         "duration": duration if duration is not None else _beat_duration_for_unit(unit, op),
@@ -315,6 +322,7 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
     if route_type == "splatra_request":
         clean_question = _clean_phrase(question)
         if clean_question:
+            group_id = _scene_group_id(clean_question, "")
             units.append(
                 {
                     "prompt": clean_question,
@@ -323,12 +331,15 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "semantic_role": "user_visual_intent",
                     "speech_cue": True,
                     "speech_cue_basis": "user_visual_intent",
+                    "scene_group_id": group_id,
+                    "scene_group_role": "speech_unit",
                 }
             )
 
     for fact in grounded_context.facts:
         clean_fact = _clean_phrase(fact, limit=420)
         for unit in _fact_units(clean_fact):
+            group_id = _scene_group_id(unit, clean_fact)
             anchors = _entity_spans(unit)
             prompt = " / ".join(anchors[:2]) if len(anchors) >= 2 else anchors[0] if anchors else unit
             semantic_role = "verified_entity_relation" if len(anchors) >= 2 else "verified_fact_unit"
@@ -342,6 +353,8 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "semantic_role": semantic_role,
                     "speech_cue": True,
                     "speech_cue_basis": "verified_evidence_unit",
+                    "scene_group_id": group_id,
+                    "scene_group_role": "speech_unit",
                 }
             )
             if _has_any_cue(unit, MOTION_CUES):
@@ -354,6 +367,8 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                             "semantic_role": "verified_motion_anchor" if anchor_index == 0 else "verified_motion_context",
                             "speech_cue": False,
                             "speech_cue_basis": "visual_anchor_only",
+                            "scene_group_id": group_id,
+                            "scene_group_role": "visual_anchor",
                         }
                     )
             for anchor_index, anchor in enumerate(anchors[:4]):
@@ -365,12 +380,15 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                         "semantic_role": "verified_entity_anchor",
                         "speech_cue": False,
                         "speech_cue_basis": "visual_anchor_only",
+                        "scene_group_id": group_id,
+                        "scene_group_role": "visual_anchor",
                     }
                 )
 
     if not units:
         clean_question = _clean_phrase(question)
         if clean_question:
+            group_id = _scene_group_id(clean_question, "")
             units.append(
                 {
                     "prompt": clean_question,
@@ -379,6 +397,8 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "semantic_role": "surface_phrase",
                     "speech_cue": True,
                     "speech_cue_basis": "surface_phrase",
+                    "scene_group_id": group_id,
+                    "scene_group_role": "speech_unit",
                 }
             )
 
@@ -518,7 +538,7 @@ def _position_for_unit(phrase: str, index: int, visual_affordance: str, spatial_
     return _position_for_phrase(phrase, index)
 
 
-def _motion_path_for_unit(unit: dict[str, str], *, index: int) -> dict[str, Any]:
+def _motion_path_for_unit(unit: dict[str, Any], *, index: int) -> dict[str, Any]:
     narration = unit["narration"]
     if not _has_any_cue(narration, MOTION_CUES):
         return {}
@@ -707,6 +727,7 @@ def plan_visual_imagination(
                 "semantic_role": "visual_focus",
                 "speech_cue": False,
                 "speech_cue_basis": "visual_anchor_only",
+                "scene_group_role": "visual_anchor",
             },
         ]
     beats: list[dict[str, Any]] = []

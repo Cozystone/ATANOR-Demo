@@ -50,6 +50,8 @@ type ScenePlanBeat = {
   visual_affordance?: string;
   spatial_relation?: string;
   source_fact?: string;
+  scene_group_id?: string;
+  scene_group_role?: string;
   t_start?: number;
   duration?: number;
   position?: number[];
@@ -488,7 +490,7 @@ function sceneObjectAlpha(beat: ScenePlanBeat, elapsedSeconds: number, active: b
   if (elapsedSeconds < start - 0.16) return 0;
   const reveal = sceneObjectProgress(beat, elapsedSeconds);
   const base = beat.op === "despawn" ? 1 - reveal : Math.max(0.24, reveal);
-  return clamp(base * (active ? 1 : 0.48), 0, 1);
+  return clamp(base * (active ? 1 : 0.42), 0, 1);
 }
 
 function sceneRoleStyle(beat: ScenePlanBeat, active: boolean) {
@@ -510,6 +512,12 @@ function sceneRoleStyle(beat: ScenePlanBeat, active: boolean) {
 
 function sceneObjectId(beat: ScenePlanBeat, index: number) {
   return `${beat.object_id || beat.prompt || "scene"}:${index}`;
+}
+
+function sameSceneGroup(left: ScenePlanBeat | null | undefined, right: ScenePlanBeat | null | undefined) {
+  const leftGroup = String(left?.scene_group_id ?? "");
+  const rightGroup = String(right?.scene_group_id ?? "");
+  return Boolean(leftGroup && rightGroup && leftGroup === rightGroup);
 }
 
 function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
@@ -1173,11 +1181,13 @@ function drawSceneFocusParticles(
   const cameraView = sceneCameraView(activeObject?.beat, true, sceneElapsed);
   cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);
   visibleObjects.forEach((object) => {
-    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, cameraView, centralScale);
+    const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
+    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, cameraView, centralScale);
   });
 
   visibleObjects.forEach((object) => {
-    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId, controls, cameraView, centralScale);
+    const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
+    drawSceneObjectCloud(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, controls, cameraView, centralScale);
   });
 }
 

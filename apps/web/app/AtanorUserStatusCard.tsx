@@ -99,6 +99,8 @@ type SceneChoreographyPayload = {
     source_fact?: string;
     speech_cue?: boolean;
     speech_cue_basis?: string;
+    scene_group_id?: string;
+    scene_group_role?: string;
     t_start?: number;
     duration?: number;
     position?: number[];
