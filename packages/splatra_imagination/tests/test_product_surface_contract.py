@@ -25,6 +25,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-action" in status_card
     assert "data-layout-action-basis" in status_card
     assert "data-layout-orb-anchor" in status_card
+    assert "data-layout-orb-movement" in status_card
     assert "data-layout-text-anchor" in status_card
     assert "data-layout-self-narration-anchor" in status_card
     assert "activeLayout.textAnchor" in status_card
@@ -172,6 +173,8 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert '[data-layout-orb-anchor="lower_right"] .hologram-voice-orb' in css
     assert '[data-layout-action="yield_center_to_particle_scene"] .hologram-voice-orb' in css
     assert '[data-layout-action="sync_orb_text_with_particle_beat"][data-layout-orb-anchor="lower_right"] .hologram-voice-orb' in css
+    assert '[data-layout-orb-movement="lower_right_lifted_compact"] .hologram-voice-orb' in css
+    assert '[data-layout-orb-movement="lower_right_tucked_compact"] .hologram-voice-orb' in css
     assert '[data-stage-layout="scene_focus"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="lower_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_left"] .atanor-hologram-speech' in css

@@ -8521,6 +8521,34 @@ p {
   width: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
 }
 
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-movement="lower_right_tucked_compact"] .hologram-voice-orb {
+  height: clamp(118px, 16vmin, 190px);
+  left: calc(100% - clamp(76px, 8vw, 124px));
+  min-height: clamp(118px, 16vmin, 190px);
+  min-width: clamp(118px, 16vmin, 190px);
+  top: calc(100% - clamp(176px, 14vh, 214px));
+  width: clamp(118px, 16vmin, 190px);
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-movement="lower_right_lifted"] .hologram-voice-orb,
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-movement="lower_right_lifted_compact"] .hologram-voice-orb {
+  height: clamp(122px, 17vmin, 198px);
+  left: calc(100% - clamp(84px, 9vw, 136px));
+  min-height: clamp(122px, 17vmin, 198px);
+  min-width: clamp(122px, 17vmin, 198px);
+  top: calc(100% - clamp(232px, 25vh, 316px));
+  width: clamp(122px, 17vmin, 198px);
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-movement="lower_right_low_compact"] .hologram-voice-orb {
+  height: clamp(118px, 16vmin, 190px);
+  left: calc(100% - clamp(84px, 9vw, 136px));
+  min-height: clamp(118px, 16vmin, 190px);
+  min-width: clamp(118px, 16vmin, 190px);
+  top: calc(100% - clamp(162px, 13vh, 198px));
+  width: clamp(118px, 16vmin, 190px);
+}
+
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-dashboard-imagination-field {
   opacity: var(--atanor-scene-field-opacity, 0.9);
 }

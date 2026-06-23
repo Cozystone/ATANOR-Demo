@@ -137,6 +137,7 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
     active_layout = next(item for item in plan.layout_timeline if item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1)
     assert active_layout["text_rendering"] == "dom_text_not_particles"
+    assert active_layout["orb_movement"] == "lower_right_lifted"
     assert active_layout["text_anchor"] == "lower_left"
     assert active_layout["self_narration_anchor"] in {"upper_left", "upper_right"}
     assert plan.topic_scene_templates is False
@@ -175,6 +176,29 @@ def test_layout_timeline_places_speech_away_from_active_scene_focus() -> None:
     footprint = plan.dashboard_layout["stage_safe_region"]["footprint"]
     assert footprint["basis"] == "verified_scene_geometry_extent"
     assert footprint["min_x"] < 0 < footprint["max_x"]
+
+
+def test_layout_timeline_nudges_orb_from_active_lower_right_focus() -> None:
+    plan = compile_scene_choreography({
+        "stage_layout": "scene_focus",
+        "beats": [
+            {
+                "op": "move",
+                "prompt": "verified lower-right moving object",
+                "narration": "The verified object moves through the lower right.",
+                "position": [0.58, -0.36, 0.0],
+                "motion_path": {"from": [0.45, 0.22, 0.0], "to": [0.62, -0.46, 0.0], "basis": "verified_motion_phrase"},
+                "speech_cue": True,
+                "t_start": 0.0,
+                "duration": 1.6,
+            },
+        ],
+    })
+
+    active = next(item for item in plan.layout_timeline if item.get("beat_index") == 0)
+    assert active["decision_basis"] == "verified_speech_cue_beat"
+    assert active["orb_movement"] == "lower_right_lifted_compact"
+    assert active["text_rendering"] == "dom_text_not_particles"
 
 
 def test_command_adapter_keeps_safety_flags_closed() -> None:

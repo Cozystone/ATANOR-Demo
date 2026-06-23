@@ -340,6 +340,7 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
     action: String(item.action ?? fallbackAction),
     basis: String(item.decision_basis ?? (stageLayout === "scene_focus" ? requestedLayoutBasis(scenePlan, stageLayout) : "conversation_default")),
     orbAnchor: String(item.orb_anchor ?? scenePlan?.dashboard_layout?.orb?.anchor ?? (stageLayout === "scene_focus" ? "lower_right" : "center")),
+    orbMovement: String(item.orb_movement ?? scenePlan?.dashboard_layout?.agent_layout_decision?.orb_movement ?? (stageLayout === "scene_focus" ? "lower_right_scaled_down" : "center")),
     stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
     textAnchor: coerceTextAnchor(item.text_anchor, requestedTextAnchor(scenePlan)),
     selfNarrationAnchor: coerceTextAnchor(item.self_narration_anchor, scenePlan?.dashboard_layout?.self_narration?.anchor ?? "upper_right"),
@@ -1130,6 +1131,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-action={currentLayoutState.action}
       data-layout-action-basis={currentLayoutState.basis}
       data-layout-orb-anchor={currentLayoutState.orbAnchor}
+      data-layout-orb-movement={currentLayoutState.orbMovement}
       data-layout-stage-region={currentLayoutState.stageRegion}
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}

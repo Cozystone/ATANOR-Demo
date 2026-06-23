@@ -391,6 +391,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "scene_group_id": beat.scene_group_id,
             "object_id": beat.object_id,
             "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
+            "orb_movement": _orb_movement_for_active_beat(beat, decision.get("orb_movement") or "lower_right_scaled_down"),
             "text_anchor": _text_anchor_for_active_beat(beat, default_text_anchor),
             "self_narration_anchor": default_self_anchor,
             "text_rendering": "dom_text_not_particles",
@@ -398,6 +399,34 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "particle_behavior": beat.particle_behavior,
         })
     return timeline
+
+
+def _orb_movement_for_active_beat(beat: SceneBeat, fallback: Any) -> str:
+    """Nudge the orb away from the active verified particle focus."""
+
+    fallback_movement = str(fallback or "lower_right_scaled_down")
+    points: list[tuple[float, float]] = []
+    if beat.position and len(beat.position) >= 2:
+        points.append((float(beat.position[0]), float(beat.position[1])))
+    if beat.motion_path:
+        for key in ("from", "to"):
+            raw_point = beat.motion_path.get(key)
+            if isinstance(raw_point, tuple) and len(raw_point) >= 2:
+                points.append((float(raw_point[0]), float(raw_point[1])))
+    if not points:
+        return fallback_movement
+    max_x = max(point[0] for point in points)
+    min_y = min(point[1] for point in points)
+    max_y = max(point[1] for point in points)
+    if max_x >= 0.32 and min_y <= -0.12:
+        return "lower_right_lifted_compact"
+    if max_x >= 0.32:
+        return "lower_right_tucked_compact"
+    if min_y <= -0.34:
+        return "lower_right_lifted"
+    if max_y >= 0.42:
+        return "lower_right_low_compact"
+    return fallback_movement
 
 
 def _text_anchor_for_active_beat(beat: SceneBeat, fallback: Any) -> TextAnchor:
