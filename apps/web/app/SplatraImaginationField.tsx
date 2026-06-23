@@ -49,6 +49,15 @@ type ScenePlanBeat = {
   semantic_role?: string;
   visual_affordance?: string;
   spatial_relation?: string;
+  particle_behavior?: string;
+  physics_hint?: {
+    basis?: string;
+    field?: string;
+    material?: string;
+    gravity_bias?: number;
+    cohesion?: number;
+    trail?: number;
+  };
   source_fact?: string;
   scene_group_id?: string;
   scene_group_role?: string;
@@ -497,6 +506,11 @@ function sceneObjectPosition(beat: ScenePlanBeat | null | undefined) {
   };
 }
 
+function physicsNumber(beat: ScenePlanBeat | null | undefined, key: "gravity_bias" | "cohesion" | "trail", fallback: number) {
+  const value = Number(beat?.physics_hint?.[key] ?? fallback);
+  return Number.isFinite(value) ? clamp(value, 0, 1.5) : fallback;
+}
+
 function sceneMotionPathPoint(beat: ScenePlanBeat | null | undefined, elapsedSeconds: number) {
   const from = Array.isArray(beat?.motion_path?.from) ? beat?.motion_path?.from ?? [] : [];
   const to = Array.isArray(beat?.motion_path?.to) ? beat?.motion_path?.to ?? [] : [];
@@ -507,9 +521,13 @@ function sceneMotionPathPoint(beat: ScenePlanBeat | null | undefined, elapsedSec
   const fromY = Number.isFinite(Number(from[1])) ? Number(from[1]) : 0;
   const toX = Number.isFinite(Number(to[0])) ? Number(to[0]) : 0;
   const toY = Number.isFinite(Number(to[1])) ? Number(to[1]) : 0;
+  const gravityBias = physicsNumber(beat, "gravity_bias", 0.28);
+  const behavior = String(beat?.particle_behavior ?? "");
+  const lift = behavior === "gravity_arc" ? 0.17 : 0.22;
+  const downwardPull = behavior === "gravity_arc" ? progress * progress * gravityBias * 0.18 : 0;
   return {
     x: fromX * (1 - progress) + toX * progress,
-    y: fromY * (1 - progress) + toY * progress + arc,
+    y: fromY * (1 - progress) + toY * progress + arc * lift / 0.22 - downwardPull,
   };
 }
 
@@ -563,34 +581,39 @@ function sceneRoleStyle(beat: ScenePlanBeat, active: boolean) {
   const smallObject = affordance === "small_object" || affordance === "small_moving_object";
   const figure = affordance === "entity_figure";
   const organic = affordance === "organic_structure";
+  const behavior = String(beat.particle_behavior ?? "");
+  const cohesion = physicsNumber(beat, "cohesion", 0.56);
+  const trailHint = physicsNumber(beat, "trail", 0.34);
+  const physicsTrailBoost = behavior === "gravity_arc" ? 0.34 : behavior === "kinetic_flow" ? 0.22 : behavior === "magnetic_field" ? 0.16 : 0;
+  const physicsScaleBoost = (cohesion - 0.5) * 0.18;
   if (motionRole === "subject") {
     return {
       alpha: active ? 1.46 : 1.24,
-      scale: smallObject ? 0.5 : 0.72,
-      trail: active ? 1.38 : 0.94,
+      scale: (smallObject ? 0.5 : 0.72) + physicsScaleBoost,
+      trail: (active ? 1.38 : 0.94) + trailHint * 0.16 + physicsTrailBoost,
       focus: active ? 1.08 : 0.9,
     };
   }
   if (motionRole === "source") {
     return {
       alpha: active ? 1.08 : 0.86,
-      scale: organic ? 1.28 : 1.02,
-      trail: active ? 0.34 : 0.18,
+      scale: (organic ? 1.28 : 1.02) + physicsScaleBoost,
+      trail: (active ? 0.34 : 0.18) + trailHint * 0.08,
       focus: active ? 0.92 : 0.62,
     };
   }
   if (motionRole === "target") {
     return {
       alpha: active ? 1.18 : 0.92,
-      scale: figure ? 1.12 : 1.04,
-      trail: active ? 0.48 : 0.26,
+      scale: (figure ? 1.12 : 1.04) + physicsScaleBoost,
+      trail: (active ? 0.48 : 0.26) + trailHint * 0.1,
       focus: active ? 1 : 0.72,
     };
   }
   return {
     alpha: smallObject ? 1.32 : moving ? 1.16 : relation ? 1.02 : anchor ? 0.86 : 0.94,
-    scale: smallObject ? 0.56 : organic ? 1.22 : figure ? 1.06 : moving ? 1.2 : relation ? 1.08 : anchor ? 0.92 : 1,
-    trail: smallObject && moving ? (active ? 1.18 : 0.78) : moving ? (active ? 1 : 0.62) : relation ? 0.34 : 0.16,
+    scale: (smallObject ? 0.56 : organic ? 1.22 : figure ? 1.06 : moving ? 1.2 : relation ? 1.08 : anchor ? 0.92 : 1) + physicsScaleBoost,
+    trail: (smallObject && moving ? (active ? 1.18 : 0.78) : moving ? (active ? 1 : 0.62) : relation ? 0.34 : 0.16) + trailHint * 0.12 + physicsTrailBoost,
     focus: active ? 1 : smallObject ? 0.82 : moving ? 0.72 : 0.48,
   };
 }

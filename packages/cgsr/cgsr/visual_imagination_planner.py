@@ -359,6 +359,9 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
         "camera": _camera_for_unit(position, visual_affordance, op, spatial_relation, index) if op in {"focus_camera", "move"} else {},
     }
     motion_path = _motion_path_for_unit(unit, index=index) if op == "move" or unit["semantic_role"].startswith("verified_motion") else {}
+    particle_behavior, physics_hint = _particle_behavior_for_unit(unit, visual_affordance, op, motion_path)
+    beat["particle_behavior"] = particle_behavior
+    beat["physics_hint"] = physics_hint
     if motion_path:
         beat["motion_path"] = motion_path
     return beat
@@ -687,6 +690,67 @@ def _camera_for_unit(position: list[float], visual_affordance: str, op: str, spa
     return {
         "target": position,
         "zoom": round(0.94 + zoom_bucket * 0.07 + affordance_bonus + op_bonus, 2),
+    }
+
+
+def _particle_behavior_for_unit(unit: dict[str, Any], visual_affordance: str, op: str, motion_path: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Attach renderer-facing physics hints from verified wording only."""
+
+    narration = unit.get("narration", "")
+    folded = narration.casefold()
+    has_motion = bool(motion_path) or op == "move" or "motion" in str(unit.get("semantic_role", ""))
+    if has_motion and any(cue in folded for cue in ("fall", "falling", "fell", "drop", "dropped", "toward", "towards")):
+        return "gravity_arc", {
+            "basis": "verified_motion_phrase",
+            "field": "downward_attraction",
+            "material": "dense_moving_splat",
+            "gravity_bias": 0.72,
+            "cohesion": 0.64,
+            "trail": 0.86,
+        }
+    if has_motion:
+        return "kinetic_flow", {
+            "basis": "verified_motion_phrase",
+            "field": "directed_flow",
+            "material": "energized_splat",
+            "gravity_bias": 0.28,
+            "cohesion": 0.58,
+            "trail": 0.72,
+        }
+    if visual_affordance == "organic_structure":
+        return "rooted_growth", {
+            "basis": "verified_visual_affordance",
+            "field": "branching_cohesion",
+            "material": "organic_splat",
+            "gravity_bias": 0.18,
+            "cohesion": 0.82,
+            "trail": 0.22,
+        }
+    if visual_affordance == "entity_figure":
+        return "articulated_cluster", {
+            "basis": "verified_visual_affordance",
+            "field": "pose_cohesion",
+            "material": "figure_splat",
+            "gravity_bias": 0.24,
+            "cohesion": 0.76,
+            "trail": 0.28,
+        }
+    if visual_affordance in {"relation_field", "concept_cloud"}:
+        return "magnetic_field", {
+            "basis": "verified_relation_or_concept",
+            "field": "swarm_relation",
+            "material": "field_splat",
+            "gravity_bias": 0.0,
+            "cohesion": 0.42,
+            "trail": 0.54,
+        }
+    return "bounded_swarm", {
+        "basis": "verified_scene_unit",
+        "field": "bounded_swarm",
+        "material": "neutral_splat",
+        "gravity_bias": 0.12,
+        "cohesion": 0.56,
+        "trail": 0.34,
     }
 
 

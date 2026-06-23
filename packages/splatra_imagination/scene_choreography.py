@@ -24,6 +24,8 @@ class SceneBeat:
     semantic_role: str = ""
     visual_affordance: str = ""
     spatial_relation: str = ""
+    particle_behavior: str = ""
+    physics_hint: dict[str, Any] = field(default_factory=dict)
     source_fact: str = ""
     speech_cue: bool = True
     speech_cue_basis: str = "verified_evidence_unit"
@@ -120,6 +122,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     semantic_role = _clean_text(raw.get("semantic_role") or raw.get("role") or "", limit=80)
     visual_affordance = _clean_text(raw.get("visual_affordance") or "", limit=80)
     spatial_relation = _clean_text(raw.get("spatial_relation") or "", limit=80)
+    particle_behavior = _clean_text(raw.get("particle_behavior") or "", limit=80)
+    physics_hint = raw.get("physics_hint") if isinstance(raw.get("physics_hint"), dict) else {}
     source_fact = _clean_text(raw.get("source_fact") or "", limit=360)
     speech_cue = bool(raw.get("speech_cue", True))
     speech_cue_basis = _clean_text(raw.get("speech_cue_basis") or "verified_evidence_unit", limit=80)
@@ -133,6 +137,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         semantic_role=semantic_role,
         visual_affordance=visual_affordance,
         spatial_relation=spatial_relation,
+        particle_behavior=particle_behavior,
+        physics_hint=physics_hint,
         source_fact=source_fact,
         speech_cue=speech_cue,
         speech_cue_basis=speech_cue_basis,

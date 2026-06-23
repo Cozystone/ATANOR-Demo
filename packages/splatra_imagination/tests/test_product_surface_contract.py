@@ -83,6 +83,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "verified_motion_source" in field
     assert "verified_motion_target" in field
     assert "visual_affordance" in field
+    assert "particle_behavior" in field
+    assert "physics_hint" in field
+    assert "physicsNumber" in field
     assert "spatial_relation" in field
     assert "scene_group_id" in field
     assert "sameSceneGroup" in field

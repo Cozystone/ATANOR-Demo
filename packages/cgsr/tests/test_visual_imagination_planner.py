@@ -270,6 +270,10 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(beat["motion_path"].get("source_prompt") for beat in motion_beats)
     assert any(beat["motion_path"].get("target_prompt") for beat in motion_beats)
     apple_motion = next(beat for beat in motion_beats if beat["prompt"] == "apple")
+    assert apple_motion["particle_behavior"] == "gravity_arc"
+    assert apple_motion["physics_hint"]["basis"] == "verified_motion_phrase"
+    assert apple_motion["physics_hint"]["field"] == "downward_attraction"
+    assert apple_motion["physics_hint"]["gravity_bias"] > 0
     assert apple_motion["motion_path"]["from"][1] > apple_motion["motion_path"]["to"][1]
     assert tuple(apple_motion["camera"]["target"]) == tuple(apple_motion["position"])
     assert apple_motion["camera"]["zoom"] > 1.0
