@@ -76,6 +76,15 @@ type SceneChoreographyPayload = {
       field_opacity?: number;
       central_scale?: number;
     };
+    agent_layout_decision?: {
+      decision_basis?: string;
+      agent_action?: string;
+      orb_movement?: string;
+      text_strategy?: string;
+      text_rendering?: string;
+      scene_region?: string;
+      avoid_regions?: string[];
+    };
   };
   primary_surface?: string;
   beats?: Array<{
@@ -213,6 +222,16 @@ function requestedLayoutIntent(scenePlan: SceneChoreographyPayload) {
   const spreadY = Number(extent.spread_y ?? 0);
   if (beatCount >= 4 || motionCount >= 1 || spreadX >= 0.72 || spreadY >= 0.52) return "wide_particle_stage";
   return "balanced_scene";
+}
+
+function requestedLayoutDecision(scenePlan: SceneChoreographyPayload) {
+  const decision = scenePlan?.dashboard_layout?.agent_layout_decision;
+  const action = typeof decision?.agent_action === "string" ? decision.agent_action : "";
+  const textRendering = typeof decision?.text_rendering === "string" ? decision.text_rendering : "";
+  if (action && textRendering) return `${action}:${textRendering}`;
+  if (action) return action;
+  if (textRendering) return textRendering;
+  return "none";
 }
 
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
@@ -735,6 +754,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-speech-placement={speechPlacement}
       data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}
       data-layout-basis={sceneChoreography?.dashboard_layout?.planning_basis ?? "none"}
+      data-layout-decision={requestedLayoutDecision(sceneChoreography)}
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
       <SplatraImaginationField

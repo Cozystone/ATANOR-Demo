@@ -191,9 +191,16 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     if stage_layout != "scene_focus":
         return {
             "planning_basis": "conversation_default",
+            "stage": stage_layout,
+            "layout_intent": layout_intent,
             "orb": {"anchor": "center"},
             "speech": {"anchor": text_anchor},
             "scene": {"field_opacity": 0.72},
+            "agent_layout_decision": {
+                "decision_basis": "conversation_default",
+                "agent_action": "keep_orb_primary",
+                "text_rendering": "dom_text_not_particles",
+            },
         }
 
     beat_count = float(scene_extent.get("beat_count") or 0.0)
@@ -215,6 +222,8 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
 
     return {
         "planning_basis": "scene_geometry_extent",
+        "stage": stage_layout,
+        "layout_intent": layout_intent,
         "stage_pressure": round(load, 3),
         "orb": {
             "anchor": orb_anchor,
@@ -233,6 +242,15 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
         "scene": {
             "field_opacity": round(0.9 + load * 0.07, 3),
             "central_scale": round(1.0 + load * 0.14, 3),
+        },
+        "agent_layout_decision": {
+            "decision_basis": "verified_scene_geometry",
+            "agent_action": "yield_center_to_particle_scene" if load >= 0.72 else "share_center_with_particle_scene",
+            "orb_movement": "lower_right_scaled_down",
+            "text_strategy": "dom_text_collision_avoidance",
+            "text_rendering": "dom_text_not_particles",
+            "scene_region": "dashboard_center",
+            "avoid_regions": ["orb", "composer", "self_narration", "scene_motion_paths"],
         },
     }
 

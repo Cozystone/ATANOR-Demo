@@ -27,6 +27,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "requestedLayoutIntent" in status_card
     assert "scenePlanBlockers" in status_card
     assert "rectsOverlap" in status_card
+    assert "data-layout-decision" in status_card
+    assert "requestedLayoutDecision" in status_card
     assert "ParticleText" not in status_card
     assert "scenePlan?: ScenePlan | null" in field
     assert "type SceneTransform" in field
