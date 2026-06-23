@@ -294,9 +294,14 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["layout_intent"] == "wide_particle_stage"
     assert plan.scene_choreography["scene_extent"]["motion_count"] >= 1
     assert plan.scene_choreography["dashboard_layout"]["planning_basis"] == "scene_geometry_extent"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_owner"] == "cgsr_scene_choreography_agent"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["agent_action"] == "yield_center_to_particle_scene"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["content_source"] == "verified_beats_only"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["topic_scene_templates"] is False
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["renderer_may_infer_topic"] is False
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["scene_geometry_inputs"]["motion_count"] >= 1
     assert plan.scene_choreography["dashboard_layout"]["orb"]["anchor"] == "lower_right"
     assert plan.scene_choreography["dashboard_layout"]["orb"]["size_vmin"] < 24
     assert plan.scene_choreography["dashboard_layout"]["speech"]["max_vw"] < 50

@@ -128,13 +128,18 @@ type SceneChoreographyPayload = {
       };
     };
     agent_layout_decision?: {
+      decision_owner?: string;
       decision_basis?: string;
+      scene_geometry_inputs?: Record<string, unknown>;
+      topic_scene_templates?: boolean;
       agent_action?: string;
       orb_movement?: string;
       text_strategy?: string;
       text_rendering?: string;
       scene_region?: string;
       avoid_regions?: string[];
+      content_source?: string;
+      renderer_may_infer_topic?: boolean;
     };
   };
   primary_surface?: string;
@@ -142,6 +147,7 @@ type SceneChoreographyPayload = {
     t_start?: number;
     duration?: number;
     action?: string;
+    decision_owner?: string;
     decision_basis?: string;
     beat_index?: number;
     scene_group_id?: string;
@@ -307,19 +313,16 @@ function requestedTextAnchor(scenePlan: SceneChoreographyPayload): TextAnchor {
 function requestedLayoutIntent(scenePlan: SceneChoreographyPayload) {
   const value = scenePlan?.layout_intent;
   if (value === "wide_particle_stage" || value === "balanced_scene") return value;
-  const extent = scenePlan?.scene_extent ?? {};
-  const beatCount = Number(extent.beat_count ?? 0);
-  const motionCount = Number(extent.motion_count ?? 0);
-  const spreadX = Number(extent.spread_x ?? 0);
-  const spreadY = Number(extent.spread_y ?? 0);
-  if (beatCount >= 4 || motionCount >= 1 || spreadX >= 0.72 || spreadY >= 0.52) return "wide_particle_stage";
+  // The product renderer does not infer scene ambition from client-side
+  // heuristics. Orb yielding/wide-stage decisions must come from the
+  // verified scene choreography payload.
   return "balanced_scene";
 }
 
 function requestedLayoutBasis(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout) {
   const basis = scenePlan?.dashboard_layout?.planning_basis;
   if (typeof basis === "string" && basis) return basis;
-  if (stageLayout === "scene_focus") return "client_scene_geometry_fallback";
+  if (stageLayout === "scene_focus") return "agent_layout_missing_safe_default";
   return "none";
 }
 
@@ -330,10 +333,7 @@ function requestedLayoutDecision(scenePlan: SceneChoreographyPayload, stageLayou
   if (action && textRendering) return `${action}:${textRendering}`;
   if (action) return action;
   if (textRendering) return textRendering;
-  if (stageLayout === "scene_focus" && requestedLayoutIntent(scenePlan) === "wide_particle_stage") {
-    return "yield_center_to_particle_scene:dom_text_not_particles";
-  }
-  if (stageLayout === "scene_focus") return "share_center_with_particle_scene:dom_text_not_particles";
+  if (stageLayout === "scene_focus") return "agent_layout_missing:dom_text_not_particles";
   return "none";
 }
 
@@ -341,13 +341,19 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
   const timeline = Array.isArray(scenePlan?.layout_timeline) ? scenePlan?.layout_timeline ?? [] : [];
   const active = timeline.find((item) => Number(item.beat_index) === activeBeatIndex && typeof item.action === "string");
   const base = timeline.find((item) => item.beat_index === undefined && typeof item.action === "string");
-  const fallbackAction = stageLayout === "scene_focus"
-    ? requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? "yield_center_to_particle_scene" : "share_center_with_particle_scene"
-    : "keep_orb_primary";
+  const planAction = typeof scenePlan?.dashboard_layout?.agent_layout_decision?.agent_action === "string"
+    ? scenePlan.dashboard_layout.agent_layout_decision.agent_action
+    : "";
+  const fallbackAction = stageLayout === "scene_focus" && planAction ? planAction : "keep_orb_primary";
   const item = active ?? base ?? {};
+  const layoutBasis = requestedLayoutBasis(scenePlan, stageLayout);
+  const legacySceneChoreographyOwner = stageLayout === "scene_focus" && layoutBasis === "scene_geometry_extent"
+    ? "cgsr_scene_choreography_agent"
+    : stageLayout === "scene_focus" ? "agent_layout_missing_safe_default" : "conversation_default";
   return {
     action: String(item.action ?? fallbackAction),
-    basis: String(item.decision_basis ?? (stageLayout === "scene_focus" ? requestedLayoutBasis(scenePlan, stageLayout) : "conversation_default")),
+    owner: String(item.decision_owner ?? scenePlan?.dashboard_layout?.agent_layout_decision?.decision_owner ?? legacySceneChoreographyOwner),
+    basis: String(item.decision_basis ?? (stageLayout === "scene_focus" ? layoutBasis : "conversation_default")),
     orbAnchor: String(item.orb_anchor ?? scenePlan?.dashboard_layout?.orb?.anchor ?? (stageLayout === "scene_focus" ? "lower_right" : "center")),
     orbMovement: String(item.orb_movement ?? scenePlan?.dashboard_layout?.agent_layout_decision?.orb_movement ?? (stageLayout === "scene_focus" ? "lower_right_scaled_down" : "center")),
     stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
@@ -1287,6 +1293,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-basis={requestedLayoutBasis(sceneChoreography, stageLayout)}
       data-layout-decision={requestedLayoutDecision(sceneChoreography, stageLayout)}
       data-layout-action={currentLayoutState.action}
+      data-layout-decision-owner={currentLayoutState.owner}
       data-layout-action-basis={currentLayoutState.basis}
       data-layout-orb-anchor={currentLayoutState.orbAnchor}
       data-layout-orb-movement={effectiveOrbMovement}

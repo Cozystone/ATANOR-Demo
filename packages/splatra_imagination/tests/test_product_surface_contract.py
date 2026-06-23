@@ -23,6 +23,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "layout_timeline?: Array" in status_card
     assert "activeLayoutState" in status_card
     assert "data-layout-action" in status_card
+    assert "data-layout-decision-owner" in status_card
     assert "data-layout-action-basis" in status_card
     assert "data-layout-orb-anchor" in status_card
     assert "data-layout-orb-movement" in status_card
@@ -110,7 +111,20 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "dom_text_canvas_metrics_preallocated_no_particle_text" in status_card
     assert "speechUpperLeftTopVh" in status_card
     assert "selfNarrationMaxVw" in status_card
-    assert "client_scene_geometry_fallback" in status_card
+    assert "agent_layout_missing_safe_default" in status_card
+    assert "agent_layout_missing:dom_text_not_particles" in status_card
+    assert "decision_owner?: string" in status_card
+    assert "scene_geometry_inputs?: Record<string, unknown>" in status_card
+    assert "renderer_may_infer_topic?: boolean" in status_card
+    assert "legacySceneChoreographyOwner" in status_card
+    assert 'layoutBasis === "scene_geometry_extent"' in status_card
+    assert "const planAction = typeof scenePlan?.dashboard_layout?.agent_layout_decision?.agent_action" in status_card
+    assert 'stageLayout === "scene_focus" && planAction ? planAction : "keep_orb_primary"' in status_card
+    assert "client_scene_geometry_fallback" not in status_card
+    assert "beatCount >= 4" not in status_card
+    assert "motionCount >= 1" not in status_card
+    assert "spreadX >= 0.72" not in status_card
+    assert "spreadY >= 0.52" not in status_card
     assert "ParticleText" not in status_card
     assert "scenePlan?: ScenePlan | null" in field
     assert "type SceneTransform" in field

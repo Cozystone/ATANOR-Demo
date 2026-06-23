@@ -139,13 +139,20 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert item["physics_hint"]["field"] == "downward_attraction"
     assert item["motion_path"]["basis"] == "verified_motion_phrase"
     assert plan.dashboard_layout["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
+    assert plan.dashboard_layout["agent_layout_decision"]["decision_owner"] == "cgsr_scene_choreography_agent"
+    assert plan.dashboard_layout["agent_layout_decision"]["content_source"] == "verified_beats_only"
+    assert plan.dashboard_layout["agent_layout_decision"]["topic_scene_templates"] is False
+    assert plan.dashboard_layout["agent_layout_decision"]["renderer_may_infer_topic"] is False
+    assert plan.dashboard_layout["agent_layout_decision"]["scene_geometry_inputs"]["motion_count"] == 1
     assert plan.dashboard_layout["stage_safe_region"]["footprint"]["basis"] == "verified_scene_geometry_extent"
     assert plan.dashboard_layout["stage_safe_region"]["footprint"]["block_text"] is True
     assert plan.layout_timeline[0]["action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
     assert plan.layout_timeline[0]["decision_basis"] == "verified_scene_geometry"
+    assert plan.layout_timeline[0]["decision_owner"] == "cgsr_scene_choreography_agent"
     assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
     active_layout = next(item for item in plan.layout_timeline if item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1)
     assert active_layout["text_rendering"] == "dom_text_not_particles"
+    assert active_layout["decision_owner"] == "cgsr_scene_choreography_agent"
     assert "object_track_id" in active_layout
     assert active_layout["orb_movement"] == "lower_right_lifted"
     assert active_layout["text_anchor"] == "lower_left"

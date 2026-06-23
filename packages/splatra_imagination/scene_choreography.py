@@ -238,9 +238,13 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
             "speech": {"anchor": text_anchor},
             "scene": {"field_opacity": 0.72},
             "agent_layout_decision": {
+                "decision_owner": "cgsr_scene_choreography_agent",
                 "decision_basis": "conversation_default",
+                "scene_geometry_inputs": dict(scene_extent),
+                "topic_scene_templates": False,
                 "agent_action": "keep_orb_primary",
                 "text_rendering": "dom_text_not_particles",
+                "content_source": "conversation_without_visual_scene",
             },
         }
 
@@ -326,13 +330,18 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
             "central_scale": round(1.0 + load * 0.14, 3),
         },
         "agent_layout_decision": {
+            "decision_owner": "cgsr_scene_choreography_agent",
             "decision_basis": "verified_scene_geometry",
+            "scene_geometry_inputs": dict(scene_extent),
+            "topic_scene_templates": False,
             "agent_action": "yield_center_to_particle_scene" if load >= 0.72 else "share_center_with_particle_scene",
             "orb_movement": "lower_right_scaled_down",
             "text_strategy": "dom_text_collision_avoidance",
             "text_rendering": "dom_text_not_particles",
             "scene_region": "dashboard_center",
             "avoid_regions": ["orb", "composer", "self_narration", "scene_motion_paths"],
+            "content_source": "verified_beats_only",
+            "renderer_may_infer_topic": False,
         },
     }
 
@@ -381,6 +390,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "t_start": 0.0,
             "duration": 999.0,
             "action": "keep_orb_primary",
+            "decision_owner": "cgsr_scene_choreography_agent",
             "decision_basis": "conversation_default",
             "orb_anchor": "center",
             "text_anchor": "lower_center",
@@ -393,6 +403,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
         "t_start": 0.0,
         "duration": 999.0,
         "action": decision.get("agent_action") or "share_center_with_particle_scene",
+        "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
         "decision_basis": decision.get("decision_basis") or "verified_scene_geometry",
         "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
         "orb_movement": decision.get("orb_movement") or "lower_right_scaled_down",
@@ -410,6 +421,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "t_start": beat.t_start,
             "duration": beat.duration,
             "action": "sync_orb_text_with_particle_beat",
+            "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
             "decision_basis": "verified_speech_cue_beat",
             "beat_index": index,
             "scene_group_id": beat.scene_group_id,
