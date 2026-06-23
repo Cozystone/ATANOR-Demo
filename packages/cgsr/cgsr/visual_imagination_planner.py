@@ -29,6 +29,30 @@ VISUAL_ROUTE_TYPES = {
     "voice_status",
     "general_knowledge_question",
 }
+ANCHOR_STOPWORDS = {
+    "therefore",
+    "however",
+    "because",
+    "first",
+    "second",
+    "third",
+    "따라서",
+    "그러나",
+    "그리고",
+    "하지만",
+    "또한",
+    "첫",
+    "번째",
+    "단계",
+    "항",
+    "기존",
+    "대한",
+    "대해",
+    "것",
+    "이는",
+    "그",
+    "중",
+}
 
 
 @dataclass(frozen=True)
@@ -95,9 +119,20 @@ def _entity_spans(text: str) -> list[str]:
         if len(candidate) >= 3:
             spans.append(candidate)
 
+    cleaned: list[str] = []
+    for span in spans:
+        tokens = [
+            re.sub(r"(으로서|으로써|으로|에서|에게|에는|이다|입니다|하고|까지|부터|처럼|보다|이며|이나|거나|와|과|은|는|이|가|을|를|의|에|로)$", "", token)
+            for token in span.split()
+        ]
+        tokens = [token for token in tokens if token and token.casefold() not in ANCHOR_STOPWORDS]
+        if not tokens:
+            continue
+        cleaned.append(_clean_phrase(" ".join(tokens[:3]), limit=72))
+
     deduped: list[str] = []
     seen: set[str] = set()
-    for span in spans:
+    for span in cleaned:
         key = span.casefold()
         if key not in seen:
             seen.add(key)

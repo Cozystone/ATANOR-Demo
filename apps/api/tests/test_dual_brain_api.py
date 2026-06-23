@@ -192,6 +192,21 @@ def test_chat_conversation_uses_readonly_verified_store_for_grounded_visual_scen
     assert payload["production_store_mutated"] is False
 
 
+def test_verified_store_runtime_discovers_sibling_primary_store(tmp_path, monkeypatch) -> None:
+    isolated = tmp_path / "ATANOR-live-selfhood-scheduler"
+    sibling = tmp_path / "24.Homage1.0" / "data" / "cloud_brain" / "verified_store_v0"
+    isolated.mkdir()
+    sibling.mkdir(parents=True)
+    (sibling / "evidence.jsonl").write_text("", encoding="utf-8")
+
+    monkeypatch.delenv("ATANOR_VERIFIED_STORE_PATH", raising=False)
+    monkeypatch.setattr(dual_brain, "PROJECT_ROOT", isolated)
+
+    runtime = dual_brain._verified_store_runtime()
+
+    assert runtime == {"verified_store_path": str(sibling)}
+
+
 def test_chat_trace_mode_exposes_compact_three_core_summary(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 

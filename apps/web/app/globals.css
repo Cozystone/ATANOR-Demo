@@ -8493,9 +8493,10 @@ p {
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-hologram-self-narration {
-  left: clamp(28px, 6vw, 92px);
-  max-width: min(460px, 44vw);
-  top: clamp(82px, 14vh, 138px);
+  left: auto;
+  max-width: min(360px, 28vw);
+  right: clamp(42px, 8vw, 126px);
+  top: clamp(108px, 16vh, 176px);
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-hologram-speech {

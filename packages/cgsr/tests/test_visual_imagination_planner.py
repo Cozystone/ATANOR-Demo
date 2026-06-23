@@ -102,3 +102,39 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["text_anchor"] == "lower_left"
     assert plan.scene_choreography["topic_scene_templates"] is False
+
+
+def test_visual_planner_uses_contentful_korean_scene_anchors(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": "첫 번째 항은 뉴턴 중력의 힘을 나타내며, 역제곱 법칙으로 기술된다. 따라서 일반 상대론은 뉴턴의 중력 법칙과 비교된다.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "중력"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    question = "중력의 법칙에 대해 설명해줘"
+    route = route_conversation_request(question)
+    context = gather_grounded_context(question, route, runtime={"verified_store_path": str(tmp_path)})
+
+    plan = plan_visual_imagination(
+        question,
+        route=route,
+        grounded_context=context,
+        diagnostics={
+            "external_llm_used": False,
+            "external_sllm_used": False,
+            "rule_based_answer_used": False,
+        },
+        answer_available=True,
+    )
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    prompts = [beat["prompt"] for beat in plan.scene_choreography["beats"]]
+    assert all(prompt not in {"따라서", "단계", "첫 번째"} for prompt in prompts)
+    assert any("뉴턴" in prompt or "중력" in prompt for prompt in prompts)

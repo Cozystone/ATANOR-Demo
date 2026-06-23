@@ -207,6 +207,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const speechRef = useRef<HTMLParagraphElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const selfNarrationHoldUntilRef = useRef(0);
   const speakingVisual = orbState === "speaking" || audioPlaying;
   const cleanPlaceholder = voiceMode
     ? language === "ko" ? "\uC74C\uC131 \uBAA8\uB4DC - \uD14D\uC2A4\uD2B8\uB3C4 \uC785\uB825\uD560 \uC218 \uC788\uC5B4\uC694" : "Voice mode - text still works"
@@ -226,9 +227,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
 
   useEffect(() => {
     if (!speechLine) return;
+    if (stageLayout === "scene_focus") return undefined;
     const clearTimer = window.setTimeout(() => setSpeechLine(""), 5600);
     return () => window.clearTimeout(clearTimer);
-  }, [speechLine]);
+  }, [speechLine, stageLayout]);
 
   useEffect(() => {
     if (!voiceNotice) return;
@@ -332,7 +334,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           ?? payload?.product_summary?.summary
           ?? "",
       ).trim();
-      if (!cancelled && next) {
+      if (!cancelled && next && Date.now() > selfNarrationHoldUntilRef.current) {
         setSelfNarration(next);
       }
     }
@@ -488,7 +490,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
               ?? innerVoicePayload?.product_summary?.summary
               ?? "",
           ).trim();
-          if (next) setSelfNarration(next);
+          if (next) {
+            selfNarrationHoldUntilRef.current = Date.now() + 30000;
+            setSelfNarration(next);
+          }
         })
         .catch(() => undefined);
       emitNeuralEmotionEvent("speaking_start", "text conversation visible speech");

@@ -85,3 +85,40 @@ def test_general_knowledge_can_use_readonly_verified_store(tmp_path: Path) -> No
     assert "Isaac Newton" in " ".join(context.facts)
     assert answer
     assert "universal gravitation" in answer
+
+
+def test_korean_general_knowledge_uses_utf8_verified_store_tokens(tmp_path: Path) -> None:
+    evidence_path = tmp_path / "evidence.jsonl"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "text": "아이작 뉴턴은 중력, 즉 만유인력 법칙을 수학적으로 정식화하였다.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "만유인력"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "text": "각운동량 보존 법칙은 각운동량이 시간에 대해 일정하다는 것을 말한다.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "각운동량"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    prompt = "중력의 법칙에 대해 설명해줘"
+    route = route_conversation_request(prompt)
+    context = gather_grounded_context(prompt, route, runtime={"verified_store_path": str(tmp_path)})
+    answer = realize_grounded_context(prompt, context)
+
+    assert route.route_type == "general_knowledge_question"
+    assert context.grounding_source == "verified_store_v0_readonly"
+    assert context.grounding_quality == "medium"
+    assert "아이작 뉴턴" in " ".join(context.facts)
+    assert "각운동량" not in " ".join(context.facts)
+    assert "만유인력" in answer

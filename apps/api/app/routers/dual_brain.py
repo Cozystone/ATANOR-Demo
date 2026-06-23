@@ -35,10 +35,40 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 def _verified_store_runtime() -> dict[str, Any]:
     configured = os.environ.get("ATANOR_VERIFIED_STORE_PATH")
-    candidate = Path(configured) if configured else PROJECT_ROOT / "data" / "cloud_brain" / "verified_store_v0"
-    if candidate.exists() and candidate.is_dir():
-        return {"verified_store_path": str(candidate)}
+    if configured:
+        candidate = Path(configured)
+        if candidate.exists() and candidate.is_dir():
+            return {"verified_store_path": str(candidate)}
+        return {}
+    for candidate in _verified_store_candidates():
+        if candidate.exists() and candidate.is_dir():
+            return {"verified_store_path": str(candidate)}
     return {}
+
+
+def _verified_store_candidates() -> list[Path]:
+    """Find read-only verified_store_v0 roots without creating or mutating data."""
+
+    candidates: list[Path] = [
+        PROJECT_ROOT / "data" / "cloud_brain" / "verified_store_v0",
+        PROJECT_ROOT.parent / "24.Homage1.0" / "data" / "cloud_brain" / "verified_store_v0",
+    ]
+    workspace_parent = PROJECT_ROOT.parent
+    if workspace_parent.exists() and workspace_parent.is_dir():
+        for child in sorted(workspace_parent.iterdir(), key=lambda item: item.name.casefold()):
+            if not child.is_dir() or child == PROJECT_ROOT:
+                continue
+            candidates.append(child / "data" / "cloud_brain" / "verified_store_v0")
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate.resolve() if candidate.exists() else candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
 
 
 class DualBrainIngestRequest(BaseModel):

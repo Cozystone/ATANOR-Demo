@@ -11,6 +11,33 @@ from packages.cgsr.cgsr.ingestion.verification_gate import has_mock_signal
 
 TEXT_FIELDS = ("text", "sentence", "source_text", "claim", "content", "canonical_form")
 SOURCE_FIELDS = ("source_ref", "source_id", "document_id", "url")
+STORE_FILES = ("evidence.jsonl", "relations.jsonl", "case_frames.jsonl", "concepts.jsonl")
+FILE_PRIORITIES = {
+    "evidence.jsonl": 1.0,
+    "relations.jsonl": 0.88,
+    "case_frames.jsonl": 0.72,
+    "concepts.jsonl": 0.58,
+}
+STOP_TOKENS = {
+    "about",
+    "explain",
+    "what",
+    "when",
+    "where",
+    "which",
+    "whose",
+    "how",
+    "please",
+    "대해",
+    "대한",
+    "설명",
+    "설명해줘",
+    "알려줘",
+    "무엇",
+    "뭐야",
+    "어떻게",
+    "그리고",
+}
 
 
 @dataclass(frozen=True)
@@ -20,7 +47,7 @@ class VerifiedFactHit:
     score: float
 
 
-def _read_jsonl(path: Path, *, limit: int = 5000) -> list[dict[str, Any]]:
+def _read_jsonl(path: Path, *, limit: int = 10000) -> list[dict[str, Any]]:
     if not path.exists() or not path.is_file():
         return []
     rows: list[dict[str, Any]] = []
@@ -41,7 +68,35 @@ def _read_jsonl(path: Path, *, limit: int = 5000) -> list[dict[str, Any]]:
 
 def _normalize_token(token: str) -> str:
     token = token.casefold().strip()
-    for suffix in ("으로", "에서", "에게", "에는", "은", "는", "이", "가", "을", "를", "의", "에", "와", "과", "도"):
+    for suffix in (
+        "으로서",
+        "으로써",
+        "으로",
+        "에서",
+        "에게",
+        "에는",
+        "이다",
+        "입니다",
+        "하고",
+        "까지",
+        "부터",
+        "처럼",
+        "보다",
+        "이며",
+        "이나",
+        "거나",
+        "와",
+        "과",
+        "은",
+        "는",
+        "이",
+        "가",
+        "을",
+        "를",
+        "의",
+        "에",
+        "로",
+    ):
         if len(token) > len(suffix) + 1 and token.endswith(suffix):
             return token[: -len(suffix)]
     return token
@@ -49,7 +104,8 @@ def _normalize_token(token: str) -> str:
 
 def _tokens(text: str) -> set[str]:
     raw = re.findall(r"[0-9A-Za-z가-힣]{2,}", str(text or ""))
-    return {_normalize_token(token) for token in raw if len(_normalize_token(token)) >= 2}
+    tokens = {_normalize_token(token) for token in raw if len(_normalize_token(token)) >= 2}
+    return {token for token in tokens if token not in STOP_TOKENS}
 
 
 def _row_text(row: dict[str, Any]) -> str:
@@ -106,7 +162,7 @@ def retrieve_verified_facts(
         return []
 
     rows: list[tuple[str, dict[str, Any]]] = []
-    for filename in ("evidence.jsonl", "relations.jsonl", "case_frames.jsonl", "concepts.jsonl"):
+    for filename in STORE_FILES:
         for row in _read_jsonl(root / filename):
             rows.append((filename, row))
 
@@ -124,7 +180,10 @@ def retrieve_verified_facts(
         overlap = query_tokens & row_tokens
         if not overlap:
             continue
-        score = len(overlap) / max(1, len(query_tokens))
+        if len(query_tokens) >= 2 and len(overlap) < 2:
+            continue
+        base_score = len(overlap) / max(1, len(query_tokens))
+        score = base_score * FILE_PRIORITIES.get(filename, 0.5)
         if score < 0.18:
             continue
         key = text.casefold()
@@ -133,5 +192,5 @@ def retrieve_verified_facts(
         seen.add(key)
         hits.append(VerifiedFactHit(fact=text, source_ref=_source_ref(row, filename), score=round(score, 4)))
 
-    hits.sort(key=lambda hit: (-hit.score, hit.fact))
+    hits.sort(key=lambda hit: (-hit.score, len(hit.fact), hit.fact))
     return hits[:limit]
