@@ -564,6 +564,25 @@ function sceneGroupCameraView(activeObject: SceneRenderObject | null, visibleObj
   };
 }
 
+function sceneRelationRank(object: SceneRenderObject) {
+  const affordance = String(object.beat.visual_affordance ?? "");
+  const role = String(object.beat.semantic_role ?? "");
+  if (object.beat.op === "move" || object.beat.motion_path) return 0;
+  if (affordance === "small_moving_object" || affordance === "small_object") return 1;
+  if (affordance === "entity_figure") return 2;
+  if (affordance === "organic_structure") return 3;
+  if (role.includes("relation")) return 4;
+  return 5;
+}
+
+function sceneActiveGroupObjects(activeObject: SceneRenderObject | null, visibleObjects: SceneRenderObject[]) {
+  if (!activeObject) return [];
+  return visibleObjects
+    .filter((object) => sameSceneGroup(object.beat, activeObject.beat))
+    .sort((left, right) => sceneRelationRank(left) - sceneRelationRank(right))
+    .slice(0, 6);
+}
+
 function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const seen = new Set<string>();
@@ -1201,6 +1220,58 @@ function drawSceneMotionPathFlow(
   }
 }
 
+function drawSceneGroupRelationField(
+  ctx: CanvasRenderingContext2D,
+  activeObject: SceneRenderObject | null,
+  visibleObjects: SceneRenderObject[],
+  width: number,
+  height: number,
+  elapsed: number,
+  sceneElapsed: number,
+  cameraView: SceneCameraView,
+  centralScale = 1,
+) {
+  const groupObjects = sceneActiveGroupObjects(activeObject, visibleObjects);
+  if (groupObjects.length < 2) return;
+  const unit = Math.min(width, height);
+  const points = groupObjects.map((object) => {
+    const modelPoint = sceneMotionPathPoint(object.beat, sceneElapsed);
+    const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
+    return {
+      object,
+      x: canvasPoint.x,
+      y: canvasPoint.y,
+    };
+  });
+  const primary = points[0];
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const centerX = xs.reduce((total, value) => total + value, 0) / points.length;
+  const centerY = ys.reduce((total, value) => total + value, 0) / points.length;
+  const radiusX = clamp((Math.max(...xs) - Math.min(...xs)) * 0.56 + unit * 0.055, unit * 0.055, unit * 0.22);
+  const radiusY = clamp((Math.max(...ys) - Math.min(...ys)) * 0.56 + unit * 0.042, unit * 0.042, unit * 0.18);
+  const groupSalt = Math.floor(stableUnit(String(activeObject?.beat.scene_group_id ?? activeObject?.id ?? "group"), 89) * 1000);
+  drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.045 * centralScale, unit, groupSalt, elapsed);
+
+  points.slice(1).forEach((target, index) => {
+    const relationLift = target.object.beat.visual_affordance === "organic_structure" || primary.object.beat.visual_affordance === "organic_structure"
+      ? -unit * 0.055
+      : unit * 0.028 * Math.sin(elapsed * 0.31 + index);
+    const midX = (primary.x + target.x) / 2 + Math.sin(elapsed * 0.23 + index * 1.7) * unit * 0.012;
+    const midY = (primary.y + target.y) / 2 + relationLift;
+    const alpha = (target.object.beat.op === "move" || target.object.beat.motion_path ? 0.13 : 0.075) * centralScale;
+    drawParticlePolyline(
+      ctx,
+      [[primary.x, primary.y], [midX, midY], [target.x, target.y]],
+      index % 2 === 0 ? [76, 230, 255] : [255, 104, 177],
+      alpha,
+      unit,
+      groupSalt + index * 31,
+      elapsed,
+    );
+  });
+}
+
 function drawSceneFocusParticles(
   ctx: CanvasRenderingContext2D,
   sceneObjects: SceneRenderObject[],
@@ -1224,6 +1295,7 @@ function drawSceneFocusParticles(
   const activeObject = visibleObjects.find((object) => object.id === activeObjectId) ?? visibleObjects[0] ?? null;
   const cameraView = sceneGroupCameraView(activeObject, visibleObjects, sceneElapsed);
   cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);
+  drawSceneGroupRelationField(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, cameraView, centralScale);
   visibleObjects.forEach((object) => {
     const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
     drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, cameraView, centralScale);
@@ -1277,6 +1349,7 @@ export default function SplatraImaginationField({
   const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
   const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : null;
   const activeSceneGroupId = activeSceneBeat?.scene_group_id ?? "";
+  const activeSceneGroupSize = activeSceneGroupId ? sceneObjects.filter((object) => sameSceneGroup(object.beat, activeSceneBeat)).length : 0;
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1431,7 +1504,7 @@ export default function SplatraImaginationField({
   const canvas = <canvas ref={canvasRef} />;
 
   return (
-    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length} data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"} data-active-scene-group={activeSceneGroupId || "none"}>
+    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length} data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"} data-active-scene-group={activeSceneGroupId || "none"} data-active-scene-group-size={activeSceneGroupSize}>
       {interactive ? (
         <button
           type="button"
