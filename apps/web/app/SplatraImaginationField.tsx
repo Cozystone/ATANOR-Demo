@@ -769,6 +769,17 @@ function sceneActiveGroupObjects(activeObject: SceneRenderObject | null, visible
     .slice(0, 6);
 }
 
+function sceneObjectCanvasCenter(
+  object: SceneRenderObject,
+  width: number,
+  height: number,
+  sceneElapsed: number,
+  cameraView: SceneCameraView,
+) {
+  const modelPoint = sceneMotionPathPoint(object.beat, sceneElapsed);
+  return scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
+}
+
 function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const seen = new Set<string>();
@@ -1502,7 +1513,7 @@ function drawSceneGroupRelationField(
   const radiusX = clamp((Math.max(...xs) - Math.min(...xs)) * 0.56 + unit * 0.055, unit * 0.055, unit * 0.22);
   const radiusY = clamp((Math.max(...ys) - Math.min(...ys)) * 0.56 + unit * 0.042, unit * 0.042, unit * 0.18);
   const groupSalt = Math.floor(stableUnit(String(activeObject?.beat.scene_group_id ?? activeObject?.id ?? "group"), 89) * 1000);
-  drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.045 * centralScale, unit, groupSalt, elapsed);
+  drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.028 * centralScale, unit, groupSalt, elapsed);
   const renderedMotionFlow = drawSceneMotionParticipantFlow(ctx, points, unit, elapsed, centralScale, groupSalt);
 
   points.slice(1).forEach((target, index) => {
@@ -1513,7 +1524,7 @@ function drawSceneGroupRelationField(
       : unit * 0.028 * Math.sin(elapsed * 0.31 + index);
     const midX = (primary.x + target.x) / 2 + Math.sin(elapsed * 0.23 + index * 1.7) * unit * 0.012;
     const midY = (primary.y + target.y) / 2 + relationLift;
-    const alpha = (target.object.beat.op === "move" || target.object.beat.motion_path ? 0.13 : 0.075) * centralScale;
+    const alpha = (target.object.beat.op === "move" || target.object.beat.motion_path ? 0.082 : 0.046) * centralScale;
     drawParticlePolyline(
       ctx,
       [[primary.x, primary.y], [midX, midY], [target.x, target.y]],
@@ -1524,6 +1535,57 @@ function drawSceneGroupRelationField(
       elapsed,
     );
   });
+}
+
+function drawSceneFocusSwarm(
+  ctx: CanvasRenderingContext2D,
+  activeObject: SceneRenderObject | null,
+  visibleObjects: SceneRenderObject[],
+  width: number,
+  height: number,
+  elapsed: number,
+  sceneElapsed: number,
+  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+  cameraView: SceneCameraView,
+  centralScale = 1,
+) {
+  if (!activeObject) return;
+  const unit = Math.min(width, height);
+  const center = sceneObjectCanvasCenter(activeObject, width, height, sceneElapsed, cameraView);
+  const groupObjects = sceneActiveGroupObjects(activeObject, visibleObjects);
+  const attractors = (groupObjects.length ? groupObjects : [activeObject])
+    .map((object) => sceneObjectCanvasCenter(object, width, height, sceneElapsed, cameraView));
+  const behavior = String(activeObject.beat.particle_behavior ?? "");
+  const moving = activeObject.beat.op === "move" || Boolean(activeObject.beat.motion_path);
+  const roleStyle = sceneRoleStyle(activeObject.beat, true);
+  const count = Math.round(clamp(unit * (moving ? 0.22 : 0.16) * centralScale, 80, 180));
+  const fieldRadius = unit * clamp(0.1 + roleStyle.focus * 0.045 + controls.curiosity * 0.025, 0.1, 0.2) * centralScale;
+  const salt = Math.floor(stableUnit(activeObject.id, 991) * 10000);
+  const pulse = 0.55 + Math.sin(elapsed * 1.1 + salt) * 0.18 + controls.speaking_energy * 0.18;
+  ctx.globalCompositeOperation = "lighter";
+  for (let index = 0; index < count; index += 1) {
+    const local = (index + 0.5) / Math.max(1, count);
+    const attractor = attractors[index % attractors.length] ?? center;
+    const orbit = elapsed * (0.18 + seeded(index, salt + 3) * 0.18) + seeded(index, salt + 5) * Math.PI * 2;
+    const ring = Math.sqrt(seeded(index, salt + 7)) * fieldRadius * (0.46 + seeded(index, salt + 11) * 0.82);
+    const tide = Math.sin(elapsed * 0.47 + local * Math.PI * 4 + salt) * unit * 0.022 * centralScale;
+    const rawX = attractor.x + Math.cos(orbit) * ring + Math.sin(orbit * 1.7) * tide;
+    const rawY = attractor.y + Math.sin(orbit * 0.78) * ring * 0.62 + Math.cos(orbit * 1.3) * tide;
+    const pull = 0.42 + pulse * 0.16;
+    const px = rawX * (1 - pull) + center.x * pull;
+    const py = rawY * (1 - pull) + center.y * pull;
+    const fieldAngle = flowFieldAngle(px, py, elapsed, salt * 0.001 + index * 0.13);
+    const color: [number, number, number] = behavior === "gravity_arc"
+      ? (index % 4 === 0 ? [255, 255, 255] : [76, 230, 255])
+      : index % 5 === 0 ? [255, 104, 177] : [76, 230, 255];
+    const size = unit * (0.001 + seeded(index, salt + 13) * 0.0018) * centralScale;
+    const length = unit * (0.006 + controls.curiosity * 0.006 + (moving ? 0.005 : 0.002)) * centralScale;
+    const alpha = (0.026 + roleStyle.focus * 0.03 + controls.speaking_energy * 0.02)
+      * (0.35 + seeded(index, salt + 17) * 0.65)
+      * centralScale;
+    drawParticleStroke(ctx, px, py, fieldAngle, length, size, color, alpha);
+  }
+  ctx.globalCompositeOperation = "source-over";
 }
 
 function drawSceneFocusParticles(
@@ -1550,6 +1612,7 @@ function drawSceneFocusParticles(
   const cameraView = blendedSceneCameraView(activeObject, visibleObjects, sceneElapsed);
   cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);
   drawSceneGroupRelationField(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, cameraView, centralScale);
+  drawSceneFocusSwarm(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, controls, cameraView, centralScale);
   visibleObjects.forEach((object) => {
     const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
     drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, cameraView, centralScale);

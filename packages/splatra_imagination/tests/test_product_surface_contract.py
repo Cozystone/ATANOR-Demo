@@ -135,6 +135,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneActiveGroupObjects" in field
     assert "drawSceneGroupRelationField" in field
     assert "drawSceneMotionParticipantFlow" in field
+    assert "drawSceneFocusSwarm" in field
+    assert "sceneObjectCanvasCenter" in field
     assert "drawAmbientAirbendField" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
