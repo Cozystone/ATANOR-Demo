@@ -123,3 +123,101 @@ def select_best_korean_candidate(candidates: Sequence[T]) -> T | None:
         return (score + score_korean_naturalness(text) * 0.28, -len(detect_awkward_korean_markers(text)), text)
 
     return max(candidates, key=key)
+
+
+AWKWARD_KOREAN_FRAGMENTS = (
+    "여기서 듣고 있어 천천히 말해줘",
+    "여기서 듣고 있어",
+    "천천히 말해줘",
+    "먼저 의도와 경계를",
+    "내부적으로 점검",
+    "chain of thought",
+    "scratchpad",
+    "진짜 의식",
+    "실제 의식",
+)
+
+NATURAL_ENDINGS = ("어.", "요.", "줘.", "볼까?", "할까?", "좋아.", "응.", "반가워.")
+
+
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9가-힣]+", str(text or ""))
+
+
+def detect_awkward_korean_markers(text: str) -> list[str]:
+    """Return deterministic markers that make a Korean surface feel unnatural."""
+
+    surface = re.sub(r"\s+", " ", str(text or "").strip())
+    markers: list[str] = []
+    for fragment in AWKWARD_KOREAN_FRAGMENTS:
+        if fragment in surface:
+            markers.append(f"awkward_fragment:{fragment}")
+    tokens = _tokens(surface)
+    repeated = {token for token in tokens if len(token) >= 2 and tokens.count(token) >= 2}
+    for token in sorted(repeated):
+        if token in {"상태", "기억", "후보", "경계", "요청", "말해줘"}:
+            markers.append(f"repeated_noun:{token}")
+    technical = {"generation_basis", "source_hash", "trace", "scratchpad", "internal"}
+    if any(item.lower() in surface.lower() for item in technical):
+        markers.append("technical_internal_wording")
+    if len(tokens) > 24:
+        markers.append("too_long_for_dashboard")
+    if "합니다 합니다" in surface or "습니다 습니다" in surface:
+        markers.append("stacked_predicate")
+    if surface.startswith("먼저 ") and "점검" in surface:
+        markers.append("overly_instructional_greeting")
+    return markers
+
+
+def score_korean_naturalness(text: str) -> float:
+    """Score short user-facing Korean without calling any language model."""
+
+    surface = re.sub(r"\s+", " ", str(text or "").strip())
+    if not surface:
+        return 0.0
+    tokens = _tokens(surface)
+    score = 0.62
+    hangul_chars = len(re.findall(r"[가-힣]", surface))
+    latin_chars = len(re.findall(r"[A-Za-z]", surface))
+    if hangul_chars >= max(4, latin_chars):
+        score += 0.12
+    if 2 <= len(tokens) <= 10:
+        score += 0.16
+    elif 11 <= len(tokens) <= 18:
+        score += 0.1
+    elif len(tokens) <= 24:
+        score += 0.03
+    if surface.endswith(NATURAL_ENDINGS):
+        score += 0.08
+    if any(word in surface for word in ("안녕", "반가워", "응", "좋아")):
+        score += 0.04
+    if any(word in surface for word in ("승인", "후보", "검토")):
+        score += 0.02
+    score -= 0.1 * len(detect_awkward_korean_markers(surface))
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def repair_korean_surface_candidate(text: str, construction: Any | None = None, context: dict[str, Any] | None = None) -> str:
+    """Repair a generated candidate at discourse level without prompt templates."""
+
+    del construction, context
+    surface = re.sub(r"\s+", " ", str(text or "").strip())
+    replacements = {
+        "여기서 듣고 있어 천천히 말해줘": "안녕. 나 여기 있어.",
+        "먼저 의도와 경계를 내부적으로 점검했습니다": "안녕. 편하게 말해줘.",
+        "내부적으로 점검했습니다": "확인했어.",
+        "안녕 편하게 말해줘 무엇부터 볼까": "안녕. 편하게 말해줘.",
+        "안녕 나 여기 있어 편하게 말해줘 무엇부터 볼까": "안녕. 나 여기 있어.",
+        "안녕 나 여기 있어 편하게 말해줘 무엇부터": "안녕. 나 여기 있어.",
+        "안녕 편하게 말해줘 무엇부터": "안녕. 편하게 말해줘.",
+        "좋아 지금 이야기해도 돼": "좋아. 지금 이야기해도 돼.",
+    }
+    for before, after in replacements.items():
+        surface = surface.replace(before, after)
+    surface = re.sub(r"\b(상태|기억|후보|경계)\s+\1\b", r"\1", surface)
+    surface = re.sub(r"\s+([.!?])", r"\1", surface)
+    surface = re.sub(r"\.{2,}", ".", surface)
+    surface = re.sub(r"\s+", " ", surface).strip()
+    if surface and not surface.endswith((".", "?", "!")):
+        surface = f"{surface}."
+    return surface

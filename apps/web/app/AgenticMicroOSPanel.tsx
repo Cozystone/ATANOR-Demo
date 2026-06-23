@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import SplatraImaginationField from "./SplatraImaginationField";
 import NeuralEmotionPanel from "./NeuralEmotionPanel";
+import InnerVoicePanel from "./InnerVoicePanel";
 
 type Language = "en" | "ko";
 type AnyRecord = Record<string, any>;
@@ -437,6 +438,8 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
         </article>
 
         <NeuralEmotionPanel />
+
+        <InnerVoicePanel localBackendUrl={localBackendUrl} />
 
         <article className="agentic-os-card">
           <div className="agentic-os-permission-header">

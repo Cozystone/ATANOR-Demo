@@ -15,6 +15,7 @@ from packages.agentic_micro_os.web_explorer_loop import (
 from packages.neural_emotion.autonomy_policy import AutonomyRuntimeState, evaluate_autonomy_policy
 from packages.neural_emotion.event_bus import NeuralEmotionEventBus
 from packages.neural_emotion.models import EmotionVector, safety_flags
+from packages.inner_voice import emit_inner_voice_from_state
 from packages.splatra_imagination import ARCHETYPES, ImaginationGenerator, ImaginationSeed, select_archetype
 
 
@@ -184,6 +185,18 @@ class PolicyDrivenAutonomousLoop:
                 self.event_bus.emit(source="host_executor", event_type="host_action_success", payload_summary="status check only", intensity=0.25)
 
             states.append(self._state(cycle, actions, "running", decision.to_dict(), budgets))
+            emit_inner_voice_from_state(
+                source_event_id=f"{self.config.loop_id}:cycle:{cycle}",
+                mode="lab_visible",
+                emotion_snapshot=self.event_bus.engine.snapshot().to_dict(),
+                policy_decision=decision.to_dict(),
+                agent_loop_state={"cycle": cycle, "actions_taken": actions},
+                permission_tier=str(self.permission_gate.status().get("tier", "OBSERVE_ONLY")),
+                latest_user_input="",
+                latest_action_result={"actions_taken": actions, "stopped_reason": "running"},
+                review_queue_pressure=self.config.review_queue_pressure,
+                splatra_state={"frames": frames},
+            )
             if budgets["web_pages_budget"] <= 0 and budgets["splatra_frame_budget"] <= 0:
                 stopped_reason = "budget_exhausted"
                 break

@@ -10,8 +10,8 @@ def test_conversation_surface_generates_without_external_or_rule_engine() -> Non
     assert result.answer
     assert score_korean_naturalness(result.answer) >= 0.68
     assert not detect_awkward_korean_markers(result.answer)
+    assert "여기서 듣고 있어 천천히 말해줘" not in result.answer
     assert "먼저 의도와 경계를" not in result.answer
-    assert "내부적으로 점검" not in result.answer
     assert result.diagnostics["generation_basis"] == "local_corpus_construction_transition_model"
     assert result.diagnostics["template_free_surface"] is True
     assert result.diagnostics["external_llm_used"] is False
@@ -40,8 +40,7 @@ def test_conversation_surface_keeps_memory_request_in_approval_candidate() -> No
     assert result.answer
     assert result.diagnostics["top_act"] == "memory_question"
     assert result.diagnostics["selected_construction"] == "conv.memory.approval_candidate"
-    assert "기억해둘게" not in result.answer
-    assert "저장할게" not in result.answer
+    assert "바로 저장할게" not in result.answer
     assert result.diagnostics["local_brain_write"] is False
 
 

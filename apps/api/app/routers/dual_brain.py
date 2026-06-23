@@ -18,6 +18,8 @@ from packages.surface_brain.realization_planner import plan_speech, realize_answ
 from packages.cloud_brain.graph_exchange import run_local_cloud_exchange
 from packages.cloud_brain.semantic_store import SemanticCloudStore
 from packages.neural_emotion.event_bus import emit_runtime_event, infer_user_text_runtime_event
+from packages.neural_emotion.event_bus import EVENT_BUS
+from packages.inner_voice import emit_inner_voice_from_state
 
 
 router = APIRouter(tags=["dual-brain"])
@@ -161,6 +163,22 @@ def _is_live_selfhood_conversation(question: str) -> bool:
     compact = _compact_conversation_text(question)
     if not compact:
         return True
+    if compact in {"안녕", "안녕하세요", "하이", "반가워", "ㅎㅇ", "고마워", "감사", "감사합니다"}:
+        return True
+    if any(
+        term in question
+        for term in (
+            "자기 모델",
+            "자아 모델",
+            "자의식",
+            "내적 언어",
+            "생각 중추",
+            "유리 구",
+            "구슬",
+            "음성 모드",
+        )
+    ) and len(question.strip()) <= 80:
+        return True
     if compact in {"안녕", "안녕하세요", "하이", "헬로", "반가워", "고마워", "감사", "감사합니다"}:
         return True
     lowered = question.strip().lower()
@@ -218,6 +236,14 @@ def _is_live_selfhood_conversation(question: str) -> bool:
 def _live_selfhood_speech_act(question: str, language: str) -> str:
     compact = _compact_conversation_text(question)
     if language == "ko":
+        if compact in {"안녕", "안녕하세요", "하이", "반가워", "ㅎㅇ"}:
+            return "greeting"
+        if compact in {"고마워", "감사", "감사합니다"}:
+            return "thanks"
+        if any(term in question for term in ("자기 모델", "자아 모델", "자의식", "내적 언어", "생각 중추")):
+            return "self_model"
+        if any(term in question for term in ("유리 구", "구슬")):
+            return "orb"
         if compact in {"안녕", "안녕하세요", "하이", "헬로", "반가워"}:
             return "greeting"
         if compact in {"고마워", "감사", "감사합니다"}:
@@ -343,6 +369,18 @@ def _live_selfhood_payload(
 ) -> dict[str, Any]:
     speech_act = _live_selfhood_speech_act(question, language)
     generated = generate_conversation_surface(question, language=language)
+    inner_voice_frame = emit_inner_voice_from_state(
+        source_event_id=f"asm_v0:{speech_act}",
+        mode="lab_visible",
+        emotion_snapshot=EVENT_BUS.engine.snapshot().to_dict(),
+        policy_decision={},
+        agent_loop_state={},
+        permission_tier="OBSERVE_ONLY",
+        latest_user_input=question,
+        latest_action_result={"speech_act": speech_act, "generated": bool(generated.answer)},
+        review_queue_pressure=0.0,
+        splatra_state={},
+    )
     compact_trace = {
         "local_coverage": "live_selfhood_conversation",
         "selfhood_loop": {
@@ -362,6 +400,13 @@ def _live_selfhood_payload(
         "q_cortex": {"used": False, "run_id": None, "real_quantum_hardware_used": False},
         "working_memory": {"temporary_context": False, "local_brain_write": False},
         "confidence": "medium" if generated.confidence >= 0.5 else "abstained",
+        "inner_voice": {
+            "emitted": True,
+            "frame_id": inner_voice_frame.frame_id,
+            "raw_inner_voice_hidden": True,
+            "inner_voice_is_explicit_generated_channel": True,
+            "raw_hidden_cot_claim": False,
+        },
     }
     if not generated.answer:
         payload = {

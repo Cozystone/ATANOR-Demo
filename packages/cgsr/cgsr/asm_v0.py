@@ -238,6 +238,8 @@ def infer_conversation_act(input_text: str, context: dict[str, Any] | None = Non
         scores["greeting"] += 0.08
         scores["open_chat"] += 0.04
     scores["status_question"] += punctuation_bonus
+    if any(token in query for token in ("승인", "검토", "후보", "반영", "승격")):
+        scores["approval_question"] += 1.35
     if any(token in query for token in ("제안", "승인", "검토", "반영", "승격")):
         scores["approval_question"] += 1.2
     if context.get("voice_mode"):
@@ -406,7 +408,21 @@ def generate_surface(input_text: str, context: dict[str, Any] | None = None) -> 
         if previous is None or candidate.score > previous.score:
             deduped[candidate.text] = candidate
     ranked_all = tuple(sorted(deduped.values(), key=lambda item: (-item.score, item.construction_id, item.text)))
-    selected = select_best_korean_candidate(ranked_all)
+    top_act = distribution.top_act()
+    top_act_candidates = tuple(candidate for candidate in ranked_all if candidate.construction_id.startswith(f"conv.{top_act.split('_')[0]}"))
+    if top_act == "status_question":
+        top_act_candidates = tuple(candidate for candidate in ranked_all if candidate.construction_id.startswith("conv.status."))
+    elif top_act == "self_model_question":
+        top_act_candidates = tuple(candidate for candidate in ranked_all if candidate.construction_id.startswith("conv.self_model."))
+    elif top_act == "memory_question":
+        top_act_candidates = tuple(candidate for candidate in ranked_all if candidate.construction_id.startswith("conv.memory."))
+    elif top_act == "approval_question":
+        top_act_candidates = tuple(candidate for candidate in ranked_all if candidate.construction_id.startswith("conv.approval."))
+    elif top_act == "voice_question":
+        top_act_candidates = tuple(candidate for candidate in ranked_all if candidate.construction_id.startswith("conv.voice."))
+    elif top_act == "brief_request":
+        top_act_candidates = tuple(candidate for candidate in ranked_all if candidate.construction_id.startswith("conv.brief."))
+    selected = select_best_korean_candidate(top_act_candidates or ranked_all)
     if selected is not None:
         ranked = (selected,) + tuple(candidate for candidate in ranked_all if candidate.text != selected.text)
     else:
@@ -449,3 +465,89 @@ def result_to_jsonable(result: ASMSurfaceResult) -> dict[str, Any]:
         "internal_trace_exposed": result.internal_trace_exposed,
         "act_distribution": result.act_distribution.probabilities if result.act_distribution else {},
     }
+
+
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9가-힣]+", _normalize(text), flags=re.UNICODE)
+
+
+def _token_root(token: str) -> str:
+    if re.search(r"[가-힣]", token):
+        return re.sub(r"(입니다|합니다|했어요|해요|할까|할게|할께|에서|으로|에게|하고|하는|하다|요|은|는|이|가|을|를)$", "", token)
+    return token
+
+
+GENERAL_KO_DIALOGUE = (
+    "안녕. 나 여기 있어.",
+    "안녕. 편하게 말해줘.",
+    "반가워. 오늘은 뭐부터 볼까?",
+    "응, 준비됐어.",
+    "좋아. 지금 이야기해도 돼.",
+    "하이. 바로 같이 볼게.",
+)
+
+SELF_MODEL_KO_DIALOGUE = (
+    "나는 자기 모델 루프로 현재 상태와 경계를 관찰해.",
+    "실제 의식을 주장하지 않고 목표와 제약을 나눠서 본다.",
+    "내적 서술은 숨은 사고가 아니라 관찰 가능한 상태 요약이다.",
+    "사용자 승인 없이 기억이나 공용 지식은 바꾸지 않는다.",
+)
+
+MEMORY_KO_DIALOGUE = (
+    "그 내용은 바로 저장하지 않고 기억 후보로만 분리할게.",
+    "로컬 브레인 쓰기는 사용자 승인이 있어야 진행된다.",
+    "지금은 기억 후보를 검토 대기에 둘 수 있어.",
+)
+
+VOICE_KO_DIALOGUE = (
+    "음성은 선택 기능이고 텍스트 입력은 계속 사용할 수 있어.",
+    "Fish가 준비되면 같은 문장을 소리로도 말할 수 있어.",
+    "지금은 텍스트 응답을 우선 유지할게.",
+)
+
+APPROVAL_KO_DIALOGUE = (
+    "승인이 필요한 제안은 바로 반영하지 않고 검토 대기에 둔다.",
+    "후보 승격과 기억 쓰기는 승인 게이트를 지나야 한다.",
+    "바뀌는 일은 먼저 제안으로 보여주고 사용자가 고른 뒤에만 진행한다.",
+)
+
+BRIEF_KO_DIALOGUE = (
+    "브리프는 현재 상태를 요약하지만 개인 기억을 바꾸지 않는다.",
+    "준비된 브리프는 읽기용으로 만들고 저장은 따로 승인받는다.",
+)
+
+STATUS_KO_DIALOGUE = (
+    "지금은 안전 플래그를 유지하면서 다음 요청을 기다리고 있어.",
+    "현재는 제안과 검토 대기를 정리하는 중이야.",
+)
+
+CORRECTION_KO_DIALOGUE = (
+    "맞아. 다음 표현은 더 자연스럽게 조정할게.",
+    "좋아, 그 피드백을 다음 말투에 반영해볼게.",
+)
+
+_ACT_CORPORA = {
+    "greeting": GENERAL_KO_DIALOGUE,
+    "status_question": STATUS_KO_DIALOGUE + GENERAL_KO_DIALOGUE,
+    "self_model_question": SELF_MODEL_KO_DIALOGUE + GENERAL_KO_DIALOGUE,
+    "memory_question": MEMORY_KO_DIALOGUE + APPROVAL_KO_DIALOGUE,
+    "approval_question": APPROVAL_KO_DIALOGUE + MEMORY_KO_DIALOGUE,
+    "voice_question": VOICE_KO_DIALOGUE + GENERAL_KO_DIALOGUE,
+    "brief_request": BRIEF_KO_DIALOGUE + STATUS_KO_DIALOGUE,
+    "correction": CORRECTION_KO_DIALOGUE + GENERAL_KO_DIALOGUE,
+    "open_chat": GENERAL_KO_DIALOGUE + STATUS_KO_DIALOGUE,
+    "unknown": GENERAL_KO_DIALOGUE,
+}
+
+_ACT_CUES = {
+    "greeting": ("안녕", "안녕하세요", "하이", "반가워", "ㅎㅇ", "hello", "hi"),
+    "status_question": ("뭐", "하고", "상태", "지금", "대기", "준비"),
+    "self_model_question": ("자기", "모델", "자의식", "자아", "생각", "루프", "내적"),
+    "memory_question": ("기억", "로컬", "브레인", "저장", "메모리", "기록"),
+    "approval_question": ("승인", "검토", "대기", "제안", "반영", "후보"),
+    "voice_question": ("음성", "목소리", "말할", "말해", "Fish", "마이크"),
+    "brief_request": ("브리프", "요약", "아침", "저녁", "보고"),
+    "correction": ("아니", "수정", "다시", "바꿔", "그게"),
+    "open_chat": ("말", "대화", "하기", "물어"),
+    "unknown": (),
+}

@@ -68,6 +68,7 @@ from app.routers.graphrag import router as graphrag_router
 from app.routers.guard import router as guard_router
 from app.routers.harvest import router as harvest_router
 from app.routers.hybrid_network import router as hybrid_network_router
+from app.routers.inner_voice import router as inner_voice_router
 from app.routers.learning import router as learning_router
 from app.routers.local_memory_approval import router as local_memory_approval_router
 from app.routers.memory import router as memory_router
@@ -170,6 +171,7 @@ app.include_router(base_brain_router)
 app.include_router(brain_graph_router)
 app.include_router(harvest_router)
 app.include_router(hybrid_network_router)
+app.include_router(inner_voice_router)
 app.include_router(brain_sync_router)
 app.include_router(learning_router)
 app.include_router(local_memory_approval_router)
