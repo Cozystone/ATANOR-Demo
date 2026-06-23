@@ -133,8 +133,43 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert plan.layout_timeline[0]["action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
     assert plan.layout_timeline[0]["decision_basis"] == "verified_scene_geometry"
     assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
-    assert any(item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1 for item in plan.layout_timeline)
+    active_layout = next(item for item in plan.layout_timeline if item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1)
+    assert active_layout["text_rendering"] == "dom_text_not_particles"
+    assert active_layout["text_anchor"] == "lower_left"
+    assert active_layout["self_narration_anchor"] in {"upper_left", "upper_right"}
     assert plan.topic_scene_templates is False
+
+
+def test_layout_timeline_places_speech_away_from_active_scene_focus() -> None:
+    plan = compile_scene_choreography({
+        "stage_layout": "scene_focus",
+        "beats": [
+            {
+                "op": "spawn_object",
+                "prompt": "verified right-side particle focus",
+                "narration": "The verified focus is on the right side.",
+                "position": [0.72, 0.24, 0.0],
+                "speech_cue": True,
+                "t_start": 0.0,
+                "duration": 1.4,
+            },
+            {
+                "op": "spawn_object",
+                "prompt": "verified left-side particle focus",
+                "narration": "The verified focus shifts to the left side.",
+                "position": [-0.72, 0.24, 0.0],
+                "speech_cue": True,
+                "t_start": 1.4,
+                "duration": 1.4,
+            },
+        ],
+    })
+
+    first = next(item for item in plan.layout_timeline if item.get("beat_index") == 0)
+    second = next(item for item in plan.layout_timeline if item.get("beat_index") == 1)
+    assert first["text_anchor"] == "upper_left"
+    assert second["text_anchor"] == "upper_right"
+    assert first["text_rendering"] == second["text_rendering"] == "dom_text_not_particles"
 
 
 def test_command_adapter_keeps_safety_flags_closed() -> None:

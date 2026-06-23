@@ -333,6 +333,8 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
     """Expose orb/text/stage placement decisions as geometry-derived actions."""
 
     decision = dashboard_layout.get("agent_layout_decision") if isinstance(dashboard_layout.get("agent_layout_decision"), dict) else {}
+    default_text_anchor = dashboard_layout.get("speech", {}).get("anchor", "lower_left")
+    default_self_anchor = dashboard_layout.get("self_narration", {}).get("anchor", "upper_right")
     if stage_layout != "scene_focus":
         return [{
             "t_start": 0.0,
@@ -340,6 +342,8 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "action": "keep_orb_primary",
             "decision_basis": "conversation_default",
             "orb_anchor": "center",
+            "text_anchor": "lower_center",
+            "self_narration_anchor": "upper_right",
             "text_rendering": "dom_text_not_particles",
             "stage_region": "conversation_center",
         }]
@@ -351,6 +355,8 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
         "decision_basis": decision.get("decision_basis") or "verified_scene_geometry",
         "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
         "orb_movement": decision.get("orb_movement") or "lower_right_scaled_down",
+        "text_anchor": default_text_anchor,
+        "self_narration_anchor": default_self_anchor,
         "text_rendering": decision.get("text_rendering") or "dom_text_not_particles",
         "text_strategy": decision.get("text_strategy") or "dom_text_collision_avoidance",
         "stage_region": decision.get("scene_region") or "dashboard_center",
@@ -367,11 +373,39 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "scene_group_id": beat.scene_group_id,
             "object_id": beat.object_id,
             "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
+            "text_anchor": _text_anchor_for_active_beat(beat, default_text_anchor),
+            "self_narration_anchor": default_self_anchor,
             "text_rendering": "dom_text_not_particles",
             "stage_region": "dashboard_center",
             "particle_behavior": beat.particle_behavior,
         })
     return timeline
+
+
+def _text_anchor_for_active_beat(beat: SceneBeat, fallback: Any) -> TextAnchor:
+    """Place current speech away from the active verified particle focus."""
+
+    fallback_anchor = str(fallback or "lower_left")
+    if fallback_anchor not in {"upper_left", "lower_left", "upper_right", "lower_center"}:
+        fallback_anchor = "lower_left"
+    if not beat.position or len(beat.position) < 2:
+        return fallback_anchor  # type: ignore[return-value]
+    try:
+        x = float(beat.position[0])
+        y = float(beat.position[1])
+    except (TypeError, ValueError):
+        return fallback_anchor  # type: ignore[return-value]
+    if x <= -0.18 and y >= 0.12:
+        return "upper_right"
+    if x >= 0.18 and y >= 0.12:
+        return "upper_left"
+    if x <= -0.18 and y < 0.12:
+        return "upper_right"
+    if x >= 0.18 and y < 0.12:
+        return "upper_left"
+    if y >= 0.18:
+        return "lower_left"
+    return fallback_anchor  # type: ignore[return-value]
 
 
 def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:

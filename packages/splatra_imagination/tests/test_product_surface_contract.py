@@ -25,6 +25,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-action" in status_card
     assert "data-layout-action-basis" in status_card
     assert "data-layout-orb-anchor" in status_card
+    assert "data-layout-text-anchor" in status_card
+    assert "data-layout-self-narration-anchor" in status_card
+    assert "activeLayout.textAnchor" in status_card
+    assert "activeLayout.selfNarrationAnchor" in status_card
     assert "data-layout-stage-region" in status_card
     assert "data-layout-text-rendering" in status_card
     assert '"conversation_default"' in status_card
@@ -39,6 +43,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "speech_cue: bool = True" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "speech_timeline: list[dict[str, Any]]" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "layout_timeline: list[dict[str, Any]]" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "_text_anchor_for_active_beat" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"action\": \"sync_orb_text_with_particle_beat\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"text_source\": \"verified_beat_narration\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "scene_group_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")

@@ -127,6 +127,8 @@ type SceneChoreographyPayload = {
     object_id?: string;
     orb_anchor?: string;
     orb_movement?: string;
+    text_anchor?: TextAnchor;
+    self_narration_anchor?: TextAnchor;
     text_rendering?: string;
     text_strategy?: string;
     stage_region?: string;
@@ -325,8 +327,18 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
     basis: String(item.decision_basis ?? (stageLayout === "scene_focus" ? requestedLayoutBasis(scenePlan, stageLayout) : "conversation_default")),
     orbAnchor: String(item.orb_anchor ?? scenePlan?.dashboard_layout?.orb?.anchor ?? (stageLayout === "scene_focus" ? "lower_right" : "center")),
     stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
+    textAnchor: coerceTextAnchor(item.text_anchor, requestedTextAnchor(scenePlan)),
+    selfNarrationAnchor: coerceTextAnchor(item.self_narration_anchor, scenePlan?.dashboard_layout?.self_narration?.anchor ?? "upper_right"),
     textRendering: String(item.text_rendering ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_rendering ?? "dom_text_not_particles"),
   };
+}
+
+function coerceTextAnchor(value: unknown, fallback: unknown): TextAnchor {
+  const candidate = String(value || fallback || "lower_left");
+  if (candidate === "upper_left" || candidate === "lower_left" || candidate === "upper_right" || candidate === "lower_center") {
+    return candidate;
+  }
+  return "lower_left";
 }
 
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
@@ -761,9 +773,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setSelfNarrationPlacement("upper_right");
       return undefined;
     }
-    const requested = requestedTextAnchor(sceneChoreography);
+    const activeLayout = activeLayoutState(sceneChoreography, stageLayout, sceneSpeechBeatIndex);
+    const requested = activeLayout.textAnchor ?? requestedTextAnchor(sceneChoreography);
     const preferred: TextAnchor = requested === "auto" ? "lower_left" : requested;
-    const preferredSelfNarration: TextAnchor = requestedLayoutIntent(sceneChoreography) === "wide_particle_stage" ? "upper_right" : "upper_left";
+    const preferredSelfNarration: TextAnchor = activeLayout.selfNarrationAnchor ?? (requestedLayoutIntent(sceneChoreography) === "wide_particle_stage" ? "upper_right" : "upper_left");
     let frameId = 0;
     let timer = 0;
 
@@ -828,7 +841,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       window.clearInterval(timer);
       window.removeEventListener("resize", updatePlacement);
     };
-  }, [sceneChoreography, stageLayout, typedSelfNarration, typedSpeechLine]);
+  }, [sceneChoreography, sceneSpeechBeatIndex, stageLayout, typedSelfNarration, typedSpeechLine]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1069,6 +1082,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-action-basis={currentLayoutState.basis}
       data-layout-orb-anchor={currentLayoutState.orbAnchor}
       data-layout-stage-region={currentLayoutState.stageRegion}
+      data-layout-text-anchor={currentLayoutState.textAnchor}
+      data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
       data-text-layout-basis="dom_text_canvas_metrics_no_particle_text"
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
