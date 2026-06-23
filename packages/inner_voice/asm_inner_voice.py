@@ -145,8 +145,13 @@ def _surface_for_act(construction: InnerVoiceConstruction, input_data: Any, labe
     if construction.act == "voice_fallback":
         return "음성 출력이 비어 있으면 텍스트와 구슬 반응으로 이어가면 된다. 말소리는 준비되면 붙인다."
     if construction.act == "splatra_imagination":
-        shape = str(splatra_state.get("archetype") or splatra_state.get("shape") or "구슬")
-        return f"{shape} 움직임이 지금 상태를 대신 말해 준다. 입자는 크게 흔들지 말고 호흡처럼 모은다."
+        scene_focus = splatra_state.get("stage_layout") == "scene_focus"
+        motion_count = int(float(splatra_state.get("motion_count") or 0))
+        if scene_focus and motion_count > 0:
+            return "중앙 장면을 비워 두고 입자 흐름을 따라 말하면 된다. 말은 짧게 끊고 움직임과 맞춘다."
+        if scene_focus:
+            return "중앙 장면을 비워 두고 입자들이 모이는 리듬에 맞춰 설명하면 된다."
+        return "구슬의 움직임이 지금 상태를 대신 말해 준다. 입자는 크게 흔들지 말고 호흡처럼 모은다."
     if construction.act == "fatigue_rest":
         return "활동을 낮출 신호가 있다. 더 밀기보다 다음 주기에 이어갈 것을 남긴다."
     if construction.act == "uncertainty_check":

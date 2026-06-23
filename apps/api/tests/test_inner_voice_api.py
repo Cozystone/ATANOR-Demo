@@ -101,6 +101,8 @@ def test_generate_frame_product_uses_current_splatra_scene_state() -> None:
     assert payload["raw_inner_voice_hidden"] is True
     assert payload["product_summary"]["act"] == "splatra_imagination"
     assert payload["product_summary"]["visible_self_narration"]
+    assert "abstract_memory_cloud" not in payload["product_summary"]["visible_self_narration"]
+    assert "particle_scene" not in payload["product_summary"]["visible_self_narration"]
     assert payload["product_summary"]["generation_basis"] == "asm_cgsr_construction_conditioned_inner_voice_v1"
     assert payload["external_llm"] is False
     assert payload["external_sllm"] is False

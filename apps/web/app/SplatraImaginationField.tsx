@@ -281,23 +281,31 @@ function drawParticleSegment(
   const dx = to[0] - from[0];
   const dy = to[1] - from[1];
   const distance = Math.hypot(dx, dy);
-  const steps = Math.max(4, Math.ceil(distance / Math.max(7, unit * 0.018)));
+  const steps = Math.max(5, Math.ceil(distance / Math.max(11, unit * 0.028)));
   const normalX = distance > 0 ? -dy / distance : 0;
   const normalY = distance > 0 ? dx / distance : 0;
-  for (let index = 0; index <= steps; index += 1) {
-    const t = index / steps;
-    if (index > 0 && index < steps && seeded(index, salt + 41) < 0.18) continue;
-    const jitter = (seeded(index, salt) - 0.5) * unit * 0.009;
-    const wave = Math.sin(t * Math.PI * 2 + salt + elapsed * 1.7) * unit * 0.006;
-    const flow = Math.sin(elapsed * 0.9 + t * Math.PI * 3 + salt) * unit * 0.004;
-    drawGuideParticle(
-      ctx,
-      from[0] + dx * t + normalX * (jitter + wave) + flow,
-      from[1] + dy * t + normalY * (jitter + wave) + flow * 0.35,
-      unit * (0.0018 + seeded(index, salt + 7) * 0.002),
-      color,
-      alpha * (0.24 + seeded(index, salt + 13) * 0.46),
-    );
+  const tangentX = distance > 0 ? dx / distance : 1;
+  const tangentY = distance > 0 ? dy / distance : 0;
+  const streamCount = 2;
+  for (let lane = 0; lane < streamCount; lane += 1) {
+    for (let index = 0; index <= steps; index += 1) {
+      const rawT = index / steps;
+      const t = (rawT + elapsed * (0.018 + lane * 0.011) + seeded(index, salt + lane * 101) * 0.055) % 1;
+      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.32) continue;
+      const phase = t * Math.PI * 6 + salt * 0.037 + elapsed * (1.15 + lane * 0.21);
+      const laneOffset = (lane - 0.5) * unit * 0.014;
+      const curl = Math.sin(phase) * unit * (0.012 + seeded(index, salt + 5) * 0.01);
+      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.006;
+      const pulse = 0.46 + 0.54 * Math.sin(t * Math.PI);
+      drawGuideParticle(
+        ctx,
+        from[0] + dx * t + normalX * (laneOffset + curl) + tangentX * shear,
+        from[1] + dy * t + normalY * (laneOffset + curl) + tangentY * shear,
+        unit * (0.0012 + seeded(index, salt + lane * 53 + 7) * 0.0017) * (0.78 + pulse * 0.34),
+        color,
+        alpha * (0.1 + pulse * 0.32) * (lane === 0 ? 1 : 0.72),
+      );
+    }
   }
 }
 

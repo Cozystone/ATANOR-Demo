@@ -80,6 +80,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "flowFieldAngle" in field
     assert "drawParticleStroke" in field
     assert "drawParticleSegment" in field
+    assert "streamCount = 2" in field
+    assert "laneOffset" in field
+    assert "curl" in field
     assert "drawParticleEllipse" in field
     assert "ctx.stroke" not in field
     assert "ctx.lineTo" not in field
