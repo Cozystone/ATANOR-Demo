@@ -555,11 +555,21 @@ function sceneObjectProgress(beat: ScenePlanBeat, elapsedSeconds: number) {
   return smoothstep((elapsedSeconds - start) / duration);
 }
 
+function sceneMotionSourceHold(beat: ScenePlanBeat, elapsedSeconds: number) {
+  if (!beat.motion_path && beat.op !== "move") return 0;
+  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  const leadIn = clamp((elapsedSeconds - (start - 0.72)) / 0.72, 0, 1);
+  const beforeMotion = elapsedSeconds < start ? 1 : 0;
+  return smoothstep(leadIn) * beforeMotion;
+}
+
 function sceneObjectAlpha(beat: ScenePlanBeat, elapsedSeconds: number, active: boolean) {
   const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
-  if (elapsedSeconds < start - 0.16) return 0;
+  const sourceHold = sceneMotionSourceHold(beat, elapsedSeconds);
+  if (elapsedSeconds < start - 0.16 && sourceHold <= 0) return 0;
   const reveal = sceneObjectProgress(beat, elapsedSeconds);
-  const base = beat.op === "despawn" ? 1 - reveal : Math.max(0.24, reveal);
+  const sourceHoldBase = sourceHold > 0 ? 0.18 + sourceHold * 0.28 : 0;
+  const base = beat.op === "despawn" ? 1 - reveal : Math.max(sourceHoldBase, 0.24, reveal);
   return clamp(base * (active ? 1 : 0.42), 0, 1);
 }
 
@@ -1220,6 +1230,7 @@ function drawSceneObjectCloud(
   const roleStyle = sceneRoleStyle(object.beat, active);
   const position = sceneMotionPathPoint(object.beat, sceneElapsed);
   const beatProgress = sceneObjectProgress(object.beat, sceneElapsed);
+  const sourceHold = sceneMotionSourceHold(object.beat, sceneElapsed);
   const motionSwing = object.beat.op === "move" ? Math.sin(beatProgress * Math.PI) : 0;
   const flowSalt = stableUnit(object.id, 43);
   const center = scenePointToCanvas(
@@ -1237,7 +1248,7 @@ function drawSceneObjectCloud(
   const cx = center.x;
   const cy = center.y;
   const transform = sceneTransform(object.beat, true, sceneElapsed);
-  const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale;
+  const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale * (sourceHold > 0 ? 0.84 : 1);
   const scale = Math.min(width, height) * 0.11 * transform.zoom * centralScale * scaleBias;
   const rotation = elapsed * (0.12 + controls.arousal * 0.11) + stableUnit(object.id, 5) * Math.PI * 2;
   const tilt = Math.sin(elapsed * 0.16 + stableUnit(object.id, 9) * 4) * 0.18;
