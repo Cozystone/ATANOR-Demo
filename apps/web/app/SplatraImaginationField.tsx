@@ -65,6 +65,8 @@ type ScenePlanBeat = {
   camera?: Record<string, any>;
 };
 
+type SceneMotionRole = "subject" | "source" | "target" | "";
+
 type ScenePlan = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
@@ -494,15 +496,48 @@ function sceneObjectAlpha(beat: ScenePlanBeat, elapsedSeconds: number, active: b
   return clamp(base * (active ? 1 : 0.42), 0, 1);
 }
 
+function sceneMotionRole(beat: ScenePlanBeat): SceneMotionRole {
+  const role = String(beat.semantic_role ?? "");
+  if (role === "verified_motion_subject") return "subject";
+  if (role === "verified_motion_source") return "source";
+  if (role === "verified_motion_target") return "target";
+  return "";
+}
+
 function sceneRoleStyle(beat: ScenePlanBeat, active: boolean) {
   const role = String(beat.semantic_role ?? "");
   const affordance = String(beat.visual_affordance ?? "");
+  const motionRole = sceneMotionRole(beat);
   const moving = beat.op === "move" || role.includes("motion");
   const relation = role.includes("relation");
   const anchor = role.includes("anchor");
   const smallObject = affordance === "small_object" || affordance === "small_moving_object";
   const figure = affordance === "entity_figure";
   const organic = affordance === "organic_structure";
+  if (motionRole === "subject") {
+    return {
+      alpha: active ? 1.46 : 1.24,
+      scale: smallObject ? 0.5 : 0.72,
+      trail: active ? 1.38 : 0.94,
+      focus: active ? 1.08 : 0.9,
+    };
+  }
+  if (motionRole === "source") {
+    return {
+      alpha: active ? 1.08 : 0.86,
+      scale: organic ? 1.28 : 1.02,
+      trail: active ? 0.34 : 0.18,
+      focus: active ? 0.92 : 0.62,
+    };
+  }
+  if (motionRole === "target") {
+    return {
+      alpha: active ? 1.18 : 0.92,
+      scale: figure ? 1.12 : 1.04,
+      trail: active ? 0.48 : 0.26,
+      focus: active ? 1 : 0.72,
+    };
+  }
   return {
     alpha: smallObject ? 1.32 : moving ? 1.16 : relation ? 1.02 : anchor ? 0.86 : 0.94,
     scale: smallObject ? 0.56 : organic ? 1.22 : figure ? 1.06 : moving ? 1.2 : relation ? 1.08 : anchor ? 0.92 : 1,
@@ -567,6 +602,10 @@ function sceneGroupCameraView(activeObject: SceneRenderObject | null, visibleObj
 function sceneRelationRank(object: SceneRenderObject) {
   const affordance = String(object.beat.visual_affordance ?? "");
   const role = String(object.beat.semantic_role ?? "");
+  const motionRole = sceneMotionRole(object.beat);
+  if (motionRole === "subject") return 0;
+  if (motionRole === "source") return 1;
+  if (motionRole === "target") return 2;
   if (object.beat.op === "move" || object.beat.motion_path) return 0;
   if (affordance === "small_moving_object" || affordance === "small_object") return 1;
   if (affordance === "entity_figure") return 2;
@@ -621,8 +660,10 @@ function sceneParticlesForBeat(beat: ScenePlanBeat, archetype: Archetype, count:
 
 function scenePoseForBeat(beat: ScenePlanBeat) {
   const relation = String(beat.spatial_relation ?? "");
+  const motionRole = sceneMotionRole(beat);
   if (relation === "under_target") return "seated";
   if (relation === "motion_target") return "reaching";
+  if (motionRole === "target" && beat.visual_affordance === "entity_figure") return "reaching";
   const text = `${beat.prompt ?? ""} ${beat.narration ?? ""} ${beat.source_fact ?? ""}`.toLowerCase();
   if (/\b(sat|sitting|seated|rested|under)\b/.test(text)) return "seated";
   if (/\b(fell|falling|dropped|moved|toward|towards)\b/.test(text)) return "reaching";
@@ -1220,6 +1261,61 @@ function drawSceneMotionPathFlow(
   }
 }
 
+function drawSceneMotionParticipantFlow(
+  ctx: CanvasRenderingContext2D,
+  points: Array<{ object: SceneRenderObject; x: number; y: number }>,
+  unit: number,
+  elapsed: number,
+  centralScale: number,
+  groupSalt: number,
+) {
+  const subject = points.find((point) => sceneMotionRole(point.object.beat) === "subject");
+  const source = points.find((point) => sceneMotionRole(point.object.beat) === "source");
+  const target = points.find((point) => sceneMotionRole(point.object.beat) === "target");
+  if (!subject || !source || !target) return false;
+
+  const sourceSubjectTarget: Array<[number, number]> = [
+    [source.x, source.y],
+    [
+      (source.x + subject.x) / 2 + Math.sin(elapsed * 0.27 + groupSalt) * unit * 0.018,
+      (source.y + subject.y) / 2 - unit * 0.075,
+    ],
+    [subject.x, subject.y],
+    [
+      (subject.x + target.x) / 2 + Math.cos(elapsed * 0.31 + groupSalt) * unit * 0.02,
+      (subject.y + target.y) / 2 - unit * 0.052,
+    ],
+    [target.x, target.y],
+  ];
+
+  drawParticlePolyline(ctx, sourceSubjectTarget, [76, 230, 255], 0.12 * centralScale, unit, groupSalt + 401, elapsed);
+
+  for (let index = 0; index < 22; index += 1) {
+    const leg = index < 10 ? 0 : 1;
+    const localIndex = leg === 0 ? index : index - 10;
+    const steps = leg === 0 ? 10 : 12;
+    const from = leg === 0 ? source : subject;
+    const to = leg === 0 ? subject : target;
+    const t = (localIndex / steps + elapsed * (0.045 + leg * 0.018) + seeded(index, groupSalt + 503) * 0.08) % 1;
+    const lift = Math.sin(t * Math.PI) * unit * (leg === 0 ? -0.07 : -0.052);
+    const curl = Math.sin(t * Math.PI * 5 + elapsed * 1.4 + groupSalt) * unit * 0.018;
+    const x = from.x * (1 - t) + to.x * t + curl;
+    const y = from.y * (1 - t) + to.y * t + lift;
+    const fade = 0.38 + Math.sin(t * Math.PI) * 0.62;
+    drawGuideParticle(
+      ctx,
+      x,
+      y,
+      unit * (0.002 + fade * 0.0028) * centralScale,
+      leg === 0 ? [76, 230, 255] : [255, 104, 177],
+      0.24 * fade * centralScale,
+    );
+  }
+
+  drawParticleEllipse(ctx, subject.x, subject.y, unit * 0.026, unit * 0.017, elapsed * 0.32, [255, 255, 255], 0.13 * centralScale, unit, groupSalt + 607, elapsed);
+  return true;
+}
+
 function drawSceneGroupRelationField(
   ctx: CanvasRenderingContext2D,
   activeObject: SceneRenderObject | null,
@@ -1243,7 +1339,7 @@ function drawSceneGroupRelationField(
       y: canvasPoint.y,
     };
   });
-  const primary = points[0];
+  const primary = points.find((point) => sceneMotionRole(point.object.beat) === "subject") ?? points[0];
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
   const centerX = xs.reduce((total, value) => total + value, 0) / points.length;
@@ -1252,8 +1348,11 @@ function drawSceneGroupRelationField(
   const radiusY = clamp((Math.max(...ys) - Math.min(...ys)) * 0.56 + unit * 0.042, unit * 0.042, unit * 0.18);
   const groupSalt = Math.floor(stableUnit(String(activeObject?.beat.scene_group_id ?? activeObject?.id ?? "group"), 89) * 1000);
   drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.045 * centralScale, unit, groupSalt, elapsed);
+  const renderedMotionFlow = drawSceneMotionParticipantFlow(ctx, points, unit, elapsed, centralScale, groupSalt);
 
   points.slice(1).forEach((target, index) => {
+    if (target.object.id === primary.object.id) return;
+    if (renderedMotionFlow && sceneMotionRole(target.object.beat)) return;
     const relationLift = target.object.beat.visual_affordance === "organic_structure" || primary.object.beat.visual_affordance === "organic_structure"
       ? -unit * 0.055
       : unit * 0.028 * Math.sin(elapsed * 0.31 + index);

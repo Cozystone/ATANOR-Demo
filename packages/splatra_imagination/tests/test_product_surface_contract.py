@@ -73,7 +73,11 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert '"seated"' in field
     assert "hasFruit" in field
     assert "sceneRoleStyle" in field
+    assert "sceneMotionRole" in field
     assert "semantic_role" in field
+    assert "verified_motion_subject" in field
+    assert "verified_motion_source" in field
+    assert "verified_motion_target" in field
     assert "visual_affordance" in field
     assert "spatial_relation" in field
     assert "scene_group_id" in field
@@ -83,6 +87,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneRelationRank" in field
     assert "sceneActiveGroupObjects" in field
     assert "drawSceneGroupRelationField" in field
+    assert "drawSceneMotionParticipantFlow" in field
+    assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
     assert "motion_path" in field
     assert "sceneMotionPathPoint" in field
