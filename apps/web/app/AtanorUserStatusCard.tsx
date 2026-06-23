@@ -453,6 +453,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
   const [sceneSpeechStartedAt, setSceneSpeechStartedAt] = useState(0);
+  const [sceneSpeechBeatIndex, setSceneSpeechBeatIndex] = useState(-1);
   const [speechPlacement, setSpeechPlacement] = useState<TextAnchor>("lower_center");
   const [selfNarrationPlacement, setSelfNarrationPlacement] = useState<TextAnchor>("upper_right");
   const dashboardRef = useRef<HTMLElement | null>(null);
@@ -479,8 +480,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   }, [orbState]);
 
   useEffect(() => {
+    if (stageLayout !== "scene_focus") setSceneSpeechBeatIndex(-1);
+  }, [stageLayout]);
+
+  useEffect(() => {
     if (!speechLine) return;
     if (stageLayout === "scene_focus") return undefined;
+    setSceneSpeechBeatIndex(-1);
     const clearTimer = window.setTimeout(() => setSpeechLine(""), 5600);
     return () => window.clearTimeout(clearTimer);
   }, [speechLine, stageLayout]);
@@ -494,7 +500,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   useEffect(() => {
     if (stageLayout !== "scene_focus") return undefined;
     const beats = sceneNarrationBeats(sceneChoreography);
-    if (!beats.length || !sceneSpeechStartedAt) return undefined;
+    if (!beats.length || !sceneSpeechStartedAt) {
+      setSceneSpeechBeatIndex(-1);
+      return undefined;
+    }
     let activeIndex = -1;
     const update = () => {
       const elapsedSeconds = Math.max(0, (performance.now() - sceneSpeechStartedAt) / 1000);
@@ -504,6 +513,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       });
       if (nextIndex !== activeIndex) {
         activeIndex = nextIndex;
+        setSceneSpeechBeatIndex(nextIndex);
         setSpeechLine(beats[nextIndex].text);
       }
     };
@@ -796,6 +806,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setStageLayout("conversation");
       setSceneChoreography(null);
       setSceneSpeechStartedAt(0);
+      setSceneSpeechBeatIndex(-1);
       setSpeechLine(cleanSafeStatusLine(language));
       setVoiceNotice(cleanVoiceFailedLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);
@@ -810,6 +821,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
       data-stage-layout={stageLayout}
+      data-scene-speech-beat={sceneSpeechBeatIndex >= 0 ? String(sceneSpeechBeatIndex) : "none"}
       data-speech-placement={speechPlacement}
       data-self-narration-placement={selfNarrationPlacement}
       data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}

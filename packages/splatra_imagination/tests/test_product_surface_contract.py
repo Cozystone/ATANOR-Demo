@@ -21,6 +21,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "scenePlan={sceneChoreography}" in status_card
     assert "sceneNarrationBeats" in status_card
     assert "firstSceneNarration" in status_card
+    assert "sceneSpeechBeatIndex" in status_card
+    assert "setSceneSpeechBeatIndex(nextIndex)" in status_card
+    assert "data-scene-speech-beat" in status_card
     assert "splatraStateForInnerVoice" in status_card
     assert '"/api/inner-voice/generate-frame"' in status_card
     assert '"/api/inner-voice/emit"' not in status_card
