@@ -25,6 +25,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneSpeechBeatIndex" in status_card
     assert "setSceneSpeechBeatIndex(nextSpeechBeat.beatIndex)" in status_card
     assert "data-scene-speech-beat" in status_card
+    assert "activeSpeechBeatIndex={sceneSpeechBeatIndex}" in status_card
     assert "speech_cue: bool = True" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "scene_group_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
@@ -52,6 +53,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "narration?: string" in field
     assert "sceneArchetype" in field
     assert "activeSceneBeatIndex" in field
+    assert "activeSpeechBeatIndex?: number" in field
+    assert "const syncedBeatIndex = activeSpeechBeatIndex" in field
+    assert "data-active-speech-beat" in field
     assert "sceneTransform" in field
     assert "sceneCameraView" in field
     assert "type SceneCameraView" in field

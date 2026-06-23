@@ -850,6 +850,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         controlOverride={emotionControls ?? undefined}
         sceneFocus={stageLayout === "scene_focus"}
         scenePlan={sceneChoreography}
+        activeSpeechBeatIndex={sceneSpeechBeatIndex}
         className="atanor-dashboard-imagination-field"
       />
       <div className="atanor-hologram-stage">

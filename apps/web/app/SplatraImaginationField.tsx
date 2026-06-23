@@ -104,6 +104,7 @@ type Props = {
   interactive?: boolean;
   sceneFocus?: boolean;
   scenePlan?: ScenePlan | null;
+  activeSpeechBeatIndex?: number;
   controlOverride?: Partial<{
     valence: number;
     arousal: number;
@@ -1202,6 +1203,7 @@ export default function SplatraImaginationField({
   onCancel,
   sceneFocus = false,
   scenePlan = null,
+  activeSpeechBeatIndex = -1,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [archetype, setArchetype] = useState<Archetype>(() => (mode === "product" ? "constellation" : "orb"));
@@ -1227,9 +1229,10 @@ export default function SplatraImaginationField({
   const activeArchetype = frame?.object?.archetype ?? archetype;
   const stageMode = sceneFocus || scenePlan?.stage_layout === "scene_focus";
   const centralSceneScale = scenePlanCentralScale(scenePlan);
-  const activeSceneBeat = activeSceneBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[activeSceneBeatIndex] : null;
+  const syncedBeatIndex = activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : activeSceneBeatIndex;
+  const activeSceneBeat = syncedBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[syncedBeatIndex] : null;
   const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
-  const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, activeSceneBeatIndex)) : null;
+  const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : null;
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1384,7 +1387,7 @@ export default function SplatraImaginationField({
   const canvas = <canvas ref={canvasRef} />;
 
   return (
-    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length}>
+    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length} data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"}>
       {interactive ? (
         <button
           type="button"
