@@ -17,6 +17,8 @@ INVARIANTS: dict[str, bool] = {
     "candidate_promotion": False,
     "construction_auto_promoted": False,
     "production_construction_activation": False,
+    "signed_manifest_required": True,
+    "rollback_required": True,
     "raw_hidden_cot_claim": False,
     "hand_authored_construction_used_disclosed": True,
     "semantic_grounding_metadata_present": True,

@@ -5,6 +5,7 @@ import SplatraImaginationField from "./SplatraImaginationField";
 import NeuralEmotionPanel from "./NeuralEmotionPanel";
 import InnerVoicePanel from "./InnerVoicePanel";
 import ConstructionBankPanel from "./ConstructionBankPanel";
+import ConstructionPromotionPanel from "./ConstructionPromotionPanel";
 
 type Language = "en" | "ko";
 type AnyRecord = Record<string, any>;
@@ -859,6 +860,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
         </article>
 
         <ConstructionBankPanel />
+        <ConstructionPromotionPanel />
 
         <article className="agentic-os-card">
           <h3>{t.safety}</h3>
