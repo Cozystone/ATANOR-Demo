@@ -593,6 +593,7 @@ def _live_selfhood_payload(
             },
             "scene_choreography": None,
             "visual_scene_plan": None,
+            "splatra_scene_plan": None,
             "answer_engine": engine,
             **{**_flags(), "final_answer_generation_claimed": False},
         }
@@ -624,6 +625,7 @@ def _live_selfhood_payload(
         },
         "scene_choreography": visual_plan.scene_choreography,
         "visual_scene_plan": visual_plan.scene_choreography,
+        "splatra_scene_plan": visual_plan.scene_choreography,
         "answer_engine": engine,
         **_flags(),
     }

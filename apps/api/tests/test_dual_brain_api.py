@@ -478,6 +478,59 @@ def test_dashboard_conversation_can_return_splatra_scene_choreography_without_te
     assert payload["local_brain_write"] is False
 
 
+def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_store(tmp_path, monkeypatch) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": "아이작 뉴턴은 중력 법칙과 관련해 사과가 나무에서 떨어지는 장면을 관찰했다. 그 사건은 물체가 지구 쪽으로 끌리는 현상을 설명하는 단서가 되었다.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "뉴턴과 중력"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ATANOR_VERIFIED_STORE_PATH", str(tmp_path))
+
+    async def fail_query_graphrag(*args, **kwargs):  # pragma: no cover - should never be called
+        raise AssertionError("dashboard conversation mode must not enter graph retrieval")
+
+    monkeypatch.setattr(dual_brain.alpha_service, "query_graphrag", fail_query_graphrag)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat/atanor",
+        json={
+            "question": "중력의 법칙에 대해 설명해줘",
+            "language": "ko",
+            "brain_mode": "conversation",
+            "mode": "conversation",
+            "include_trace": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    scene = payload["splatra_scene_plan"]
+    assert payload["route_type"] == "general_knowledge_question"
+    assert payload["compact_trace"]["semantic_grounding"]["grounding_source"] == "verified_store_v0_readonly"
+    assert payload["answer"]
+    assert "아이작 뉴턴" in payload["answer"]
+    assert scene == payload["scene_choreography"] == payload["visual_scene_plan"]
+    assert scene["stage_layout"] == "scene_focus"
+    assert scene["orb_anchor"] == "lower_right"
+    assert scene["layout_intent"] == "wide_particle_stage"
+    assert scene["topic_scene_templates"] is False
+    assert scene["scene_extent"]["motion_count"] >= 1
+    assert any("사과" in beat["narration"] for beat in scene["beats"])
+    assert any(beat.get("motion_path") for beat in scene["beats"])
+    assert payload["answer_engine"]["external_llm"] is False
+    assert payload["answer_engine"]["external_sllm"] is False
+    assert payload["answer_engine"]["rule_based_answer_used"] is False
+    assert payload["local_brain_write"] is False
+
+
 def test_live_selfhood_self_model_generates_without_scratchpad_or_rule_answer(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
