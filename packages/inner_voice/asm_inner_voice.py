@@ -70,6 +70,7 @@ def score_inner_voice_acts(input_data: Any) -> dict[str, float]:
     if _is_greeting(latest_user_input):
         scores["greeting_response_planning"] += 0.78
     if latest_user_input and not _is_greeting(latest_user_input):
+        scores["greeting_response_planning"] -= 0.12
         scores["goal_selection"] += 0.22
         scores["action_selection"] += 0.12
     if review_pressure >= 0.55 or review.get("should_request_review"):

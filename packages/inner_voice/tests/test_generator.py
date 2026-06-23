@@ -67,3 +67,12 @@ def test_korean_greeting_avoids_old_log_like_phrase() -> None:
     assert "chain-of-thought" not in frame.monologue_text.lower()
     assert frame.act_scores
     assert frame.construction_stance == "warm_minimal"
+
+
+def test_non_greeting_korean_question_does_not_tie_break_to_greeting() -> None:
+    frame = generate_inner_voice_frame(
+        InnerVoiceInput(source_event_id="gravity-question", latest_user_input="중력의 법칙에 대해 설명해줘")
+    )
+
+    assert frame.act != "greeting_response_planning"
+    assert "인사는" not in frame.monologue_text
