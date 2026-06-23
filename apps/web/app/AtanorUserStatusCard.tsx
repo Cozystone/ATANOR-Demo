@@ -44,6 +44,17 @@ type SceneChoreographyPayload = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
   text_anchor?: TextAnchor;
+  layout_intent?: "conversation" | "balanced_scene" | "wide_particle_stage";
+  scene_extent?: {
+    beat_count?: number;
+    motion_count?: number;
+    spread_x?: number;
+    spread_y?: number;
+    min_x?: number;
+    max_x?: number;
+    min_y?: number;
+    max_y?: number;
+  };
   primary_surface?: string;
   beats?: Array<{
     op?: SceneBeatOp;
@@ -56,6 +67,13 @@ type SceneChoreographyPayload = {
     t_start?: number;
     duration?: number;
     position?: number[];
+    motion_path?: {
+      from?: number[];
+      to?: number[];
+      basis?: string;
+      source_prompt?: string;
+      target_prompt?: string;
+    };
     camera?: Record<string, any>;
   }>;
 } | null;
@@ -161,6 +179,18 @@ function requestedTextAnchor(scenePlan: SceneChoreographyPayload): TextAnchor {
   return "auto";
 }
 
+function requestedLayoutIntent(scenePlan: SceneChoreographyPayload) {
+  const value = scenePlan?.layout_intent;
+  if (value === "wide_particle_stage" || value === "balanced_scene") return value;
+  const extent = scenePlan?.scene_extent ?? {};
+  const beatCount = Number(extent.beat_count ?? 0);
+  const motionCount = Number(extent.motion_count ?? 0);
+  const spreadX = Number(extent.spread_x ?? 0);
+  const spreadY = Number(extent.spread_y ?? 0);
+  if (beatCount >= 4 || motionCount >= 1 || spreadX >= 0.72 || spreadY >= 0.52) return "wide_particle_stage";
+  return "balanced_scene";
+}
+
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   return beats
@@ -258,6 +288,37 @@ function candidateSpeechRect(anchor: TextAnchor, speechSize: RectLike, dashboard
   };
 }
 
+function scenePointToDashboardRect(point: number[], dashboard: RectLike, size = 138): RectLike | null {
+  if (!Array.isArray(point) || point.length < 2) return null;
+  const rawX = Number(point[0]);
+  const rawY = Number(point[1]);
+  if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) return null;
+  const x = dashboard.left + dashboard.width * (0.5 + clampNumber(rawX / 2.4, -0.42, 0.42));
+  const y = dashboard.top + dashboard.height * (0.5 - clampNumber(rawY / 2.0, -0.38, 0.38));
+  return {
+    bottom: y + size / 2,
+    height: size,
+    left: x - size / 2,
+    right: x + size / 2,
+    top: y - size / 2,
+    width: size,
+  };
+}
+
+function scenePlanBlockers(scenePlan: SceneChoreographyPayload, dashboard: RectLike): RectLike[] {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  return beats
+    .flatMap((beat) => {
+      const points: number[][] = [];
+      if (Array.isArray(beat.position)) points.push(beat.position);
+      if (Array.isArray(beat.motion_path?.from)) points.push(beat.motion_path.from);
+      if (Array.isArray(beat.motion_path?.to)) points.push(beat.motion_path.to);
+      const size = beat.op === "move" || beat.motion_path ? 168 : 124;
+      return points.map((point) => scenePointToDashboardRect(point, dashboard, size));
+    })
+    .filter((rect): rect is RectLike => Boolean(rect));
+}
+
 function scoreSpeechAnchor(
   anchor: TextAnchor,
   speechSize: RectLike,
@@ -274,15 +335,7 @@ function scoreSpeechAnchor(
     + Math.max(0, 12 - rect.top)
     + Math.max(0, rect.bottom - (viewportHeight - 12));
   const blockerPenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 18), 0);
-  const sceneCenter = {
-    bottom: dashboard.top + dashboard.height * 0.75,
-    height: dashboard.height * 0.5,
-    left: dashboard.left + dashboard.width * 0.26,
-    right: dashboard.left + dashboard.width * 0.74,
-    top: dashboard.top + dashboard.height * 0.25,
-    width: dashboard.width * 0.48,
-  };
-  const stagePenalty = overlapArea(rect, sceneCenter, 0) * 0.08;
+  const stagePenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 0) * 0.08, 0);
   const preferencePenalty = anchor === preferred ? 0 : anchor === "lower_left" ? 42 : 84;
   return offscreen * 1000 + blockerPenalty * 6 + stagePenalty + preferencePenalty;
 }
@@ -382,6 +435,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       ]
         .filter((rect): rect is DOMRect => Boolean(rect))
         .map(rectFromDom);
+      blockers.push(...scenePlanBlockers(sceneChoreography, dashboardBox));
       const candidates: TextAnchor[] = ["lower_left", "upper_left", "upper_right", "lower_center"];
       const next = candidates
         .map((anchor) => ({
@@ -624,6 +678,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-speaking={speakingVisual ? "true" : "false"}
       data-stage-layout={stageLayout}
       data-speech-placement={speechPlacement}
+      data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}
     >
       <SplatraImaginationField
         state={orbState}

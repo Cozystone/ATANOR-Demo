@@ -457,6 +457,38 @@ def _text_anchor_for_beats(beats: list[dict[str, Any]]) -> str:
     return min(candidates, key=lambda anchor: score(anchor, candidates[anchor]))
 
 
+def _scene_layout_intent_for_beats(beats: list[dict[str, Any]]) -> str:
+    """Infer the dashboard layout from scene geometry, not from topic labels."""
+
+    if not beats:
+        return "balanced_scene"
+    points: list[tuple[float, float]] = []
+    motion_count = 0
+    for index, beat in enumerate(beats):
+        raw_position = beat.get("position")
+        if isinstance(raw_position, list) and len(raw_position) >= 2:
+            points.append((float(raw_position[0] or 0.0), float(raw_position[1] or 0.0)))
+        else:
+            x, y = _position_for_phrase(str(beat.get("prompt") or ""), index)[:2]
+            points.append((x, y))
+        motion_path = beat.get("motion_path")
+        if isinstance(motion_path, dict):
+            motion_count += 1
+            for key in ("from", "to"):
+                raw_path_point = motion_path.get(key)
+                if isinstance(raw_path_point, list) and len(raw_path_point) >= 2:
+                    points.append((float(raw_path_point[0] or 0.0), float(raw_path_point[1] or 0.0)))
+    if not points:
+        return "balanced_scene"
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    spread_x = max(xs) - min(xs)
+    spread_y = max(ys) - min(ys)
+    if len(beats) >= 4 or motion_count >= 1 or spread_x >= 0.72 or spread_y >= 0.52:
+        return "wide_particle_stage"
+    return "balanced_scene"
+
+
 def plan_visual_imagination(
     question: str,
     *,
@@ -532,6 +564,7 @@ def plan_visual_imagination(
             "stage_layout": "scene_focus",
             "orb_anchor": "lower_right",
             "text_anchor": _text_anchor_for_beats(beats),
+            "layout_intent": _scene_layout_intent_for_beats(beats),
             "primary_surface": "splatra_stage",
             "beats": beats,
         }

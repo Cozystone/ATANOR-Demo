@@ -45,6 +45,8 @@ def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["orb_anchor"] == "lower_right"
     assert plan.scene_choreography["text_anchor"] in TEXT_ANCHORS
+    assert plan.scene_choreography["layout_intent"] in {"balanced_scene", "wide_particle_stage"}
+    assert plan.scene_choreography["scene_extent"]["beat_count"] == len(plan.scene_choreography["beats"])
     assert plan.diagnostics["topic_scene_templates"] is False
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.scene_choreography["beats"]
@@ -81,6 +83,7 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["text_anchor"] in TEXT_ANCHORS
+    assert plan.scene_choreography["layout_intent"] in {"balanced_scene", "wide_particle_stage"}
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
 
@@ -185,6 +188,8 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert all(beat["motion_path"]["basis"] == "verified_motion_phrase" for beat in motion_beats)
     assert any(beat["motion_path"].get("source_prompt") for beat in motion_beats)
     assert any(beat["motion_path"].get("target_prompt") for beat in motion_beats)
+    assert plan.scene_choreography["layout_intent"] == "wide_particle_stage"
+    assert plan.scene_choreography["scene_extent"]["motion_count"] >= 1
     assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
