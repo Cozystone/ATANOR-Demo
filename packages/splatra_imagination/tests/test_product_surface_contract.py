@@ -122,6 +122,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "central_scale" in field
     assert "drawSceneFocusParticles" in field
     assert "data-scene-objects" in field
+    assert "data-active-scene-object" in field
+    assert "data-active-scene-role" in field
+    assert "data-active-scene-behavior" in field
+    assert "data-active-scene-focus-basis" in field
+    assert "speech_timeline" in field
+    assert "scene_timer" in field
+    assert "ambient_field" in field
     assert "data-active-scene-group" in field
     assert "data-active-scene-group-size" in field
     assert "data-scene-beat" in field

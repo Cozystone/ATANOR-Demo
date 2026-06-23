@@ -1522,6 +1522,9 @@ export default function SplatraImaginationField({
   const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : null;
   const activeSceneGroupId = activeSceneBeat?.scene_group_id ?? "";
   const activeSceneGroupSize = activeSceneGroupId ? sceneObjects.filter((object) => sameSceneGroup(object.beat, activeSceneBeat)).length : 0;
+  const activeSceneFocusBasis = activeSpeechBeatIndex >= 0 ? "speech_timeline" : activeSceneBeat ? "scene_timer" : "ambient_field";
+  const activeSceneRole = activeSceneBeat?.semantic_role ?? "none";
+  const activeSceneBehavior = activeSceneBeat?.particle_behavior ?? "none";
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1676,7 +1679,19 @@ export default function SplatraImaginationField({
   const canvas = <canvas ref={canvasRef} />;
 
   return (
-    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length} data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"} data-active-scene-group={activeSceneGroupId || "none"} data-active-scene-group-size={activeSceneGroupSize}>
+    <section
+      className={`splatra-imagination-field ${className ?? ""}`}
+      data-mode={mode}
+      data-state={state}
+      data-scene-objects={sceneObjects.length}
+      data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"}
+      data-active-scene-object={activeSceneObjectId || "none"}
+      data-active-scene-role={activeSceneRole}
+      data-active-scene-behavior={activeSceneBehavior}
+      data-active-scene-focus-basis={activeSceneFocusBasis}
+      data-active-scene-group={activeSceneGroupId || "none"}
+      data-active-scene-group-size={activeSceneGroupSize}
+    >
       {interactive ? (
         <button
           type="button"
