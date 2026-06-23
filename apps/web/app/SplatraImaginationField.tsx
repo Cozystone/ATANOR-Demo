@@ -286,29 +286,29 @@ function drawParticleSegment(
   const dx = to[0] - from[0];
   const dy = to[1] - from[1];
   const distance = Math.hypot(dx, dy);
-  const steps = Math.max(5, Math.ceil(distance / Math.max(11, unit * 0.028)));
+  const steps = Math.max(4, Math.ceil(distance / Math.max(17, unit * 0.042)));
   const normalX = distance > 0 ? -dy / distance : 0;
   const normalY = distance > 0 ? dx / distance : 0;
   const tangentX = distance > 0 ? dx / distance : 1;
   const tangentY = distance > 0 ? dy / distance : 0;
-  const streamCount = 2;
+  const streamCount = 3;
   for (let lane = 0; lane < streamCount; lane += 1) {
     for (let index = 0; index <= steps; index += 1) {
       const rawT = index / steps;
       const t = (rawT + elapsed * (0.018 + lane * 0.011) + seeded(index, salt + lane * 101) * 0.055) % 1;
-      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.32) continue;
+      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.48) continue;
       const phase = t * Math.PI * 6 + salt * 0.037 + elapsed * (1.15 + lane * 0.21);
-      const laneOffset = (lane - 0.5) * unit * 0.014;
-      const curl = Math.sin(phase) * unit * (0.012 + seeded(index, salt + 5) * 0.01);
-      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.006;
+      const laneOffset = (lane - 1) * unit * 0.018;
+      const curl = Math.sin(phase) * unit * (0.015 + seeded(index, salt + 5) * 0.015);
+      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.01;
       const pulse = 0.46 + 0.54 * Math.sin(t * Math.PI);
       drawGuideParticle(
         ctx,
         from[0] + dx * t + normalX * (laneOffset + curl) + tangentX * shear,
         from[1] + dy * t + normalY * (laneOffset + curl) + tangentY * shear,
-        unit * (0.0012 + seeded(index, salt + lane * 53 + 7) * 0.0017) * (0.78 + pulse * 0.34),
+        unit * (0.001 + seeded(index, salt + lane * 53 + 7) * 0.0016) * (0.72 + pulse * 0.3),
         color,
-        alpha * (0.1 + pulse * 0.32) * (lane === 0 ? 1 : 0.72),
+        alpha * (0.07 + pulse * 0.22) * (lane === 1 ? 1 : 0.64),
       );
     }
   }
@@ -373,6 +373,55 @@ function drawParticleRect(
   elapsed = 0,
 ) {
   drawParticlePolyline(ctx, [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]], color, alpha, unit, salt, elapsed);
+}
+
+function drawAmbientAirbendField(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  elapsed: number,
+  controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
+) {
+  const unit = Math.min(width, height);
+  const cx = width / 2;
+  const cy = height / 2;
+  const count = Math.round(clamp((width * height) / 6200, 120, 360));
+  const attraction = controls.resting ? 0.1 : 0.18 + controls.curiosity * 0.18 + controls.speaking_energy * 0.2;
+  const fieldBreath = (Math.sin(elapsed * 0.22) + 1) * 0.5;
+
+  for (let index = 0; index < count; index += 1) {
+    const baseX = seeded(index, 7101) * width;
+    const baseY = seeded(index, 7102) * height;
+    const orbitAngle = elapsed * (0.035 + seeded(index, 7103) * 0.045) + seeded(index, 7104) * Math.PI * 2;
+    const orbitRadiusX = width * (0.14 + seeded(index, 7105) * 0.42);
+    const orbitRadiusY = height * (0.1 + seeded(index, 7106) * 0.28);
+    const targetX = cx + Math.cos(orbitAngle) * orbitRadiusX;
+    const targetY = cy + Math.sin(orbitAngle * 1.27) * orbitRadiusY;
+    let x = baseX * (1 - attraction) + targetX * attraction;
+    let y = baseY * (1 - attraction) + targetY * attraction;
+
+    const centerDistance = Math.hypot(x - cx, y - cy);
+    const bodyClearRadius = unit * 0.25;
+    if (centerDistance < bodyClearRadius) {
+      const push = (bodyClearRadius - centerDistance) / Math.max(1, bodyClearRadius);
+      const angle = Math.atan2(y - cy, x - cx) || orbitAngle;
+      x += Math.cos(angle) * push * unit * 0.22;
+      y += Math.sin(angle) * push * unit * 0.22;
+    }
+
+    const fieldAngle = flowFieldAngle(x, y, elapsed, index * 0.37);
+    const hueShift = Math.sin(elapsed * 0.18 + index * 0.11);
+    const color: [number, number, number] = hueShift > 0.28
+      ? [255, 104, 177]
+      : hueShift < -0.34
+        ? [138, 117, 255]
+        : [76, 230, 255];
+    const size = unit * (0.00075 + seeded(index, 7110) * 0.0012);
+    const length = unit * (0.006 + controls.curiosity * 0.008 + fieldBreath * 0.004 + controls.speaking_energy * 0.008);
+    const alpha = (controls.resting ? 0.026 : 0.038 + controls.arousal * 0.016 + controls.speaking_energy * 0.025)
+      * (0.48 + seeded(index, 7111) * 0.82);
+    drawParticleStroke(ctx, x, y, fieldAngle, length, size, color, alpha);
+  }
 }
 
 function sceneBeatIndex(scenePlan: ScenePlan | null | undefined, elapsedSeconds: number): number {
@@ -1035,6 +1084,7 @@ function drawParticles(
 
   if (ambient) {
     ctx.globalCompositeOperation = "lighter";
+    drawAmbientAirbendField(ctx, width, height, elapsed, controls);
   }
 
   for (const point of particles) {
@@ -1618,7 +1668,7 @@ export default function SplatraImaginationField({
           {canvas}
         </div>
       )}
-      {mode === "product" ? (
+      {mode === "lab" ? (
         <span className="splatra-imagination-product-label" data-scene-beat={activeSceneBeat?.op ?? "ambient"} aria-hidden="true">
           imagination / {ARCHETYPE_LABELS[activeArchetype]}
         </span>

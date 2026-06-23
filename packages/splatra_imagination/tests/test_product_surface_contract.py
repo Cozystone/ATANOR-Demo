@@ -47,6 +47,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "requestedLayoutBasis" in status_card
     assert "DashboardLayoutMetrics" in status_card
     assert "dashboardLayoutMetrics" in status_card
+    assert "textLayoutSegments" in status_card
     assert "estimateDomTextLayout" in status_card
     assert "estimatedTextRectFromDom" in status_card
     assert "dom_text_canvas_metrics_no_particle_text" in status_card
@@ -91,6 +92,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneActiveGroupObjects" in field
     assert "drawSceneGroupRelationField" in field
     assert "drawSceneMotionParticipantFlow" in field
+    assert "drawAmbientAirbendField" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
     assert "motion_path" in field
@@ -106,13 +108,14 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-active-scene-group" in field
     assert "data-active-scene-group-size" in field
     assert "data-scene-beat" in field
+    assert 'mode === "lab" ? (' in field
     assert "splatra-imagination-product-label" in field
     assert "imagination /" in field
     assert "imagination ·" not in field
     assert "flowFieldAngle" in field
     assert "drawParticleStroke" in field
     assert "drawParticleSegment" in field
-    assert "streamCount = 2" in field
+    assert "streamCount = 3" in field
     assert "laneOffset" in field
     assert "curl" in field
     assert "drawParticleEllipse" in field

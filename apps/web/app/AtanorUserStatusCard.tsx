@@ -367,9 +367,20 @@ function graphemeSegments(text: string) {
   return Array.from(cleaned);
 }
 
+function textLayoutSegments(text: string) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return [];
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+    const words = Array.from(segmenter.segment(cleaned), (segment) => segment.segment);
+    if (words.length > 1) return words;
+  }
+  return graphemeSegments(cleaned);
+}
+
 function estimateDomTextLayout(element: HTMLElement, text: string, maxWidth: number): TextLayoutEstimate {
   const fallbackWidth = clampNumber(maxWidth, 180, 620);
-  const segments = graphemeSegments(text);
+  const segments = textLayoutSegments(text);
   if (!segments.length) {
     const current = element.getBoundingClientRect();
     return {
@@ -399,7 +410,22 @@ function estimateDomTextLayout(element: HTMLElement, text: string, maxWidth: num
     const nextWidth = measure(next);
     if (line && nextWidth > maxLineWidth) {
       widest = Math.max(widest, measure(line));
-      line = segment.trimStart();
+      if (measure(segment) > maxLineWidth) {
+        const split = graphemeSegments(segment);
+        line = "";
+        for (const piece of split) {
+          const pieceNext = line + piece;
+          if (line && measure(pieceNext) > maxLineWidth) {
+            widest = Math.max(widest, measure(line));
+            line = piece;
+            lineCount += 1;
+          } else {
+            line = pieceNext;
+          }
+        }
+      } else {
+        line = segment.trimStart();
+      }
       lineCount += 1;
     } else {
       line = next;
@@ -981,7 +1007,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       <SplatraImaginationField
         state={orbState}
         mode="product"
-        particleBudget={960}
+        particleBudget={1280}
         interactive={false}
         controlOverride={emotionControls ?? undefined}
         sceneFocus={stageLayout === "scene_focus"}
