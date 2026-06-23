@@ -47,6 +47,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "requestedLayoutBasis" in status_card
     assert "DashboardLayoutMetrics" in status_card
     assert "dashboardLayoutMetrics" in status_card
+    assert "estimateDomTextLayout" in status_card
+    assert "estimatedTextRectFromDom" in status_card
+    assert "dom_text_canvas_metrics_no_particle_text" in status_card
     assert "speechUpperLeftTopVh" in status_card
     assert "selfNarrationMaxVw" in status_card
     assert "client_scene_geometry_fallback" in status_card

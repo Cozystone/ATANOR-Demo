@@ -38,6 +38,12 @@ type RectLike = {
   width: number;
 };
 
+type TextLayoutEstimate = {
+  height: number;
+  lineCount: number;
+  width: number;
+};
+
 type DashboardLayoutMetrics = {
   speechMaxVw: number;
   speechRightVw: number;
@@ -343,6 +349,83 @@ function cssClampPx(min: number, preferred: number, max: number) {
   return clampNumber(preferred, min, max);
 }
 
+let textLayoutMeasureCanvas: HTMLCanvasElement | null = null;
+
+function textLayoutContext() {
+  if (typeof document === "undefined") return null;
+  textLayoutMeasureCanvas ??= document.createElement("canvas");
+  return textLayoutMeasureCanvas.getContext("2d");
+}
+
+function graphemeSegments(text: string) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return [];
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    return Array.from(segmenter.segment(cleaned), (segment) => segment.segment);
+  }
+  return Array.from(cleaned);
+}
+
+function estimateDomTextLayout(element: HTMLElement, text: string, maxWidth: number): TextLayoutEstimate {
+  const fallbackWidth = clampNumber(maxWidth, 180, 620);
+  const segments = graphemeSegments(text);
+  if (!segments.length) {
+    const current = element.getBoundingClientRect();
+    return {
+      height: Math.max(24, current.height || 24),
+      lineCount: 1,
+      width: Math.max(120, Math.min(fallbackWidth, current.width || fallbackWidth * 0.68)),
+    };
+  }
+  const context = textLayoutContext();
+  const style = window.getComputedStyle(element);
+  const fontSize = Number.parseFloat(style.fontSize || "16") || 16;
+  const lineHeightRaw = Number.parseFloat(style.lineHeight || "");
+  const lineHeight = Number.isFinite(lineHeightRaw) ? lineHeightRaw : fontSize * 1.5;
+  const font = `${style.fontWeight || "650"} ${style.fontSize || "16px"} ${style.fontFamily || "Helvetica, Arial, sans-serif"}`;
+  const measure = (value: string) => {
+    if (!context) return value.length * fontSize * 0.56;
+    context.font = font;
+    return context.measureText(value).width;
+  };
+
+  const maxLineWidth = clampNumber(maxWidth, 180, Math.max(180, window.innerWidth - 48));
+  let line = "";
+  let lineCount = 1;
+  let widest = 0;
+  for (const segment of segments) {
+    const next = line + segment;
+    const nextWidth = measure(next);
+    if (line && nextWidth > maxLineWidth) {
+      widest = Math.max(widest, measure(line));
+      line = segment.trimStart();
+      lineCount += 1;
+    } else {
+      line = next;
+    }
+  }
+  widest = Math.max(widest, measure(line));
+
+  return {
+    height: Math.ceil(lineCount * lineHeight),
+    lineCount,
+    width: Math.ceil(clampNumber(widest, 120, maxLineWidth)),
+  };
+}
+
+function estimatedTextRectFromDom(element: HTMLElement, text: string, maxWidth: number): RectLike {
+  const current = rectFromDom(element.getBoundingClientRect());
+  const estimate = estimateDomTextLayout(element, text, maxWidth);
+  return {
+    ...current,
+    bottom: current.top + estimate.height,
+    height: estimate.height,
+    right: current.left + estimate.width,
+    width: estimate.width,
+  };
+}
+
 function finiteNumber(value: unknown, fallback: number) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -619,7 +702,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       let nextSpeechRect: RectLike | null = null;
 
       if (speech) {
-        const speechBox = rectFromDom(speech.getBoundingClientRect());
+        const speechMaxWidth = Math.min(540, window.innerWidth * (layoutMetrics.speechMaxVw / 100));
+        const speechBox = estimatedTextRectFromDom(speech, typedSpeechLine || speechLine, speechMaxWidth);
         const speechBlockers = selfNarrationElement
           ? [...blockers, rectFromDom(selfNarrationElement.getBoundingClientRect())]
           : blockers;
@@ -634,7 +718,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
 
       if (selfNarrationElement) {
-        const selfBox = rectFromDom(selfNarrationElement.getBoundingClientRect());
+        const selfMaxWidth = Math.min(360, window.innerWidth * (layoutMetrics.selfNarrationMaxVw / 100));
+        const selfBox = estimatedTextRectFromDom(selfNarrationElement, typedSelfNarration || selfNarration, selfMaxWidth);
         const selfCandidates: TextAnchor[] = ["upper_right", "upper_left", "lower_left"];
         const selfBlockers = nextSpeechRect ? [...blockers, nextSpeechRect] : blockers;
         const nextSelf = selfCandidates
@@ -890,6 +975,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}
       data-layout-basis={requestedLayoutBasis(sceneChoreography, stageLayout)}
       data-layout-decision={requestedLayoutDecision(sceneChoreography, stageLayout)}
+      data-text-layout-basis="dom_text_canvas_metrics_no_particle_text"
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
       <SplatraImaginationField
