@@ -72,6 +72,19 @@ function isAsmConversationPayload(payload: Record<string, any>) {
   );
 }
 
+function emitNeuralEmotionEvent(eventType: string, payloadSummary: string) {
+  fetch("/api/neural-emotion/events/emit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "voice_loop",
+      event_type: eventType,
+      intensity: 0.45,
+      payload_summary: payloadSummary,
+    }),
+  }).catch(() => undefined);
+}
+
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
@@ -163,15 +176,18 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       audio.onplaying = () => {
         setAudioPlaying(true);
         setOrbState("speaking");
+        emitNeuralEmotionEvent("speaking_start", "audio playback started");
       };
       audio.onended = () => {
         setAudioPlaying(false);
         setOrbState(voiceMode ? "listening" : "resting");
+        emitNeuralEmotionEvent("speaking_end", "audio playback ended");
       };
       audio.onerror = () => {
         setAudioPlaying(false);
         setVoiceNotice(voiceFailedLine(language));
         setOrbState(voiceMode ? "listening" : "resting");
+        emitNeuralEmotionEvent("voice_unavailable", "audio playback error");
       };
       audioRef.current = audio;
       await audio.play();
@@ -179,6 +195,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setAudioPlaying(false);
       setVoiceNotice(voiceFailedLine(language));
       setOrbState(voiceMode ? "listening" : "resting");
+      emitNeuralEmotionEvent("voice_unavailable", "audio playback unavailable");
     }
   }
 
@@ -217,11 +234,15 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         throw new Error("conversation surface unavailable");
       }
       setOrbState("speaking");
+      emitNeuralEmotionEvent("speaking_start", "text conversation visible speech");
       setSpeechLine(firstSpeechBeat(answer));
       setMessage("");
       await playVoiceOutput(payload?.result?.voice_output);
       if (!payload?.result?.voice_output?.audio_available) {
-        window.setTimeout(() => setOrbState("listening"), 2900);
+        window.setTimeout(() => {
+          setOrbState("listening");
+          emitNeuralEmotionEvent("speaking_end", "text fallback speech ended");
+        }, 2900);
       }
     } catch {
       setOrbState("blocked");

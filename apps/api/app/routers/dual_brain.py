@@ -17,6 +17,7 @@ from packages.surface_brain.models import SourceSentence, honesty_flags
 from packages.surface_brain.realization_planner import plan_speech, realize_answer
 from packages.cloud_brain.graph_exchange import run_local_cloud_exchange
 from packages.cloud_brain.semantic_store import SemanticCloudStore
+from packages.neural_emotion.event_bus import emit_runtime_event, infer_user_text_runtime_event
 
 
 router = APIRouter(tags=["dual-brain"])
@@ -832,6 +833,29 @@ def _graph_count_payload(request: AtanorChatRequest, question: str, language: st
     return {"state": "completed", "result": payload, **_flags()}
 
 
+def _emit_conversation_result_events(response: dict[str, Any]) -> None:
+    result = response.get("result") if isinstance(response, dict) else {}
+    if not isinstance(result, dict):
+        return
+    state = str(response.get("state") or "")
+    answer_kind = str(result.get("answer_kind") or "")
+    has_answer = bool(str(result.get("answer") or "").strip())
+    emit_runtime_event(
+        source="asm_v0",
+        event_type="conversation_success" if has_answer and state != "abstained" else "repeated_failure",
+        payload_summary=f"state={state}; answer_kind={answer_kind}; has_answer={has_answer}",
+        intensity=0.55 if has_answer else 0.75,
+    )
+    voice_output = result.get("voice_output")
+    if isinstance(voice_output, dict):
+        emit_runtime_event(
+            source="voice_loop",
+            event_type="voice_available" if voice_output.get("audio_available") else "voice_unavailable",
+            payload_summary=f"audio_available={voice_output.get('audio_available')}; fallback={voice_output.get('text_fallback')}",
+            intensity=0.45,
+        )
+
+
 @router.post("/api/dual-brain/ingest")
 def dual_brain_ingest(request: DualBrainIngestRequest) -> dict[str, Any]:
     source = SourceSentence.from_text(
@@ -1229,23 +1253,35 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     if not question:
         raise HTTPException(status_code=422, detail="question, query, or message is required")
     language = request.language or ("ko" if any("\uac00" <= char <= "\ud7a3" for char in question) else "en")
+    emit_runtime_event(
+        source="asm_v0",
+        event_type=infer_user_text_runtime_event(question),
+        payload_summary=f"input_language={language}; mode={request.mode}",
+        intensity=0.6,
+    )
     three_core_trace = _run_three_core_compact_trace(question)
     if request.mode in {"conversation", "live_selfhood", "dashboard_conversation"} or _is_live_selfhood_conversation(question):
-        return _attach_three_core_trace(
+        response = _attach_three_core_trace(
             _live_selfhood_payload(request, question=question, language=language),
             request=request,
             three_core_trace=three_core_trace,
         )
+        _emit_conversation_result_events(response)
+        return response
     if _clean_graph_count_question(question) or _is_graph_count_question(question):
-        return _attach_three_core_trace(
+        response = _attach_three_core_trace(
             _clean_graph_count_payload(request, question=question, language=language),
             request=request,
             three_core_trace=three_core_trace,
         )
+        _emit_conversation_result_events(response)
+        return response
     if _should_try_base_brain_first(question):
         early = _base_brain_payload(request, question=question, language=language, rag_result={})
         if early is not None:
-            return _attach_three_core_trace(early, request=request, three_core_trace=three_core_trace)
+            response = _attach_three_core_trace(early, request=request, three_core_trace=three_core_trace)
+            _emit_conversation_result_events(response)
+            return response
     rag_status = await alpha_service.query_graphrag(
         question,
         request.web_search,
@@ -1268,7 +1304,9 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         )
         fallback = _base_brain_payload(request, question=question, language=language, rag_result=rag_result, exchange=exchange)
         if fallback is not None:
-            return _attach_three_core_trace(fallback, request=request, three_core_trace=three_core_trace)
+            response = _attach_three_core_trace(fallback, request=request, three_core_trace=three_core_trace)
+            _emit_conversation_result_events(response)
+            return response
         semantic_context = _augment_semantic_context_with_exchange(semantic_context, exchange)
     else:
         exchange = None
@@ -1295,7 +1333,9 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         if fallback is not None:
             result = fallback["result"]
             result.setdefault("compact_trace", {})["safety_fallback"] = "base_brain_after_unsafe_surface_answer"
-            return _attach_three_core_trace(fallback, request=request, three_core_trace=three_core_trace)
+            response = _attach_three_core_trace(fallback, request=request, three_core_trace=three_core_trace)
+            _emit_conversation_result_events(response)
+            return response
         repair_trace: dict[str, Any] = {}
         repaired = repair_answer_for_mode(str(realized.get("answer") or ""), mode="default", trace=repair_trace)
         realized["answer"] = repaired.get("repaired_answer") or (
@@ -1363,4 +1403,6 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         },
         **_flags(),
     }
-    return _attach_three_core_trace({"state": "completed", "result": payload, **_flags()}, request=request, three_core_trace=three_core_trace)
+    response = _attach_three_core_trace({"state": "completed", "result": payload, **_flags()}, request=request, three_core_trace=three_core_trace)
+    _emit_conversation_result_events(response)
+    return response

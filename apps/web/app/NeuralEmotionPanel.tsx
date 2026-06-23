@@ -5,13 +5,11 @@ import { useEffect, useState } from "react";
 type AnyRecord = Record<string, any>;
 
 const eventButtons = [
-  "greeting",
+  "user_greeting",
   "novelty_found",
-  "tool_success",
-  "tool_failure",
-  "unsafe_request",
-  "approval_granted",
-  "approval_denied",
+  "host_action_denied",
+  "voice_unavailable",
+  "tier4_enabled",
   "resting",
 ] as const;
 
@@ -39,24 +37,45 @@ function Gauge({ label, value, min = 0, max = 1 }: { label: string; value: numbe
 export default function NeuralEmotionPanel() {
   const [snapshot, setSnapshot] = useState<AnyRecord | null>(null);
   const [lastEvent, setLastEvent] = useState<string>("none");
+  const [lastDelta, setLastDelta] = useState<AnyRecord | null>(null);
+  const [events, setEvents] = useState<AnyRecord[]>([]);
 
   async function refresh() {
     const payload = await fetch("/api/neural-emotion/snapshot", { cache: "no-store" })
       .then((response) => response.json())
       .catch((error) => ({ available: false, reason: String(error) }));
     setSnapshot(payload);
+    const eventPayload = await fetch("/api/neural-emotion/events", { cache: "no-store" })
+      .then((response) => response.json())
+      .catch(() => ({ events: [] }));
+    setEvents(Array.isArray(eventPayload.events) ? eventPayload.events.slice(-8).reverse() : []);
   }
 
   async function sendEvent(eventType: string) {
-    const payload = await fetch("/api/neural-emotion/event", {
+    const payload = await fetch("/api/neural-emotion/events/emit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event_type: eventType, intensity: 1.0 }),
+      body: JSON.stringify({
+        source: "user_action",
+        event_type: eventType,
+        intensity: 1.0,
+        payload_summary: `lab button ${eventType}`,
+      }),
     })
       .then((response) => response.json())
       .catch((error) => ({ available: false, reason: String(error) }));
     setSnapshot(payload);
     setLastEvent(eventType);
+    const before = payload?.result?.snapshot_before?.vector ?? {};
+    const after = payload?.result?.snapshot_after?.vector ?? {};
+    setLastDelta({
+      valence: Number(after.valence ?? 0) - Number(before.valence ?? 0),
+      arousal: Number(after.arousal ?? 0) - Number(before.arousal ?? 0),
+      curiosity: Number(after.curiosity ?? 0) - Number(before.curiosity ?? 0),
+      caution: Number(after.caution ?? 0) - Number(before.caution ?? 0),
+      fatigue: Number(after.fatigue ?? 0) - Number(before.fatigue ?? 0),
+    });
+    setEvents(Array.isArray(payload.events) ? payload.events.slice(-8).reverse() : []);
   }
 
   async function decay() {
@@ -69,6 +88,8 @@ export default function NeuralEmotionPanel() {
       .catch((error) => ({ available: false, reason: String(error) }));
     setSnapshot(payload);
     setLastEvent("decay");
+    setLastDelta(null);
+    await refresh().catch(() => undefined);
   }
 
   useEffect(() => {
@@ -109,6 +130,7 @@ export default function NeuralEmotionPanel() {
       </div>
       <div className="agentic-os-flags">
         <span>last={lastEvent}</span>
+        <span>delta={lastDelta ? JSON.stringify(lastDelta) : "none"}</span>
         <span>{flagLine(snapshot?.safety_flags ?? data?.safety_flags)}</span>
       </div>
       <div className="agentic-os-control-readout">
@@ -118,6 +140,15 @@ export default function NeuralEmotionPanel() {
           voice: data?.voice_controls,
           agentic: data?.agentic_controls,
         }, null, 2)}</pre>
+      </div>
+      <div className="agentic-os-event-log">
+        <h4>Event log</h4>
+        {events.length === 0 ? <p>no events yet</p> : events.map((event) => (
+          <span key={event.event_id}>
+            <small>{event.source} / {event.event_type}</small>
+            <strong>{event.payload_summary || event.content_hash}</strong>
+          </span>
+        ))}
       </div>
     </article>
   );

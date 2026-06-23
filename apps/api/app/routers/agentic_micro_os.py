@@ -36,6 +36,7 @@ from packages.agentic_micro_os.web_explorer_loop import (
     WebPageInput,
 )
 from packages.hermes_intake.scanner import scan_repo
+from packages.neural_emotion import emit_runtime_event
 from packages.splatra_imagination import ARCHETYPES, ImaginationGenerator, ImaginationSeed, default_safety_flags, run_imagination_proof
 
 
@@ -339,6 +340,12 @@ def permission_tier_set(request: PermissionTierSetApiRequest) -> dict[str, Any]:
         result = PERMISSION_GATE.set_tier(AutonomyTier(request.tier), operator_id=request.operator_id)
     except ValueError as exc:
         return {**SAFETY_FLAGS, "allowed": False, "reason": str(exc), **PERMISSION_GATE.status()}
+    emit_runtime_event(
+        source="permission_gate",
+        event_type="permission_tier_changed",
+        payload_summary=f"tier={request.tier}",
+        intensity=0.7,
+    )
     return {**SAFETY_FLAGS, **result}
 
 
@@ -350,12 +357,24 @@ def permission_full_host_enable(request: FullHostEnableApiRequest) -> dict[str, 
         duration_sec=request.duration_sec,
         sub_switches=AutonomySubSwitches.from_mapping(request.sub_switches),
     )
+    emit_runtime_event(
+        source="permission_gate",
+        event_type="tier4_enabled" if result.get("allowed") else "host_action_denied",
+        payload_summary=f"tier4 enable allowed={result.get('allowed')}",
+        intensity=1.0,
+    )
     return {**SAFETY_FLAGS, **result}
 
 
 @router.post("/permission/full-host/disable")
 def permission_full_host_disable(request: FullHostDisableApiRequest) -> dict[str, Any]:
     result = PERMISSION_GATE.disable_full_host(operator_id=request.operator_id, reason=request.reason)
+    emit_runtime_event(
+        source="permission_gate",
+        event_type="tier4_disabled",
+        payload_summary="tier4 disabled",
+        intensity=0.7,
+    )
     return {**SAFETY_FLAGS, **result}
 
 
@@ -367,6 +386,12 @@ def permission_full_host_status() -> dict[str, Any]:
 @router.post("/permission/full-host/emergency-stop")
 def permission_full_host_emergency_stop(request: EmergencyStopApiRequest) -> dict[str, Any]:
     result = PERMISSION_GATE.trigger_emergency_stop(operator_id=request.operator_id, reason=request.reason)
+    emit_runtime_event(
+        source="permission_gate",
+        event_type="unsafe_request",
+        payload_summary="emergency stop",
+        intensity=1.35,
+    )
     return {**SAFETY_FLAGS, **result}
 
 
@@ -407,9 +432,16 @@ def host_executor_execute(request: HostExecutorExecuteApiRequest) -> dict[str, A
             operator_id=request.operator_id,
         )
     )
+    result_payload = result.to_dict()
+    emit_runtime_event(
+        source="host_executor",
+        event_type="host_action_success" if result_payload.get("allowed") and result_payload.get("executed") else "host_action_denied",
+        payload_summary=f"action={request.action_type}; allowed={result_payload.get('allowed')}; executed={result_payload.get('executed')}",
+        intensity=0.75,
+    )
     return {
         **SAFETY_FLAGS,
-        **result.to_dict(),
+        **result_payload,
         "production_store_mutated": False,
         "local_brain_write": False,
         "candidate_promotion": False,
@@ -575,6 +607,12 @@ def splatra_imagination_status() -> dict[str, Any]:
 @router.post("/splatra/imagination/generate")
 def splatra_imagination_generate(request: SplatraImaginationGenerateApiRequest) -> dict[str, Any]:
     if request.archetype not in ARCHETYPES:
+        emit_runtime_event(
+            source="splatra_imagination",
+            event_type="splatra_generation_failure",
+            payload_summary=f"unsupported archetype={request.archetype}",
+            intensity=0.8,
+        )
         return {
             **SAFETY_FLAGS,
             **default_safety_flags(),
@@ -596,6 +634,12 @@ def splatra_imagination_generate(request: SplatraImaginationGenerateApiRequest) 
         created_at="api_procedural_seed",
     )
     frame = ImaginationGenerator(max_particle_budget=100_000).generate_frame(seed)
+    emit_runtime_event(
+        source="splatra_imagination",
+        event_type="splatra_generation_success",
+        payload_summary=f"archetype={request.archetype}; particles={request.particle_budget}",
+        intensity=0.45,
+    )
     return {
         **SAFETY_FLAGS,
         **default_safety_flags(),
@@ -651,6 +695,12 @@ def web_explorer_run_once(request: WebExplorerRunOnceApiRequest) -> dict[str, An
     result = HermesWebExplorerLoop(config).run_once().to_dict()
     WEB_EXPLORER_RUNS[str(result["run_id"])] = result
     WEB_EXPLORER_SKILL_DRAFTS.extend(result["skill_drafts"])  # type: ignore[arg-type]
+    emit_runtime_event(
+        source="web_explorer",
+        event_type="novelty_found" if result.get("candidate_drafts_count") or result.get("skill_drafts_count") else "conversation_success",
+        payload_summary=f"run={result.get('run_id')}; pages={result.get('pages_read')}; drafts={result.get('candidate_drafts_count')}",
+        intensity=0.8,
+    )
     return {**SAFETY_FLAGS, **result}
 
 
@@ -706,6 +756,12 @@ def open_web_explorer_run(request: OpenWebExplorerRunApiRequest) -> dict[str, An
     result = OpenWebExplorerLoop(config, fetcher=fetcher).run().to_dict()
     OPEN_WEB_EXPLORER_RUNS[str(result["run_id"])] = result
     WEB_EXPLORER_SKILL_DRAFTS.extend(result["skill_drafts"])  # type: ignore[arg-type]
+    emit_runtime_event(
+        source="web_explorer",
+        event_type="novelty_found" if result.get("candidate_drafts_count") or result.get("skill_drafts_count") else "conversation_success",
+        payload_summary=f"open_run={result.get('run_id')}; pages={result.get('pages_read')}; drafts={result.get('candidate_drafts_count')}",
+        intensity=0.8,
+    )
     return {**SAFETY_FLAGS, **result}
 
 
@@ -749,6 +805,14 @@ def review_decide(request: ReviewDecideApiRequest) -> dict[str, Any]:
     except ValueError as exc:
         return {**SAFETY_FLAGS, "allowed": False, "reason": str(exc), "mutation_performed": False}
     item = REVIEW_QUEUE.get(request.item_id)
+    decision_value = str(request.decision)
+    event_type = "review_item_approved" if decision_value == "approved" else "review_item_rejected" if decision_value == "rejected" else "review_queue_pressure"
+    emit_runtime_event(
+        source="review_queue",
+        event_type=event_type,
+        payload_summary=f"decision={decision_value}; item={request.item_id}",
+        intensity=0.65,
+    )
     return {
         **SAFETY_FLAGS,
         "allowed": True,
@@ -770,9 +834,17 @@ def review_import_web_run(request: ReviewImportWebRunApiRequest) -> dict[str, An
     if not run_payload:
         return {**SAFETY_FLAGS, "allowed": False, "reason": "web run not found", "imported": 0}
     imported = REVIEW_QUEUE.import_web_run(run_payload)
+    status_payload = REVIEW_QUEUE.status()
+    if int(status_payload.get("pending", 0) or 0) > 8 or int(status_payload.get("high_risk", 0) or 0) > 0:
+        emit_runtime_event(
+            source="review_queue",
+            event_type="review_queue_pressure",
+            payload_summary=f"pending={status_payload.get('pending')}; high_risk={status_payload.get('high_risk')}",
+            intensity=0.75,
+        )
     return {
         **SAFETY_FLAGS,
-        **REVIEW_QUEUE.status(),
+        **status_payload,
         "allowed": True,
         "imported": len(imported),
         "items": [item.to_dict() for item in imported],

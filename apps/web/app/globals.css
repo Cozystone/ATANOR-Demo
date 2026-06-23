@@ -213,6 +213,29 @@ button {
   white-space: pre-wrap;
 }
 
+.agentic-os-event-log {
+  display: grid;
+  gap: 8px;
+}
+
+.agentic-os-event-log h4 {
+  margin: 0;
+  color: rgba(248, 251, 255, 0.92);
+}
+
+.agentic-os-event-log span {
+  display: grid;
+  gap: 4px;
+  border-left: 2px solid rgba(40, 231, 255, 0.42);
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.agentic-os-event-log strong {
+  color: rgba(248, 251, 255, 0.82);
+  font-size: 0.82rem;
+}
+
 .agentic-os-permission-card {
   display: grid;
   gap: 12px;
