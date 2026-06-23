@@ -12,6 +12,23 @@ from pydantic import BaseModel
 from app.services.desktop_paths import configure_desktop_data_dir
 
 
+def _configure_local_package_paths() -> None:
+    """Allow the monorepo API app to import local package roots without editable installs."""
+
+    repo_root = Path(__file__).resolve().parents[3]
+    packages_root = repo_root / "packages"
+    if not packages_root.exists():
+        return
+    for package_dir in sorted(packages_root.iterdir(), reverse=True):
+        has_installable_metadata = (package_dir / "pyproject.toml").exists()
+        has_import_package = (package_dir / package_dir.name / "__init__.py").exists()
+        if not has_installable_metadata and not has_import_package:
+            continue
+        package_path = str(package_dir)
+        if package_path not in sys.path:
+            sys.path.insert(0, package_path)
+
+
 def _configure_runtime_data_dir_from_args() -> None:
     """Honor the Tauri sidecar data directory before any data services run."""
 
@@ -32,6 +49,7 @@ def _configure_runtime_data_dir_from_args() -> None:
 
 
 _configure_runtime_data_dir_from_args()
+_configure_local_package_paths()
 
 from app.routers.brain_sync import router as brain_sync_router
 from app.routers.answer_quality import router as answer_quality_router

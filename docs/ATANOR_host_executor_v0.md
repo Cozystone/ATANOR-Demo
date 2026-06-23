@@ -4,6 +4,21 @@ Status: implemented behind the Autonomy Permission Gate.
 
 Host Executor v0 is the first executable host-action layer. It is intentionally harmless. It proves that host actions can pass through typed permission, sub-switches, audit logging, emergency stop, and explicit action allowlists before stronger host capabilities are considered.
 
+## API Integration
+
+Host Executor v0 is mounted through the normal ATANOR FastAPI app under `/api/agentic-os/host-executor/*`; it does not require a special Agentic-OS-only companion process. The API entrypoint configures local monorepo package roots before router imports so packages such as `knowledge_bakery` and `cost_model` resolve consistently during development and desktop sidecar startup.
+
+The status endpoint must preserve the proof-only invariants:
+
+- `production_store_mutated=false`
+- `local_brain_write=false`
+- `external_llm=false`
+- `external_sllm=false`
+- `candidate_promotion=false`
+- `unrestricted_shell=false`
+- `auto_commit=false`
+- `auto_push=false`
+
 ## Allowed v0 Actions
 
 - `echo`
