@@ -19,6 +19,8 @@ class SceneBeat:
     prompt: str = ""
     narration: str = ""
     object_id: str = ""
+    semantic_role: str = ""
+    source_fact: str = ""
     archetype: Archetype | None = None
     t_start: float = 0.0
     duration: float = 1.0
@@ -85,11 +87,15 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     prompt = _clean_text(raw.get("prompt") or raw.get("label") or raw.get("description"))
     narration = _clean_text(raw.get("narration") or raw.get("speech") or "", limit=240)
     object_id = _clean_text(raw.get("object_id") or raw.get("id") or _stable_id("scene_obj", f"{index}:{prompt}"), limit=96)
+    semantic_role = _clean_text(raw.get("semantic_role") or raw.get("role") or "", limit=80)
+    source_fact = _clean_text(raw.get("source_fact") or "", limit=360)
     return SceneBeat(
         op=op,  # type: ignore[arg-type]
         prompt=prompt,
         narration=narration,
         object_id=object_id,
+        semantic_role=semantic_role,
+        source_fact=source_fact,
         archetype=archetype,  # type: ignore[arg-type]
         t_start=_coerce_float(raw.get("t_start"), index * 1.25, minimum=0.0, maximum=600.0),
         duration=_coerce_float(raw.get("duration"), 1.0, minimum=0.1, maximum=60.0),

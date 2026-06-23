@@ -73,6 +73,87 @@ def _visual_phrases(question: str, *, route_type: str, grounded_context: Grounde
     return deduped[:4]
 
 
+def _fact_units(fact: str) -> list[str]:
+    """Split a verified fact into scene-sized units without topic templates."""
+
+    clean = _clean_phrase(fact, limit=420)
+    if not clean:
+        return []
+    parts = re.split(r"(?<=[.!?。！？])\s+|[;；]\s*", clean)
+    units = [_clean_phrase(part, limit=160) for part in parts if _clean_phrase(part, limit=160)]
+    return units[:4] or [clean[:160]]
+
+
+def _entity_spans(text: str) -> list[str]:
+    """Extract text-local visual anchors; never map topics to invented props."""
+
+    spans: list[str] = []
+    for match in re.finditer(r"\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,})){0,3}\b", text):
+        spans.append(match.group(0))
+    for match in re.finditer(r"[가-힣A-Za-z0-9][가-힣A-Za-z0-9·\-]{2,}(?:\s+[가-힣A-Za-z0-9][가-힣A-Za-z0-9·\-]{2,}){0,2}", text):
+        candidate = match.group(0).strip()
+        if len(candidate) >= 3:
+            spans.append(candidate)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for span in spans:
+        key = span.casefold()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(_clean_phrase(span, limit=72))
+    return deduped[:3]
+
+
+def _scene_units(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[dict[str, str]]:
+    units: list[dict[str, str]] = []
+    if route_type == "splatra_request":
+        clean_question = _clean_phrase(question)
+        if clean_question:
+            units.append(
+                {
+                    "prompt": clean_question,
+                    "narration": clean_question,
+                    "source_fact": "",
+                    "semantic_role": "user_visual_intent",
+                }
+            )
+
+    for fact in grounded_context.facts:
+        clean_fact = _clean_phrase(fact, limit=420)
+        for unit in _fact_units(clean_fact):
+            anchors = _entity_spans(unit)
+            prompt = anchors[0] if anchors else unit
+            units.append(
+                {
+                    "prompt": prompt,
+                    "narration": _clean_phrase(unit, limit=180),
+                    "source_fact": clean_fact,
+                    "semantic_role": "verified_fact_unit",
+                }
+            )
+
+    if not units:
+        for phrase in _visual_phrases(question, route_type=route_type, grounded_context=grounded_context):
+            units.append(
+                {
+                    "prompt": phrase,
+                    "narration": _narration_for_phrase(phrase),
+                    "source_fact": "",
+                    "semantic_role": "surface_phrase",
+                }
+            )
+
+    deduped: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for unit in units:
+        key = f"{unit['prompt']}::{unit['narration']}".casefold()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(unit)
+    return deduped[:5]
+
+
 def _archetype_for_phrase(phrase: str, index: int) -> Archetype:
     # This is deliberately not a topic dictionary. It only chooses a bounded
     # visual carrier deterministically so the scene planner does not smuggle in
@@ -141,18 +222,30 @@ def plan_visual_imagination(
             },
         )
 
-    phrases = _visual_phrases(question, route_type=route_type, grounded_context=grounded_context)
+    scene_units = _scene_units(question, route_type=route_type, grounded_context=grounded_context)
+    if len(scene_units) == 1:
+        scene_units = [
+            scene_units[0],
+            {
+                **scene_units[0],
+                "semantic_role": "visual_focus",
+            },
+        ]
     beats: list[dict[str, Any]] = []
-    for index, phrase in enumerate(phrases[:3]):
+    for index, unit in enumerate(scene_units):
+        phrase = unit["prompt"]
         op = "spawn_object" if index == 0 else "morph"
-        if index == min(2, len(phrases[:3]) - 1) and index > 0:
+        if index == len(scene_units) - 1 and index > 0:
             op = "focus_camera"
+        object_seed = f"{index}:{unit['prompt']}:{unit['narration']}"
         beats.append(
             {
                 "op": op,
                 "prompt": phrase,
-                "narration": _narration_for_phrase(phrase),
-                "object_id": f"grounded_visual_{index}",
+                "narration": unit["narration"],
+                "object_id": f"grounded_visual_{index}_{_stable_index(object_seed, 100000):05d}",
+                "semantic_role": unit["semantic_role"],
+                "source_fact": unit["source_fact"],
                 "archetype": _archetype_for_phrase(phrase, index),
                 "t_start": round(index * 1.35, 2),
                 "duration": 1.25,

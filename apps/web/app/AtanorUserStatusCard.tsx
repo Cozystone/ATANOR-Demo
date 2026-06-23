@@ -40,6 +40,8 @@ type SceneChoreographyPayload = {
     narration?: string;
     prompt?: string;
     object_id?: string;
+    semantic_role?: string;
+    source_fact?: string;
     t_start?: number;
     duration?: number;
     position?: number[];

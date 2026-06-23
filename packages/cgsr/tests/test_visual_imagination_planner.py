@@ -94,5 +94,9 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     prompts = [beat["prompt"] for beat in plan.scene_choreography["beats"]]
     assert any("Isaac Newton" in prompt for prompt in prompts)
     assert any("Isaac Newton" in beat["narration"] for beat in plan.scene_choreography["beats"])
+    assert len({beat["object_id"] for beat in plan.scene_choreography["beats"]}) >= 2
+    assert all(beat["semantic_role"] for beat in plan.scene_choreography["beats"])
+    assert any("Gravity is a force" in beat["source_fact"] for beat in plan.scene_choreography["beats"])
+    assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["topic_scene_templates"] is False
