@@ -255,6 +255,10 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert all(beat["archetype"] == "abstract_memory_cloud" for beat in beats if beat["visual_affordance"] == "concept_cloud")
     seated_newton = next(beat for beat in beats if beat["prompt"] == "Isaac Newton" and beat["spatial_relation"] == "under_target")
     tree_anchor = next(beat for beat in beats if beat["prompt"] == "tree" and beat["spatial_relation"] in {"over_anchor", "motion_source"})
+    assert seated_newton["pose_hint"] == "seated"
+    assert seated_newton["physics_hint"]["pose_hint"] == "seated"
+    assert "fruit_cluster" in tree_anchor["surface_features"]
+    assert "fruit_cluster" in tree_anchor["physics_hint"]["surface_features"]
     assert seated_newton["position"][1] < tree_anchor["position"][1]
     assert any(beat["op"] == "move" and beat["prompt"] == "apple" for beat in beats)
     assert all("speech_cue" in beat for beat in beats)

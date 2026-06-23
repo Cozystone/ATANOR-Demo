@@ -26,6 +26,8 @@ class SceneBeat:
     semantic_role: str = ""
     visual_affordance: str = ""
     spatial_relation: str = ""
+    pose_hint: str = ""
+    surface_features: tuple[str, ...] = field(default_factory=tuple)
     particle_behavior: str = ""
     physics_hint: dict[str, Any] = field(default_factory=dict)
     source_fact: str = ""
@@ -128,8 +130,19 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     semantic_role = _clean_text(raw.get("semantic_role") or raw.get("role") or "", limit=80)
     visual_affordance = _clean_text(raw.get("visual_affordance") or "", limit=80)
     spatial_relation = _clean_text(raw.get("spatial_relation") or "", limit=80)
+    raw_physics_hint = raw.get("physics_hint") if isinstance(raw.get("physics_hint"), dict) else {}
+    pose_hint = _clean_text(raw.get("pose_hint") or raw_physics_hint.get("pose_hint") or "", limit=40)
+    raw_features = raw.get("surface_features") or raw_physics_hint.get("surface_features") or ()
+    if isinstance(raw_features, str):
+        raw_features = (raw_features,)
+    if not isinstance(raw_features, (list, tuple)):
+        raw_features = ()
+    surface_features = tuple(
+        feature for feature in (_clean_text(item, limit=64) for item in raw_features)
+        if feature
+    )[:12]
     particle_behavior = _clean_text(raw.get("particle_behavior") or "", limit=80)
-    physics_hint = raw.get("physics_hint") if isinstance(raw.get("physics_hint"), dict) else {}
+    physics_hint = raw_physics_hint
     source_fact = _clean_text(raw.get("source_fact") or "", limit=360)
     speech_cue = bool(raw.get("speech_cue", True))
     speech_cue_basis = _clean_text(raw.get("speech_cue_basis") or "verified_evidence_unit", limit=80)
@@ -145,6 +158,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         semantic_role=semantic_role,
         visual_affordance=visual_affordance,
         spatial_relation=spatial_relation,
+        pose_hint=pose_hint,
+        surface_features=surface_features,
         particle_behavior=particle_behavior,
         physics_hint=physics_hint,
         source_fact=source_fact,

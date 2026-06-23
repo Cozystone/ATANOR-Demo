@@ -156,6 +156,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "visual_affordance" in field
     assert "particle_behavior" in field
     assert "physics_hint" in field
+    assert "pose_hint?: ScenePose" in field
+    assert "surface_features?: string[]" in field
     assert "physicsNumber" in field
     assert "spatial_relation" in field
     assert "scene_group_id" in field
@@ -176,6 +178,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "drawSceneFocusSwarm" in field
     assert "sceneObjectCanvasCenter" in field
     assert "drawAmbientAirbendField" in field
+    assert "sceneSurfaceFeatures" in field
     assert "PARTICLE_RENDERING_CONTRACT" in field
     assert "all_generated_marks_particle_points_no_canvas_strokes" in field
     assert "FLOW_FIELD_BASIS" in field
@@ -227,6 +230,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "ctx.stroke" not in field
     assert "ctx.lineTo" not in field
     assert "centers.forEach" not in field
+    assert "sat|sitting|seated|rested|under" not in field
+    assert "apple|fruit|berry|seed" not in field
+    assert "data-renderer-content-inference" in field
+    assert "explicit_scene_plan_hints_only" in field
     assert "SPLATRA Imagination Field" in field
     assert 'mode === "lab"' in field
 

@@ -51,6 +51,8 @@ type ScenePlanBeat = {
   semantic_role?: string;
   visual_affordance?: string;
   spatial_relation?: string;
+  pose_hint?: ScenePose;
+  surface_features?: string[];
   particle_behavior?: string;
   physics_hint?: {
     basis?: string;
@@ -59,6 +61,8 @@ type ScenePlanBeat = {
     gravity_bias?: number;
     cohesion?: number;
     trail?: number;
+    pose_hint?: ScenePose;
+    surface_features?: string[];
   };
   source_fact?: string;
   scene_group_id?: string;
@@ -901,15 +905,22 @@ function sceneParticlesForBeat(beat: ScenePlanBeat, archetype: Archetype, count:
 }
 
 function scenePoseForBeat(beat: ScenePlanBeat): ScenePose {
+  const explicitPose = String(beat.pose_hint ?? beat.physics_hint?.pose_hint ?? "");
+  if (explicitPose === "seated" || explicitPose === "reaching" || explicitPose === "standing") return explicitPose;
   const relation = String(beat.spatial_relation ?? "");
   const motionRole = sceneMotionRole(beat);
   if (relation === "under_target") return "seated";
   if (relation === "motion_target") return "reaching";
   if (motionRole === "target" && beat.visual_affordance === "entity_figure") return "reaching";
-  const text = `${beat.prompt ?? ""} ${beat.narration ?? ""} ${beat.source_fact ?? ""}`.toLowerCase();
-  if (/\b(sat|sitting|seated|rested|under)\b/.test(text)) return "seated";
-  if (/\b(fell|falling|dropped|moved|toward|towards)\b/.test(text)) return "reaching";
   return "standing";
+}
+
+function sceneSurfaceFeatures(beat: ScenePlanBeat) {
+  const rawFeatures = [
+    ...(Array.isArray(beat.surface_features) ? beat.surface_features : []),
+    ...(Array.isArray(beat.physics_hint?.surface_features) ? beat.physics_hint.surface_features : []),
+  ];
+  return new Set(rawFeatures.map((feature) => String(feature).toLowerCase()).filter(Boolean));
 }
 
 function semanticParticleColor(index: number, salt: number, warm = 0.32) {
@@ -984,8 +995,8 @@ function figureParticles(count: number, seed: string, pose: ScenePose = "standin
 
 function organicStructureParticles(count: number, seed: string, beat: ScenePlanBeat): Particle[] {
   const particles = fallbackParticles("tree", count);
-  const factText = `${beat.prompt ?? ""} ${beat.narration ?? ""} ${beat.source_fact ?? ""}`.toLowerCase();
-  const hasFruit = /\b(apple|fruit|berry|seed)\b/.test(factText);
+  const features = sceneSurfaceFeatures(beat);
+  const hasFruit = features.has("fruit_cluster") || features.has("fruit") || features.has("seed_cluster");
   if (!hasFruit) return particles;
   const salt = Math.floor(stableUnit(seed, 419) * 10000);
   const fruitCount = Math.max(8, Math.floor(count * 0.1));
@@ -1935,6 +1946,7 @@ export default function SplatraImaginationField({
       data-layout-text-avoidance={String(controls.layout_text_avoidance ?? "clear")}
       data-particle-rendering-contract={PARTICLE_RENDERING_CONTRACT}
       data-flow-field-basis={FLOW_FIELD_BASIS}
+      data-renderer-content-inference="explicit_scene_plan_hints_only"
       data-active-scene-group={activeSceneGroupId || "none"}
       data-active-scene-group-size={activeSceneGroupSize}
     >

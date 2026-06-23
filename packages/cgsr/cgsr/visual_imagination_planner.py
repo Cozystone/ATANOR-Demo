@@ -379,6 +379,8 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
     visual_affordance = _visual_affordance_for_phrase(phrase, unit["narration"], unit["semantic_role"], op)
     spatial_relation = _spatial_relation_for_phrase(phrase, unit["narration"], visual_affordance, op)
+    pose_hint = _pose_hint_for_scene_unit(visual_affordance, spatial_relation, unit["semantic_role"])
+    surface_features = _surface_features_for_scene_unit(phrase, unit["narration"], unit["source_fact"], visual_affordance)
     position = _position_for_unit(phrase, index, visual_affordance, spatial_relation)
     beat = {
         "op": op,
@@ -390,6 +392,8 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
         "semantic_role": unit["semantic_role"],
         "visual_affordance": visual_affordance,
         "spatial_relation": spatial_relation,
+        "pose_hint": pose_hint,
+        "surface_features": surface_features,
         "source_fact": unit["source_fact"],
         "speech_cue": bool(unit.get("speech_cue", True)),
         "speech_cue_basis": unit.get("speech_cue_basis", "verified_evidence_unit"),
@@ -403,6 +407,10 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
     }
     motion_path = _motion_path_for_unit(unit, index=index) if op == "move" or unit["semantic_role"].startswith("verified_motion") else {}
     particle_behavior, physics_hint = _particle_behavior_for_unit(unit, visual_affordance, op, motion_path)
+    if pose_hint:
+        physics_hint["pose_hint"] = pose_hint
+    if surface_features:
+        physics_hint["surface_features"] = surface_features
     beat["particle_behavior"] = particle_behavior
     beat["physics_hint"] = physics_hint
     if motion_path:
@@ -646,6 +654,26 @@ def _archetype_for_phrase(phrase: str, semantic_role: str, index: int, visual_af
         "verified_entity_relation",
     } else "grounded"
     return PRODUCT_ARCHETYPES[_stable_index(f"{role_seed}:{index}:{phrase}", len(PRODUCT_ARCHETYPES))]
+
+
+def _pose_hint_for_scene_unit(visual_affordance: str, spatial_relation: str, semantic_role: str) -> str:
+    if visual_affordance != "entity_figure":
+        return ""
+    if spatial_relation == "under_target":
+        return "seated"
+    if spatial_relation == "motion_target" or semantic_role == "verified_motion_target":
+        return "reaching"
+    return "standing"
+
+
+def _surface_features_for_scene_unit(phrase: str, narration: str, source_fact: str, visual_affordance: str) -> list[str]:
+    if visual_affordance != "organic_structure":
+        return []
+    folded = f" {phrase} {narration} {source_fact} ".casefold()
+    features: list[str] = []
+    if any(term in folded for term in ("apple", "fruit", "berry", "seed")) or any(term in f"{phrase} {narration} {source_fact}" for term in KOREAN_SMALL_OBJECT_TERMS):
+        features.append("fruit_cluster")
+    return features
 
 
 def _position_for_phrase(phrase: str, index: int) -> list[float]:

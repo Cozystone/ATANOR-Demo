@@ -68,6 +68,8 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
                 "t_start": 2.5,
                 "duration": 4.0,
                 "position": [1.5, -1.0, 0.25],
+                "pose_hint": "reaching",
+                "surface_features": ["fruit_cluster"],
                 "particle_behavior": "gravity_arc",
                 "physics_hint": {"basis": "verified_motion_phrase", "field": "downward_attraction", "gravity_bias": 0.7},
                 "motion_path": {"from": [-0.5, 0.25, 0], "to": [0.5, -0.25, 0], "basis": "verified_motion_phrase"},
@@ -85,6 +87,8 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
     assert beat.t_start == 2.5
     assert beat.duration == 4.0
     assert beat.position == (1.5, -1.0, 0.25)
+    assert beat.pose_hint == "reaching"
+    assert beat.surface_features == ("fruit_cluster",)
     assert beat.particle_behavior == "gravity_arc"
     assert beat.physics_hint == {"basis": "verified_motion_phrase", "field": "downward_attraction", "gravity_bias": 0.7}
     assert beat.motion_path == {"from": (-0.5, 0.25, 0.0), "to": (0.5, -0.25, 0.0), "basis": "verified_motion_phrase"}
