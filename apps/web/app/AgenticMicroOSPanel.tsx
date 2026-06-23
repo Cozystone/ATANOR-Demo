@@ -97,6 +97,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
   const [autonomyPolicy, setAutonomyPolicy] = useState<AnyRecord | null>(null);
   const [policyLoopStatus, setPolicyLoopStatus] = useState<AnyRecord | null>(null);
   const [policyLoopResult, setPolicyLoopResult] = useState<AnyRecord | null>(null);
+  const [policySchedulerStatus, setPolicySchedulerStatus] = useState<AnyRecord | null>(null);
   const [reviewStatus, setReviewStatus] = useState<AnyRecord | null>(null);
   const [reviewItems, setReviewItems] = useState<AnyRecord[]>([]);
   const [typedPhrase, setTypedPhrase] = useState("");
@@ -128,6 +129,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     refreshReviewQueue().catch(() => undefined);
     refreshAutonomyPolicy().catch(() => undefined);
     refreshPolicyLoop().catch(() => undefined);
+    refreshPolicyScheduler().catch(() => undefined);
   }, [localBackendUrl]);
 
   const blockedActions = useMemo(() => {
@@ -179,6 +181,47 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     }).catch((error) => ({ error: String(error), proof_only: true }));
     setPolicyLoopResult(payload);
     await refreshPolicyLoop().catch(() => undefined);
+    await refreshReviewQueue().catch(() => undefined);
+  }
+
+  async function refreshPolicyScheduler() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/policy-scheduler/status")
+      .catch((error) => ({ error: String(error) }));
+    setPolicySchedulerStatus(payload);
+    return payload;
+  }
+
+  async function startPolicyScheduler() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/policy-scheduler/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operator_confirmed: true,
+        max_runtime_sec: 600,
+        max_cycles: 5,
+        min_interval_sec: 5,
+        max_interval_sec: 120,
+      }),
+    }).catch((error) => ({ error: String(error) }));
+    setPolicySchedulerStatus(payload);
+  }
+
+  async function stopPolicyScheduler() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/policy-scheduler/stop", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: "lab_operator_stop" }),
+    }).catch((error) => ({ error: String(error) }));
+    setPolicySchedulerStatus(payload);
+  }
+
+  async function tickPolicyScheduler() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/policy-scheduler/tick", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }).catch((error) => ({ error: String(error) }));
+    setPolicySchedulerStatus(payload);
     await refreshReviewQueue().catch(() => undefined);
   }
 
@@ -457,6 +500,54 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
                 local_brain_write={String(policyLoopResult.local_brain_write ?? false)}
                 {" / "}production_store_mutated={String(policyLoopResult.production_store_mutated ?? false)}
                 {" / "}candidate_promotion={String(policyLoopResult.candidate_promotion ?? false)}
+              </span>
+            </div>
+          ) : <p>idle</p>}
+        </article>
+
+        <article className="agentic-os-card">
+          <div className="agentic-os-permission-header">
+            <div>
+              <h3>Policy-driven Autonomous Scheduler v1</h3>
+              <p>Opt-in scheduler controller. No daemon autostart; every tick remains bounded, stoppable, and non-mutating.</p>
+            </div>
+            <strong>{policySchedulerStatus?.enabled ? "ENABLED" : "DISABLED"}</strong>
+          </div>
+          <div className="agentic-os-flags">
+            <span>cycles={String(policySchedulerStatus?.cycle_count ?? 0)}</span>
+            <span>next={String(policySchedulerStatus?.next_delay_sec ?? "-")}s</span>
+            <span>reason={String(policySchedulerStatus?.stopped_reason ?? "-")}</span>
+            <span>pending={String(policySchedulerStatus?.last_result?.review_items ?? reviewStatus?.pending ?? 0)}</span>
+            <span>fatigue={String(policySchedulerStatus?.last_emotion?.vector?.fatigue ?? "-")}</span>
+            <span>emergency={String(permissionStatus?.emergency_stop_triggered ?? false)}</span>
+          </div>
+          <div className="agentic-os-actions">
+            <button type="button" className="agentic-os-action" onClick={() => startPolicyScheduler()}>
+              start scheduler
+            </button>
+            <button type="button" className="agentic-os-action" onClick={() => tickPolicyScheduler()}>
+              tick once
+            </button>
+            <button type="button" className="agentic-os-action danger" onClick={() => stopPolicyScheduler()}>
+              stop scheduler
+            </button>
+            <button type="button" className="agentic-os-action" onClick={() => refreshPolicyScheduler()}>
+              refresh scheduler
+            </button>
+          </div>
+          {policySchedulerStatus?.last_result ? (
+            <div className="agentic-os-host-result">
+              <strong>{policySchedulerStatus.scheduler_id} - {policySchedulerStatus.stopped_reason || "running"}</strong>
+              <p>
+                last={String(policySchedulerStatus.last_result.stopped_reason)}
+                {" / "}drafts={String(policySchedulerStatus.last_result.candidate_drafts)}
+                {" / "}reviews={String(policySchedulerStatus.last_result.review_items)}
+                {" / "}splatra={String(policySchedulerStatus.last_result.splatra_frames)}
+              </p>
+              <span>
+                local_brain_write={String(policySchedulerStatus.local_brain_write ?? false)}
+                {" / "}production_store_mutated={String(policySchedulerStatus.production_store_mutated ?? false)}
+                {" / "}candidate_promotion={String(policySchedulerStatus.candidate_promotion ?? false)}
               </span>
             </div>
           ) : <p>idle</p>}

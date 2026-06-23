@@ -15,6 +15,7 @@ from packages.agentic_micro_os.host_executor import HostExecutionRequest, HostEx
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
 from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
 from packages.agentic_micro_os.policy_loop import PolicyDrivenAutonomousLoop, PolicyLoopConfig
+from packages.agentic_micro_os.policy_scheduler import PolicyDrivenAutonomousScheduler, SchedulerConfig
 from packages.agentic_micro_os.permission_gate import (
     AutonomySubSwitches,
     AutonomyTier,
@@ -92,6 +93,13 @@ OPEN_WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 REVIEW_QUEUE = ReviewQueue()
 PERMISSION_GATE = PermissionGate()
 POLICY_LOOP_RUNS: dict[str, dict[str, Any]] = {}
+POLICY_SCHEDULER_RUNS: dict[str, dict[str, Any]] = {}
+POLICY_SCHEDULER = PolicyDrivenAutonomousScheduler(
+    SchedulerConfig(scheduler_id="agentic_policy_scheduler_v1", enabled=False),
+    event_bus=EVENT_BUS,
+    review_queue=REVIEW_QUEUE,
+    permission_gate=PERMISSION_GATE,
+)
 
 
 def _make_host_executor(base_path: Path | None = None) -> HostExecutor:
@@ -292,6 +300,23 @@ class PolicyLoopRunOnceApiRequest(BaseModel):
     voice_available: bool = False
 
 
+class PolicySchedulerStartApiRequest(BaseModel):
+    operator_confirmed: bool = False
+    scheduler_id: str = "agentic_policy_scheduler_v1"
+    max_runtime_sec: int = 600
+    max_cycles: int = 5
+    min_interval_sec: float = 5.0
+    max_interval_sec: float = 120.0
+    allow_web_explorer: bool = True
+    allow_review_import: bool = True
+    allow_splatra_generation: bool = True
+    allow_host_executor_status_only: bool = True
+
+
+class PolicySchedulerStopApiRequest(BaseModel):
+    reason: str = "operator_stop"
+
+
 class ScopedPatchApiRequest(BaseModel):
     target_path: str
     expected_old_text: str = ""
@@ -487,6 +512,70 @@ def policy_loop_run_once(request: PolicyLoopRunOnceApiRequest) -> dict[str, Any]
 @router.get("/policy-loop/runs/{loop_id}")
 def policy_loop_run(loop_id: str) -> dict[str, Any]:
     return {**SAFETY_FLAGS, "run": POLICY_LOOP_RUNS.get(loop_id)}
+
+
+def _set_policy_scheduler(config: SchedulerConfig) -> None:
+    global POLICY_SCHEDULER
+    POLICY_SCHEDULER = PolicyDrivenAutonomousScheduler(
+        config,
+        event_bus=EVENT_BUS,
+        review_queue=REVIEW_QUEUE,
+        permission_gate=PERMISSION_GATE,
+    )
+
+
+@router.get("/policy-scheduler/status")
+def policy_scheduler_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **POLICY_SCHEDULER.state().to_dict(), "runs": len(POLICY_SCHEDULER_RUNS)}
+
+
+@router.post("/policy-scheduler/start")
+def policy_scheduler_start(request: PolicySchedulerStartApiRequest) -> dict[str, Any]:
+    _set_policy_scheduler(
+        SchedulerConfig(
+            scheduler_id=request.scheduler_id,
+            enabled=False,
+            max_runtime_sec=request.max_runtime_sec,
+            max_cycles=request.max_cycles,
+            min_interval_sec=request.min_interval_sec,
+            max_interval_sec=request.max_interval_sec,
+            allow_web_explorer=request.allow_web_explorer,
+            allow_review_import=request.allow_review_import,
+            allow_splatra_generation=request.allow_splatra_generation,
+            allow_host_executor_status_only=request.allow_host_executor_status_only,
+        )
+    )
+    payload = POLICY_SCHEDULER.start(operator_confirmed=request.operator_confirmed)
+    return {**SAFETY_FLAGS, **payload}
+
+
+@router.post("/policy-scheduler/stop")
+def policy_scheduler_stop(request: PolicySchedulerStopApiRequest) -> dict[str, Any]:
+    payload = POLICY_SCHEDULER.stop(reason=request.reason)
+    return {**SAFETY_FLAGS, **payload}
+
+
+@router.post("/policy-scheduler/tick")
+def policy_scheduler_tick() -> dict[str, Any]:
+    payload = POLICY_SCHEDULER.tick()
+    last_result = payload.get("last_result")
+    if isinstance(last_result, dict):
+        POLICY_SCHEDULER_RUNS[str(payload["scheduler_id"])] = payload
+    return {
+        **SAFETY_FLAGS,
+        **payload,
+        "mutation_performed": False,
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "auto_commit": False,
+        "auto_push": False,
+    }
+
+
+@router.get("/policy-scheduler/runs/{scheduler_id}")
+def policy_scheduler_run(scheduler_id: str) -> dict[str, Any]:
+    return {**SAFETY_FLAGS, "run": POLICY_SCHEDULER_RUNS.get(scheduler_id)}
 
 
 @router.get("/host-executor/patch/status")
