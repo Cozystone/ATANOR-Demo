@@ -19,10 +19,14 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "requestedSceneChoreography" in status_card
     assert "sceneFocus={stageLayout === \"scene_focus\"}" in status_card
     assert "scenePlan={sceneChoreography}" in status_card
+    assert "sceneNarrationBeats" in status_card
+    assert "firstSceneNarration" in status_card
+    assert "sceneSpeechStartedAt" in status_card
     assert "ParticleText" not in status_card
     assert "scenePlan?: ScenePlan | null" in field
     assert "type SceneTransform" in field
     assert "sceneBeatIndex" in field
+    assert "narration?: string" in field
     assert "sceneArchetype" in field
     assert "activeSceneBeatIndex" in field
     assert "sceneTransform" in field

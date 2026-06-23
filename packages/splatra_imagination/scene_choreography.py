@@ -17,6 +17,7 @@ OrbAnchor = Literal["center", "lower_right"]
 class SceneBeat:
     op: SceneBeatOp
     prompt: str = ""
+    narration: str = ""
     object_id: str = ""
     archetype: Archetype | None = None
     t_start: float = 0.0
@@ -82,10 +83,12 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     if archetype not in ARCHETYPES:
         archetype = None
     prompt = _clean_text(raw.get("prompt") or raw.get("label") or raw.get("description"))
+    narration = _clean_text(raw.get("narration") or raw.get("speech") or "", limit=240)
     object_id = _clean_text(raw.get("object_id") or raw.get("id") or _stable_id("scene_obj", f"{index}:{prompt}"), limit=96)
     return SceneBeat(
         op=op,  # type: ignore[arg-type]
         prompt=prompt,
+        narration=narration,
         object_id=object_id,
         archetype=archetype,  # type: ignore[arg-type]
         t_start=_coerce_float(raw.get("t_start"), index * 1.25, minimum=0.0, maximum=600.0),

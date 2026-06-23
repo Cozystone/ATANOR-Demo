@@ -28,11 +28,23 @@ type VoiceWaveStyle = CSSProperties & {
   "--i": number;
 };
 
+type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
+
 type SceneChoreographyPayload = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
   primary_surface?: string;
-  beats?: Array<Record<string, any>>;
+  beats?: Array<{
+    op?: SceneBeatOp;
+    archetype?: "orb" | "tower" | "tree" | "creature" | "circuit" | "city_block" | "constellation" | "machine_core" | "abstract_memory_cloud";
+    narration?: string;
+    prompt?: string;
+    object_id?: string;
+    t_start?: number;
+    duration?: number;
+    position?: number[];
+    camera?: Record<string, any>;
+  }>;
 } | null;
 
 function stripEmotionTag(text: string) {
@@ -128,6 +140,22 @@ function requestedSceneChoreography(payload: Record<string, any>): SceneChoreogr
   return visualPlan as SceneChoreographyPayload;
 }
 
+function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  return beats
+    .map((beat, index) => ({
+      tStart: Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : index * 1.35,
+      text: stripEmotionTag(String(beat.narration || beat.prompt || "").trim()),
+    }))
+    .filter((beat) => beat.text.length > 0)
+    .sort((left, right) => left.tStart - right.tStart);
+}
+
+function firstSceneNarration(scenePlan: SceneChoreographyPayload) {
+  const beats = sceneNarrationBeats(scenePlan);
+  return beats[0]?.text ?? "";
+}
+
 function emitNeuralEmotionEvent(eventType: string, payloadSummary: string) {
   fetch("/api/neural-emotion/events/emit", {
     method: "POST",
@@ -152,6 +180,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
+  const [sceneSpeechStartedAt, setSceneSpeechStartedAt] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speakingVisual = orbState === "speaking" || audioPlaying;
   const cleanPlaceholder = voiceMode
@@ -181,6 +210,27 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     const clearTimer = window.setTimeout(() => setVoiceNotice(""), 5200);
     return () => window.clearTimeout(clearTimer);
   }, [voiceNotice]);
+
+  useEffect(() => {
+    if (stageLayout !== "scene_focus") return undefined;
+    const beats = sceneNarrationBeats(sceneChoreography);
+    if (!beats.length || !sceneSpeechStartedAt) return undefined;
+    let activeIndex = -1;
+    const update = () => {
+      const elapsedSeconds = Math.max(0, (performance.now() - sceneSpeechStartedAt) / 1000);
+      let nextIndex = 0;
+      beats.forEach((beat, index) => {
+        if (elapsedSeconds >= beat.tStart) nextIndex = index;
+      });
+      if (nextIndex !== activeIndex) {
+        activeIndex = nextIndex;
+        setSpeechLine(beats[nextIndex].text);
+      }
+    };
+    update();
+    const timer = window.setInterval(update, 180);
+    return () => window.clearInterval(timer);
+  }, [sceneChoreography, sceneSpeechStartedAt, stageLayout]);
 
   useEffect(() => {
     let cancelled = false;
@@ -340,8 +390,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       if (!answer || !isAsmConversationPayload(payload)) {
         throw new Error("conversation surface unavailable");
       }
-      setStageLayout(requestedStageLayout(payload));
-      setSceneChoreography(requestedSceneChoreography(payload));
+      const nextStageLayout = requestedStageLayout(payload);
+      const nextSceneChoreography = requestedSceneChoreography(payload);
+      setStageLayout(nextStageLayout);
+      setSceneChoreography(nextSceneChoreography);
+      setSceneSpeechStartedAt(nextSceneChoreography ? performance.now() : 0);
       setOrbState("speaking");
       void fetch("/api/inner-voice/emit", {
         method: "POST",
@@ -369,7 +422,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         })
         .catch(() => undefined);
       emitNeuralEmotionEvent("speaking_start", "text conversation visible speech");
-      setSpeechLine(firstSpeechBeat(answer));
+      setSpeechLine(firstSceneNarration(nextSceneChoreography) || firstSpeechBeat(answer));
       setMessage("");
       await playVoiceOutput(payload?.result?.voice_output);
       if (!payload?.result?.voice_output?.audio_available) {
@@ -382,6 +435,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setOrbState("blocked");
       setStageLayout("conversation");
       setSceneChoreography(null);
+      setSceneSpeechStartedAt(0);
       setSpeechLine(cleanSafeStatusLine(language));
       setVoiceNotice(cleanVoiceFailedLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);

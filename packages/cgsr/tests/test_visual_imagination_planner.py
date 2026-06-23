@@ -93,5 +93,6 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert plan.scene_choreography is not None
     prompts = [beat["prompt"] for beat in plan.scene_choreography["beats"]]
     assert any("Isaac Newton" in prompt for prompt in prompts)
+    assert any("Isaac Newton" in beat["narration"] for beat in plan.scene_choreography["beats"])
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["topic_scene_templates"] is False

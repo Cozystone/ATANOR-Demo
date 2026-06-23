@@ -97,6 +97,10 @@ def _camera_for_phrase(phrase: str, index: int) -> dict[str, Any]:
     }
 
 
+def _narration_for_phrase(phrase: str) -> str:
+    return _clean_phrase(phrase, limit=180)
+
+
 def plan_visual_imagination(
     question: str,
     *,
@@ -147,6 +151,7 @@ def plan_visual_imagination(
             {
                 "op": op,
                 "prompt": phrase,
+                "narration": _narration_for_phrase(phrase),
                 "object_id": f"grounded_visual_{index}",
                 "archetype": _archetype_for_phrase(phrase, index),
                 "t_start": round(index * 1.35, 2),

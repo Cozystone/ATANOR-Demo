@@ -44,6 +44,7 @@ type ScenePlanBeat = {
   op?: "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
   archetype?: Archetype;
   prompt?: string;
+  narration?: string;
   object_id?: string;
   t_start?: number;
   duration?: number;

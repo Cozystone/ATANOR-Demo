@@ -60,6 +60,7 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
                 "op": "focus_camera",
                 "object_id": "focus_subject",
                 "prompt": "agent-authored subject",
+                "narration": "agent-authored visible narration",
                 "t_start": 2.5,
                 "duration": 4.0,
                 "position": [1.5, -1.0, 0.25],
@@ -70,6 +71,7 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
 
     beat = plan.beats[0]
     assert beat.op == "focus_camera"
+    assert beat.narration == "agent-authored visible narration"
     assert beat.t_start == 2.5
     assert beat.duration == 4.0
     assert beat.position == (1.5, -1.0, 0.25)
