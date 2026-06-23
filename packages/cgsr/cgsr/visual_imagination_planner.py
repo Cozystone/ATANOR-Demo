@@ -281,7 +281,7 @@ def _beat_duration_for_unit(unit: dict[str, str], op: str) -> float:
     return round(min(3.2, max(1.05, base)), 2)
 
 
-def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: float, duration: float | None = None) -> dict[str, Any]:
+def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: float, duration: float | None = None) -> dict[str, Any]:
     phrase = unit["prompt"]
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
     visual_affordance = _visual_affordance_for_phrase(phrase, unit["narration"], unit["semantic_role"], op)
@@ -296,6 +296,8 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
         "visual_affordance": visual_affordance,
         "spatial_relation": spatial_relation,
         "source_fact": unit["source_fact"],
+        "speech_cue": bool(unit.get("speech_cue", True)),
+        "speech_cue_basis": unit.get("speech_cue_basis", "verified_evidence_unit"),
         "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index, visual_affordance),
         "t_start": round(t_start, 2),
         "duration": duration if duration is not None else _beat_duration_for_unit(unit, op),
@@ -308,8 +310,8 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
     return beat
 
 
-def _scene_units(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[dict[str, str]]:
-    units: list[dict[str, str]] = []
+def _scene_units(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[dict[str, Any]]:
+    units: list[dict[str, Any]] = []
     if route_type == "splatra_request":
         clean_question = _clean_phrase(question)
         if clean_question:
@@ -319,6 +321,8 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "narration": clean_question,
                     "source_fact": "",
                     "semantic_role": "user_visual_intent",
+                    "speech_cue": True,
+                    "speech_cue_basis": "user_visual_intent",
                 }
             )
 
@@ -336,6 +340,8 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "narration": _clean_phrase(unit, limit=180),
                     "source_fact": clean_fact,
                     "semantic_role": semantic_role,
+                    "speech_cue": True,
+                    "speech_cue_basis": "verified_evidence_unit",
                 }
             )
             if _has_any_cue(unit, MOTION_CUES):
@@ -346,6 +352,8 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                             "narration": _clean_phrase(unit, limit=180),
                             "source_fact": clean_fact,
                             "semantic_role": "verified_motion_anchor" if anchor_index == 0 else "verified_motion_context",
+                            "speech_cue": False,
+                            "speech_cue_basis": "visual_anchor_only",
                         }
                     )
             for anchor_index, anchor in enumerate(anchors[:4]):
@@ -355,6 +363,8 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                         "narration": _clean_phrase(unit, limit=180),
                         "source_fact": clean_fact,
                         "semantic_role": "verified_entity_anchor",
+                        "speech_cue": False,
+                        "speech_cue_basis": "visual_anchor_only",
                     }
                 )
 
@@ -367,10 +377,12 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "narration": clean_question,
                     "source_fact": "",
                     "semantic_role": "surface_phrase",
+                    "speech_cue": True,
+                    "speech_cue_basis": "surface_phrase",
                 }
             )
 
-    deduped: list[dict[str, str]] = []
+    deduped: list[dict[str, Any]] = []
     seen: set[str] = set()
     for unit in units:
         key = f"{unit['prompt']}::{unit['narration']}".casefold()
@@ -693,6 +705,8 @@ def plan_visual_imagination(
             {
                 **scene_units[0],
                 "semantic_role": "visual_focus",
+                "speech_cue": False,
+                "speech_cue_basis": "visual_anchor_only",
             },
         ]
     beats: list[dict[str, Any]] = []

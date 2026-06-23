@@ -20,10 +20,12 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneFocus={stageLayout === \"scene_focus\"}" in status_card
     assert "scenePlan={sceneChoreography}" in status_card
     assert "sceneNarrationBeats" in status_card
+    assert "beat.speech_cue !== false" in status_card
     assert "firstSceneNarration" in status_card
     assert "sceneSpeechBeatIndex" in status_card
-    assert "setSceneSpeechBeatIndex(nextIndex)" in status_card
+    assert "setSceneSpeechBeatIndex(nextSpeechBeat.beatIndex)" in status_card
     assert "data-scene-speech-beat" in status_card
+    assert "speech_cue: bool = True" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
     assert '"/api/inner-voice/generate-frame"' in status_card
     assert '"/api/inner-voice/emit"' not in status_card

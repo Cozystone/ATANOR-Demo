@@ -25,6 +25,8 @@ class SceneBeat:
     visual_affordance: str = ""
     spatial_relation: str = ""
     source_fact: str = ""
+    speech_cue: bool = True
+    speech_cue_basis: str = "verified_evidence_unit"
     archetype: Archetype | None = None
     t_start: float = 0.0
     duration: float = 1.0
@@ -117,6 +119,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     visual_affordance = _clean_text(raw.get("visual_affordance") or "", limit=80)
     spatial_relation = _clean_text(raw.get("spatial_relation") or "", limit=80)
     source_fact = _clean_text(raw.get("source_fact") or "", limit=360)
+    speech_cue = bool(raw.get("speech_cue", True))
+    speech_cue_basis = _clean_text(raw.get("speech_cue_basis") or "verified_evidence_unit", limit=80)
     return SceneBeat(
         op=op,  # type: ignore[arg-type]
         prompt=prompt,
@@ -126,6 +130,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         visual_affordance=visual_affordance,
         spatial_relation=spatial_relation,
         source_fact=source_fact,
+        speech_cue=speech_cue,
+        speech_cue_basis=speech_cue_basis,
         archetype=archetype,  # type: ignore[arg-type]
         t_start=_coerce_float(raw.get("t_start"), index * 1.25, minimum=0.0, maximum=600.0),
         duration=_coerce_float(raw.get("duration"), 1.0, minimum=0.1, maximum=60.0),

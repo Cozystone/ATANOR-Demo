@@ -97,6 +97,8 @@ type SceneChoreographyPayload = {
     visual_affordance?: string;
     spatial_relation?: string;
     source_fact?: string;
+    speech_cue?: boolean;
+    speech_cue_basis?: string;
     t_start?: number;
     duration?: number;
     position?: number[];
@@ -247,12 +249,20 @@ function requestedLayoutDecision(scenePlan: SceneChoreographyPayload, stageLayou
 
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
-  return beats
-    .map((beat, index) => ({
+  const speechCueBeats = beats.filter((beat) => beat.speech_cue !== false);
+  const sourceBeats = speechCueBeats.length ? speechCueBeats : beats;
+  return sourceBeats
+    .map((beat) => {
+      const beatIndex = beats.indexOf(beat);
+      const index = beatIndex >= 0 ? beatIndex : 0;
+      return {
+        beatIndex: index,
       tStart: Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : index * 1.35,
       text: stripEmotionTag(String(beat.narration || beat.prompt || "").trim()),
-    }))
+      };
+    })
     .filter((beat) => beat.text.length > 0)
+    .filter((beat, index, array) => index === 0 || beat.text !== array[index - 1].text)
     .sort((left, right) => left.tStart - right.tStart);
 }
 
@@ -513,7 +523,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       });
       if (nextIndex !== activeIndex) {
         activeIndex = nextIndex;
-        setSceneSpeechBeatIndex(nextIndex);
+        const nextSpeechBeat = beats[nextIndex];
+        setSceneSpeechBeatIndex(nextSpeechBeat.beatIndex);
         setSpeechLine(beats[nextIndex].text);
       }
     };

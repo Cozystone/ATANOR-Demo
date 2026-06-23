@@ -227,6 +227,12 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     tree_anchor = next(beat for beat in beats if beat["prompt"] == "tree" and beat["spatial_relation"] in {"over_anchor", "motion_source"})
     assert seated_newton["position"][1] < tree_anchor["position"][1]
     assert any(beat["op"] == "move" and "apple fell" in beat["prompt"] for beat in beats)
+    assert all("speech_cue" in beat for beat in beats)
+    assert all("speech_cue_basis" in beat for beat in beats)
+    assert all(beat["speech_cue"] is True for beat in beats if beat["semantic_role"] in {"verified_entity_relation", "verified_motion_event"})
+    assert all(beat["speech_cue"] is False for beat in beats if beat["semantic_role"] in {"verified_entity_anchor", "verified_motion_anchor", "verified_motion_context"})
+    assert any(beat["speech_cue_basis"] == "visual_anchor_only" and beat["prompt"] == "tree" for beat in beats)
+    assert any(beat["speech_cue_basis"] == "verified_evidence_unit" and "apple fell" in beat["prompt"] for beat in beats)
     motion_beats = [beat for beat in beats if beat["op"] == "move" and beat.get("motion_path")]
     assert motion_beats
     assert all(beat["motion_path"]["basis"] == "verified_motion_phrase" for beat in motion_beats)
