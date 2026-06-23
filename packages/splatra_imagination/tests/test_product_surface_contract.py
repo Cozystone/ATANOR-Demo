@@ -74,6 +74,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "spatial_relation" in field
     assert "scene_group_id" in field
     assert "sameSceneGroup" in field
+    assert "sceneBeatModelPoints" in field
+    assert "sceneGroupCameraView" in field
     assert "small_moving_object" in field
     assert "motion_path" in field
     assert "sceneMotionPathPoint" in field
@@ -85,6 +87,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "central_scale" in field
     assert "drawSceneFocusParticles" in field
     assert "data-scene-objects" in field
+    assert "data-active-scene-group" in field
     assert "data-scene-beat" in field
     assert "splatra-imagination-product-label" in field
     assert "imagination /" in field

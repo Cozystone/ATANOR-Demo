@@ -521,6 +521,49 @@ function sameSceneGroup(left: ScenePlanBeat | null | undefined, right: ScenePlan
   return Boolean(leftGroup && rightGroup && leftGroup === rightGroup);
 }
 
+function sceneBeatModelPoints(beat: ScenePlanBeat, sceneElapsed: number) {
+  const points = [sceneObjectPosition(beat), sceneMotionPathPoint(beat, sceneElapsed)];
+  const from = Array.isArray(beat.motion_path?.from) ? beat.motion_path?.from ?? [] : [];
+  const to = Array.isArray(beat.motion_path?.to) ? beat.motion_path?.to ?? [] : [];
+  if (from.length >= 2) {
+    points.push({
+      x: Number.isFinite(Number(from[0])) ? Number(from[0]) : 0,
+      y: Number.isFinite(Number(from[1])) ? Number(from[1]) : 0,
+    });
+  }
+  if (to.length >= 2) {
+    points.push({
+      x: Number.isFinite(Number(to[0])) ? Number(to[0]) : 0,
+      y: Number.isFinite(Number(to[1])) ? Number(to[1]) : 0,
+    });
+  }
+  return points;
+}
+
+function sceneGroupCameraView(activeObject: SceneRenderObject | null, visibleObjects: SceneRenderObject[], sceneElapsed: number): SceneCameraView {
+  const baseView = sceneCameraView(activeObject?.beat, true, sceneElapsed);
+  if (!activeObject) return baseView;
+  const groupObjects = visibleObjects.filter((object) => sameSceneGroup(object.beat, activeObject.beat));
+  if (groupObjects.length < 2) return baseView;
+  const points = groupObjects.flatMap((object) => sceneBeatModelPoints(object.beat, sceneElapsed));
+  if (points.length < 2) return baseView;
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spread = Math.max(maxX - minX, maxY - minY);
+  const groupTargetX = (minX + maxX) / 2;
+  const groupTargetY = (minY + maxY) / 2;
+  const groupZoom = clamp(1.48 - spread * 0.34 + groupObjects.length * 0.018, 0.9, 1.46);
+  return {
+    targetX: baseView.targetX * 0.38 + groupTargetX * 0.62,
+    targetY: baseView.targetY * 0.38 + groupTargetY * 0.62,
+    zoom: clamp(Math.min(baseView.zoom, groupZoom), 0.82, 1.56),
+  };
+}
+
 function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const seen = new Set<string>();
@@ -1179,7 +1222,7 @@ function drawSceneFocusParticles(
 
   const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
   const activeObject = visibleObjects.find((object) => object.id === activeObjectId) ?? visibleObjects[0] ?? null;
-  const cameraView = sceneCameraView(activeObject?.beat, true, sceneElapsed);
+  const cameraView = sceneGroupCameraView(activeObject, visibleObjects, sceneElapsed);
   cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);
   visibleObjects.forEach((object) => {
     const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
@@ -1233,6 +1276,7 @@ export default function SplatraImaginationField({
   const activeSceneBeat = syncedBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[syncedBeatIndex] : null;
   const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
   const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : null;
+  const activeSceneGroupId = activeSceneBeat?.scene_group_id ?? "";
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1387,7 +1431,7 @@ export default function SplatraImaginationField({
   const canvas = <canvas ref={canvasRef} />;
 
   return (
-    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length} data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"}>
+    <section className={`splatra-imagination-field ${className ?? ""}`} data-mode={mode} data-state={state} data-scene-objects={sceneObjects.length} data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"} data-active-scene-group={activeSceneGroupId || "none"}>
       {interactive ? (
         <button
           type="button"
