@@ -240,6 +240,10 @@ def test_dashboard_conversation_returns_verified_speech_timeline_for_motion_scen
     assert scene["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry"
     assert scene["dashboard_layout"]["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
     assert scene["dashboard_layout"]["orb"]["anchor"] == "lower_right"
+    assert scene["layout_timeline"][0]["decision_basis"] == "verified_scene_geometry"
+    assert scene["layout_timeline"][0]["text_rendering"] == "dom_text_not_particles"
+    assert scene["layout_timeline"][0]["orb_movement"] == "lower_right_scaled_down"
+    assert any(item["action"] == "sync_orb_text_with_particle_beat" for item in scene["layout_timeline"])
     assert scene["topic_scene_templates"] is False
     assert scene["speech_timeline"]
     assert all(item["text_source"] == "verified_beat_narration" for item in scene["speech_timeline"])

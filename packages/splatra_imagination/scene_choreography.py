@@ -55,6 +55,7 @@ class SceneChoreographyPlan:
     beats: list[SceneBeat]
     safety_flags: dict[str, bool]
     speech_timeline: list[dict[str, Any]] = field(default_factory=list)
+    layout_timeline: list[dict[str, Any]] = field(default_factory=list)
     external_splatra_called: bool = False
     raw_buffer_in_agent_context: bool = False
     topic_scene_templates: bool = False
@@ -328,6 +329,51 @@ def _speech_timeline(beats: list[SceneBeat]) -> list[dict[str, Any]]:
     return timeline
 
 
+def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any], beats: list[SceneBeat]) -> list[dict[str, Any]]:
+    """Expose orb/text/stage placement decisions as geometry-derived actions."""
+
+    decision = dashboard_layout.get("agent_layout_decision") if isinstance(dashboard_layout.get("agent_layout_decision"), dict) else {}
+    if stage_layout != "scene_focus":
+        return [{
+            "t_start": 0.0,
+            "duration": 999.0,
+            "action": "keep_orb_primary",
+            "decision_basis": "conversation_default",
+            "orb_anchor": "center",
+            "text_rendering": "dom_text_not_particles",
+            "stage_region": "conversation_center",
+        }]
+
+    timeline = [{
+        "t_start": 0.0,
+        "duration": 999.0,
+        "action": decision.get("agent_action") or "share_center_with_particle_scene",
+        "decision_basis": decision.get("decision_basis") or "verified_scene_geometry",
+        "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
+        "orb_movement": decision.get("orb_movement") or "lower_right_scaled_down",
+        "text_rendering": decision.get("text_rendering") or "dom_text_not_particles",
+        "text_strategy": decision.get("text_strategy") or "dom_text_collision_avoidance",
+        "stage_region": decision.get("scene_region") or "dashboard_center",
+    }]
+    for index, beat in enumerate(beats):
+        if beat.speech_cue is False:
+            continue
+        timeline.append({
+            "t_start": beat.t_start,
+            "duration": beat.duration,
+            "action": "sync_orb_text_with_particle_beat",
+            "decision_basis": "verified_speech_cue_beat",
+            "beat_index": index,
+            "scene_group_id": beat.scene_group_id,
+            "object_id": beat.object_id,
+            "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
+            "text_rendering": "dom_text_not_particles",
+            "stage_region": "dashboard_center",
+            "particle_behavior": beat.particle_behavior,
+        })
+    return timeline
+
+
 def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     """Validate an agent-authored SPLATRA scene plan without inventing content.
 
@@ -344,6 +390,8 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     layout_intent = _coerce_layout_intent(plan.get("layout_intent"), stage_layout, beats)
     scene_extent = _scene_extent(beats)
     dashboard_layout = _dashboard_layout(stage_layout, orb_anchor, text_anchor, layout_intent, scene_extent)
+    speech_timeline = _speech_timeline(beats)
+    layout_timeline = _layout_timeline(stage_layout, dashboard_layout, beats)
     seed = f"{stage_layout}:{orb_anchor}:{text_anchor}:{layout_intent}:{[(beat.op, beat.prompt, beat.object_id) for beat in beats]}"
     return SceneChoreographyPlan(
         plan_id=_stable_id("scene_choreo", seed),
@@ -355,6 +403,7 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
         dashboard_layout=dashboard_layout,
         primary_surface="splatra_stage" if stage_layout == "scene_focus" else "conversation",
         beats=beats,
-        speech_timeline=_speech_timeline(beats),
+        speech_timeline=speech_timeline,
+        layout_timeline=layout_timeline,
         safety_flags=default_safety_flags(),
     )

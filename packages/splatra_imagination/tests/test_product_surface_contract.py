@@ -20,6 +20,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneFocus={stageLayout === \"scene_focus\"}" in status_card
     assert "scenePlan={sceneChoreography}" in status_card
     assert "sceneNarrationBeats" in status_card
+    assert "layout_timeline?: Array" in status_card
+    assert "activeLayoutAction" in status_card
+    assert "data-layout-action" in status_card
     assert "speech_timeline?: Array" in status_card
     assert "scenePlan?.speech_timeline" in status_card
     assert "beat.speech_cue !== false" in status_card
@@ -30,6 +33,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "activeSpeechBeatIndex={sceneSpeechBeatIndex}" in status_card
     assert "speech_cue: bool = True" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "speech_timeline: list[dict[str, Any]]" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "layout_timeline: list[dict[str, Any]]" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "\"action\": \"sync_orb_text_with_particle_beat\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"text_source\": \"verified_beat_narration\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "scene_group_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card

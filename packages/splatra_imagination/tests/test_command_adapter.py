@@ -130,6 +130,10 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert item["physics_hint"]["field"] == "downward_attraction"
     assert item["motion_path"]["basis"] == "verified_motion_phrase"
     assert plan.dashboard_layout["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
+    assert plan.layout_timeline[0]["action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
+    assert plan.layout_timeline[0]["decision_basis"] == "verified_scene_geometry"
+    assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
+    assert any(item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1 for item in plan.layout_timeline)
     assert plan.topic_scene_templates is False
 
 

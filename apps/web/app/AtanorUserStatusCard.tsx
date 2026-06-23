@@ -117,6 +117,21 @@ type SceneChoreographyPayload = {
     };
   };
   primary_surface?: string;
+  layout_timeline?: Array<{
+    t_start?: number;
+    duration?: number;
+    action?: string;
+    decision_basis?: string;
+    beat_index?: number;
+    scene_group_id?: string;
+    object_id?: string;
+    orb_anchor?: string;
+    orb_movement?: string;
+    text_rendering?: string;
+    text_strategy?: string;
+    stage_region?: string;
+    particle_behavior?: string;
+  }>;
   speech_timeline?: Array<{
     beat_index?: number;
     object_id?: string;
@@ -295,6 +310,16 @@ function requestedLayoutDecision(scenePlan: SceneChoreographyPayload, stageLayou
   }
   if (stageLayout === "scene_focus") return "share_center_with_particle_scene:dom_text_not_particles";
   return "none";
+}
+
+function activeLayoutAction(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, activeBeatIndex: number) {
+  const timeline = Array.isArray(scenePlan?.layout_timeline) ? scenePlan?.layout_timeline ?? [] : [];
+  const active = timeline.find((item) => Number(item.beat_index) === activeBeatIndex && typeof item.action === "string");
+  const base = timeline.find((item) => item.beat_index === undefined && typeof item.action === "string");
+  if (active?.action) return String(active.action);
+  if (base?.action) return String(base.action);
+  if (stageLayout === "scene_focus") return requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? "yield_center_to_particle_scene" : "share_center_with_particle_scene";
+  return "keep_orb_primary";
 }
 
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
@@ -1031,6 +1056,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}
       data-layout-basis={requestedLayoutBasis(sceneChoreography, stageLayout)}
       data-layout-decision={requestedLayoutDecision(sceneChoreography, stageLayout)}
+      data-layout-action={activeLayoutAction(sceneChoreography, stageLayout, sceneSpeechBeatIndex)}
       data-text-layout-basis="dom_text_canvas_metrics_no_particle_text"
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
