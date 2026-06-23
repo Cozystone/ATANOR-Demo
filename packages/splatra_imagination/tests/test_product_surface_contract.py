@@ -71,6 +71,11 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "splatra_state: splatraStateForInnerVoice" in status_card
     assert "splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry)" in status_card
     assert "layout_feedback" in status_card
+    assert "splatraOrbLayoutFeedback" in status_card
+    assert "nextOrbLayoutFeedback" in status_card
+    assert "orb_layout_feedback" in status_card
+    assert "effective_orb_movement" in status_card
+    assert "requested_orb_movement" in status_card
     assert "client_dom_scene_collision_telemetry" in status_card
     assert "sceneSpeechStartedAt" in status_card
     assert "data-speech-placement" in status_card

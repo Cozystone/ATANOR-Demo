@@ -403,15 +403,39 @@ function firstSceneNarration(scenePlan: SceneChoreographyPayload) {
   return beats[0]?.text ?? "";
 }
 
-function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, layoutTelemetry?: LayoutTelemetry) {
-  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
-  const firstBeat = beats[0] ?? {};
-  const layoutFeedback = layoutTelemetry ?? {
+function splatraLayoutTelemetryOrDefault(stageLayout: StageLayout, layoutTelemetry?: LayoutTelemetry): LayoutTelemetry {
+  return layoutTelemetry ?? {
     blockers: 0,
     collisionState: stageLayout === "scene_focus" ? "unmeasured" : "conversation_default",
     offscreen: 0,
     overlap: 0,
   };
+}
+
+function splatraOrbLayoutFeedback(
+  scenePlan: SceneChoreographyPayload,
+  stageLayout: StageLayout,
+  layoutTelemetry?: LayoutTelemetry,
+  activeBeatIndex = -1,
+) {
+  const layoutState = activeLayoutState(scenePlan, stageLayout, activeBeatIndex);
+  const telemetry = splatraLayoutTelemetryOrDefault(stageLayout, layoutTelemetry);
+  const effectiveMovement = effectiveOrbMovementForTelemetry(stageLayout, layoutState.orbMovement, telemetry);
+  return {
+    requested_orb_movement: layoutState.orbMovement,
+    effective_orb_movement: effectiveMovement,
+    orb_feedback: effectiveMovement === layoutState.orbMovement ? "server_scene_geometry" : "client_dom_collision_feedback",
+    orb_anchor: layoutState.orbAnchor,
+    speech_anchor: layoutState.textAnchor,
+    collision_state: telemetry.collisionState,
+  };
+}
+
+function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, layoutTelemetry?: LayoutTelemetry, activeBeatIndex = -1) {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const firstBeat = beats[0] ?? {};
+  const layoutFeedback = splatraLayoutTelemetryOrDefault(stageLayout, layoutTelemetry);
+  const orbLayoutFeedback = splatraOrbLayoutFeedback(scenePlan, stageLayout, layoutFeedback, activeBeatIndex);
   return {
     stage_layout: stageLayout,
     layout_intent: requestedLayoutIntent(scenePlan),
@@ -424,6 +448,7 @@ function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLay
       offscreen_px: layoutFeedback.offscreen,
       feedback_basis: "client_dom_scene_collision_telemetry",
     },
+    orb_layout_feedback: orbLayoutFeedback,
     beat_count: beats.length,
     motion_count: finiteNumber(scenePlan?.scene_extent?.motion_count, beats.filter((beat) => beat.op === "move" || beat.motion_path).length),
     archetype: String(firstBeat.archetype ?? scenePlan?.primary_surface ?? "particle_scene"),
@@ -1140,6 +1165,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         if (nextSceneChoreography) setSceneSpeechStartedAt(performance.now());
         setSpeechLine(firstSceneNarration(nextSceneChoreography) || firstSpeechBeat(answer));
       };
+      const nextOrbLayoutFeedback = splatraOrbLayoutFeedback(nextSceneChoreography, nextStageLayout, layoutTelemetry);
       setStageLayout(nextStageLayout);
       setSceneChoreography(nextSceneChoreography);
       setSceneSpeechStartedAt(0);
@@ -1164,6 +1190,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
               overlap_px: layoutTelemetry.overlap,
               offscreen_px: layoutTelemetry.offscreen,
             },
+            orb_layout_feedback: nextOrbLayoutFeedback,
           },
           splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry),
           review_queue_pressure: 0,
