@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -146,6 +148,48 @@ def test_chat_default_path_attaches_hidden_three_core_trace(tmp_path, monkeypatc
     assert payload["external_llm_used"] is False
     assert payload["external_sllm_used"] is False
     assert payload["local_brain_write"] is False
+
+
+def test_chat_conversation_uses_readonly_verified_store_for_grounded_visual_scene(tmp_path, monkeypatch) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": "Gravity is a force of attraction between masses. Isaac Newton formulated the law of universal gravitation.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "Gravity"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ATANOR_VERIFIED_STORE_PATH", str(tmp_path))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat/atanor",
+        json={
+            "question": "What is the law of gravity?",
+            "language": "en",
+            "mode": "conversation",
+            "brain_mode": "conversation",
+            "include_trace": True,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    scene = payload["scene_choreography"]
+    assert payload["route_type"] == "general_knowledge_question"
+    assert payload["compact_trace"]["semantic_grounding"]["grounding_source"] == "verified_store_v0_readonly"
+    assert "Isaac Newton" in payload["answer"]
+    assert scene["stage_layout"] == "scene_focus"
+    assert scene["topic_scene_templates"] is False
+    assert any("Isaac Newton" in beat["prompt"] for beat in scene["beats"])
+    assert payload["external_llm_used"] is False
+    assert payload["external_sllm_used"] is False
+    assert payload["local_brain_write"] is False
+    assert payload["production_store_mutated"] is False
 
 
 def test_chat_trace_mode_exposes_compact_three_core_summary(tmp_path, monkeypatch) -> None:

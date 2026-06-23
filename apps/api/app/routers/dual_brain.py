@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -28,6 +30,15 @@ from packages.inner_voice import emit_inner_voice_from_state
 
 
 router = APIRouter(tags=["dual-brain"])
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _verified_store_runtime() -> dict[str, Any]:
+    configured = os.environ.get("ATANOR_VERIFIED_STORE_PATH")
+    candidate = Path(configured) if configured else PROJECT_ROOT / "data" / "cloud_brain" / "verified_store_v0"
+    if candidate.exists() and candidate.is_dir():
+        return {"verified_store_path": str(candidate)}
+    return {}
 
 
 class DualBrainIngestRequest(BaseModel):
@@ -425,7 +436,7 @@ def _live_selfhood_payload(
     language: str,
 ) -> dict[str, Any]:
     route = route_conversation_request(question)
-    grounded_context = gather_grounded_context(question, route)
+    grounded_context = gather_grounded_context(question, route, runtime=_verified_store_runtime())
     speech_act = _live_selfhood_speech_act(question, language)
     generated = generate_conversation_surface(
         question,

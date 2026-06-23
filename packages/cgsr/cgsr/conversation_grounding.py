@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from packages.cgsr.cgsr.conversation_router import ConversationRoute, ConversationRouteType
+from packages.cgsr.cgsr.verified_fact_retrieval import retrieve_verified_facts
 
 
 HONESTY_NOTE = (
@@ -71,7 +72,6 @@ def gather_grounded_context(question: str, route: ConversationRoute, runtime: di
     Brain, mutate verified_store_v0, or promote candidates.
     """
 
-    del question
     runtime = runtime or {}
     if route.route_type == "greeting_smalltalk":
         return _context(route.route_type, grounding_source="none", grounding_quality="none")
@@ -186,6 +186,21 @@ def gather_grounded_context(question: str, route: ConversationRoute, runtime: di
             grounding_source="local_state",
             grounding_quality="high",
         )
+    if route.route_type in {"general_knowledge_question", "unknown"}:
+        hits = retrieve_verified_facts(question, store_path=runtime.get("verified_store_path"))
+        if hits:
+            quality = "high" if len({hit.source_ref for hit in hits}) >= 2 else "medium"
+            return _context(
+                route.route_type,
+                facts=tuple(hit.fact for hit in hits),
+                constraints=(
+                    "Use only retrieved verified-store facts.",
+                    "Do not invent illustrative facts or scene entities beyond retrieved evidence.",
+                ),
+                source_refs=tuple(hit.source_ref for hit in hits),
+                grounding_source="verified_store_v0_readonly",
+                grounding_quality=quality,
+            )
     return _context(
         route.route_type,
         facts=(),
@@ -242,6 +257,8 @@ def realize_grounded_context(question: str, context: GroundedContext, *, languag
     """
 
     del question, language
+    if context.route_type in {"general_knowledge_question", "unknown"} and context.facts and context.grounding_quality != "none":
+        return " ".join(context.facts[:3])
     clean_answers = {
         "local_cloud_brain_explanation": (
             "로컬 브레인은 사용자 개인 기억 쪽이고, 승인 없이는 저장하거나 바꾸지 않습니다. "

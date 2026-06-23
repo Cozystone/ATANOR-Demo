@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from packages.cgsr.cgsr.conversation_grounding import (
     gather_grounded_context,
     honesty_metadata,
@@ -48,3 +51,37 @@ def test_honesty_metadata_is_explicit() -> None:
     assert metadata["heuristic_act_inference_used"] is True
     assert metadata["semantic_grounding_metadata_present"] is True
     assert metadata["honesty_metadata_present"] is True
+
+
+def test_general_knowledge_can_use_readonly_verified_store(tmp_path: Path) -> None:
+    evidence_path = tmp_path / "evidence.jsonl"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "text": "Gravity is a force of attraction between masses. Isaac Newton formulated the law of universal gravitation.",
+                "verification": {"status": "verified"},
+                "provenance": {
+                    "source_name": "licensed_fixture",
+                    "title": "Gravity",
+                    "url": "https://example.test/gravity",
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    prompt = "What is the law of gravity?"
+    route = route_conversation_request(prompt)
+    context = gather_grounded_context(prompt, route, runtime={"verified_store_path": str(tmp_path)})
+    answer = realize_grounded_context(prompt, context)
+
+    assert route.route_type == "general_knowledge_question"
+    assert context.grounding_source == "verified_store_v0_readonly"
+    assert context.grounding_quality == "medium"
+    assert context.safety_flags["production_store_mutated"] is False
+    assert context.safety_flags["local_brain_write"] is False
+    assert "Isaac Newton" in " ".join(context.facts)
+    assert answer
+    assert "universal gravitation" in answer

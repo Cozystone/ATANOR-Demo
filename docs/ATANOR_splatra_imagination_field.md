@@ -88,6 +88,8 @@ The product dashboard now plays validated scene beats over time. `t_start`, `pos
 
 When the user explicitly asks SPLATRA to visualize something, the planner preserves that user-authored visual request as the first bounded beat. Additional beats come from grounded local facts when available. This lets ATANOR move particles toward the requested scene without introducing hidden dictionaries such as `gravity -> Newton/apple/tree`.
 
+General knowledge scenes require verified grounding. The conversation path can read a configured `verified_store_v0` JSONL store through `ATANOR_VERIFIED_STORE_PATH` or the default store location when it already exists. This read-only retrieval extracts matching evidence facts and then lets the visual planner turn those retrieved facts into particle beats. If no verified fact is present, the system abstains instead of inventing a visual explanation.
+
 ## Future Gates
 
 - WebGL/WebGPU SPL3 decoder for client-side quantized data textures.
