@@ -186,12 +186,17 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(beat["visual_affordance"] == "organic_structure" and beat["archetype"] == "tree" for beat in beats if beat["prompt"] == "tree")
     assert any(beat["visual_affordance"] == "small_moving_object" and beat["archetype"] == "machine_core" for beat in beats if "apple fell" in beat["prompt"])
     assert all(beat["archetype"] == "abstract_memory_cloud" for beat in beats if beat["visual_affordance"] == "concept_cloud")
+    seated_newton = next(beat for beat in beats if beat["prompt"] == "Isaac Newton" and beat["spatial_relation"] == "under_target")
+    tree_anchor = next(beat for beat in beats if beat["prompt"] == "tree" and beat["spatial_relation"] in {"over_anchor", "motion_source"})
+    assert seated_newton["position"][1] < tree_anchor["position"][1]
     assert any(beat["op"] == "move" and "apple fell" in beat["prompt"] for beat in beats)
     motion_beats = [beat for beat in beats if beat["op"] == "move" and beat.get("motion_path")]
     assert motion_beats
     assert all(beat["motion_path"]["basis"] == "verified_motion_phrase" for beat in motion_beats)
     assert any(beat["motion_path"].get("source_prompt") for beat in motion_beats)
     assert any(beat["motion_path"].get("target_prompt") for beat in motion_beats)
+    apple_motion = next(beat for beat in motion_beats if "apple fell" in beat["prompt"])
+    assert apple_motion["motion_path"]["from"][1] > apple_motion["motion_path"]["to"][1]
     assert plan.scene_choreography["layout_intent"] == "wide_particle_stage"
     assert plan.scene_choreography["scene_extent"]["motion_count"] >= 1
     assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())

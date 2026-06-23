@@ -48,6 +48,7 @@ type ScenePlanBeat = {
   object_id?: string;
   semantic_role?: string;
   visual_affordance?: string;
+  spatial_relation?: string;
   source_fact?: string;
   t_start?: number;
   duration?: number;
@@ -487,6 +488,9 @@ function sceneParticlesForBeat(beat: ScenePlanBeat, archetype: Archetype, count:
 }
 
 function scenePoseForBeat(beat: ScenePlanBeat) {
+  const relation = String(beat.spatial_relation ?? "");
+  if (relation === "under_target") return "seated";
+  if (relation === "motion_target") return "reaching";
   const text = `${beat.prompt ?? ""} ${beat.narration ?? ""} ${beat.source_fact ?? ""}`.toLowerCase();
   if (/\b(sat|sitting|seated|rested|under)\b/.test(text)) return "seated";
   if (/\b(fell|falling|dropped|moved|toward|towards)\b/.test(text)) return "reaching";

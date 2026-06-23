@@ -243,6 +243,7 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
     phrase = unit["prompt"]
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
     visual_affordance = _visual_affordance_for_phrase(phrase, unit["narration"], unit["semantic_role"], op)
+    spatial_relation = _spatial_relation_for_phrase(phrase, unit["narration"], visual_affordance, op)
     beat = {
         "op": op,
         "prompt": phrase,
@@ -250,11 +251,12 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
         "object_id": f"grounded_visual_{index}_{_stable_index(object_seed, 100000):05d}",
         "semantic_role": unit["semantic_role"],
         "visual_affordance": visual_affordance,
+        "spatial_relation": spatial_relation,
         "source_fact": unit["source_fact"],
         "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index, visual_affordance),
         "t_start": round(t_start, 2),
         "duration": 1.35 if op == "move" else 1.25,
-        "position": _position_for_phrase(phrase, index),
+        "position": _position_for_unit(phrase, index, visual_affordance, spatial_relation),
         "camera": _camera_for_phrase(phrase, index) if op in {"focus_camera", "move"} else {},
     }
     motion_path = _motion_path_for_unit(unit, index=index) if op == "move" or unit["semantic_role"].startswith("verified_motion") else {}
@@ -376,6 +378,25 @@ def _visual_affordance_for_phrase(phrase: str, narration: str, semantic_role: st
     return "concept_cloud"
 
 
+def _spatial_relation_for_phrase(phrase: str, narration: str, visual_affordance: str, op: str) -> str:
+    folded = f" {narration.casefold()} "
+    if " under " in folded or " beneath " in folded or " below " in folded:
+        if visual_affordance == "entity_figure":
+            return "under_target"
+        if visual_affordance == "organic_structure":
+            return "over_anchor"
+        if visual_affordance in {"small_object", "small_moving_object"}:
+            return "upper_attachment"
+    if op == "move" or " toward " in folded or " towards " in folded:
+        if visual_affordance in {"small_object", "small_moving_object"}:
+            return "path_object"
+        if visual_affordance == "entity_figure":
+            return "motion_target"
+        if visual_affordance == "organic_structure":
+            return "motion_source"
+    return ""
+
+
 def _archetype_for_phrase(phrase: str, semantic_role: str, index: int, visual_affordance: str = "") -> Archetype:
     # This is deliberately not a topic dictionary. It only chooses a bounded
     # visual carrier deterministically so the planner does not smuggle in
@@ -409,6 +430,23 @@ def _position_for_phrase(phrase: str, index: int) -> list[float]:
     return [round(x_bucket * 0.22, 2), round(y_bucket * 0.16, 2), 0.0]
 
 
+def _position_for_unit(phrase: str, index: int, visual_affordance: str, spatial_relation: str) -> list[float]:
+    relation_positions = {
+        "under_target": [-0.18, -0.34, 0.0],
+        "over_anchor": [0.2, 0.28, 0.0],
+        "upper_attachment": [0.16, 0.42, 0.0],
+        "path_object": [0.02, 0.34, 0.0],
+        "motion_target": [-0.2, -0.32, 0.0],
+        "motion_source": [0.24, 0.3, 0.0],
+    }
+    if spatial_relation in relation_positions:
+        base = relation_positions[spatial_relation]
+        jitter_x = (_stable_index(f"rx:{index}:{phrase}", 5) - 2) * 0.025
+        jitter_y = (_stable_index(f"ry:{index}:{phrase}", 5) - 2) * 0.02
+        return [round(base[0] + jitter_x, 2), round(base[1] + jitter_y, 2), 0.0]
+    return _position_for_phrase(phrase, index)
+
+
 def _motion_path_for_unit(unit: dict[str, str], *, index: int) -> dict[str, Any]:
     narration = unit["narration"]
     if not _has_any_cue(narration, MOTION_CUES):
@@ -437,9 +475,13 @@ def _motion_path_for_unit(unit: dict[str, str], *, index: int) -> dict[str, Any]
         target_prompt = anchors[-1]
     if not source_prompt or not target_prompt or source_prompt.casefold() == target_prompt.casefold():
         return {}
+    source_affordance = _visual_affordance_for_phrase(source_prompt, narration, "verified_motion_context", "morph")
+    target_affordance = _visual_affordance_for_phrase(target_prompt, narration, "verified_motion_context", "morph")
+    source_relation = _spatial_relation_for_phrase(source_prompt, narration, source_affordance, "morph")
+    target_relation = _spatial_relation_for_phrase(target_prompt, narration, target_affordance, "morph")
     return {
-        "from": _position_for_phrase(source_prompt, index + 37),
-        "to": _position_for_phrase(target_prompt, index + 73),
+        "from": _position_for_unit(source_prompt, index + 37, source_affordance, source_relation or "motion_source"),
+        "to": _position_for_unit(target_prompt, index + 73, target_affordance, target_relation or "motion_target"),
         "basis": "verified_motion_phrase",
         "source_prompt": source_prompt,
         "target_prompt": target_prompt,
