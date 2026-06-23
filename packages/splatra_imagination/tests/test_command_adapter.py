@@ -207,6 +207,29 @@ def test_layout_timeline_nudges_orb_from_active_lower_right_focus() -> None:
     assert active["text_rendering"] == "dom_text_not_particles"
 
 
+def test_layout_timeline_places_speech_away_from_motion_path_even_when_position_is_centered() -> None:
+    plan = compile_scene_choreography({
+        "stage_layout": "scene_focus",
+        "beats": [
+            {
+                "op": "move",
+                "prompt": "verified right-side falling object",
+                "narration": "The verified object moves down on the right side.",
+                "position": [0.0, 0.0, 0.0],
+                "motion_path": {"from": [0.66, 0.48, 0.0], "to": [0.72, -0.42, 0.0], "basis": "verified_motion_phrase"},
+                "speech_cue": True,
+                "t_start": 0.0,
+                "duration": 1.6,
+            },
+        ],
+    })
+
+    active = next(item for item in plan.layout_timeline if item.get("beat_index") == 0)
+    assert active["decision_basis"] == "verified_speech_cue_beat"
+    assert active["text_anchor"] == "upper_left"
+    assert active["text_rendering"] == "dom_text_not_particles"
+
+
 def test_command_adapter_keeps_safety_flags_closed() -> None:
     plan, frame = compile_splatra_command("visual scene request", particle_budget=128)
 

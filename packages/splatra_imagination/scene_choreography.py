@@ -439,30 +439,72 @@ def _orb_movement_for_active_beat(beat: SceneBeat, fallback: Any) -> str:
     return fallback_movement
 
 
+def _active_beat_layout_points(beat: SceneBeat) -> list[tuple[float, float]]:
+    """Collect verified scene coordinates that can collide with DOM text."""
+
+    points: list[tuple[float, float]] = []
+    if beat.position and len(beat.position) >= 2:
+        points.append((float(beat.position[0]), float(beat.position[1])))
+    if beat.motion_path:
+        for key in ("from", "to"):
+            raw_point = beat.motion_path.get(key)
+            if isinstance(raw_point, tuple) and len(raw_point) >= 2:
+                points.append((float(raw_point[0]), float(raw_point[1])))
+    return points
+
+
+def _text_anchor_clearance_score(anchor: TextAnchor, points: list[tuple[float, float]], fallback: str) -> float:
+    """Score text anchors by clearance from active verified geometry.
+
+    This is not topic scripting: only scene coordinates and motion endpoints
+    influence the placement.
+    """
+
+    anchor_points = {
+        "upper_left": (-0.72, 0.58),
+        "lower_left": (-0.72, -0.72),
+        "upper_right": (0.72, 0.58),
+        "lower_center": (0.0, -0.78),
+    }
+    target_x, target_y = anchor_points.get(anchor, anchor_points["lower_left"])
+    crowding = 0.0
+    high_motion = False
+    low_motion = False
+    for x, y in points:
+        distance = max(0.12, ((x - target_x) ** 2 + (y - target_y) ** 2) ** 0.5)
+        crowding += 1.0 / distance
+        high_motion = high_motion or y >= 0.12
+        low_motion = low_motion or y <= -0.32
+    vertical_penalty = 0.0
+    if high_motion and anchor.startswith("lower"):
+        vertical_penalty += 0.42
+    if low_motion and anchor.startswith("upper") and not high_motion:
+        vertical_penalty += 0.18
+    composer_penalty = 0.58 if anchor == "lower_center" else 0.08 if anchor == "lower_left" else 0.0
+    fallback_bonus = -0.16 if anchor == fallback else 0.0
+    return crowding + vertical_penalty + composer_penalty + fallback_bonus
+
+
 def _text_anchor_for_active_beat(beat: SceneBeat, fallback: Any) -> TextAnchor:
     """Place current speech away from the active verified particle focus."""
 
     fallback_anchor = str(fallback or "lower_left")
     if fallback_anchor not in {"upper_left", "lower_left", "upper_right", "lower_center"}:
         fallback_anchor = "lower_left"
-    if not beat.position or len(beat.position) < 2:
+    points = _active_beat_layout_points(beat)
+    if not points:
         return fallback_anchor  # type: ignore[return-value]
-    try:
-        x = float(beat.position[0])
-        y = float(beat.position[1])
-    except (TypeError, ValueError):
-        return fallback_anchor  # type: ignore[return-value]
-    if x <= -0.18 and y >= 0.12:
+    avg_x = sum(point[0] for point in points) / len(points)
+    min_y = min(point[1] for point in points)
+    max_y = max(point[1] for point in points)
+    if avg_x <= -0.18:
         return "upper_right"
-    if x >= 0.18 and y >= 0.12:
+    if avg_x >= 0.18:
         return "upper_left"
-    if x <= -0.18 and y < 0.12:
-        return "upper_right"
-    if x >= 0.18 and y < 0.12:
-        return "upper_left"
-    if y >= 0.18:
+    if min_y <= -0.32 and max_y >= 0.12:
         return "lower_left"
-    return fallback_anchor  # type: ignore[return-value]
+    candidates: list[TextAnchor] = ["lower_left", "upper_left", "upper_right", "lower_center"]
+    return min(candidates, key=lambda anchor: _text_anchor_clearance_score(anchor, points, fallback_anchor))
 
 
 def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
