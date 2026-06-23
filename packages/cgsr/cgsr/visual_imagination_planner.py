@@ -253,6 +253,53 @@ def _has_any_cue(text: str, cues: set[str]) -> bool:
     return any(cue in folded for cue in cues)
 
 
+def _motion_participants(narration: str) -> dict[str, str]:
+    """Extract motion subject/source/target from the verified sentence itself.
+
+    This is a shallow linguistic extraction layer, not a topic script. It never
+    maps "gravity" to props; it only promotes participants that are explicitly
+    present in a source sentence containing motion cues.
+    """
+
+    participants = {"subject": "", "source": "", "target": ""}
+    clean = _clean_phrase(narration, limit=240)
+    if not _has_any_cue(clean, MOTION_CUES):
+        return participants
+
+    subject_patterns = [
+        r"\b(?:an?|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)\s+(?:fell|falls|falling|dropped|drops|moving|moved|moves|shifted|shifts|travels|traveled)\b",
+        r"([가-힣A-Za-z]{1,16})(?:이|가|은|는)\s*(?:[가-힣\s]{0,12})?(?:떨어|낙하|움직|이동|끌|당기)",
+    ]
+    for pattern in subject_patterns:
+        match = re.search(pattern, clean, re.IGNORECASE)
+        if match:
+            participants["subject"] = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
+            break
+
+    source_patterns = [
+        r"\bfrom\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=\s+(?:toward|towards|to|into|onto)\b|[,.;]|$)",
+        r"([가-힣A-Za-z]{0,8}나무)(?:에서|로부터|부터)",
+    ]
+    for pattern in source_patterns:
+        match = re.search(pattern, clean, re.IGNORECASE)
+        if match:
+            participants["source"] = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
+            break
+
+    target_patterns = [
+        r"\b(?:toward|towards|to|into|onto)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=[,.;]|$)",
+        r"([가-힣A-Za-z]{2,})(?:의\s*)?머리",
+        r"([가-힣A-Za-z]{2,})(?:\s*)쪽으로",
+    ]
+    for pattern in target_patterns:
+        match = re.search(pattern, clean, re.IGNORECASE)
+        if match:
+            participants["target"] = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
+            break
+
+    return participants
+
+
 def _scene_op_for_unit(unit: str, *, index: int, is_last: bool) -> str:
     """Choose a visual operation from linguistic evidence, not topic templates."""
 
@@ -343,8 +390,11 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
             anchors = _entity_spans(unit)
             prompt = " / ".join(anchors[:2]) if len(anchors) >= 2 else anchors[0] if anchors else unit
             semantic_role = "verified_entity_relation" if len(anchors) >= 2 else "verified_fact_unit"
+            motion_participants = _motion_participants(unit)
             if _has_any_cue(unit, MOTION_CUES):
                 semantic_role = "verified_motion_event"
+                if motion_participants["subject"]:
+                    prompt = motion_participants["subject"]
             units.append(
                 {
                     "prompt": prompt,
@@ -358,6 +408,26 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                 }
             )
             if _has_any_cue(unit, MOTION_CUES):
+                participant_units = [
+                    ("verified_motion_subject", motion_participants["subject"]),
+                    ("verified_motion_source", motion_participants["source"]),
+                    ("verified_motion_target", motion_participants["target"]),
+                ]
+                for role, anchor in participant_units:
+                    if not anchor:
+                        continue
+                    units.append(
+                        {
+                            "prompt": anchor,
+                            "narration": _clean_phrase(unit, limit=180),
+                            "source_fact": clean_fact,
+                            "semantic_role": role,
+                            "speech_cue": False,
+                            "speech_cue_basis": "visual_anchor_only",
+                            "scene_group_id": group_id,
+                            "scene_group_role": "visual_anchor",
+                        }
+                    )
                 for anchor_index, anchor in enumerate(anchors[:3]):
                     units.append(
                         {
@@ -405,7 +475,9 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
     deduped: list[dict[str, Any]] = []
     seen: set[str] = set()
     for unit in units:
-        key = f"{unit['prompt']}::{unit['narration']}".casefold()
+        role = unit["semantic_role"]
+        role_key = f"::{role}" if role in {"verified_motion_subject", "verified_motion_source", "verified_motion_target"} else ""
+        key = f"{unit['prompt']}::{unit['narration']}{role_key}".casefold()
         if key not in seen:
             seen.add(key)
             deduped.append(unit)
@@ -413,7 +485,7 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
     selected_keys = {f"{unit['prompt']}::{unit['narration']}::{unit['semantic_role']}".casefold() for unit in selected}
     for unit in deduped[14:]:
         role = unit["semantic_role"]
-        if role not in {"verified_motion_event", "verified_motion_anchor", "verified_motion_context"}:
+        if role not in {"verified_motion_event", "verified_motion_anchor", "verified_motion_context", "verified_motion_subject", "verified_motion_source", "verified_motion_target"}:
             continue
         key = f"{unit['prompt']}::{unit['narration']}::{role}".casefold()
         if key in selected_keys:
@@ -429,6 +501,16 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
 def _looks_like_named_figure(phrase: str) -> bool:
     tokens = re.findall(r"\b[A-Z][a-z]{2,}\b", phrase)
     return len(tokens) >= 2
+
+
+def _looks_like_english_figure(phrase: str, narration: str) -> bool:
+    tokens = re.findall(r"\b[A-Z][a-z]{2,}\b", phrase)
+    if len(tokens) >= 2:
+        return True
+    if len(tokens) != 1 or phrase.strip() != tokens[0]:
+        return False
+    folded = narration.casefold()
+    return any(cue in folded for cue in (" sat ", "sitting", "seated", "person", "figure", "head", "toward", "towards"))
 
 
 def _looks_like_korean_figure(phrase: str, narration: str) -> bool:
@@ -452,7 +534,7 @@ def _visual_affordance_for_phrase(phrase: str, narration: str, semantic_role: st
     """
 
     folded_phrase = phrase.casefold()
-    if _looks_like_named_figure(phrase) or _looks_like_korean_figure(phrase, narration):
+    if _looks_like_english_figure(phrase, narration) or _looks_like_named_figure(phrase) or _looks_like_korean_figure(phrase, narration):
         return "entity_figure"
     if any(term in folded_phrase for term in ("tree", "forest", "branch", "trunk", "leaf", "leaves", "canopy", "plant")) or any(term in phrase for term in KOREAN_ORGANIC_TERMS):
         return "organic_structure"
@@ -506,6 +588,9 @@ def _archetype_for_phrase(phrase: str, semantic_role: str, index: int, visual_af
         "verified_motion_anchor",
         "verified_motion_context",
         "verified_motion_event",
+        "verified_motion_subject",
+        "verified_motion_source",
+        "verified_motion_target",
         "verified_entity_anchor",
         "verified_entity_relation",
     } else "grounded"
@@ -542,8 +627,9 @@ def _motion_path_for_unit(unit: dict[str, Any], *, index: int) -> dict[str, Any]
     narration = unit["narration"]
     if not _has_any_cue(narration, MOTION_CUES):
         return {}
-    source_prompt = ""
-    target_prompt = ""
+    participants = _motion_participants(narration)
+    source_prompt = participants["source"]
+    target_prompt = participants["target"]
     korean_source = re.search(r"([가-힣A-Za-z]{0,8}나무)(?:에서|로부터|부터)", narration)
     if korean_source:
         source_prompt = _clean_phrase(korean_source.group(1), limit=72)

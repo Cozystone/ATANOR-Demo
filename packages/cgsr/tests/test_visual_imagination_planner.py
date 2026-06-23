@@ -221,20 +221,23 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any("apple fell" in prompt for prompt in prompts)
     assert any(beat["visual_affordance"] == "entity_figure" and beat["archetype"] == "creature" for beat in beats if "Isaac Newton" in beat["prompt"])
     assert any(beat["visual_affordance"] == "organic_structure" and beat["archetype"] == "tree" for beat in beats if beat["prompt"] == "tree")
-    assert any(beat["visual_affordance"] == "small_moving_object" and beat["archetype"] == "machine_core" for beat in beats if "apple fell" in beat["prompt"])
+    assert any(beat["visual_affordance"] == "small_moving_object" and beat["archetype"] == "machine_core" for beat in beats if beat["prompt"] == "apple")
+    assert any(beat["semantic_role"] == "verified_motion_subject" and beat["prompt"] == "apple" for beat in beats)
+    assert any(beat["semantic_role"] == "verified_motion_source" and beat["prompt"] == "tree" for beat in beats)
+    assert any(beat["semantic_role"] == "verified_motion_target" and beat["prompt"] == "Newton" and beat["visual_affordance"] == "entity_figure" for beat in beats)
     assert all(beat["archetype"] == "abstract_memory_cloud" for beat in beats if beat["visual_affordance"] == "concept_cloud")
     seated_newton = next(beat for beat in beats if beat["prompt"] == "Isaac Newton" and beat["spatial_relation"] == "under_target")
     tree_anchor = next(beat for beat in beats if beat["prompt"] == "tree" and beat["spatial_relation"] in {"over_anchor", "motion_source"})
     assert seated_newton["position"][1] < tree_anchor["position"][1]
-    assert any(beat["op"] == "move" and "apple fell" in beat["prompt"] for beat in beats)
+    assert any(beat["op"] == "move" and beat["prompt"] == "apple" for beat in beats)
     assert all("speech_cue" in beat for beat in beats)
     assert all("speech_cue_basis" in beat for beat in beats)
     assert all("scene_group_id" in beat for beat in beats)
     assert all("scene_group_role" in beat for beat in beats)
     assert all(beat["speech_cue"] is True for beat in beats if beat["semantic_role"] in {"verified_entity_relation", "verified_motion_event"})
-    assert all(beat["speech_cue"] is False for beat in beats if beat["semantic_role"] in {"verified_entity_anchor", "verified_motion_anchor", "verified_motion_context"})
+    assert all(beat["speech_cue"] is False for beat in beats if beat["semantic_role"] in {"verified_entity_anchor", "verified_motion_anchor", "verified_motion_context", "verified_motion_subject", "verified_motion_source", "verified_motion_target"})
     assert any(beat["speech_cue_basis"] == "visual_anchor_only" and beat["prompt"] == "tree" for beat in beats)
-    assert any(beat["speech_cue_basis"] == "verified_evidence_unit" and "apple fell" in beat["prompt"] for beat in beats)
+    assert any(beat["speech_cue_basis"] == "verified_evidence_unit" and beat["prompt"] == "apple" for beat in beats)
     speech_groups = {beat["scene_group_id"] for beat in beats if beat["scene_group_role"] == "speech_unit"}
     visual_anchor_groups = {beat["scene_group_id"] for beat in beats if beat["scene_group_role"] == "visual_anchor"}
     assert speech_groups
@@ -246,7 +249,7 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert all(beat["motion_path"]["basis"] == "verified_motion_phrase" for beat in motion_beats)
     assert any(beat["motion_path"].get("source_prompt") for beat in motion_beats)
     assert any(beat["motion_path"].get("target_prompt") for beat in motion_beats)
-    apple_motion = next(beat for beat in motion_beats if "apple fell" in beat["prompt"])
+    apple_motion = next(beat for beat in motion_beats if beat["prompt"] == "apple")
     assert apple_motion["motion_path"]["from"][1] > apple_motion["motion_path"]["to"][1]
     assert tuple(apple_motion["camera"]["target"]) == tuple(apple_motion["position"])
     assert apple_motion["camera"]["zoom"] > 1.0
