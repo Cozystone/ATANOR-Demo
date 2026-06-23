@@ -54,6 +54,17 @@ type ScenePlanBeat = {
   pose_hint?: ScenePose;
   surface_features?: string[];
   particle_behavior?: string;
+  scene_directive?: {
+    directive_owner?: string;
+    basis?: string;
+    narrative_function?: string;
+    stage_instruction?: string;
+    visual_affordance?: string;
+    speech_sync?: string;
+    text_rendering?: string;
+    particle_text?: boolean;
+    topic_scene_templates?: boolean;
+  };
   physics_hint?: {
     basis?: string;
     field?: string;
@@ -1776,6 +1787,9 @@ export default function SplatraImaginationField({
   const activeSceneFocusBasis = activeSpeechBeatIndex >= 0 ? "speech_timeline" : activeSceneBeat ? "scene_timer" : "ambient_field";
   const activeSceneRole = activeSceneBeat?.semantic_role ?? "none";
   const activeSceneBehavior = activeSceneBeat?.particle_behavior ?? "none";
+  const activeSceneDirective = activeSceneBeat?.scene_directive?.stage_instruction ?? "none";
+  const activeSceneNarrativeFunction = activeSceneBeat?.scene_directive?.narrative_function ?? "none";
+  const activeSceneDirectiveOwner = activeSceneBeat?.scene_directive?.directive_owner ?? "none";
   const activeSceneTrackId = activeSceneBeat ? sceneObjectTrackId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : "";
 
   useEffect(() => {
@@ -1940,6 +1954,9 @@ export default function SplatraImaginationField({
       data-active-scene-object={activeSceneObjectId || "none"}
       data-active-scene-role={activeSceneRole}
       data-active-scene-behavior={activeSceneBehavior}
+      data-active-scene-directive={activeSceneDirective}
+      data-active-scene-narrative-function={activeSceneNarrativeFunction}
+      data-active-scene-directive-owner={activeSceneDirectiveOwner}
       data-active-scene-track={activeSceneTrackId || "none"}
       data-active-scene-focus-basis={activeSceneFocusBasis}
       data-layout-collision-pressure={layoutCollisionPressure(controls)}

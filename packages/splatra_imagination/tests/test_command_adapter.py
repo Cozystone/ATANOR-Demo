@@ -71,6 +71,13 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
                 "pose_hint": "reaching",
                 "surface_features": ["fruit_cluster"],
                 "particle_behavior": "gravity_arc",
+                "scene_directive": {
+                    "directive_owner": "cgsr_visual_imagination_planner",
+                    "basis": "verified_scene_beat",
+                    "narrative_function": "demonstrate_verified_motion",
+                    "stage_instruction": "animate_verified_motion_path",
+                    "particle_text": False,
+                },
                 "physics_hint": {"basis": "verified_motion_phrase", "field": "downward_attraction", "gravity_bias": 0.7},
                 "motion_path": {"from": [-0.5, 0.25, 0], "to": [0.5, -0.25, 0], "basis": "verified_motion_phrase"},
                 "camera": {"target": [0.5, -0.25, 0], "zoom": 1.2},
@@ -90,6 +97,9 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
     assert beat.pose_hint == "reaching"
     assert beat.surface_features == ("fruit_cluster",)
     assert beat.particle_behavior == "gravity_arc"
+    assert beat.scene_directive["directive_owner"] == "cgsr_visual_imagination_planner"
+    assert beat.scene_directive["stage_instruction"] == "animate_verified_motion_path"
+    assert beat.scene_directive["particle_text"] is False
     assert beat.physics_hint == {"basis": "verified_motion_phrase", "field": "downward_attraction", "gravity_bias": 0.7}
     assert beat.motion_path == {"from": (-0.5, 0.25, 0.0), "to": (0.5, -0.25, 0.0), "basis": "verified_motion_phrase"}
     assert beat.camera == {"target": [0.5, -0.25, 0], "zoom": 1.2}
@@ -136,6 +146,8 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert item["scene_group_id"] == "gravity_example"
     assert "object_track_id" in item
     assert item["particle_behavior"] == "gravity_arc"
+    assert item["scene_directive"]["stage_instruction"] == "animate_verified_motion_path"
+    assert item["scene_directive"]["particle_text"] is False
     assert item["physics_hint"]["field"] == "downward_attraction"
     assert item["motion_path"]["basis"] == "verified_motion_phrase"
     assert plan.dashboard_layout["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
@@ -153,6 +165,7 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     active_layout = next(item for item in plan.layout_timeline if item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1)
     assert active_layout["text_rendering"] == "dom_text_not_particles"
     assert active_layout["decision_owner"] == "cgsr_scene_choreography_agent"
+    assert active_layout["scene_directive"]["stage_instruction"] == "animate_verified_motion_path"
     assert "object_track_id" in active_layout
     assert active_layout["orb_movement"] == "lower_right_lifted"
     assert active_layout["text_anchor"] == "lower_left"

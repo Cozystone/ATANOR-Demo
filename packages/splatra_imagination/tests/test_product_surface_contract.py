@@ -169,6 +169,11 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "verified_motion_target" in field
     assert "visual_affordance" in field
     assert "particle_behavior" in field
+    assert "scene_directive?: {" in field
+    assert "data-active-scene-directive" in field
+    assert "data-active-scene-narrative-function" in field
+    assert "data-active-scene-directive-owner" in field
+    assert "activeSceneDirective" in field
     assert "physics_hint" in field
     assert "pose_hint?: ScenePose" in field
     assert "surface_features?: string[]" in field

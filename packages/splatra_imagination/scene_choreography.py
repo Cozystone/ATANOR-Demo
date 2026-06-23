@@ -30,6 +30,7 @@ class SceneBeat:
     surface_features: tuple[str, ...] = field(default_factory=tuple)
     particle_behavior: str = ""
     physics_hint: dict[str, Any] = field(default_factory=dict)
+    scene_directive: dict[str, Any] = field(default_factory=dict)
     source_fact: str = ""
     speech_cue: bool = True
     speech_cue_basis: str = "verified_evidence_unit"
@@ -115,6 +116,34 @@ def _coerce_motion_path(value: Any) -> dict[str, Any]:
     return path
 
 
+def _default_scene_directive(raw: dict[str, Any], op: str, speech_cue: bool, motion_path: dict[str, Any]) -> dict[str, str | bool]:
+    semantic_role = _clean_text(raw.get("semantic_role") or raw.get("role") or "", limit=80)
+    if op == "move" or motion_path:
+        narrative_function = "demonstrate_verified_motion"
+        stage_instruction = "animate_verified_motion_path"
+    elif not speech_cue or semantic_role.endswith("_anchor"):
+        narrative_function = "establish_visual_anchor"
+        stage_instruction = "assemble_silent_anchor"
+    elif op == "focus_camera":
+        narrative_function = "focus_verified_detail"
+        stage_instruction = "close_up_verified_object"
+    elif "relation" in semantic_role:
+        narrative_function = "introduce_verified_relation"
+        stage_instruction = "bind_relation_field"
+    else:
+        narrative_function = "present_verified_beat"
+        stage_instruction = "render_verified_particle_beat"
+    return {
+        "directive_owner": "cgsr_visual_imagination_planner",
+        "basis": "verified_scene_beat",
+        "narrative_function": narrative_function,
+        "stage_instruction": stage_instruction,
+        "text_rendering": "dom_text_not_particles",
+        "particle_text": False,
+        "topic_scene_templates": False,
+    }
+
+
 def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     op = str(raw.get("op") or "spawn_object")
     if op not in {"spawn_object", "morph", "move", "focus_camera", "label", "despawn"}:
@@ -148,6 +177,20 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     speech_cue_basis = _clean_text(raw.get("speech_cue_basis") or "verified_evidence_unit", limit=80)
     scene_group_id = _clean_text(raw.get("scene_group_id") or "", limit=96)
     scene_group_role = _clean_text(raw.get("scene_group_role") or "", limit=80)
+    motion_path = _coerce_motion_path(raw.get("motion_path"))
+    raw_directive = raw.get("scene_directive") if isinstance(raw.get("scene_directive"), dict) else {}
+    directive_default = _default_scene_directive(raw, op, speech_cue, motion_path)
+    scene_directive = {
+        "directive_owner": _clean_text(raw_directive.get("directive_owner") or directive_default["directive_owner"], limit=80),
+        "basis": _clean_text(raw_directive.get("basis") or directive_default["basis"], limit=80),
+        "narrative_function": _clean_text(raw_directive.get("narrative_function") or directive_default["narrative_function"], limit=80),
+        "stage_instruction": _clean_text(raw_directive.get("stage_instruction") or directive_default["stage_instruction"], limit=80),
+        "visual_affordance": _clean_text(raw_directive.get("visual_affordance") or visual_affordance, limit=80),
+        "speech_sync": _clean_text(raw_directive.get("speech_sync") or ("speech_timeline" if speech_cue else "visual_anchor_only"), limit=80),
+        "text_rendering": "dom_text_not_particles",
+        "particle_text": False,
+        "topic_scene_templates": False,
+    }
     return SceneBeat(
         op=op,  # type: ignore[arg-type]
         prompt=prompt,
@@ -162,6 +205,7 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         surface_features=surface_features,
         particle_behavior=particle_behavior,
         physics_hint=physics_hint,
+        scene_directive=scene_directive,
         source_fact=source_fact,
         speech_cue=speech_cue,
         speech_cue_basis=speech_cue_basis,
@@ -171,7 +215,7 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         t_start=_coerce_float(raw.get("t_start"), index * 1.25, minimum=0.0, maximum=600.0),
         duration=_coerce_float(raw.get("duration"), 1.0, minimum=0.1, maximum=60.0),
         position=_coerce_position(raw.get("position")),
-        motion_path=_coerce_motion_path(raw.get("motion_path")),
+        motion_path=motion_path,
         camera=raw.get("camera") if isinstance(raw.get("camera"), dict) else {},
     )
 
@@ -372,6 +416,7 @@ def _speech_timeline(beats: list[SceneBeat]) -> list[dict[str, Any]]:
             "duration": beat.duration,
             "particle_behavior": beat.particle_behavior,
             "physics_hint": dict(beat.physics_hint),
+            "scene_directive": dict(beat.scene_directive),
             "motion_path": dict(beat.motion_path),
             "semantic_role": beat.semantic_role,
             "visual_affordance": beat.visual_affordance,
@@ -437,6 +482,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "text_rendering": "dom_text_not_particles",
             "stage_region": "dashboard_center",
             "particle_behavior": beat.particle_behavior,
+            "scene_directive": dict(beat.scene_directive),
         })
     return timeline
 

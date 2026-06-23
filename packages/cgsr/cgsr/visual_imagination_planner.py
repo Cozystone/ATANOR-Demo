@@ -374,6 +374,50 @@ def _beat_duration_for_unit(unit: dict[str, str], op: str) -> float:
     return round(min(3.2, max(1.05, base)), 2)
 
 
+def _scene_directive_for_unit(
+    unit: dict[str, Any],
+    *,
+    op: str,
+    visual_affordance: str,
+    motion_path: dict[str, Any],
+) -> dict[str, Any]:
+    """Describe how the renderer should use the verified beat.
+
+    This is a choreography contract, not a topic script: it only summarizes
+    the already-extracted role/op/motion evidence so the product renderer does
+    not invent why the orb, text, or particle stage should move.
+    """
+
+    semantic_role = str(unit.get("semantic_role") or "")
+    speech_cue = bool(unit.get("speech_cue", True))
+    if op == "move" or motion_path:
+        narrative_function = "demonstrate_verified_motion"
+        stage_instruction = "animate_verified_motion_path"
+    elif not speech_cue or semantic_role.endswith("_anchor"):
+        narrative_function = "establish_visual_anchor"
+        stage_instruction = "assemble_silent_anchor"
+    elif op == "focus_camera":
+        narrative_function = "focus_verified_detail"
+        stage_instruction = "close_up_verified_object"
+    elif "relation" in semantic_role:
+        narrative_function = "introduce_verified_relation"
+        stage_instruction = "bind_relation_field"
+    else:
+        narrative_function = "present_verified_fact"
+        stage_instruction = "assemble_verified_object"
+    return {
+        "directive_owner": "cgsr_visual_imagination_planner",
+        "basis": "verified_scene_beat",
+        "narrative_function": narrative_function,
+        "stage_instruction": stage_instruction,
+        "visual_affordance": visual_affordance,
+        "speech_sync": "speech_timeline" if speech_cue else "visual_anchor_only",
+        "text_rendering": "dom_text_not_particles",
+        "particle_text": False,
+        "topic_scene_templates": False,
+    }
+
+
 def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: float, duration: float | None = None) -> dict[str, Any]:
     phrase = unit["prompt"]
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
@@ -411,8 +455,15 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
         physics_hint["pose_hint"] = pose_hint
     if surface_features:
         physics_hint["surface_features"] = surface_features
+    scene_directive = _scene_directive_for_unit(
+        unit,
+        op=op,
+        visual_affordance=visual_affordance,
+        motion_path=motion_path,
+    )
     beat["particle_behavior"] = particle_behavior
     beat["physics_hint"] = physics_hint
+    beat["scene_directive"] = scene_directive
     if motion_path:
         beat["motion_path"] = motion_path
     return beat

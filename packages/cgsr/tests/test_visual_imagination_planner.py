@@ -282,6 +282,12 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(beat["motion_path"].get("target_prompt") for beat in motion_beats)
     apple_motion = next(beat for beat in motion_beats if beat["prompt"] == "apple")
     assert apple_motion["particle_behavior"] == "gravity_arc"
+    assert apple_motion["scene_directive"]["directive_owner"] == "cgsr_visual_imagination_planner"
+    assert apple_motion["scene_directive"]["narrative_function"] == "demonstrate_verified_motion"
+    assert apple_motion["scene_directive"]["stage_instruction"] == "animate_verified_motion_path"
+    assert apple_motion["scene_directive"]["text_rendering"] == "dom_text_not_particles"
+    assert apple_motion["scene_directive"]["particle_text"] is False
+    assert apple_motion["scene_directive"]["topic_scene_templates"] is False
     assert apple_motion["physics_hint"]["basis"] == "verified_motion_phrase"
     assert apple_motion["physics_hint"]["field"] == "downward_attraction"
     assert apple_motion["physics_hint"]["gravity_bias"] > 0
@@ -290,7 +296,15 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert apple_motion["camera"]["zoom"] > 1.0
     focus_beats = [beat for beat in beats if beat["op"] == "focus_camera"]
     assert focus_beats
+    assert all(
+        beat["scene_directive"]["stage_instruction"] == "close_up_verified_object"
+        for beat in focus_beats
+        if beat["speech_cue"] is True
+    )
     assert all(tuple(beat["camera"]["target"]) == tuple(beat["position"]) for beat in focus_beats)
+    anchor_beats = [beat for beat in beats if beat["speech_cue"] is False and not beat.get("motion_path") and beat["op"] != "move"]
+    assert anchor_beats
+    assert all(beat["scene_directive"]["stage_instruction"] == "assemble_silent_anchor" for beat in anchor_beats)
     assert plan.scene_choreography["layout_intent"] == "wide_particle_stage"
     assert plan.scene_choreography["scene_extent"]["motion_count"] >= 1
     assert plan.scene_choreography["dashboard_layout"]["planning_basis"] == "scene_geometry_extent"
