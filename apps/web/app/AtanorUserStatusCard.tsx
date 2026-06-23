@@ -58,6 +58,13 @@ type DashboardLayoutMetrics = {
   fieldOpacity: number;
 };
 
+type LayoutTelemetry = {
+  blockers: number;
+  collisionState: string;
+  offscreen: number;
+  overlap: number;
+};
+
 type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
 
 type SceneChoreographyPayload = {
@@ -611,6 +618,17 @@ function overlapArea(left: RectLike, right: RectLike, padding = 0) {
   return x * y;
 }
 
+function offscreenAmount(rect: RectLike, inset = 12) {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  return (
+    Math.max(0, inset - rect.left)
+    + Math.max(0, rect.right - (viewportWidth - inset))
+    + Math.max(0, inset - rect.top)
+    + Math.max(0, rect.bottom - (viewportHeight - inset))
+  );
+}
+
 function rectFromDom(rect: DOMRect): RectLike {
   return {
     bottom: rect.bottom,
@@ -720,17 +738,28 @@ function scoreSpeechAnchor(
   metrics: DashboardLayoutMetrics,
 ) {
   const rect = candidateSpeechRect(anchor, speechSize, dashboard, metrics);
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const offscreen =
-    Math.max(0, 12 - rect.left)
-    + Math.max(0, rect.right - (viewportWidth - 12))
-    + Math.max(0, 12 - rect.top)
-    + Math.max(0, rect.bottom - (viewportHeight - 12));
+  const offscreen = offscreenAmount(rect);
   const blockerPenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 18), 0);
   const stagePenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 0) * 0.08, 0);
   const preferencePenalty = anchor === preferred ? 0 : anchor === "lower_left" ? 42 : 84;
   return offscreen * 1000 + blockerPenalty * 6 + stagePenalty + preferencePenalty;
+}
+
+function layoutTelemetryForRect(rect: RectLike | null, blockers: RectLike[]): LayoutTelemetry {
+  if (!rect) {
+    return { blockers: blockers.length, collisionState: "no_dom_text", offscreen: 0, overlap: 0 };
+  }
+  const overlap = Math.round(blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 0), 0));
+  const offscreen = Math.round(offscreenAmount(rect));
+  let collisionState = "dom_text_clear";
+  if (offscreen > 0) {
+    collisionState = "dom_text_clipped";
+  } else if (overlap > 360) {
+    collisionState = "dom_text_overlap_risk";
+  } else if (overlap > 0) {
+    collisionState = "dom_text_minimized_overlap";
+  }
+  return { blockers: blockers.length, collisionState, offscreen, overlap };
 }
 
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
@@ -748,6 +777,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [sceneSpeechBeatIndex, setSceneSpeechBeatIndex] = useState(-1);
   const [speechPlacement, setSpeechPlacement] = useState<TextAnchor>("lower_center");
   const [selfNarrationPlacement, setSelfNarrationPlacement] = useState<TextAnchor>("upper_right");
+  const [layoutTelemetry, setLayoutTelemetry] = useState<LayoutTelemetry>({
+    blockers: 0,
+    collisionState: "conversation_default",
+    offscreen: 0,
+    overlap: 0,
+  });
   const dashboardRef = useRef<HTMLElement | null>(null);
   const speechRef = useRef<HTMLParagraphElement | null>(null);
   const selfNarrationRef = useRef<HTMLParagraphElement | null>(null);
@@ -819,6 +854,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     if (stageLayout !== "scene_focus") {
       setSpeechPlacement("lower_center");
       setSelfNarrationPlacement("upper_right");
+      setLayoutTelemetry((current) => (
+        current.collisionState === "conversation_default" && current.blockers === 0 && current.overlap === 0 && current.offscreen === 0
+          ? current
+          : { blockers: 0, collisionState: "conversation_default", offscreen: 0, overlap: 0 }
+      ));
       return undefined;
     }
     const activeLayout = activeLayoutState(sceneChoreography, stageLayout, sceneSpeechBeatIndex);
@@ -849,6 +889,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       const sceneBlockers = scenePlanBlockers(sceneChoreography, dashboardBox);
       const blockers = [...baseBlockers, ...sceneBlockers];
       let nextSpeechRect: RectLike | null = null;
+      let nextSpeechBlockers = blockers;
 
       if (speech) {
         const speechMaxWidth = Math.min(540, window.innerWidth * (layoutMetrics.speechMaxVw / 100));
@@ -856,6 +897,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         const speechBlockers = selfNarrationElement
           ? [...blockers, rectFromDom(selfNarrationElement.getBoundingClientRect())]
           : blockers;
+        nextSpeechBlockers = speechBlockers;
         const next = candidates
           .map((anchor) => ({
             anchor,
@@ -879,6 +921,15 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferredSelfNarration;
         setSelfNarrationPlacement((current) => (current === nextSelf ? current : nextSelf));
       }
+      const telemetry = layoutTelemetryForRect(nextSpeechRect, nextSpeechBlockers);
+      setLayoutTelemetry((current) => (
+        current.collisionState === telemetry.collisionState
+          && current.blockers === telemetry.blockers
+          && current.overlap === telemetry.overlap
+          && current.offscreen === telemetry.offscreen
+          ? current
+          : telemetry
+      ));
     };
 
     frameId = window.requestAnimationFrame(updatePlacement);
@@ -1145,6 +1196,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}
       data-layout-text-anchor-points={currentLayoutState.textAnchorPoints}
+      data-layout-collision-state={layoutTelemetry.collisionState}
+      data-layout-measured-blockers={layoutTelemetry.blockers}
+      data-layout-overlap-px={layoutTelemetry.overlap}
+      data-layout-offscreen-px={layoutTelemetry.offscreen}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
       data-text-layout-basis="dom_text_canvas_metrics_preallocated_no_particle_text"

@@ -29,6 +29,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-text-anchor" in status_card
     assert "data-layout-text-anchor-basis" in status_card
     assert "data-layout-text-anchor-points" in status_card
+    assert "data-layout-collision-state" in status_card
+    assert "data-layout-measured-blockers" in status_card
+    assert "data-layout-overlap-px" in status_card
+    assert "data-layout-offscreen-px" in status_card
     assert "data-layout-self-narration-anchor" in status_card
     assert "activeLayout.textAnchor" in status_card
     assert "activeLayout.selfNarrationAnchor" in status_card
@@ -78,6 +82,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "requestedLayoutDecision" in status_card
     assert "requestedLayoutBasis" in status_card
     assert "DashboardLayoutMetrics" in status_card
+    assert "LayoutTelemetry" in status_card
+    assert "layoutTelemetryForRect" in status_card
+    assert "offscreenAmount" in status_card
     assert "dashboardLayoutMetrics" in status_card
     assert "textLayoutSegments" in status_card
     assert "estimateDomTextLayout" in status_card
