@@ -95,6 +95,8 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
   const [status, setStatus] = useState<AnyRecord | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<AnyRecord | null>(null);
   const [autonomyPolicy, setAutonomyPolicy] = useState<AnyRecord | null>(null);
+  const [policyLoopStatus, setPolicyLoopStatus] = useState<AnyRecord | null>(null);
+  const [policyLoopResult, setPolicyLoopResult] = useState<AnyRecord | null>(null);
   const [reviewStatus, setReviewStatus] = useState<AnyRecord | null>(null);
   const [reviewItems, setReviewItems] = useState<AnyRecord[]>([]);
   const [typedPhrase, setTypedPhrase] = useState("");
@@ -125,6 +127,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     refreshScopedPatch().catch(() => undefined);
     refreshReviewQueue().catch(() => undefined);
     refreshAutonomyPolicy().catch(() => undefined);
+    refreshPolicyLoop().catch(() => undefined);
   }, [localBackendUrl]);
 
   const blockedActions = useMemo(() => {
@@ -152,6 +155,31 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
       .catch((error) => ({ error: String(error), policy: null }));
     setAutonomyPolicy(payload.policy ?? null);
     return payload;
+  }
+
+  async function refreshPolicyLoop() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/policy-loop/status")
+      .catch((error) => ({ error: String(error) }));
+    setPolicyLoopStatus(payload);
+    return payload;
+  }
+
+  async function runPolicyLoopOnce() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/policy-loop/run-once", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        max_cycles: 1,
+        base_web_pages: 3,
+        base_review_batch: 6,
+        base_splatra_frames: 1,
+        allow_host_executor: false,
+        review_queue_pressure: Number(policyLoopStatus?.review_queue?.pending ?? 0) > 8 ? 0.75 : 0,
+      }),
+    }).catch((error) => ({ error: String(error), proof_only: true }));
+    setPolicyLoopResult(payload);
+    await refreshPolicyLoop().catch(() => undefined);
+    await refreshReviewQueue().catch(() => undefined);
   }
 
   async function refreshPermissionGate() {
@@ -388,6 +416,50 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
               refresh policy
             </button>
           </div>
+        </article>
+
+        <article className="agentic-os-card">
+          <div className="agentic-os-permission-header">
+            <div>
+              <h3>Policy-driven Autonomous Loop v1</h3>
+              <p>One-cycle proof loop. Emotion policy adjusts exploration, review, SPLATRA, and host caution without tier changes or memory mutation.</p>
+            </div>
+            <strong>{policyLoopStatus?.emotion_snapshot?.label ?? "loading"}</strong>
+          </div>
+          <div className="agentic-os-flags">
+            <span>web={String(policyLoopStatus?.web_pages_budget ?? "-")}</span>
+            <span>review={String(policyLoopStatus?.review_batch_budget ?? "-")}</span>
+            <span>splatra={String(policyLoopStatus?.splatra_frame_budget ?? "-")}</span>
+            <span>host={String(policyLoopStatus?.host_action_budget ?? "-")}</span>
+            <span>strict={String(policyLoopStatus?.review_strictness ?? "-")}</span>
+            <span>throttle={String(policyLoopStatus?.throttle_multiplier ?? "-")}</span>
+            <span>rest={String(policyLoopStatus?.policy_decision?.agent_loop?.should_rest ?? false)}</span>
+          </div>
+          <div className="agentic-os-actions">
+            <button type="button" className="agentic-os-action" onClick={() => runPolicyLoopOnce()}>
+              run one proof cycle
+            </button>
+            <button type="button" className="agentic-os-action" onClick={() => refreshPolicyLoop()}>
+              refresh loop
+            </button>
+          </div>
+          {policyLoopResult ? (
+            <div className="agentic-os-host-result">
+              <strong>{policyLoopResult.loop_id ?? "policy_loop"} - {policyLoopResult.stopped_reason ?? "unknown"}</strong>
+              <p>
+                cycles={String(policyLoopResult.cycles_completed ?? 0)}
+                {" / "}drafts={String(policyLoopResult.candidate_drafts ?? 0)}
+                {" / "}reviews={String(policyLoopResult.review_items ?? 0)}
+                {" / "}splatra={String(policyLoopResult.splatra_frames ?? 0)}
+                {" / "}host={String(policyLoopResult.host_actions ?? 0)}
+              </p>
+              <span>
+                local_brain_write={String(policyLoopResult.local_brain_write ?? false)}
+                {" / "}production_store_mutated={String(policyLoopResult.production_store_mutated ?? false)}
+                {" / "}candidate_promotion={String(policyLoopResult.candidate_promotion ?? false)}
+              </span>
+            </div>
+          ) : <p>idle</p>}
         </article>
 
         <article className="agentic-os-card">

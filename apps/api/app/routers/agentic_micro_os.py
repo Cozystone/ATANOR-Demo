@@ -14,6 +14,7 @@ from packages.agentic_micro_os.capabilities import CapabilityKernel
 from packages.agentic_micro_os.host_executor import HostExecutionRequest, HostExecutor
 from packages.agentic_micro_os.loop import BoundedAgentLoop, draft_skill_from_loop
 from packages.agentic_micro_os.mcp_allowlist import MCPAllowlistGateway, MCPValidationRequest, default_descriptors
+from packages.agentic_micro_os.policy_loop import PolicyDrivenAutonomousLoop, PolicyLoopConfig
 from packages.agentic_micro_os.permission_gate import (
     AutonomySubSwitches,
     AutonomyTier,
@@ -37,6 +38,7 @@ from packages.agentic_micro_os.web_explorer_loop import (
 )
 from packages.hermes_intake.scanner import scan_repo
 from packages.neural_emotion import emit_runtime_event
+from packages.neural_emotion.event_bus import EVENT_BUS
 from packages.splatra_imagination import ARCHETYPES, ImaginationGenerator, ImaginationSeed, default_safety_flags, run_imagination_proof
 
 
@@ -89,6 +91,7 @@ WEB_EXPLORER_SKILL_DRAFTS: list[dict[str, Any]] = []
 OPEN_WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 REVIEW_QUEUE = ReviewQueue()
 PERMISSION_GATE = PermissionGate()
+POLICY_LOOP_RUNS: dict[str, dict[str, Any]] = {}
 
 
 def _make_host_executor(base_path: Path | None = None) -> HostExecutor:
@@ -274,6 +277,21 @@ class HostExecutorExecuteApiRequest(BaseModel):
     operator_id: str = "operator"
 
 
+class PolicyLoopRunOnceApiRequest(BaseModel):
+    loop_id: str = ""
+    max_cycles: int = 1
+    max_runtime_sec: int = 30
+    base_web_pages: int = 3
+    base_review_batch: int = 6
+    base_splatra_frames: int = 1
+    base_host_actions: int = 1
+    allow_host_executor: bool = False
+    review_queue_pressure: float = 0.0
+    recent_failures: int = 0
+    unsafe_request: bool = False
+    voice_available: bool = False
+
+
 class ScopedPatchApiRequest(BaseModel):
     target_path: str
     expected_old_text: str = ""
@@ -412,6 +430,63 @@ def permission_verify_action(request: PermissionVerifyActionApiRequest) -> dict[
 @router.get("/host-executor/status")
 def host_executor_status() -> dict[str, Any]:
     return {**SAFETY_FLAGS, **HOST_EXECUTOR.status()}
+
+
+def _make_policy_loop(config: PolicyLoopConfig | None = None) -> PolicyDrivenAutonomousLoop:
+    return PolicyDrivenAutonomousLoop(
+        config=config or PolicyLoopConfig(),
+        event_bus=EVENT_BUS,
+        review_queue=REVIEW_QUEUE,
+        permission_gate=PERMISSION_GATE,
+    )
+
+
+@router.get("/policy-loop/status")
+def policy_loop_status() -> dict[str, Any]:
+    loop = _make_policy_loop()
+    return {**SAFETY_FLAGS, **loop.status(), "runs": len(POLICY_LOOP_RUNS)}
+
+
+@router.post("/policy-loop/run-once")
+def policy_loop_run_once(request: PolicyLoopRunOnceApiRequest) -> dict[str, Any]:
+    config = PolicyLoopConfig(
+        loop_id=request.loop_id,
+        max_cycles=request.max_cycles,
+        max_runtime_sec=request.max_runtime_sec,
+        base_web_pages=request.base_web_pages,
+        base_review_batch=request.base_review_batch,
+        base_splatra_frames=request.base_splatra_frames,
+        base_host_actions=request.base_host_actions,
+        allow_host_executor=request.allow_host_executor,
+        review_queue_pressure=request.review_queue_pressure,
+        recent_failures=request.recent_failures,
+        unsafe_request=request.unsafe_request,
+        voice_available=request.voice_available,
+    )
+    result = _make_policy_loop(config).run_once().to_dict()
+    POLICY_LOOP_RUNS[result["loop_id"]] = result
+    if result.get("stopped_reason") in {"review_requested", "emergency_stop", "rest_requested", "fatigue", "repeated_failure"}:
+        emit_runtime_event(
+            source="review_queue" if result.get("stopped_reason") == "review_requested" else "user_action",
+            event_type="review_queue_pressure" if result.get("stopped_reason") == "review_requested" else "resting",
+            payload_summary=f"policy loop stopped={result.get('stopped_reason')}",
+            intensity=0.5,
+        )
+    return {
+        **SAFETY_FLAGS,
+        **result,
+        "mutation_performed": False,
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "auto_commit": False,
+        "auto_push": False,
+    }
+
+
+@router.get("/policy-loop/runs/{loop_id}")
+def policy_loop_run(loop_id: str) -> dict[str, Any]:
+    return {**SAFETY_FLAGS, "run": POLICY_LOOP_RUNS.get(loop_id)}
 
 
 @router.get("/host-executor/patch/status")
