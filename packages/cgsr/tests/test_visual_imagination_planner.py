@@ -244,7 +244,14 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(beat["visual_affordance"] == "small_moving_object" and beat["archetype"] == "machine_core" for beat in beats if beat["prompt"] == "apple")
     assert any(beat["semantic_role"] == "verified_motion_subject" and beat["prompt"] == "apple" for beat in beats)
     assert any(beat["semantic_role"] == "verified_motion_source" and beat["prompt"] == "tree" for beat in beats)
-    assert any(beat["semantic_role"] == "verified_motion_target" and beat["prompt"] == "Newton" and beat["visual_affordance"] == "entity_figure" for beat in beats)
+    assert any(beat["semantic_role"] == "verified_motion_target" and beat["prompt"] == "Isaac Newton" and beat["visual_affordance"] == "entity_figure" for beat in beats)
+    apple_tracks = {beat["object_track_id"] for beat in beats if beat["prompt"] == "apple"}
+    tree_tracks = {beat["object_track_id"] for beat in beats if beat["prompt"] == "tree"}
+    newton_tracks = {beat["object_track_id"] for beat in beats if beat["prompt"] == "Isaac Newton" and beat["visual_affordance"] == "entity_figure"}
+    assert len(apple_tracks) == 1
+    assert len(tree_tracks) == 1
+    assert len(newton_tracks) == 1
+    assert all(beat["object_track_basis"] == "verified_source_anchor" for beat in beats)
     assert all(beat["archetype"] == "abstract_memory_cloud" for beat in beats if beat["visual_affordance"] == "concept_cloud")
     seated_newton = next(beat for beat in beats if beat["prompt"] == "Isaac Newton" and beat["spatial_relation"] == "under_target")
     tree_anchor = next(beat for beat in beats if beat["prompt"] == "tree" and beat["spatial_relation"] in {"over_anchor", "motion_source"})

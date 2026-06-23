@@ -46,6 +46,8 @@ type ScenePlanBeat = {
   prompt?: string;
   narration?: string;
   object_id?: string;
+  object_track_id?: string;
+  object_track_basis?: string;
   semantic_role?: string;
   visual_affordance?: string;
   spatial_relation?: string;
@@ -653,6 +655,10 @@ function sceneObjectId(beat: ScenePlanBeat, index: number) {
   return `${beat.object_id || beat.prompt || "scene"}:${index}`;
 }
 
+function sceneObjectTrackId(beat: ScenePlanBeat, index = 0) {
+  return String(beat.object_track_id || beat.object_id || beat.prompt || `scene-track-${index}`);
+}
+
 function sameSceneGroup(left: ScenePlanBeat | null | undefined, right: ScenePlanBeat | null | undefined) {
   const leftGroup = String(left?.scene_group_id ?? "");
   const rightGroup = String(right?.scene_group_id ?? "");
@@ -790,7 +796,7 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
     .map((beat, index) => {
       const archetype = beat.archetype && PRODUCT_ARCHETYPES.includes(beat.archetype) ? beat.archetype : sceneArchetype(scenePlan, index) ?? "abstract_memory_cloud";
       const id = sceneObjectId(beat, index);
-      const seed = `${beat.object_id ?? ""}:${beat.prompt ?? ""}`;
+      const seed = `${sceneObjectTrackId(beat, index)}:${beat.prompt ?? ""}`;
       const pose = scenePoseForBeat(beat);
       const isFigure = String(beat.visual_affordance ?? "") === "entity_figure";
       return {
@@ -810,12 +816,13 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
 
 function sceneParticlesForBeat(beat: ScenePlanBeat, archetype: Archetype, count: number): Particle[] {
   const affordance = String(beat.visual_affordance ?? "");
-  if (affordance === "entity_figure") return figureParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`, scenePoseForBeat(beat));
+  const seed = `${sceneObjectTrackId(beat)}:${beat.prompt ?? ""}`;
+  if (affordance === "entity_figure") return figureParticles(count, seed, scenePoseForBeat(beat));
   if (affordance === "organic_structure") {
-    return organicStructureParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`, beat);
+    return organicStructureParticles(count, seed, beat);
   }
   if (affordance === "small_object" || affordance === "small_moving_object") {
-    return smallObjectParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`, affordance === "small_moving_object");
+    return smallObjectParticles(count, seed, affordance === "small_moving_object");
   }
   return fallbackParticles(archetype, count);
 }
@@ -1670,6 +1677,7 @@ export default function SplatraImaginationField({
   const activeSceneFocusBasis = activeSpeechBeatIndex >= 0 ? "speech_timeline" : activeSceneBeat ? "scene_timer" : "ambient_field";
   const activeSceneRole = activeSceneBeat?.semantic_role ?? "none";
   const activeSceneBehavior = activeSceneBeat?.particle_behavior ?? "none";
+  const activeSceneTrackId = activeSceneBeat ? sceneObjectTrackId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : "";
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1833,6 +1841,7 @@ export default function SplatraImaginationField({
       data-active-scene-object={activeSceneObjectId || "none"}
       data-active-scene-role={activeSceneRole}
       data-active-scene-behavior={activeSceneBehavior}
+      data-active-scene-track={activeSceneTrackId || "none"}
       data-active-scene-focus-basis={activeSceneFocusBasis}
       data-active-scene-group={activeSceneGroupId || "none"}
       data-active-scene-group-size={activeSceneGroupSize}

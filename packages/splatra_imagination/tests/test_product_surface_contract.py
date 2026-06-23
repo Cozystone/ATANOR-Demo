@@ -51,6 +51,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "\"action\": \"sync_orb_text_with_particle_beat\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"text_source\": \"verified_beat_narration\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "scene_group_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "object_track_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "\"object_track_id\": beat.object_track_id" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
     assert '"/api/inner-voice/generate-frame"' in status_card
     assert '"/api/inner-voice/emit"' not in status_card
@@ -113,6 +115,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneRoleStyle" in field
     assert "sceneMotionRole" in field
     assert "semantic_role" in field
+    assert "object_track_id" in field
+    assert "sceneObjectTrackId" in field
+    assert "data-active-scene-track" in field
     assert "verified_motion_subject" in field
     assert "verified_motion_source" in field
     assert "verified_motion_target" in field

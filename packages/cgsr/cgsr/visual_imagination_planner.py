@@ -177,6 +177,47 @@ def _clean_phrase(value: str, *, limit: int = 96) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())[:limit]
 
 
+def _canonical_track_phrase(value: str) -> str:
+    clean = _clean_phrase(value, limit=96).casefold()
+    clean = re.sub(r"\b(?:a|an|the)\s+", "", clean)
+    clean = re.sub(r"[^0-9a-z가-힣\s-]+", " ", clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean or "scene-object"
+
+
+def _expand_known_anchor(anchor: str, known_anchors: list[str]) -> str:
+    """Prefer the fuller verified anchor when a later sentence uses a short name."""
+
+    clean = _clean_phrase(anchor, limit=72)
+    if not clean:
+        return clean
+    folded = clean.casefold()
+    for known in sorted(known_anchors, key=len, reverse=True):
+        known_clean = _clean_phrase(known, limit=72)
+        known_folded = known_clean.casefold()
+        if not known_clean or known_folded == folded:
+            continue
+        parts = known_folded.split()
+        if parts and folded == parts[-1]:
+            return known_clean
+        if len(folded) >= 2 and known_folded.endswith(folded):
+            return known_clean
+    return clean
+
+
+def _track_affordance_family(visual_affordance: str) -> str:
+    if visual_affordance in {"small_object", "small_moving_object"}:
+        return "small_object"
+    if visual_affordance in {"motion_event", "relation_field", "concept_cloud"}:
+        return "semantic_field"
+    return visual_affordance or "object"
+
+
+def _object_track_id(prompt: str, source_fact: str, visual_affordance: str) -> str:
+    basis = f"{_canonical_track_phrase(prompt)}::{_track_affordance_family(visual_affordance)}::{_clean_phrase(source_fact, limit=360)}"
+    return f"verified_track_{hashlib.sha256(basis.encode('utf-8')).hexdigest()[:14]}"
+
+
 def _normalize_anchor_token(token: str) -> str:
     token = token.strip()
     for suffix in KOREAN_SUFFIXES:
@@ -344,6 +385,8 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
         "prompt": phrase,
         "narration": unit["narration"],
         "object_id": f"grounded_visual_{index}_{_stable_index(object_seed, 100000):05d}",
+        "object_track_id": _object_track_id(phrase, unit["source_fact"], visual_affordance),
+        "object_track_basis": "verified_source_anchor",
         "semantic_role": unit["semantic_role"],
         "visual_affordance": visual_affordance,
         "spatial_relation": spatial_relation,
@@ -388,12 +431,17 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
 
     for fact in grounded_context.facts:
         clean_fact = _clean_phrase(fact, limit=420)
+        fact_anchors = _entity_spans(clean_fact)
         for unit in _fact_units(clean_fact):
             group_id = _scene_group_id(unit, clean_fact)
             anchors = _entity_spans(unit)
             prompt = " / ".join(anchors[:2]) if len(anchors) >= 2 else anchors[0] if anchors else unit
             semantic_role = "verified_entity_relation" if len(anchors) >= 2 else "verified_fact_unit"
             motion_participants = _motion_participants(unit)
+            motion_participants = {
+                key: _expand_known_anchor(value, fact_anchors)
+                for key, value in motion_participants.items()
+            }
             if _has_any_cue(unit, MOTION_CUES):
                 semantic_role = "verified_motion_event"
                 if motion_participants["subject"]:

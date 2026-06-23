@@ -21,6 +21,8 @@ class SceneBeat:
     prompt: str = ""
     narration: str = ""
     object_id: str = ""
+    object_track_id: str = ""
+    object_track_basis: str = ""
     semantic_role: str = ""
     visual_affordance: str = ""
     spatial_relation: str = ""
@@ -121,6 +123,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     prompt = _clean_text(raw.get("prompt") or raw.get("label") or raw.get("description"))
     narration = _clean_text(raw.get("narration") or raw.get("speech") or "", limit=240)
     object_id = _clean_text(raw.get("object_id") or raw.get("id") or _stable_id("scene_obj", f"{index}:{prompt}"), limit=96)
+    object_track_id = _clean_text(raw.get("object_track_id") or raw.get("track_id") or "", limit=96)
+    object_track_basis = _clean_text(raw.get("object_track_basis") or "", limit=80)
     semantic_role = _clean_text(raw.get("semantic_role") or raw.get("role") or "", limit=80)
     visual_affordance = _clean_text(raw.get("visual_affordance") or "", limit=80)
     spatial_relation = _clean_text(raw.get("spatial_relation") or "", limit=80)
@@ -136,6 +140,8 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         prompt=prompt,
         narration=narration,
         object_id=object_id,
+        object_track_id=object_track_id,
+        object_track_basis=object_track_basis,
         semantic_role=semantic_role,
         visual_affordance=visual_affordance,
         spatial_relation=spatial_relation,
@@ -331,6 +337,8 @@ def _speech_timeline(beats: list[SceneBeat]) -> list[dict[str, Any]]:
         timeline.append({
             "beat_index": index,
             "object_id": beat.object_id,
+            "object_track_id": beat.object_track_id,
+            "object_track_basis": beat.object_track_basis,
             "scene_group_id": beat.scene_group_id,
             "scene_group_role": beat.scene_group_role,
             "text": text,
@@ -390,6 +398,8 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "beat_index": index,
             "scene_group_id": beat.scene_group_id,
             "object_id": beat.object_id,
+            "object_track_id": beat.object_track_id,
+            "object_track_basis": beat.object_track_basis,
             "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
             "orb_movement": _orb_movement_for_active_beat(beat, decision.get("orb_movement") or "lower_right_scaled_down"),
             "text_anchor": _text_anchor_for_active_beat(beat, default_text_anchor),

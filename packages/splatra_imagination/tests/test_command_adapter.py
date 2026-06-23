@@ -61,6 +61,8 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
             {
                 "op": "focus_camera",
                 "object_id": "focus_subject",
+                "object_track_id": "verified_track_focus_subject",
+                "object_track_basis": "verified_source_anchor",
                 "prompt": "agent-authored subject",
                 "narration": "agent-authored visible narration",
                 "t_start": 2.5,
@@ -77,6 +79,8 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
     beat = plan.beats[0]
     assert plan.text_anchor == "upper_right"
     assert beat.op == "focus_camera"
+    assert beat.object_track_id == "verified_track_focus_subject"
+    assert beat.object_track_basis == "verified_source_anchor"
     assert beat.narration == "agent-authored visible narration"
     assert beat.t_start == 2.5
     assert beat.duration == 4.0
@@ -126,6 +130,7 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert item["text_source"] == "verified_beat_narration"
     assert item["speech_cue_basis"] == "verified_evidence_unit"
     assert item["scene_group_id"] == "gravity_example"
+    assert "object_track_id" in item
     assert item["particle_behavior"] == "gravity_arc"
     assert item["physics_hint"]["field"] == "downward_attraction"
     assert item["motion_path"]["basis"] == "verified_motion_phrase"
@@ -137,6 +142,7 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
     active_layout = next(item for item in plan.layout_timeline if item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1)
     assert active_layout["text_rendering"] == "dom_text_not_particles"
+    assert "object_track_id" in active_layout
     assert active_layout["orb_movement"] == "lower_right_lifted"
     assert active_layout["text_anchor"] == "lower_left"
     assert active_layout["self_narration_anchor"] in {"upper_left", "upper_right"}
