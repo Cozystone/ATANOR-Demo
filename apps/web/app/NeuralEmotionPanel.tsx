@@ -7,6 +7,7 @@ type AnyRecord = Record<string, any>;
 const eventButtons = [
   "user_greeting",
   "novelty_found",
+  "repeated_failure",
   "host_action_denied",
   "voice_unavailable",
   "tier4_enabled",
@@ -36,6 +37,7 @@ function Gauge({ label, value, min = 0, max = 1 }: { label: string; value: numbe
 
 export default function NeuralEmotionPanel() {
   const [snapshot, setSnapshot] = useState<AnyRecord | null>(null);
+  const [policy, setPolicy] = useState<AnyRecord | null>(null);
   const [lastEvent, setLastEvent] = useState<string>("none");
   const [lastDelta, setLastDelta] = useState<AnyRecord | null>(null);
   const [events, setEvents] = useState<AnyRecord[]>([]);
@@ -49,6 +51,10 @@ export default function NeuralEmotionPanel() {
       .then((response) => response.json())
       .catch(() => ({ events: [] }));
     setEvents(Array.isArray(eventPayload.events) ? eventPayload.events.slice(-8).reverse() : []);
+    const policyPayload = await fetch("/api/neural-emotion/policy/current?workspace=lab", { cache: "no-store" })
+      .then((response) => response.json())
+      .catch(() => ({ policy: null }));
+    setPolicy(policyPayload.policy ?? null);
   }
 
   async function sendEvent(eventType: string) {
@@ -76,6 +82,7 @@ export default function NeuralEmotionPanel() {
       fatigue: Number(after.fatigue ?? 0) - Number(before.fatigue ?? 0),
     });
     setEvents(Array.isArray(payload.events) ? payload.events.slice(-8).reverse() : []);
+    await refresh().catch(() => undefined);
   }
 
   async function decay() {
@@ -139,6 +146,33 @@ export default function NeuralEmotionPanel() {
           splatra: data?.splatra_controls,
           voice: data?.voice_controls,
           agentic: data?.agentic_controls,
+        }, null, 2)}</pre>
+      </div>
+      <div className="agentic-os-control-readout">
+        <h4>Autonomy Policy v1</h4>
+        <p>Suggested only. It cannot change autonomy tier, bypass Permission Gate, write Local Brain, mutate production, promote candidates, or claim real emotion.</p>
+        <div className="agentic-os-flags">
+          <span>web x{String(policy?.exploration?.web_budget_multiplier ?? "-")}</span>
+          <span>pages {String(policy?.exploration?.max_pages_delta ?? "-")}</span>
+          <span>review {String(policy?.review?.label ?? "-")}</span>
+          <span>skill threshold {String(policy?.review?.skill_draft_threshold ?? "-")}</span>
+          <span>throttle {String(policy?.agent_loop?.throttle_multiplier ?? "-")}</span>
+          <span>rest={String(policy?.agent_loop?.should_rest ?? false)}</span>
+        </div>
+        <pre>{JSON.stringify({
+          splatra: policy?.splatra,
+          asm: {
+            brevity: policy?.surface?.asm_brevity_bias,
+            caution: policy?.surface?.asm_caution_bias,
+          },
+          voice: {
+            fallback_emphasis: policy?.surface?.voice_fallback_emphasis,
+            claims_audio_available: policy?.surface?.voice_claims_audio_available,
+          },
+          safe: {
+            tier_auto_changed: policy?.autonomy_tier_auto_changed,
+            permission_gate_bypass: policy?.permission_gate_bypass,
+          },
         }, null, 2)}</pre>
       </div>
       <div className="agentic-os-event-log">

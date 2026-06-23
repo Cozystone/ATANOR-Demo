@@ -94,6 +94,7 @@ function MetricStrip({ result }: { result: AnyRecord | null }) {
 export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props) {
   const [status, setStatus] = useState<AnyRecord | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<AnyRecord | null>(null);
+  const [autonomyPolicy, setAutonomyPolicy] = useState<AnyRecord | null>(null);
   const [reviewStatus, setReviewStatus] = useState<AnyRecord | null>(null);
   const [reviewItems, setReviewItems] = useState<AnyRecord[]>([]);
   const [typedPhrase, setTypedPhrase] = useState("");
@@ -123,6 +124,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     refreshHostExecutor().catch(() => undefined);
     refreshScopedPatch().catch(() => undefined);
     refreshReviewQueue().catch(() => undefined);
+    refreshAutonomyPolicy().catch(() => undefined);
   }, [localBackendUrl]);
 
   const blockedActions = useMemo(() => {
@@ -143,6 +145,13 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/review/items").catch((error) => ({ error: String(error), items: [] }));
     setReviewStatus(payload);
     setReviewItems(Array.isArray(payload.items) ? payload.items : []);
+  }
+
+  async function refreshAutonomyPolicy() {
+    const payload = await jsonFetch(localBackendUrl, "/api/neural-emotion/policy/current?workspace=lab")
+      .catch((error) => ({ error: String(error), policy: null }));
+    setAutonomyPolicy(payload.policy ?? null);
+    return payload;
   }
 
   async function refreshPermissionGate() {
@@ -357,6 +366,29 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
         </article>
 
         <NeuralEmotionPanel />
+
+        <article className="agentic-os-card">
+          <div className="agentic-os-permission-header">
+            <div>
+              <h3>Emotion-driven Autonomy Policy v1</h3>
+              <p>Suggested-only loop controls. Permission Gate remains authoritative and autonomy tier cannot be changed here.</p>
+            </div>
+            <strong>{autonomyPolicy?.review?.label ?? "loading"}</strong>
+          </div>
+          <div className="agentic-os-flags">
+            <span>throttle={String(autonomyPolicy?.agent_loop?.throttle_multiplier ?? "-")}</span>
+            <span>rest={String(autonomyPolicy?.agent_loop?.should_rest ?? false)}</span>
+            <span>review={String(autonomyPolicy?.review?.should_request_review ?? false)}</span>
+            <span>web_budget={String(autonomyPolicy?.exploration?.web_budget_multiplier ?? "-")}</span>
+            <span>permission_bypass={String(autonomyPolicy?.permission_gate_bypass ?? false)}</span>
+            <span>tier_auto={String(autonomyPolicy?.autonomy_tier_auto_changed ?? false)}</span>
+          </div>
+          <div className="agentic-os-actions">
+            <button type="button" className="agentic-os-action" onClick={() => refreshAutonomyPolicy()}>
+              refresh policy
+            </button>
+          </div>
+        </article>
 
         <article className="agentic-os-card">
           <h3>{t.modules}</h3>

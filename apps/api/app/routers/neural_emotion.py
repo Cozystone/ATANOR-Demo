@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from packages.neural_emotion import safety_flags
 from packages.neural_emotion.agentic_bridge import agentic_controls
+from packages.neural_emotion.autonomy_policy import AutonomyRuntimeState, evaluate_autonomy_policy
 from packages.neural_emotion.event_bus import (
     EVENT_BUS,
     RuntimeEventSource,
@@ -14,6 +15,7 @@ from packages.neural_emotion.event_bus import (
     SUPPORTED_EVENT_TYPES,
     SUPPORTED_SOURCES,
 )
+from packages.neural_emotion.models import EmotionVector
 from packages.neural_emotion.models import EmotionEvent
 from packages.neural_emotion.splatra_bridge import splatra_controls
 from packages.neural_emotion.surface_bridge import surface_bias
@@ -54,6 +56,17 @@ class ResetRequest(BaseModel):
     clear_events: bool = True
 
 
+class PolicyEvaluateRequest(BaseModel):
+    runtime_state: dict[str, Any] = Field(default_factory=dict)
+    vector: dict[str, Any] | None = None
+    workspace: str = "lab"
+
+
+class PolicyPreviewRequest(BaseModel):
+    runtime_state: dict[str, Any] = Field(default_factory=dict)
+    workspace: str = "lab"
+
+
 def _payload(extra: dict[str, Any] | None = None) -> dict[str, Any]:
     snapshot = EVENT_BUS.engine.snapshot().to_dict()
     payload = {
@@ -66,6 +79,27 @@ def _payload(extra: dict[str, Any] | None = None) -> dict[str, Any]:
     if extra:
         payload.update(extra)
     return payload
+
+
+def _policy_payload(*, runtime_state: dict[str, Any] | None = None, vector_payload: dict[str, Any] | None = None, workspace: str = "lab") -> dict[str, Any]:
+    if vector_payload:
+        vector = EmotionVector(
+            valence=float(vector_payload.get("valence", 0.0) or 0.0),
+            arousal=float(vector_payload.get("arousal", 0.0) or 0.0),
+            curiosity=float(vector_payload.get("curiosity", 0.45) or 0.45),
+            caution=float(vector_payload.get("caution", 0.35) or 0.35),
+            fatigue=float(vector_payload.get("fatigue", 0.0) or 0.0),
+            speaking_energy=float(vector_payload.get("speaking_energy", 0.0) or 0.0),
+        )
+    else:
+        assert EVENT_BUS.engine.vector is not None
+        vector = EVENT_BUS.engine.vector
+    state_payload = dict(runtime_state or {})
+    state_payload["workspace"] = workspace
+    decision = evaluate_autonomy_policy(vector, AutonomyRuntimeState.from_payload(state_payload))
+    if workspace == "product":
+        return _payload({"policy_public": decision.public_summary(), "policy_raw_hidden": True})
+    return _payload({"policy": decision.to_dict(), "policy_raw_hidden": False})
 
 
 @router.get("/status")
@@ -156,6 +190,34 @@ def current_controls() -> dict[str, Any]:
             "events": EVENT_BUS.events()[-20:],
         }
     )
+
+
+@router.get("/policy/current")
+def current_policy(workspace: str = Query(default="lab")) -> dict[str, Any]:
+    return _policy_payload(workspace=workspace)
+
+
+@router.post("/policy/evaluate")
+def evaluate_policy(request: PolicyEvaluateRequest) -> dict[str, Any]:
+    return _policy_payload(runtime_state=request.runtime_state, vector_payload=request.vector, workspace=request.workspace)
+
+
+@router.post("/policy/apply-preview")
+def apply_policy_preview(request: PolicyPreviewRequest) -> dict[str, Any]:
+    payload = _policy_payload(runtime_state=request.runtime_state, workspace=request.workspace)
+    payload.update(
+        {
+            "applied": False,
+            "mutation_performed": False,
+            "suggested_only": True,
+            "autonomy_tier_auto_changed": False,
+            "permission_gate_bypass": False,
+            "local_brain_write": False,
+            "production_store_mutated": False,
+            "candidate_promotion": False,
+        }
+    )
+    return payload
 
 
 @router.post("/reset")
