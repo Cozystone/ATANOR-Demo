@@ -246,6 +246,16 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     self_narration_top_vh = round(16.0 - load * 2.2, 2)
     self_narration_right_vw = round(8.0 - load * 1.4, 2)
     self_narration_max_vw = round(28.0 - load * 4.0, 2)
+    footprint_padding = round(0.14 + load * 0.16, 3)
+    stage_min_x = max(-1.0, float(scene_extent.get("min_x") or -0.34) - footprint_padding)
+    stage_max_x = min(1.0, float(scene_extent.get("max_x") or 0.34) + footprint_padding)
+    stage_min_y = max(-0.86, float(scene_extent.get("min_y") or -0.28) - footprint_padding)
+    stage_max_y = min(0.86, float(scene_extent.get("max_y") or 0.28) + footprint_padding)
+    if layout_intent == "wide_particle_stage":
+        stage_min_x = min(stage_min_x, -0.72)
+        stage_max_x = max(stage_max_x, 0.72)
+        stage_min_y = min(stage_min_y, -0.48)
+        stage_max_y = max(stage_max_y, 0.48)
 
     return {
         "planning_basis": "scene_geometry_extent",
@@ -281,6 +291,14 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
             "orb_exclusion": "lower_right",
             "text_exclusion": text_anchor,
             "composer_exclusion": "bottom_center",
+            "footprint": {
+                "basis": "verified_scene_geometry_extent",
+                "min_x": round(stage_min_x, 3),
+                "max_x": round(stage_max_x, 3),
+                "min_y": round(stage_min_y, 3),
+                "max_y": round(stage_max_y, 3),
+                "block_text": True,
+            },
         },
         "scene": {
             "field_opacity": round(0.9 + load * 0.07, 3),

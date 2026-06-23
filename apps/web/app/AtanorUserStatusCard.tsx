@@ -106,6 +106,20 @@ type SceneChoreographyPayload = {
       field_opacity?: number;
       central_scale?: number;
     };
+    stage_safe_region?: {
+      primary?: string;
+      orb_exclusion?: string;
+      text_exclusion?: string;
+      composer_exclusion?: string;
+      footprint?: {
+        basis?: string;
+        min_x?: number;
+        max_x?: number;
+        min_y?: number;
+        max_y?: number;
+        block_text?: boolean;
+      };
+    };
     agent_layout_decision?: {
       decision_basis?: string;
       agent_action?: string;
@@ -649,9 +663,32 @@ function scenePointToDashboardRect(point: number[], dashboard: RectLike, size = 
   };
 }
 
+function sceneFootprintToDashboardRect(scenePlan: SceneChoreographyPayload, dashboard: RectLike): RectLike | null {
+  const footprint = scenePlan?.dashboard_layout?.stage_safe_region?.footprint;
+  if (!footprint?.block_text) return null;
+  const minX = finiteNumber(footprint.min_x, -0.72);
+  const maxX = finiteNumber(footprint.max_x, 0.72);
+  const minY = finiteNumber(footprint.min_y, -0.48);
+  const maxY = finiteNumber(footprint.max_y, 0.48);
+  const topLeft = scenePointToDashboardRect([minX, maxY], dashboard, 0);
+  const bottomRight = scenePointToDashboardRect([maxX, minY], dashboard, 0);
+  if (!topLeft || !bottomRight) return null;
+  const horizontalPad = Math.min(72, dashboard.width * 0.04);
+  const verticalPad = Math.min(58, dashboard.height * 0.045);
+  return {
+    bottom: Math.min(dashboard.bottom, bottomRight.top + verticalPad),
+    height: Math.max(0, bottomRight.top - topLeft.top + verticalPad * 2),
+    left: Math.max(dashboard.left, topLeft.left - horizontalPad),
+    right: Math.min(dashboard.right, bottomRight.left + horizontalPad),
+    top: Math.max(dashboard.top, topLeft.top - verticalPad),
+    width: Math.max(0, bottomRight.left - topLeft.left + horizontalPad * 2),
+  };
+}
+
 function scenePlanBlockers(scenePlan: SceneChoreographyPayload, dashboard: RectLike): RectLike[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
-  return beats
+  const footprint = sceneFootprintToDashboardRect(scenePlan, dashboard);
+  const beatBlockers = beats
     .flatMap((beat) => {
       const points: number[][] = [];
       if (Array.isArray(beat.position)) points.push(beat.position);
@@ -661,6 +698,7 @@ function scenePlanBlockers(scenePlan: SceneChoreographyPayload, dashboard: RectL
       return points.map((point) => scenePointToDashboardRect(point, dashboard, size));
     })
     .filter((rect): rect is RectLike => Boolean(rect));
+  return footprint ? [footprint, ...beatBlockers] : beatBlockers;
 }
 
 function scoreSpeechAnchor(

@@ -63,6 +63,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "requestedTextAnchor" in status_card
     assert "requestedLayoutIntent" in status_card
     assert "scenePlanBlockers" in status_card
+    assert "sceneFootprintToDashboardRect" in status_card
+    assert "stage_safe_region?.footprint" in status_card
     assert "rectsOverlap" in status_card
     assert "data-layout-decision" in status_card
     assert "requestedLayoutDecision" in status_card

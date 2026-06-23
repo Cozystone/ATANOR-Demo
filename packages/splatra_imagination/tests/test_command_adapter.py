@@ -130,6 +130,8 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert item["physics_hint"]["field"] == "downward_attraction"
     assert item["motion_path"]["basis"] == "verified_motion_phrase"
     assert plan.dashboard_layout["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
+    assert plan.dashboard_layout["stage_safe_region"]["footprint"]["basis"] == "verified_scene_geometry_extent"
+    assert plan.dashboard_layout["stage_safe_region"]["footprint"]["block_text"] is True
     assert plan.layout_timeline[0]["action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
     assert plan.layout_timeline[0]["decision_basis"] == "verified_scene_geometry"
     assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
@@ -170,6 +172,9 @@ def test_layout_timeline_places_speech_away_from_active_scene_focus() -> None:
     assert first["text_anchor"] == "upper_left"
     assert second["text_anchor"] == "upper_right"
     assert first["text_rendering"] == second["text_rendering"] == "dom_text_not_particles"
+    footprint = plan.dashboard_layout["stage_safe_region"]["footprint"]
+    assert footprint["basis"] == "verified_scene_geometry_extent"
+    assert footprint["min_x"] < 0 < footprint["max_x"]
 
 
 def test_command_adapter_keeps_safety_flags_closed() -> None:
