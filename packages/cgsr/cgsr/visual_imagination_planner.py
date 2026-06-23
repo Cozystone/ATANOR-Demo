@@ -242,14 +242,16 @@ def _scene_op_for_unit(unit: str, *, index: int, is_last: bool) -> str:
 def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: float) -> dict[str, Any]:
     phrase = unit["prompt"]
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
+    visual_affordance = _visual_affordance_for_phrase(phrase, unit["narration"], unit["semantic_role"], op)
     beat = {
         "op": op,
         "prompt": phrase,
         "narration": unit["narration"],
         "object_id": f"grounded_visual_{index}_{_stable_index(object_seed, 100000):05d}",
         "semantic_role": unit["semantic_role"],
+        "visual_affordance": visual_affordance,
         "source_fact": unit["source_fact"],
-        "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index),
+        "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index, visual_affordance),
         "t_start": round(t_start, 2),
         "duration": 1.35 if op == "move" else 1.25,
         "position": _position_for_phrase(phrase, index),
@@ -347,10 +349,47 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
     return selected
 
 
-def _archetype_for_phrase(phrase: str, semantic_role: str, index: int) -> Archetype:
+def _looks_like_named_figure(phrase: str) -> bool:
+    tokens = re.findall(r"\b[A-Z][a-z]{2,}\b", phrase)
+    return len(tokens) >= 2
+
+
+def _visual_affordance_for_phrase(phrase: str, narration: str, semantic_role: str, op: str) -> str:
+    """Infer a visual carrier affordance from the grounded phrase itself.
+
+    This is not a topic-to-scene script. It only reads morphology already
+    present in the verified phrase, so gravity never implies a tree unless a
+    source fact actually says tree.
+    """
+
+    folded_phrase = phrase.casefold()
+    if _looks_like_named_figure(phrase):
+        return "entity_figure"
+    if any(term in folded_phrase for term in ("tree", "forest", "branch", "trunk", "leaf", "leaves", "canopy", "plant")):
+        return "organic_structure"
+    if any(term in folded_phrase for term in ("fruit", "apple", "stone", "ball", "object", "body", "mass")):
+        return "small_moving_object" if op == "move" or "motion" in semantic_role else "small_object"
+    if op == "move" or "motion" in semantic_role:
+        return "motion_event"
+    if "relation" in semantic_role:
+        return "relation_field"
+    return "concept_cloud"
+
+
+def _archetype_for_phrase(phrase: str, semantic_role: str, index: int, visual_affordance: str = "") -> Archetype:
     # This is deliberately not a topic dictionary. It only chooses a bounded
     # visual carrier deterministically so the planner does not smuggle in
     # prompt-specific templates such as "gravity -> Newton/apple/tree".
+    if visual_affordance == "entity_figure":
+        return "creature"
+    if visual_affordance == "organic_structure":
+        return "tree"
+    if visual_affordance in {"small_object", "small_moving_object"}:
+        return "machine_core"
+    if visual_affordance == "motion_event":
+        return "constellation"
+    if visual_affordance in {"relation_field", "concept_cloud"}:
+        return "abstract_memory_cloud"
     role_seed = semantic_role if semantic_role in {
         "verified_motion_anchor",
         "verified_motion_context",

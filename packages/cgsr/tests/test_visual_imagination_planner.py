@@ -182,6 +182,10 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert any(prompt == "apple" for prompt in prompts)
     assert any(prompt == "tree" for prompt in prompts)
     assert any("apple fell" in prompt for prompt in prompts)
+    assert any(beat["visual_affordance"] == "entity_figure" and beat["archetype"] == "creature" for beat in beats if "Isaac Newton" in beat["prompt"])
+    assert any(beat["visual_affordance"] == "organic_structure" and beat["archetype"] == "tree" for beat in beats if beat["prompt"] == "tree")
+    assert any(beat["visual_affordance"] == "small_moving_object" and beat["archetype"] == "machine_core" for beat in beats if "apple fell" in beat["prompt"])
+    assert all(beat["archetype"] == "abstract_memory_cloud" for beat in beats if beat["visual_affordance"] == "concept_cloud")
     assert any(beat["op"] == "move" and "apple fell" in beat["prompt"] for beat in beats)
     motion_beats = [beat for beat in beats if beat["op"] == "move" and beat.get("motion_path")]
     assert motion_beats

@@ -63,6 +63,7 @@ type SceneChoreographyPayload = {
     prompt?: string;
     object_id?: string;
     semantic_role?: string;
+    visual_affordance?: string;
     source_fact?: string;
     t_start?: number;
     duration?: number;

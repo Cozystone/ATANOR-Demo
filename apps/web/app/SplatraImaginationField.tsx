@@ -47,6 +47,7 @@ type ScenePlanBeat = {
   narration?: string;
   object_id?: string;
   semantic_role?: string;
+  visual_affordance?: string;
   source_fact?: string;
   t_start?: number;
   duration?: number;
@@ -430,14 +431,18 @@ function sceneObjectAlpha(beat: ScenePlanBeat, elapsedSeconds: number, active: b
 
 function sceneRoleStyle(beat: ScenePlanBeat, active: boolean) {
   const role = String(beat.semantic_role ?? "");
+  const affordance = String(beat.visual_affordance ?? "");
   const moving = beat.op === "move" || role.includes("motion");
   const relation = role.includes("relation");
   const anchor = role.includes("anchor");
+  const smallObject = affordance === "small_object" || affordance === "small_moving_object";
+  const figure = affordance === "entity_figure";
+  const organic = affordance === "organic_structure";
   return {
-    alpha: moving ? 1.16 : relation ? 1.02 : anchor ? 0.86 : 0.94,
-    scale: moving ? 1.2 : relation ? 1.08 : anchor ? 0.92 : 1,
-    trail: moving ? (active ? 1 : 0.62) : relation ? 0.34 : 0.16,
-    focus: active ? 1 : moving ? 0.72 : 0.48,
+    alpha: smallObject ? 1.32 : moving ? 1.16 : relation ? 1.02 : anchor ? 0.86 : 0.94,
+    scale: smallObject ? 0.56 : organic ? 1.22 : figure ? 1.06 : moving ? 1.2 : relation ? 1.08 : anchor ? 0.92 : 1,
+    trail: smallObject && moving ? (active ? 1.18 : 0.78) : moving ? (active ? 1 : 0.62) : relation ? 0.34 : 0.16,
+    focus: active ? 1 : smallObject ? 0.82 : moving ? 0.72 : 0.48,
   };
 }
 
