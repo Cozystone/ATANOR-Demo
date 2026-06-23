@@ -29,6 +29,15 @@ type VoiceWaveStyle = CSSProperties & {
   "--i": number;
 };
 
+type RectLike = {
+  bottom: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  width: number;
+};
+
 type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
 
 type SceneChoreographyPayload = {
@@ -190,6 +199,94 @@ function rectsOverlap(left: DOMRect, right: DOMRect, padding = 10) {
   );
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function cssClampPx(min: number, preferred: number, max: number) {
+  return clampNumber(preferred, min, max);
+}
+
+function overlapArea(left: RectLike, right: RectLike, padding = 0) {
+  const x = Math.max(0, Math.min(left.right + padding, right.right) - Math.max(left.left - padding, right.left));
+  const y = Math.max(0, Math.min(left.bottom + padding, right.bottom) - Math.max(left.top - padding, right.top));
+  return x * y;
+}
+
+function rectFromDom(rect: DOMRect): RectLike {
+  return {
+    bottom: rect.bottom,
+    height: rect.height,
+    left: rect.left,
+    right: rect.right,
+    top: rect.top,
+    width: rect.width,
+  };
+}
+
+function candidateSpeechRect(anchor: TextAnchor, speechSize: RectLike, dashboard: RectLike): RectLike {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const leftInset = cssClampPx(28, viewportWidth * 0.06, 92);
+  const rightInset = cssClampPx(42, viewportWidth * 0.08, 126);
+  const upperLeftTop = cssClampPx(156, viewportHeight * 0.23, 236);
+  const upperRightTop = cssClampPx(112, viewportHeight * 0.17, 188);
+  const lowerLeftBottom = cssClampPx(120, viewportHeight * 0.16, 178);
+  const lowerCenterBottom = cssClampPx(128, viewportHeight * 0.17, 188);
+  const width = speechSize.width;
+  const height = speechSize.height;
+  let left = dashboard.left + leftInset;
+  let top = dashboard.top + upperLeftTop;
+
+  if (anchor === "lower_left") {
+    top = dashboard.bottom - lowerLeftBottom - height;
+  } else if (anchor === "upper_right") {
+    left = dashboard.right - rightInset - width;
+    top = dashboard.top + upperRightTop;
+  } else if (anchor === "lower_center") {
+    left = dashboard.left + dashboard.width / 2 - width / 2;
+    top = dashboard.bottom - lowerCenterBottom - height;
+  }
+
+  return {
+    bottom: top + height,
+    height,
+    left,
+    right: left + width,
+    top,
+    width,
+  };
+}
+
+function scoreSpeechAnchor(
+  anchor: TextAnchor,
+  speechSize: RectLike,
+  dashboard: RectLike,
+  blockers: RectLike[],
+  preferred: TextAnchor,
+) {
+  const rect = candidateSpeechRect(anchor, speechSize, dashboard);
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const offscreen =
+    Math.max(0, 12 - rect.left)
+    + Math.max(0, rect.right - (viewportWidth - 12))
+    + Math.max(0, 12 - rect.top)
+    + Math.max(0, rect.bottom - (viewportHeight - 12));
+  const blockerPenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 18), 0);
+  const sceneCenter = {
+    bottom: dashboard.top + dashboard.height * 0.75,
+    height: dashboard.height * 0.5,
+    left: dashboard.left + dashboard.width * 0.26,
+    right: dashboard.left + dashboard.width * 0.74,
+    top: dashboard.top + dashboard.height * 0.25,
+    width: dashboard.width * 0.48,
+  };
+  const stagePenalty = overlapArea(rect, sceneCenter, 0) * 0.08;
+  const preferencePenalty = anchor === preferred ? 0 : anchor === "lower_left" ? 42 : 84;
+  return offscreen * 1000 + blockerPenalty * 6 + stagePenalty + preferencePenalty;
+}
+
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
@@ -267,6 +364,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     const requested = requestedTextAnchor(sceneChoreography);
     const preferred: TextAnchor = requested === "auto" ? "lower_left" : requested;
     let frameId = 0;
+    let timer = 0;
 
     const updatePlacement = () => {
       const dashboard = dashboardRef.current;
@@ -275,31 +373,31 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         setSpeechPlacement(preferred);
         return;
       }
-      const speechBox = speech.getBoundingClientRect();
-      const orbBox = dashboard.querySelector(".hologram-voice-orb")?.getBoundingClientRect();
-      const composerBox = composerRef.current?.getBoundingClientRect();
-      const viewport = { width: window.innerWidth, height: window.innerHeight };
-      const clipped =
-        speechBox.left < 12
-        || speechBox.right > viewport.width - 12
-        || speechBox.top < 12
-        || speechBox.bottom > viewport.height - 12;
-      const collides =
-        (orbBox ? rectsOverlap(speechBox, orbBox, 14) : false)
-        || (composerBox ? rectsOverlap(speechBox, composerBox, 16) : false);
-      const next = clipped || collides
-        ? preferred === "lower_left" ? "upper_left"
-          : preferred === "upper_left" ? "upper_right"
-            : preferred === "upper_right" ? "lower_center"
-              : "upper_left"
-        : preferred;
-      setSpeechPlacement(next);
+      const speechBox = rectFromDom(speech.getBoundingClientRect());
+      const dashboardBox = rectFromDom(dashboard.getBoundingClientRect());
+      const blockers = [
+        dashboard.querySelector(".hologram-voice-orb")?.getBoundingClientRect(),
+        dashboard.querySelector(".atanor-hologram-self-narration")?.getBoundingClientRect(),
+        composerRef.current?.getBoundingClientRect(),
+      ]
+        .filter((rect): rect is DOMRect => Boolean(rect))
+        .map(rectFromDom);
+      const candidates: TextAnchor[] = ["lower_left", "upper_left", "upper_right", "lower_center"];
+      const next = candidates
+        .map((anchor) => ({
+          anchor,
+          score: scoreSpeechAnchor(anchor, speechBox, dashboardBox, blockers, preferred),
+        }))
+        .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferred;
+      setSpeechPlacement((current) => (current === next ? current : next));
     };
 
     frameId = window.requestAnimationFrame(updatePlacement);
+    timer = window.setInterval(updatePlacement, 420);
     window.addEventListener("resize", updatePlacement);
     return () => {
       window.cancelAnimationFrame(frameId);
+      window.clearInterval(timer);
       window.removeEventListener("resize", updatePlacement);
     };
   }, [sceneChoreography, stageLayout, typedSpeechLine]);

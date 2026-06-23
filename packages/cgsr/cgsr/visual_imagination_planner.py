@@ -315,6 +315,48 @@ def _camera_for_phrase(phrase: str, index: int) -> dict[str, Any]:
     }
 
 
+def _text_anchor_for_beats(beats: list[dict[str, Any]]) -> str:
+    """Place narration away from the densest verified scene motion.
+
+    This is a layout decision over already-authored scene coordinates. It does
+    not inspect topics or map concepts to scripted visual stories.
+    """
+
+    if not beats:
+        return "lower_left"
+    candidates = {
+        "lower_left": (-0.72, -0.72),
+        "upper_left": (-0.72, 0.58),
+        "upper_right": (0.72, 0.58),
+        "lower_center": (0.0, -0.76),
+    }
+    positions: list[tuple[float, float, float]] = []
+    for index, beat in enumerate(beats):
+        raw_position = beat.get("position")
+        if isinstance(raw_position, list) and len(raw_position) >= 2:
+            x = float(raw_position[0] or 0.0)
+            y = float(raw_position[1] or 0.0)
+        else:
+            x, y = _position_for_phrase(str(beat.get("prompt") or ""), index)[:2]
+        weight = 1.0
+        if beat.get("op") in {"move", "focus_camera"}:
+            weight = 1.45
+        positions.append((x, y, weight))
+
+    def score(anchor: str, target: tuple[float, float]) -> float:
+        target_x, target_y = target
+        crowding = 0.0
+        for x, y, weight in positions:
+            distance = max(0.08, ((x - target_x) ** 2 + (y - target_y) ** 2) ** 0.5)
+            crowding += weight / distance
+        # Keep lower-left as the conversational default when the scene is
+        # spatially balanced, but let crowded coordinates override it.
+        bias = 0.0 if anchor == "lower_left" else 0.35 if anchor == "lower_center" else 0.55
+        return crowding + bias
+
+    return min(candidates, key=lambda anchor: score(anchor, candidates[anchor]))
+
+
 def plan_visual_imagination(
     question: str,
     *,
@@ -389,7 +431,7 @@ def plan_visual_imagination(
         {
             "stage_layout": "scene_focus",
             "orb_anchor": "lower_right",
-            "text_anchor": "lower_left",
+            "text_anchor": _text_anchor_for_beats(beats),
             "primary_surface": "splatra_stage",
             "beats": beats,
         }

@@ -8,6 +8,9 @@ from packages.cgsr.cgsr.conversation_router import route_conversation_request
 from packages.cgsr.cgsr.visual_imagination_planner import plan_visual_imagination
 
 
+TEXT_ANCHORS = {"upper_left", "lower_left", "upper_right", "lower_center"}
+
+
 def _plan(question: str, store_path: Path | None = None):
     route = route_conversation_request(question)
     runtime = {"verified_store_path": str(store_path)} if store_path else None
@@ -41,7 +44,7 @@ def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
     assert plan.scene_choreography is not None
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["orb_anchor"] == "lower_right"
-    assert plan.scene_choreography["text_anchor"] == "lower_left"
+    assert plan.scene_choreography["text_anchor"] in TEXT_ANCHORS
     assert plan.diagnostics["topic_scene_templates"] is False
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.scene_choreography["beats"]
@@ -77,7 +80,7 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert any("Gravity is a force" in beat["source_fact"] for beat in plan.scene_choreography["beats"])
     assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
-    assert plan.scene_choreography["text_anchor"] == "lower_left"
+    assert plan.scene_choreography["text_anchor"] in TEXT_ANCHORS
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
 
@@ -126,3 +129,24 @@ def test_visual_planner_only_adds_motion_when_verified_fact_contains_motion(tmp_
     assert any("사과" in beat["narration"] for beat in beats)
     assert any("떨어지는" in beat["narration"] for beat in beats)
     assert all(beat["source_fact"] for beat in beats)
+
+
+def test_visual_planner_text_anchor_is_scene_position_dependent(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": "A river moves through a lower valley. The falling water shifts from the left channel to the center basin.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "River"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("Explain how the water moves", tmp_path)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    assert plan.scene_choreography["text_anchor"] in TEXT_ANCHORS
+    assert plan.scene_choreography["text_anchor"] != "auto"
