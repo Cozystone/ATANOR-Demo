@@ -261,6 +261,22 @@ function firstSceneNarration(scenePlan: SceneChoreographyPayload) {
   return beats[0]?.text ?? "";
 }
 
+function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout) {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const firstBeat = beats[0] ?? {};
+  return {
+    stage_layout: stageLayout,
+    layout_intent: requestedLayoutIntent(scenePlan),
+    layout_decision: requestedLayoutDecision(scenePlan, stageLayout),
+    text_rendering: "dom_text_not_particles",
+    beat_count: beats.length,
+    motion_count: finiteNumber(scenePlan?.scene_extent?.motion_count, beats.filter((beat) => beat.op === "move" || beat.motion_path).length),
+    archetype: String(firstBeat.archetype ?? scenePlan?.primary_surface ?? "particle_scene"),
+    visual_affordance: String(firstBeat.visual_affordance ?? ""),
+    primary_surface: String(scenePlan?.primary_surface ?? ""),
+  };
+}
+
 function emitNeuralEmotionEvent(eventType: string, payloadSummary: string) {
   fetch("/api/neural-emotion/events/emit", {
     method: "POST",
@@ -732,17 +748,22 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setSceneChoreography(nextSceneChoreography);
       setSceneSpeechStartedAt(nextSceneChoreography ? performance.now() : 0);
       setOrbState("speaking");
-      void fetch("/api/inner-voice/emit", {
+      void fetch("/api/inner-voice/generate-frame", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           source_event_id: "product_hologram_conversation",
           mode: "product_summary",
+          append_to_log: true,
           latest_user_input: trimmed,
           latest_action_result: {
             speech_act: payload?.result?.answer_kind ?? "conversation",
             answered: true,
+            scene_focus: nextStageLayout === "scene_focus",
+            layout_decision: requestedLayoutDecision(nextSceneChoreography, nextStageLayout),
+            visual_scene_beats: Array.isArray(nextSceneChoreography?.beats) ? nextSceneChoreography?.beats?.length ?? 0 : 0,
           },
+          splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout),
           review_queue_pressure: 0,
           permission_tier: "OBSERVE_ONLY",
         }),

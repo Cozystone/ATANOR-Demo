@@ -67,6 +67,48 @@ def test_generate_frame_product_hides_raw_frame_and_exposes_summary() -> None:
     assert payload["raw_hidden_cot_claim"] is False
 
 
+def test_generate_frame_product_uses_current_splatra_scene_state() -> None:
+    client = _client()
+
+    payload = client.post(
+        "/api/inner-voice/generate-frame",
+        json={
+            "mode": "product_summary",
+            "latest_user_input": "중력의 법칙에 대해 설명해줘",
+            "latest_action_result": {
+                "answered": True,
+                "scene_focus": True,
+                "layout_decision": "yield_center_to_particle_scene:dom_text_not_particles",
+                "visual_scene_beats": 8,
+            },
+            "splatra_state": {
+                "stage_layout": "scene_focus",
+                "layout_intent": "wide_particle_stage",
+                "layout_decision": "yield_center_to_particle_scene:dom_text_not_particles",
+                "text_rendering": "dom_text_not_particles",
+                "beat_count": 8,
+                "motion_count": 1,
+                "archetype": "tree",
+                "visual_affordance": "organic_structure",
+                "primary_surface": "splatra_stage",
+            },
+            "append_to_log": True,
+        },
+    ).json()
+
+    assert payload["generated"] is True
+    assert payload["appended"] is True
+    assert payload["raw_inner_voice_hidden"] is True
+    assert payload["product_summary"]["act"] == "splatra_imagination"
+    assert payload["product_summary"]["visible_self_narration"]
+    assert payload["product_summary"]["generation_basis"] == "asm_cgsr_construction_conditioned_inner_voice_v1"
+    assert payload["external_llm"] is False
+    assert payload["external_sllm"] is False
+    assert payload["rule_based_answer_used"] is False
+    assert payload["local_brain_write"] is False
+    assert payload["production_store_mutated"] is False
+
+
 def test_visible_summary_endpoint_keeps_product_redaction() -> None:
     client = _client()
     client.post("/api/inner-voice/emit", json={"latest_user_input": "안녕"})

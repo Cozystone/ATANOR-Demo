@@ -14,6 +14,7 @@ def inner_voice_safety_flags() -> dict[str, bool]:
         "external_sllm": False,
         "external_llm_used": False,
         "external_sllm_used": False,
+        "rule_based_answer_used": False,
         "consciousness_claim": False,
         "real_emotion_claim": False,
         "local_brain_write": False,
