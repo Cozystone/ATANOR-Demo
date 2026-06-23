@@ -21,6 +21,11 @@ from packages.agentic_micro_os.permission_gate import (
     PermissionScope,
 )
 from packages.agentic_micro_os.review_queue import ReviewQueue, ReviewStatus
+from packages.agentic_micro_os.scoped_patch_executor import (
+    ScopedPatchExecutor,
+    ScopedPatchRequest,
+    ScopedPatchRollbackRequest,
+)
 from packages.agentic_micro_os.splatra_evaluator import SplatraCosmosEvaluator, SplatraEvaluationRequest
 from packages.agentic_micro_os.web_explorer_loop import (
     FixtureOpenWebFetcher,
@@ -93,6 +98,18 @@ def _make_host_executor(base_path: Path | None = None) -> HostExecutor:
 
 
 HOST_EXECUTOR = _make_host_executor()
+
+
+def _make_scoped_patch_executor(base_path: Path | None = None) -> ScopedPatchExecutor:
+    root = base_path or PROJECT_ROOT
+    return ScopedPatchExecutor(
+        gate=PERMISSION_GATE,
+        project_root=PROJECT_ROOT,
+        backup_dir=root / "runtime" / "agentic_micro_os" / "scoped_patch_backups",
+    )
+
+
+SCOPED_PATCH_EXECUTOR = _make_scoped_patch_executor()
 
 
 class DashboardActionRequest(BaseModel):
@@ -236,6 +253,26 @@ class HostExecutorExecuteApiRequest(BaseModel):
     operator_id: str = "operator"
 
 
+class ScopedPatchApiRequest(BaseModel):
+    target_path: str
+    expected_old_text: str = ""
+    replacement_text: str = ""
+    reason: str = "operator scoped patch"
+    operator_confirmation: str = ""
+    tier_session_id: str = ""
+    required_subswitches: list[str] = Field(default_factory=lambda: ["full_file_write"])
+    dry_run: bool = True
+    operator_id: str = "operator"
+
+
+class ScopedPatchRollbackApiRequest(BaseModel):
+    target_path: str
+    backup_path: str
+    operator_confirmation: str = ""
+    tier_session_id: str = ""
+    operator_id: str = "operator"
+
+
 @router.get("/status")
 def status() -> dict[str, Any]:
     browser = BrowserReadConnector()
@@ -332,6 +369,11 @@ def host_executor_status() -> dict[str, Any]:
     return {**SAFETY_FLAGS, **HOST_EXECUTOR.status()}
 
 
+@router.get("/host-executor/patch/status")
+def scoped_patch_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **SCOPED_PATCH_EXECUTOR.status()}
+
+
 @router.post("/host-executor/execute")
 def host_executor_execute(request: HostExecutorExecuteApiRequest) -> dict[str, Any]:
     result = HOST_EXECUTOR.execute(
@@ -353,6 +395,83 @@ def host_executor_execute(request: HostExecutorExecuteApiRequest) -> dict[str, A
         "candidate_promotion": False,
         "auto_commit": False,
         "auto_push": False,
+    }
+
+
+@router.post("/host-executor/patch/plan")
+def scoped_patch_plan(request: ScopedPatchApiRequest) -> dict[str, Any]:
+    result = SCOPED_PATCH_EXECUTOR.plan(
+        ScopedPatchRequest(
+            target_path=request.target_path,
+            expected_old_text=request.expected_old_text,
+            replacement_text=request.replacement_text,
+            reason=request.reason,
+            operator_confirmation=request.operator_confirmation,
+            tier_session_id=request.tier_session_id,
+            required_subswitches=request.required_subswitches,
+            dry_run=request.dry_run,
+            operator_id=request.operator_id,
+        )
+    )
+    return {
+        **SAFETY_FLAGS,
+        **result.to_dict(),
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "auto_commit": False,
+        "auto_push": False,
+        "host_executor_v1_scoped_only": True,
+    }
+
+
+@router.post("/host-executor/patch/apply")
+def scoped_patch_apply(request: ScopedPatchApiRequest) -> dict[str, Any]:
+    result = SCOPED_PATCH_EXECUTOR.apply(
+        ScopedPatchRequest(
+            target_path=request.target_path,
+            expected_old_text=request.expected_old_text,
+            replacement_text=request.replacement_text,
+            reason=request.reason,
+            operator_confirmation=request.operator_confirmation,
+            tier_session_id=request.tier_session_id,
+            required_subswitches=request.required_subswitches,
+            dry_run=False,
+            operator_id=request.operator_id,
+        )
+    )
+    return {
+        **SAFETY_FLAGS,
+        **result.to_dict(),
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "auto_commit": False,
+        "auto_push": False,
+        "host_executor_v1_scoped_only": True,
+    }
+
+
+@router.post("/host-executor/patch/rollback")
+def scoped_patch_rollback(request: ScopedPatchRollbackApiRequest) -> dict[str, Any]:
+    result = SCOPED_PATCH_EXECUTOR.rollback(
+        ScopedPatchRollbackRequest(
+            target_path=request.target_path,
+            backup_path=request.backup_path,
+            operator_confirmation=request.operator_confirmation,
+            tier_session_id=request.tier_session_id,
+            operator_id=request.operator_id,
+        )
+    )
+    return {
+        **SAFETY_FLAGS,
+        **result.to_dict(),
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+        "auto_commit": False,
+        "auto_push": False,
+        "host_executor_v1_scoped_only": True,
     }
 
 

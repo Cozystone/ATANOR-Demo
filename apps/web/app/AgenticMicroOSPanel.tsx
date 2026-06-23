@@ -99,6 +99,13 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
   const [permissionResult, setPermissionResult] = useState<AnyRecord | null>(null);
   const [hostExecutorStatus, setHostExecutorStatus] = useState<AnyRecord | null>(null);
   const [hostExecutorResult, setHostExecutorResult] = useState<AnyRecord | null>(null);
+  const [patchStatus, setPatchStatus] = useState<AnyRecord | null>(null);
+  const [patchTargetPath, setPatchTargetPath] = useState("docs/ATANOR_host_executor_v1_scoped_patch.md");
+  const [patchOldText, setPatchOldText] = useState("Status: implemented behind Tier 4 Full Host Authority.");
+  const [patchReplacementText, setPatchReplacementText] = useState("Status: implemented behind Tier 4 Full Host Authority. Preview change only.");
+  const [patchConfirmation, setPatchConfirmation] = useState("");
+  const [patchBackupPath, setPatchBackupPath] = useState("");
+  const [patchResult, setPatchResult] = useState<AnyRecord | null>(null);
   const [results, setResults] = useState<Record<SmokeKey, AnyRecord | null>>({
     dashboard: null,
     browser: null,
@@ -111,6 +118,7 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     jsonFetch(localBackendUrl, "/api/agentic-os/status").then(setStatus).catch(() => setStatus({ error: "local_backend_unavailable" }));
     refreshPermissionGate().catch(() => undefined);
     refreshHostExecutor().catch(() => undefined);
+    refreshScopedPatch().catch(() => undefined);
     refreshReviewQueue().catch(() => undefined);
   }, [localBackendUrl]);
 
@@ -192,6 +200,12 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     return payload;
   }
 
+  async function refreshScopedPatch() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/host-executor/patch/status").catch((error) => ({ error: String(error) }));
+    setPatchStatus(payload);
+    return payload;
+  }
+
   async function executeHostAction(body: AnyRecord) {
     const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/host-executor/execute", {
       method: "POST",
@@ -200,6 +214,54 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
     }).catch((error) => ({ allowed: false, executed: false, denied_reason: String(error) }));
     setHostExecutorResult(payload);
     await refreshHostExecutor().catch(() => undefined);
+  }
+
+  function patchPayload(dryRun: boolean) {
+    return {
+      target_path: patchTargetPath,
+      expected_old_text: patchOldText,
+      replacement_text: patchReplacementText,
+      reason: "lab scoped patch preview",
+      operator_confirmation: patchConfirmation,
+      tier_session_id: permissionStatus?.session?.session_id ?? "",
+      required_subswitches: ["full_file_write"],
+      dry_run: dryRun,
+      operator_id: "lab_operator",
+    };
+  }
+
+  async function planScopedPatch() {
+    const payload = await jsonFetch(localBackendUrl, "/api/agentic-os/host-executor/patch/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patchPayload(true)),
+    }).catch((error) => ({ allowed: false, denied_reason: String(error) }));
+    setPatchResult(payload);
+  }
+
+  async function applyScopedPatch() {
+    const payload: AnyRecord = await jsonFetch(localBackendUrl, "/api/agentic-os/host-executor/patch/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patchPayload(false)),
+    }).catch((error) => ({ applied: false, denied_reason: String(error) }));
+    if (payload?.backup_path) setPatchBackupPath(String(payload.backup_path));
+    setPatchResult(payload);
+  }
+
+  async function rollbackScopedPatch() {
+    const payload: AnyRecord = await jsonFetch(localBackendUrl, "/api/agentic-os/host-executor/patch/rollback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        target_path: patchTargetPath,
+        backup_path: patchBackupPath,
+        operator_confirmation: patchConfirmation,
+        tier_session_id: permissionStatus?.session?.session_id ?? "",
+        operator_id: "lab_operator",
+      }),
+    }).catch((error) => ({ applied: false, denied_reason: String(error) }));
+    setPatchResult(payload);
   }
 
   async function importLatestOpenWebRun() {
@@ -418,6 +480,78 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
               <span>{(hostExecutorResult.path_refs ?? []).join(" · ")}</span>
             </div>
           ) : <p>idle</p>}
+        </article>
+
+        <article className={`agentic-os-card agentic-os-host-executor-card ${permissionStatus?.tier4_active ? "is-tier4" : ""}`}>
+          <div className="agentic-os-permission-header">
+            <div>
+              <h3>Host Executor v1 / Scoped Patch</h3>
+              <p>Real text-file edits only after dry-run diff, Tier 4, full_file_write, typed confirmation, backup, rollback, audit log, and emergency stop checks.</p>
+            </div>
+            <strong>{patchStatus?.host_executor_v1_scoped_only ? "SCOPED" : "WAITING"}</strong>
+          </div>
+          {permissionStatus?.tier4_active && permissionStatus?.sub_switches?.full_file_write ? (
+            <div className="agentic-os-tier4-warning">
+              Scoped source edits are possible. Review the diff and backup path before applying.
+            </div>
+          ) : null}
+          <div className="agentic-os-flags">
+            <span>tier={permissionStatus?.tier ?? "-"}</span>
+            <span>full_file_write={String(permissionStatus?.sub_switches?.full_file_write ?? false)}</span>
+            <span>emergency_stop={String(permissionStatus?.emergency_stop_triggered ?? false)}</span>
+            <span>max_diff={String(patchStatus?.max_diff_lines ?? "-")}</span>
+          </div>
+          <div className="agentic-os-patch-form">
+            <label>
+              <span>target path</span>
+              <input value={patchTargetPath} onChange={(event) => setPatchTargetPath(event.target.value)} />
+            </label>
+            <label>
+              <span>expected old text</span>
+              <textarea value={patchOldText} onChange={(event) => setPatchOldText(event.target.value)} />
+            </label>
+            <label>
+              <span>replacement text</span>
+              <textarea value={patchReplacementText} onChange={(event) => setPatchReplacementText(event.target.value)} />
+            </label>
+            <label>
+              <span>operator confirmation</span>
+              <input value={patchConfirmation} onChange={(event) => setPatchConfirmation(event.target.value)} placeholder="APPLY SCOPED PATCH or ROLLBACK SCOPED PATCH" />
+            </label>
+            <label>
+              <span>backup path for rollback</span>
+              <input value={patchBackupPath} onChange={(event) => setPatchBackupPath(event.target.value)} placeholder="filled after apply" />
+            </label>
+          </div>
+          <div className="agentic-os-actions">
+            <button type="button" className="agentic-os-action" onClick={() => planScopedPatch()}>
+              dry-run diff
+            </button>
+            <button
+              type="button"
+              className="agentic-os-action danger"
+              disabled={!permissionStatus?.tier4_active || !permissionStatus?.sub_switches?.full_file_write}
+              onClick={() => applyScopedPatch()}
+            >
+              apply scoped patch
+            </button>
+            <button
+              type="button"
+              className="agentic-os-action danger"
+              disabled={!permissionStatus?.tier4_active || !permissionStatus?.sub_switches?.full_file_write || !patchBackupPath}
+              onClick={() => rollbackScopedPatch()}
+            >
+              rollback from backup
+            </button>
+          </div>
+          {patchResult ? (
+            <div className="agentic-os-host-result">
+              <strong>{patchResult.allowed || patchResult.applied ? "accepted" : "denied"} - mutation={String(patchResult.mutation_performed ?? false)}</strong>
+              <p>{patchResult.denied_reason || patchResult.diff_summary || patchResult.reason || "diff ready"}</p>
+              {patchResult.backup_path ? <span>backup={patchResult.backup_path}</span> : null}
+              {patchResult.diff_preview ? <pre>{patchResult.diff_preview}</pre> : null}
+            </div>
+          ) : <p>dry-run required before apply</p>}
         </article>
 
         <article className="agentic-os-card">

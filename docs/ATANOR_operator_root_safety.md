@@ -40,3 +40,11 @@ Destructive delete is intentionally not implemented in the v0 helper surface. Fu
 The first host executor layer is harmless-only. It can run diagnostics such as `echo` and `git_status`, and it can write only under `runtime/agentic_micro_os/tmp/`. It rejects arbitrary commands, deletes, credential reads, uploads, production writes, Local Brain writes, git commit, and git push.
 
 The purpose of v0 is to prove that executable local actions can be routed through the permission gate without creating a silent broad-authority path.
+
+## Host Executor v1 Scoped Patch
+
+The second host executor layer can apply real scoped text patches, but only under Tier 4 with `full_file_write=true`, matching session id, exact typed confirmation, backup, rollback, audit log, and emergency stop checks.
+
+Operators should review the dry-run diff before typing `APPLY SCOPED PATCH`. Rollback requires a separate `ROLLBACK SCOPED PATCH` confirmation and the backup path created during apply.
+
+This layer remains forbidden from Local Brain writes, Cloud production writes, candidate promotion, destructive delete, arbitrary command execution, git commit, and git push.
