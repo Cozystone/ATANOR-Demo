@@ -488,6 +488,7 @@ function cssClampPx(min: number, preferred: number, max: number) {
 }
 
 let textLayoutMeasureCanvas: HTMLCanvasElement | null = null;
+const TEXT_LAYOUT_BASIS = "pretext_inspired_dom_text_canvas_metrics_preallocated_no_particle_text";
 
 function textLayoutContext() {
   if (typeof document === "undefined") return null;
@@ -505,7 +506,7 @@ function graphemeSegments(text: string) {
   return Array.from(cleaned);
 }
 
-function textLayoutSegments(text: string) {
+function pretextInspiredTextLayoutSegments(text: string) {
   const cleaned = text.replace(/\s+/g, " ").trim();
   if (!cleaned) return [];
   if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
@@ -516,9 +517,9 @@ function textLayoutSegments(text: string) {
   return graphemeSegments(cleaned);
 }
 
-function estimateDomTextLayout(element: HTMLElement, text: string, maxWidth: number): TextLayoutEstimate {
+function estimateDomTextLayoutPretextStyle(element: HTMLElement, text: string, maxWidth: number): TextLayoutEstimate {
   const fallbackWidth = clampNumber(maxWidth, 180, 620);
-  const segments = textLayoutSegments(text);
+  const segments = pretextInspiredTextLayoutSegments(text);
   if (!segments.length) {
     const current = element.getBoundingClientRect();
     return {
@@ -580,7 +581,7 @@ function estimateDomTextLayout(element: HTMLElement, text: string, maxWidth: num
 
 function estimatedTextRectFromDom(element: HTMLElement, text: string, maxWidth: number): RectLike {
   const current = rectFromDom(element.getBoundingClientRect());
-  const estimate = estimateDomTextLayout(element, text, maxWidth);
+  const estimate = estimateDomTextLayoutPretextStyle(element, text, maxWidth);
   return {
     ...current,
     bottom: current.top + estimate.height,
@@ -1302,7 +1303,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-collision-pressure={splatraDashboardControls.layout_collision_pressure}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
-      data-text-layout-basis="dom_text_canvas_metrics_preallocated_no_particle_text"
+      data-text-layout-basis={TEXT_LAYOUT_BASIS}
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
       <SplatraImaginationField

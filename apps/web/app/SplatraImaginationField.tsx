@@ -126,6 +126,9 @@ type ParticleControls = {
   layout_text_avoidance?: string;
 };
 
+const PARTICLE_RENDERING_CONTRACT = "all_generated_marks_particle_points_no_canvas_strokes";
+const FLOW_FIELD_BASIS = "magnetic_simplex_inspired_airbend_particles";
+
 type Props = {
   mode?: ImaginationMode;
   state?: VisualState;
@@ -261,6 +264,17 @@ function flowFieldAngle(x: number, y: number, elapsed: number, salt = 0) {
   return (low * 0.72 + high * 0.46) * Math.PI;
 }
 
+function flowFieldDisplacement(x: number, y: number, elapsed: number, strength: number, salt = 0) {
+  const angle = flowFieldAngle(x, y, elapsed, salt);
+  const cross = flowFieldAngle(y * 0.74 + salt * 13, x * 0.68 - salt * 7, elapsed * 0.82, salt + 11);
+  const breath = 0.52 + 0.48 * Math.sin(elapsed * 0.41 + salt * 1.9);
+  return {
+    x: Math.cos(angle) * strength + Math.cos(cross + Math.PI / 2) * strength * 0.42 * breath,
+    y: Math.sin(angle) * strength + Math.sin(cross + Math.PI / 2) * strength * 0.42 * breath,
+    angle,
+  };
+}
+
 function drawParticleStroke(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -326,24 +340,28 @@ function drawParticleSegment(
   const normalY = distance > 0 ? dx / distance : 0;
   const tangentX = distance > 0 ? dx / distance : 1;
   const tangentY = distance > 0 ? dy / distance : 0;
-  const streamCount = 3;
+  const streamCount = distance > unit * 0.42 ? 5 : 3;
   for (let lane = 0; lane < streamCount; lane += 1) {
     for (let index = 0; index <= steps; index += 1) {
       const rawT = index / steps;
       const t = (rawT + elapsed * (0.018 + lane * 0.011) + seeded(index, salt + lane * 101) * 0.055) % 1;
-      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.48) continue;
+      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.34) continue;
       const phase = t * Math.PI * 6 + salt * 0.037 + elapsed * (1.15 + lane * 0.21);
-      const laneOffset = (lane - 1) * unit * 0.018;
-      const curl = Math.sin(phase) * unit * (0.015 + seeded(index, salt + 5) * 0.015);
-      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.01;
+      const laneCenter = (streamCount - 1) / 2;
+      const laneOffset = (lane - laneCenter) * unit * 0.013;
+      const curl = Math.sin(phase) * unit * (0.013 + seeded(index, salt + 5) * 0.019);
+      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.012;
+      const baseX = from[0] + dx * t + normalX * (laneOffset + curl) + tangentX * shear;
+      const baseY = from[1] + dy * t + normalY * (laneOffset + curl) + tangentY * shear;
+      const flow = flowFieldDisplacement(baseX, baseY, elapsed, unit * (0.006 + seeded(index, salt + lane * 29) * 0.012), salt + lane * 3);
       const pulse = 0.46 + 0.54 * Math.sin(t * Math.PI);
       drawGuideParticle(
         ctx,
-        from[0] + dx * t + normalX * (laneOffset + curl) + tangentX * shear,
-        from[1] + dy * t + normalY * (laneOffset + curl) + tangentY * shear,
+        baseX + flow.x,
+        baseY + flow.y,
         unit * (0.001 + seeded(index, salt + lane * 53 + 7) * 0.0016) * (0.72 + pulse * 0.3),
         color,
-        alpha * (0.07 + pulse * 0.22) * (lane === 1 ? 1 : 0.64),
+        alpha * (0.08 + pulse * 0.24) * (lane === Math.round(laneCenter) ? 1 : 0.68),
       );
     }
   }
@@ -423,7 +441,7 @@ function drawAmbientAirbendField(
   const pressure = layoutCollisionPressure(controls);
   const fieldQuieting = layoutFieldQuieting(controls);
   const flowRecombine = layoutFlowRecombine(controls);
-  const count = Math.round(clamp((width * height) / (6200 + fieldQuieting * 2200), 96, 360));
+  const count = Math.round(clamp((width * height) / (5200 + fieldQuieting * 2200), 128, 520));
   const attraction = controls.resting
     ? 0.1
     : 0.18 + controls.curiosity * 0.18 + controls.speaking_energy * 0.2 + flowRecombine * 0.18;
@@ -449,15 +467,18 @@ function drawAmbientAirbendField(
       y += Math.sin(angle) * push * unit * 0.22;
     }
 
-    const fieldAngle = flowFieldAngle(x, y, elapsed, index * 0.37);
+    const field = flowFieldDisplacement(x, y, elapsed, unit * (0.006 + flowRecombine * 0.02), index * 0.37);
+    x += field.x;
+    y += field.y;
+    const fieldAngle = field.angle;
     const hueShift = Math.sin(elapsed * 0.18 + index * 0.11);
     const color: [number, number, number] = hueShift > 0.28
       ? [255, 104, 177]
       : hueShift < -0.34
         ? [138, 117, 255]
         : [76, 230, 255];
-    const size = unit * (0.00075 + seeded(index, 7110) * 0.0012);
-    const length = unit * (0.006 + controls.curiosity * 0.008 + fieldBreath * 0.004 + controls.speaking_energy * 0.008 + flowRecombine * 0.008);
+    const size = unit * (0.00058 + seeded(index, 7110) * 0.00105);
+    const length = unit * (0.006 + controls.curiosity * 0.009 + fieldBreath * 0.005 + controls.speaking_energy * 0.009 + flowRecombine * 0.011);
     const alpha = (controls.resting ? 0.026 : 0.038 + controls.arousal * 0.016 + controls.speaking_energy * 0.025)
       * (0.48 + seeded(index, 7111) * 0.82)
       * (1 - fieldQuieting * 0.34);
@@ -1290,9 +1311,10 @@ function drawParticles(
         : 0.14 + controls.curiosity * 0.16 + controls.speaking_energy * 0.16 + recombineWave * 0.08 + flowRecombine * 0.22;
       const orbitX = cx + x * scale * 2.6;
       const orbitY = cy + y * scale * 1.9;
+      const flow = flowFieldDisplacement(homeX, homeY, elapsed, Math.min(width, height) * (0.007 + flowRecombine * 0.028), point.x * 1.31 + point.z * 0.71);
       const drift = Math.sin(elapsed * 0.23 + homeX * 0.002 + homeY * 0.003) * 18;
-      px = homeX * (1 - recombine) + orbitX * recombine + drift;
-      py = homeY * (1 - recombine) + orbitY * recombine + Math.cos(elapsed * 0.17 + homeX * 0.002) * 12;
+      px = homeX * (1 - recombine) + orbitX * recombine + drift + flow.x;
+      py = homeY * (1 - recombine) + orbitY * recombine + Math.cos(elapsed * 0.17 + homeX * 0.002) * 12 + flow.y;
       size = clamp(point.scale * (0.42 + depth * 0.74 + controls.speaking_energy * 0.24), 0.45, 2.2);
       alpha = clamp(point.a * (0.14 + depth * 0.44) * (0.74 + edgeBias * 0.22 + verticalBias * 0.12) * (1 - fieldQuieting * 0.28), 0.03, 0.48);
       const centerDistance = Math.hypot(px - cx, py - cy);
@@ -1911,6 +1933,8 @@ export default function SplatraImaginationField({
       data-active-scene-focus-basis={activeSceneFocusBasis}
       data-layout-collision-pressure={layoutCollisionPressure(controls)}
       data-layout-text-avoidance={String(controls.layout_text_avoidance ?? "clear")}
+      data-particle-rendering-contract={PARTICLE_RENDERING_CONTRACT}
+      data-flow-field-basis={FLOW_FIELD_BASIS}
       data-active-scene-group={activeSceneGroupId || "none"}
       data-active-scene-group-size={activeSceneGroupSize}
     >

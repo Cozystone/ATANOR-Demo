@@ -101,8 +101,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "client_dom_collision_feedback" in status_card
     assert "offscreenAmount" in status_card
     assert "dashboardLayoutMetrics" in status_card
-    assert "textLayoutSegments" in status_card
-    assert "estimateDomTextLayout" in status_card
+    assert "TEXT_LAYOUT_BASIS" in status_card
+    assert "pretext_inspired_dom_text_canvas_metrics_preallocated_no_particle_text" in status_card
+    assert "pretextInspiredTextLayoutSegments" in status_card
+    assert "estimateDomTextLayoutPretextStyle" in status_card
     assert "estimatedTextRectFromDom" in status_card
     assert "stableLayoutMeasurementText" in status_card
     assert "dom_text_canvas_metrics_preallocated_no_particle_text" in status_card
@@ -174,6 +176,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "drawSceneFocusSwarm" in field
     assert "sceneObjectCanvasCenter" in field
     assert "drawAmbientAirbendField" in field
+    assert "PARTICLE_RENDERING_CONTRACT" in field
+    assert "all_generated_marks_particle_points_no_canvas_strokes" in field
+    assert "FLOW_FIELD_BASIS" in field
+    assert "magnetic_simplex_inspired_airbend_particles" in field
+    assert "flowFieldDisplacement" in field
+    assert "data-particle-rendering-contract" in field
+    assert "data-flow-field-basis" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
     assert "motion_path" in field
@@ -211,7 +220,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "flowFieldAngle" in field
     assert "drawParticleStroke" in field
     assert "drawParticleSegment" in field
-    assert "streamCount = 3" in field
+    assert "streamCount = distance > unit * 0.42 ? 5 : 3" in field
     assert "laneOffset" in field
     assert "curl" in field
     assert "drawParticleEllipse" in field
