@@ -312,14 +312,21 @@ function requestedLayoutDecision(scenePlan: SceneChoreographyPayload, stageLayou
   return "none";
 }
 
-function activeLayoutAction(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, activeBeatIndex: number) {
+function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, activeBeatIndex: number) {
   const timeline = Array.isArray(scenePlan?.layout_timeline) ? scenePlan?.layout_timeline ?? [] : [];
   const active = timeline.find((item) => Number(item.beat_index) === activeBeatIndex && typeof item.action === "string");
   const base = timeline.find((item) => item.beat_index === undefined && typeof item.action === "string");
-  if (active?.action) return String(active.action);
-  if (base?.action) return String(base.action);
-  if (stageLayout === "scene_focus") return requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? "yield_center_to_particle_scene" : "share_center_with_particle_scene";
-  return "keep_orb_primary";
+  const fallbackAction = stageLayout === "scene_focus"
+    ? requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? "yield_center_to_particle_scene" : "share_center_with_particle_scene"
+    : "keep_orb_primary";
+  const item = active ?? base ?? {};
+  return {
+    action: String(item.action ?? fallbackAction),
+    basis: String(item.decision_basis ?? requestedLayoutBasis(scenePlan, stageLayout)),
+    orbAnchor: String(item.orb_anchor ?? scenePlan?.dashboard_layout?.orb?.anchor ?? (stageLayout === "scene_focus" ? "lower_right" : "center")),
+    stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
+    textRendering: String(item.text_rendering ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_rendering ?? "dom_text_not_particles"),
+  };
 }
 
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
@@ -1042,6 +1049,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     }
   }
 
+  const currentLayoutState = activeLayoutState(sceneChoreography, stageLayout, sceneSpeechBeatIndex);
+
   return (
     <section
       ref={dashboardRef}
@@ -1056,7 +1065,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}
       data-layout-basis={requestedLayoutBasis(sceneChoreography, stageLayout)}
       data-layout-decision={requestedLayoutDecision(sceneChoreography, stageLayout)}
-      data-layout-action={activeLayoutAction(sceneChoreography, stageLayout, sceneSpeechBeatIndex)}
+      data-layout-action={currentLayoutState.action}
+      data-layout-action-basis={currentLayoutState.basis}
+      data-layout-orb-anchor={currentLayoutState.orbAnchor}
+      data-layout-stage-region={currentLayoutState.stageRegion}
+      data-layout-text-rendering={currentLayoutState.textRendering}
       data-text-layout-basis="dom_text_canvas_metrics_no_particle_text"
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >

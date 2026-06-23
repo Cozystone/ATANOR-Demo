@@ -21,8 +21,12 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "scenePlan={sceneChoreography}" in status_card
     assert "sceneNarrationBeats" in status_card
     assert "layout_timeline?: Array" in status_card
-    assert "activeLayoutAction" in status_card
+    assert "activeLayoutState" in status_card
     assert "data-layout-action" in status_card
+    assert "data-layout-action-basis" in status_card
+    assert "data-layout-orb-anchor" in status_card
+    assert "data-layout-stage-region" in status_card
+    assert "data-layout-text-rendering" in status_card
     assert "speech_timeline?: Array" in status_card
     assert "scenePlan?.speech_timeline" in status_card
     assert "beat.speech_cue !== false" in status_card
