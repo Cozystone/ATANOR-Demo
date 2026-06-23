@@ -390,6 +390,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
     for index, beat in enumerate(beats):
         if beat.speech_cue is False:
             continue
+        active_layout_points = _active_beat_layout_points(beat)
         timeline.append({
             "t_start": beat.t_start,
             "duration": beat.duration,
@@ -403,6 +404,8 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
             "orb_movement": _orb_movement_for_active_beat(beat, decision.get("orb_movement") or "lower_right_scaled_down"),
             "text_anchor": _text_anchor_for_active_beat(beat, default_text_anchor),
+            "text_anchor_basis": _text_anchor_basis_for_active_beat(beat, default_text_anchor),
+            "text_anchor_points": len(active_layout_points),
             "self_narration_anchor": default_self_anchor,
             "text_rendering": "dom_text_not_particles",
             "stage_region": "dashboard_center",
@@ -505,6 +508,22 @@ def _text_anchor_for_active_beat(beat: SceneBeat, fallback: Any) -> TextAnchor:
         return "lower_left"
     candidates: list[TextAnchor] = ["lower_left", "upper_left", "upper_right", "lower_center"]
     return min(candidates, key=lambda anchor: _text_anchor_clearance_score(anchor, points, fallback_anchor))
+
+
+def _text_anchor_basis_for_active_beat(beat: SceneBeat, fallback: Any) -> str:
+    fallback_anchor = str(fallback or "lower_left")
+    points = _active_beat_layout_points(beat)
+    if not points:
+        return f"fallback_anchor:{fallback_anchor}"
+    avg_x = sum(point[0] for point in points) / len(points)
+    min_y = min(point[1] for point in points)
+    max_y = max(point[1] for point in points)
+    has_motion = bool(beat.motion_path)
+    if avg_x <= -0.18 or avg_x >= 0.18:
+        return "verified_motion_path_horizontal_clearance" if has_motion else "verified_position_horizontal_clearance"
+    if min_y <= -0.32 and max_y >= 0.12:
+        return "verified_vertical_motion_path_conversational_clearance"
+    return "verified_geometry_clearance_score"
 
 
 def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:

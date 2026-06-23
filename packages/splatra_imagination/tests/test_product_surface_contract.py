@@ -27,6 +27,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-orb-anchor" in status_card
     assert "data-layout-orb-movement" in status_card
     assert "data-layout-text-anchor" in status_card
+    assert "data-layout-text-anchor-basis" in status_card
+    assert "data-layout-text-anchor-points" in status_card
     assert "data-layout-self-narration-anchor" in status_card
     assert "activeLayout.textAnchor" in status_card
     assert "activeLayout.selfNarrationAnchor" in status_card
@@ -48,7 +50,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "speech_timeline: list[dict[str, Any]]" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "layout_timeline: list[dict[str, Any]]" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "_text_anchor_for_active_beat" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "_text_anchor_basis_for_active_beat" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"action\": \"sync_orb_text_with_particle_beat\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "\"text_anchor_basis\": _text_anchor_basis_for_active_beat" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "\"text_anchor_points\": len(active_layout_points)" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"text_source\": \"verified_beat_narration\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "scene_group_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "object_track_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")

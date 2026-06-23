@@ -142,6 +142,8 @@ type SceneChoreographyPayload = {
     orb_anchor?: string;
     orb_movement?: string;
     text_anchor?: TextAnchor;
+    text_anchor_basis?: string;
+    text_anchor_points?: number;
     self_narration_anchor?: TextAnchor;
     text_rendering?: string;
     text_strategy?: string;
@@ -343,6 +345,8 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
     orbMovement: String(item.orb_movement ?? scenePlan?.dashboard_layout?.agent_layout_decision?.orb_movement ?? (stageLayout === "scene_focus" ? "lower_right_scaled_down" : "center")),
     stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
     textAnchor: coerceTextAnchor(item.text_anchor, requestedTextAnchor(scenePlan)),
+    textAnchorBasis: String(item.text_anchor_basis ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_strategy ?? (stageLayout === "scene_focus" ? "verified_scene_geometry" : "conversation_default")),
+    textAnchorPoints: Number.isFinite(Number(item.text_anchor_points)) ? Number(item.text_anchor_points) : 0,
     selfNarrationAnchor: coerceTextAnchor(item.self_narration_anchor, scenePlan?.dashboard_layout?.self_narration?.anchor ?? "upper_right"),
     textRendering: String(item.text_rendering ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_rendering ?? "dom_text_not_particles"),
   };
@@ -1139,6 +1143,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-orb-movement={currentLayoutState.orbMovement}
       data-layout-stage-region={currentLayoutState.stageRegion}
       data-layout-text-anchor={currentLayoutState.textAnchor}
+      data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}
+      data-layout-text-anchor-points={currentLayoutState.textAnchorPoints}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
       data-text-layout-basis="dom_text_canvas_metrics_preallocated_no_particle_text"

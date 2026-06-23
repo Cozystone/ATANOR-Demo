@@ -145,6 +145,8 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert "object_track_id" in active_layout
     assert active_layout["orb_movement"] == "lower_right_lifted"
     assert active_layout["text_anchor"] == "lower_left"
+    assert active_layout["text_anchor_basis"] == "verified_vertical_motion_path_conversational_clearance"
+    assert active_layout["text_anchor_points"] == 3
     assert active_layout["self_narration_anchor"] in {"upper_left", "upper_right"}
     assert plan.topic_scene_templates is False
 
@@ -227,6 +229,8 @@ def test_layout_timeline_places_speech_away_from_motion_path_even_when_position_
     active = next(item for item in plan.layout_timeline if item.get("beat_index") == 0)
     assert active["decision_basis"] == "verified_speech_cue_beat"
     assert active["text_anchor"] == "upper_left"
+    assert active["text_anchor_basis"] == "verified_motion_path_horizontal_clearance"
+    assert active["text_anchor_points"] == 3
     assert active["text_rendering"] == "dom_text_not_particles"
 
 
