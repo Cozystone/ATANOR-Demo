@@ -30,6 +30,7 @@ ALLOWED_PROOF_CAPABILITIES = {
     "mcp_allowlist_validate",
     "mcp_call_mock",
     "splatra_cosmos_evaluate",
+    "splatra_scene_command",
     "cloud_brain_verified_read_summary",
     "cloud_brain_candidate_write_draft",
     "local_brain_read_redacted_summary",

@@ -9,6 +9,7 @@ ALLOWED_DASHBOARD_ACTIONS = {
     "set_orb_emotion",
     "set_orb_lod",
     "set_splatra_scene_mode",
+    "set_splatra_scene_command",
     "set_particle_budget",
     "show_render_preview",
     "show_proposal_card",

@@ -49,6 +49,27 @@ Product home uses a bounded particle budget and rotates through recognizable arc
 
 Lab mode exposes archetype selection, switch/random controls, particle count, compression ratio, LOD summary, visual intensity, clear radius, and a warning when the object is too subtle for product use.
 
+## SPLATRA Command Adapter
+
+The updated Cozystone/SPLATRA repository was reviewed at commit `3f5156e`. Its runtime contract is:
+
+- user/agent command enters `POST /v1/chat` or a direct tool endpoint;
+- tool calls such as `generate_3d_object`, `render_knowledge_hologram`, and scene actions create or morph a Gaussian field;
+- raw 3D buffers are not sent through the agent/LLM context;
+- the viewer pulls the binary cartridge through `/v1/cartridge` and performs the assemble/reassemble animation locally.
+
+ATANOR now mirrors that boundary with `compile_splatra_command()` and `POST /api/agentic-os/splatra/imagination/command`.
+
+This endpoint compiles a visual command into:
+
+- a SPLATRA-style `scene_action` such as `spawn_object`, `morph`, or `render_knowledge_hologram`;
+- a procedural proof-only particle frame for the current dashboard;
+- a side-channel contract that says the future full SPLATRA viewer should fetch cartridges separately.
+
+It does not call external LLMs, sLLMs, image models, Local Brain writes, Cloud production writes, candidate promotion, arbitrary JavaScript, git, or shell execution.
+
+Product mode no longer draws constellation guide lines around the central orb. Those guide lines are kept for Lab inspection only because they were visually distracting on the user-facing dashboard.
+
 ## Future Gates
 
 - WebGL/WebGPU SPL3 decoder for client-side quantized data textures.

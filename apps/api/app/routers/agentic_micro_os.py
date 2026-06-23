@@ -40,7 +40,14 @@ from packages.agentic_micro_os.web_explorer_loop import (
 from packages.hermes_intake.scanner import scan_repo
 from packages.neural_emotion import emit_runtime_event
 from packages.neural_emotion.event_bus import EVENT_BUS
-from packages.splatra_imagination import ARCHETYPES, ImaginationGenerator, ImaginationSeed, default_safety_flags, run_imagination_proof
+from packages.splatra_imagination import (
+    ARCHETYPES,
+    ImaginationGenerator,
+    ImaginationSeed,
+    compile_splatra_command,
+    default_safety_flags,
+    run_imagination_proof,
+)
 
 
 router = APIRouter(prefix="/api/agentic-os", tags=["agentic-micro-os"])
@@ -188,6 +195,13 @@ class SplatraImaginationGenerateApiRequest(BaseModel):
 
 class SplatraImaginationEvaluateApiRequest(BaseModel):
     particle_budget: int = 900
+
+
+class SplatraImaginationCommandApiRequest(BaseModel):
+    command: str
+    particle_budget: int = 1600
+    mode: str = "product"
+    include_particles: bool = True
 
 
 class WebExplorerPageApiInput(BaseModel):
@@ -849,6 +863,35 @@ def splatra_imagination_generate(request: SplatraImaginationGenerateApiRequest) 
 def splatra_imagination_evaluate(request: SplatraImaginationEvaluateApiRequest) -> dict[str, Any]:
     proof = run_imagination_proof(particle_budget=max(16, min(request.particle_budget, 10_000)))
     return {**SAFETY_FLAGS, **default_safety_flags(), **proof, **_splatra_visible_summary()}
+
+
+@router.post("/splatra/imagination/command")
+def splatra_imagination_command(request: SplatraImaginationCommandApiRequest) -> dict[str, Any]:
+    plan, frame = compile_splatra_command(
+        request.command,
+        particle_budget=max(64, min(request.particle_budget, 100_000)),
+        mode=request.mode,
+    )
+    frame_payload = frame.to_dict(include_particles=request.include_particles)
+    visible_summary = _splatra_visible_summary(frame_payload)
+    emit_runtime_event(
+        source="splatra_imagination",
+        event_type="splatra_generation_success",
+        payload_summary=f"command={plan.scene_command}; archetype={plan.archetype}",
+        intensity=0.48,
+    )
+    return {
+        **SAFETY_FLAGS,
+        **default_safety_flags(),
+        "allowed": True,
+        "agent_can_use": True,
+        "splatra_command_adapter": True,
+        "external_splatra_called": False,
+        "raw_buffer_in_agent_context": False,
+        "command_plan": plan.to_dict(),
+        "frame": frame_payload,
+        **visible_summary,
+    }
 
 
 @router.get("/web-explorer/status")

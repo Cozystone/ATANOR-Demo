@@ -417,7 +417,7 @@ function drawParticles(
   const cosX = Math.cos(tilt);
   const sinX = Math.sin(tilt);
 
-  if (ambient) {
+  if (!ambient) {
     drawArchetypeGuides(ctx, archetype, width, height, elapsed, controls);
   }
 

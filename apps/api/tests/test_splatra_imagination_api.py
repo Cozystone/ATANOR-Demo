@@ -63,3 +63,21 @@ def test_imagination_evaluate_runs_all_archetypes() -> None:
     assert payload["passed"] is True
     assert len(payload["archetypes"]) == 9
     assert payload["safety_flags"]["generated_scene_committed"] is False
+
+
+def test_imagination_command_exposes_agent_usable_scene_action() -> None:
+    payload = _client().post(
+        "/api/agentic-os/splatra/imagination/command",
+        json={"command": "make a blue circuit tower", "particle_budget": 240},
+    ).json()
+
+    assert payload["allowed"] is True
+    assert payload["agent_can_use"] is True
+    assert payload["splatra_command_adapter"] is True
+    assert payload["external_splatra_called"] is False
+    assert payload["raw_buffer_in_agent_context"] is False
+    assert payload["command_plan"]["scene_action"]["execute_js"] is False
+    assert payload["command_plan"]["splatra_contract"]["compatible_source"] == "Cozystone/SPLATRA"
+    assert payload["frame"]["objects"][0]["particle_count"] <= 240
+    assert payload["local_brain_write"] is False
+    assert payload["production_store_mutated"] is False
