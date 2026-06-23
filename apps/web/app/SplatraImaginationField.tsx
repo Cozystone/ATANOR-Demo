@@ -41,9 +41,14 @@ type ImaginationFrame = {
 };
 
 type ScenePlanBeat = {
+  op?: "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
   archetype?: Archetype;
   prompt?: string;
   object_id?: string;
+  t_start?: number;
+  duration?: number;
+  position?: number[];
+  camera?: Record<string, any>;
 };
 
 type ScenePlan = {
@@ -51,6 +56,12 @@ type ScenePlan = {
   orb_anchor?: "center" | "lower_right";
   primary_surface?: string;
   beats?: ScenePlanBeat[];
+};
+
+type SceneTransform = {
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
 };
 
 type Props = {
@@ -191,14 +202,43 @@ function seeded(index: number, salt = 0) {
   return value - Math.floor(value);
 }
 
-function sceneArchetype(scenePlan: ScenePlan | null | undefined): Archetype | null {
+function sceneBeatIndex(scenePlan: ScenePlan | null | undefined, elapsedSeconds: number): number {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  if (!beats.length) return -1;
+  let activeIndex = 0;
+  beats.forEach((beat, index) => {
+    const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : index * 1.25;
+    if (elapsedSeconds >= start) activeIndex = index;
+  });
+  return activeIndex;
+}
+
+function sceneArchetype(scenePlan: ScenePlan | null | undefined, beatIndex = -1): Archetype | null {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const activeBeat = beatIndex >= 0 ? beats[beatIndex] : null;
+  if (activeBeat?.archetype && PRODUCT_ARCHETYPES.includes(activeBeat.archetype)) return activeBeat.archetype;
   const explicit = beats.find((beat) => beat.archetype && PRODUCT_ARCHETYPES.includes(beat.archetype))?.archetype;
   if (explicit) return explicit;
   const prompt = beats.map((beat) => `${beat.prompt ?? ""} ${beat.object_id ?? ""}`).join(" ").trim();
   if (!prompt) return null;
   const hash = Array.from(prompt).reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) >>> 0, 2166136261);
   return PRODUCT_ARCHETYPES[hash % PRODUCT_ARCHETYPES.length];
+}
+
+function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boolean): SceneTransform {
+  if (!stageMode || !beat) return { offsetX: 0, offsetY: 0, zoom: 1 };
+  const position = Array.isArray(beat.position) ? beat.position : [];
+  const camera = beat.camera && typeof beat.camera === "object" ? beat.camera : {};
+  const cameraTarget = Array.isArray(camera.target) ? camera.target : [];
+  const rawX = Number(position[0] ?? cameraTarget[0] ?? 0);
+  const rawY = Number(position[1] ?? cameraTarget[1] ?? 0);
+  const rawZoom = Number(camera.zoom ?? camera.distance ?? 1);
+  const opBias = beat.op === "focus_camera" ? 1.08 : beat.op === "despawn" ? 0.82 : 1;
+  return {
+    offsetX: clamp(Number.isFinite(rawX) ? rawX * 0.08 : 0, -0.24, 0.24),
+    offsetY: clamp(Number.isFinite(rawY) ? -rawY * 0.08 : 0, -0.2, 0.2),
+    zoom: clamp((Number.isFinite(rawZoom) ? rawZoom : 1) * opBias, 0.72, 1.36),
+  };
 }
 
 function fallbackParticles(archetype: Archetype, count: number): Particle[] {
@@ -461,11 +501,12 @@ function drawParticles(
   controls: { arousal: number; curiosity: number; speaking_energy: number; resting: boolean },
   ambient = false,
   guides = false,
+  transform: SceneTransform = { offsetX: 0, offsetY: 0, zoom: 1 },
 ) {
   ctx.clearRect(0, 0, width, height);
-  const cx = width / 2;
-  const cy = height / 2;
-  const scale = Math.min(width, height) * (ambient ? 0.18 : 0.26);
+  const cx = width / 2 + transform.offsetX * width;
+  const cy = height / 2 + transform.offsetY * height;
+  const scale = Math.min(width, height) * (ambient ? 0.18 : 0.26) * transform.zoom;
   const rotation = elapsed * (controls.resting ? 0.08 : 0.18 + controls.arousal * 0.16);
   const tilt = Math.sin(elapsed * 0.21) * 0.18;
   const pulse = 1 + Math.sin(elapsed * 3.6) * controls.speaking_energy * 0.045;
@@ -588,6 +629,8 @@ export default function SplatraImaginationField({
   const [status, setStatus] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState("");
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [sceneStartedAt, setSceneStartedAt] = useState(0);
+  const [activeSceneBeatIndex, setActiveSceneBeatIndex] = useState(-1);
   const budget = particleBudget ?? (mode === "lab" ? 1400 : 520);
   const controls = useMemo(() => {
     const base = STATE_CONTROLS[state] ?? STATE_CONTROLS.idle;
@@ -602,6 +645,8 @@ export default function SplatraImaginationField({
   const particles = frame?.object?.particles?.length ? frame.object.particles : fallbackParticles(archetype, budget);
   const activeArchetype = frame?.object?.archetype ?? archetype;
   const stageMode = sceneFocus || scenePlan?.stage_layout === "scene_focus";
+  const activeSceneBeat = activeSceneBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[activeSceneBeatIndex] : null;
+  const activeTransform = useMemo(() => sceneTransform(activeSceneBeat, stageMode), [activeSceneBeat, stageMode]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -652,11 +697,37 @@ export default function SplatraImaginationField({
   }, [archetype, budget, controls, reducedMotion, seedNonce, state]);
 
   useEffect(() => {
-    const nextSceneArchetype = sceneArchetype(scenePlan);
+    const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+    if (!beats.length) {
+      setActiveSceneBeatIndex(-1);
+      return;
+    }
+    setSceneStartedAt(performance.now());
+    setActiveSceneBeatIndex(0);
+    const nextSceneArchetype = sceneArchetype(scenePlan, 0);
     if (!nextSceneArchetype) return;
     setArchetype(nextSceneArchetype);
     setSeedNonce((value) => value + 1);
   }, [scenePlan]);
+
+  useEffect(() => {
+    const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+    if (!stageMode || !beats.length || reducedMotion) return undefined;
+    const timer = window.setInterval(() => {
+      const elapsedSeconds = Math.max(0, (performance.now() - sceneStartedAt) / 1000);
+      const nextIndex = sceneBeatIndex(scenePlan, elapsedSeconds);
+      setActiveSceneBeatIndex((current) => {
+        if (nextIndex === current) return current;
+        const nextSceneArchetype = sceneArchetype(scenePlan, nextIndex);
+        if (nextSceneArchetype) {
+          setArchetype(nextSceneArchetype);
+          setSeedNonce((value) => value + 1);
+        }
+        return nextIndex;
+      });
+    }, 180);
+    return () => window.clearInterval(timer);
+  }, [reducedMotion, scenePlan, sceneStartedAt, stageMode]);
 
   useEffect(() => {
     if (mode !== "product" || reducedMotion) return undefined;
@@ -704,12 +775,13 @@ export default function SplatraImaginationField({
         controls,
         !stageMode && !interactive && mode === "product",
         mode === "lab",
+        activeTransform,
       );
       if (!reducedMotion) animationId = window.requestAnimationFrame(render);
     };
     render();
     return () => window.cancelAnimationFrame(animationId);
-  }, [activeArchetype, controls, mode, particles, reducedMotion, stageMode]);
+  }, [activeArchetype, activeTransform, controls, interactive, mode, particles, reducedMotion, stageMode]);
 
   function handleClick() {
     if (state === "listening") {
@@ -738,8 +810,8 @@ export default function SplatraImaginationField({
         </div>
       )}
       {mode === "product" ? (
-        <span className="splatra-imagination-product-label" aria-hidden="true">
-          imagination · {ARCHETYPE_LABELS[activeArchetype]}
+        <span className="splatra-imagination-product-label" data-scene-beat={activeSceneBeat?.op ?? "ambient"} aria-hidden="true">
+          imagination / {ARCHETYPE_LABELS[activeArchetype]}
         </span>
       ) : null}
       {mode === "lab" ? (

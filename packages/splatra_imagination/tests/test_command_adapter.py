@@ -52,6 +52,31 @@ def test_scene_choreography_validates_agent_authored_beats_without_inventing_con
     assert plan.safety_flags["production_store_mutated"] is False
 
 
+def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None:
+    plan = compile_scene_choreography({
+        "stage_layout": "scene_focus",
+        "beats": [
+            {
+                "op": "focus_camera",
+                "object_id": "focus_subject",
+                "prompt": "agent-authored subject",
+                "t_start": 2.5,
+                "duration": 4.0,
+                "position": [1.5, -1.0, 0.25],
+                "camera": {"target": [0.5, -0.25, 0], "zoom": 1.2},
+            },
+        ],
+    })
+
+    beat = plan.beats[0]
+    assert beat.op == "focus_camera"
+    assert beat.t_start == 2.5
+    assert beat.duration == 4.0
+    assert beat.position == (1.5, -1.0, 0.25)
+    assert beat.camera == {"target": [0.5, -0.25, 0], "zoom": 1.2}
+    assert plan.topic_scene_templates is False
+
+
 def test_command_adapter_keeps_safety_flags_closed() -> None:
     plan, frame = compile_splatra_command("visual scene request", particle_budget=128)
 

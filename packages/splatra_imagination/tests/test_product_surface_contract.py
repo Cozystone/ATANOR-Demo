@@ -21,8 +21,15 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "scenePlan={sceneChoreography}" in status_card
     assert "ParticleText" not in status_card
     assert "scenePlan?: ScenePlan | null" in field
+    assert "type SceneTransform" in field
+    assert "sceneBeatIndex" in field
     assert "sceneArchetype" in field
+    assert "activeSceneBeatIndex" in field
+    assert "sceneTransform" in field
+    assert "data-scene-beat" in field
     assert "splatra-imagination-product-label" in field
+    assert "imagination /" in field
+    assert "imagination ·" not in field
     assert "flowFieldAngle" in field
     assert "drawParticleStroke" in field
     assert "SPLATRA Imagination Field" in field

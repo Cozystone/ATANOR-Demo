@@ -82,6 +82,8 @@ This layer does not invent topic-specific scenes. For example, it does not hard-
 
 When a plan asks for `scene_focus`, the dashboard can move the central orb toward the lower-right side and reserve the center of the product surface for SPLATRA particles. The input bar stays visible, and spoken text remains normal text rather than particle glyphs.
 
+The product dashboard now plays validated scene beats over time. `t_start`, `position`, and camera hints can make the particle object morph, drift, and focus inside the renderable dashboard space while the central orb remains ATANOR's body and the input bar remains readable. This playback is driven by the agent-authored choreography payload; the renderer does not add hidden topic templates.
+
 `packages/cgsr/cgsr/visual_imagination_planner.py` is the first CGSR-side bridge into that contract. It reads the conversation route, grounded facts, and ASM/CGSR safety diagnostics, then either abstains or emits a bounded scene choreography. General knowledge questions with no verified grounding abstain instead of inventing an illustrative story. SPLATRA or grounded architecture questions may receive a scene-focus plan whose beats are derived from grounded phrases, not from a topic template dictionary.
 
 ## Future Gates
