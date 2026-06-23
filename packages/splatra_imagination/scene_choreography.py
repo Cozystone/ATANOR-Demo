@@ -44,6 +44,7 @@ class SceneChoreographyPlan:
     text_anchor: TextAnchor
     layout_intent: LayoutIntent
     scene_extent: dict[str, Any]
+    dashboard_layout: dict[str, Any]
     primary_surface: str
     beats: list[SceneBeat]
     safety_flags: dict[str, bool]
@@ -184,6 +185,58 @@ def _scene_extent(beats: list[SceneBeat]) -> dict[str, Any]:
     }
 
 
+def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anchor: TextAnchor, layout_intent: LayoutIntent, scene_extent: dict[str, Any]) -> dict[str, Any]:
+    """Derive dashboard placement from scene geometry, not subject templates."""
+
+    if stage_layout != "scene_focus":
+        return {
+            "planning_basis": "conversation_default",
+            "orb": {"anchor": "center"},
+            "speech": {"anchor": text_anchor},
+            "scene": {"field_opacity": 0.72},
+        }
+
+    beat_count = float(scene_extent.get("beat_count") or 0.0)
+    motion_count = float(scene_extent.get("motion_count") or 0.0)
+    spread_x = float(scene_extent.get("spread_x") or 0.0)
+    spread_y = float(scene_extent.get("spread_y") or 0.0)
+    load = min(1.0, max(0.0, 0.18 + beat_count * 0.08 + motion_count * 0.2 + spread_x * 0.22 + spread_y * 0.18))
+    if layout_intent == "wide_particle_stage":
+        load = max(load, 0.72)
+
+    orb_size_vmin = round(25.0 - load * 7.5, 2)
+    orb_min_px = round(170.0 - load * 38.0)
+    orb_max_px = round(262.0 - load * 44.0)
+    orb_right_vw = round(12.0 - load * 3.4, 2)
+    orb_bottom_vh = round(18.2 - load * 4.1, 2)
+    speech_max_vw = round(50.0 - load * 14.0, 2)
+    speech_right_vw = round(29.0 - load * 5.0, 2)
+    speech_bottom_vh = round(18.0 - load * 2.0, 2)
+
+    return {
+        "planning_basis": "scene_geometry_extent",
+        "stage_pressure": round(load, 3),
+        "orb": {
+            "anchor": orb_anchor,
+            "size_vmin": orb_size_vmin,
+            "min_px": orb_min_px,
+            "max_px": orb_max_px,
+            "right_vw": orb_right_vw,
+            "bottom_vh": orb_bottom_vh,
+        },
+        "speech": {
+            "anchor": text_anchor,
+            "max_vw": speech_max_vw,
+            "right_vw": speech_right_vw,
+            "bottom_vh": speech_bottom_vh,
+        },
+        "scene": {
+            "field_opacity": round(0.9 + load * 0.07, 3),
+            "central_scale": round(1.0 + load * 0.14, 3),
+        },
+    }
+
+
 def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     """Validate an agent-authored SPLATRA scene plan without inventing content.
 
@@ -199,6 +252,7 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     text_anchor = _coerce_text_anchor(plan.get("text_anchor"), stage_layout)
     layout_intent = _coerce_layout_intent(plan.get("layout_intent"), stage_layout, beats)
     scene_extent = _scene_extent(beats)
+    dashboard_layout = _dashboard_layout(stage_layout, orb_anchor, text_anchor, layout_intent, scene_extent)
     seed = f"{stage_layout}:{orb_anchor}:{text_anchor}:{layout_intent}:{[(beat.op, beat.prompt, beat.object_id) for beat in beats]}"
     return SceneChoreographyPlan(
         plan_id=_stable_id("scene_choreo", seed),
@@ -207,6 +261,7 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
         text_anchor=text_anchor,
         layout_intent=layout_intent,
         scene_extent=scene_extent,
+        dashboard_layout=dashboard_layout,
         primary_surface="splatra_stage" if stage_layout == "scene_focus" else "conversation",
         beats=beats,
         safety_flags=default_safety_flags(),

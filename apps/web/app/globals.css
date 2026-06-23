@@ -8475,13 +8475,13 @@ p {
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .hologram-voice-orb {
-  height: clamp(168px, 24vmin, 260px);
-  left: calc(100% - clamp(88px, 12vw, 168px));
-  min-height: clamp(168px, 24vmin, 260px);
-  min-width: clamp(168px, 24vmin, 260px);
-  top: calc(100% - clamp(138px, 19vh, 224px));
+  height: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
+  left: calc(100% - var(--atanor-scene-orb-right, clamp(86px, 12vw, 168px)));
+  min-height: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
+  min-width: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
+  top: calc(100% - var(--atanor-scene-orb-bottom, clamp(188px, 19vh, 224px)));
   transform: translate(-50%, -50%);
-  width: clamp(168px, 24vmin, 260px);
+  width: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .hologram-voice-orb:hover {
@@ -8489,20 +8489,20 @@ p {
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-scene-intent="wide_particle_stage"] .hologram-voice-orb {
-  height: clamp(132px, 19vmin, 218px);
-  left: calc(100% - clamp(74px, 10vw, 136px));
-  min-height: clamp(132px, 19vmin, 218px);
-  min-width: clamp(132px, 19vmin, 218px);
-  top: calc(100% - clamp(112px, 16vh, 184px));
-  width: clamp(132px, 19vmin, 218px);
+  height: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
+  left: calc(100% - var(--atanor-scene-orb-right, clamp(86px, 10vw, 136px)));
+  min-height: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
+  min-width: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
+  top: calc(100% - var(--atanor-scene-orb-bottom, clamp(188px, 16vh, 204px)));
+  width: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-dashboard-imagination-field {
-  opacity: 0.9;
+  opacity: var(--atanor-scene-field-opacity, 0.9);
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-scene-intent="wide_particle_stage"] .atanor-dashboard-imagination-field {
-  opacity: 0.96;
+  opacity: var(--atanor-scene-field-opacity, 0.96);
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-hologram-self-narration {
@@ -8513,17 +8513,17 @@ p {
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-hologram-speech {
-  bottom: clamp(138px, 18vh, 204px);
+  bottom: clamp(112px, var(--atanor-scene-speech-bottom, 18vh), 204px);
   left: auto;
-  max-width: min(540px, calc(100vw - clamp(286px, 38vw, 520px)));
-  right: clamp(196px, 29vw, 390px);
+  max-width: min(540px, var(--atanor-scene-speech-max, calc(100vw - clamp(286px, 38vw, 520px))));
+  right: clamp(168px, var(--atanor-scene-speech-right, 29vw), 390px);
   top: auto;
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-speech-placement="lower_left"] .atanor-hologram-speech {
-  bottom: clamp(120px, 16vh, 178px);
+  bottom: clamp(104px, var(--atanor-scene-speech-bottom, 16vh), 188px);
   left: clamp(28px, 6vw, 92px);
-  max-width: min(540px, 48vw);
+  max-width: min(540px, var(--atanor-scene-speech-max, 48vw));
   right: auto;
   text-align: left;
   top: auto;
@@ -8532,7 +8532,7 @@ p {
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-speech-placement="upper_left"] .atanor-hologram-speech {
   bottom: auto;
   left: clamp(28px, 6vw, 92px);
-  max-width: min(520px, 46vw);
+  max-width: min(520px, var(--atanor-scene-speech-max, 46vw));
   right: auto;
   text-align: left;
   top: clamp(156px, 23vh, 236px);
@@ -8541,14 +8541,14 @@ p {
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-speech-placement="upper_right"] .atanor-hologram-speech {
   bottom: auto;
   left: auto;
-  max-width: min(440px, 34vw);
+  max-width: min(440px, var(--atanor-scene-speech-max, 34vw));
   right: clamp(42px, 8vw, 126px);
   text-align: left;
   top: clamp(112px, 17vh, 188px);
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-scene-intent="wide_particle_stage"][data-speech-placement="upper_right"] .atanor-hologram-speech {
-  max-width: min(360px, 28vw);
+  max-width: min(360px, var(--atanor-scene-speech-max, 28vw));
   right: clamp(36px, 7vw, 104px);
   top: clamp(198px, 29vh, 268px);
 }

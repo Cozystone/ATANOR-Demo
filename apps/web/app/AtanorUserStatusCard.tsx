@@ -55,6 +55,28 @@ type SceneChoreographyPayload = {
     min_y?: number;
     max_y?: number;
   };
+  dashboard_layout?: {
+    planning_basis?: string;
+    stage_pressure?: number;
+    orb?: {
+      anchor?: "center" | "lower_right";
+      size_vmin?: number;
+      min_px?: number;
+      max_px?: number;
+      right_vw?: number;
+      bottom_vh?: number;
+    };
+    speech?: {
+      anchor?: TextAnchor;
+      max_vw?: number;
+      right_vw?: number;
+      bottom_vh?: number;
+    };
+    scene?: {
+      field_opacity?: number;
+      central_scale?: number;
+    };
+  };
   primary_surface?: string;
   beats?: Array<{
     op?: SceneBeatOp;
@@ -237,6 +259,37 @@ function clampNumber(value: number, min: number, max: number) {
 
 function cssClampPx(min: number, preferred: number, max: number) {
   return clampNumber(preferred, min, max);
+}
+
+function finiteNumber(value: unknown, fallback: number) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function dashboardLayoutVars(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout): CSSProperties {
+  if (stageLayout !== "scene_focus") return {};
+  const layout = scenePlan?.dashboard_layout ?? {};
+  const orb = layout.orb ?? {};
+  const speech = layout.speech ?? {};
+  const scene = layout.scene ?? {};
+  const orbSizeVmin = clampNumber(finiteNumber(orb.size_vmin, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 18.0 : 23.0), 12, 28);
+  const orbMinPx = clampNumber(finiteNumber(orb.min_px, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 132 : 168), 104, 230);
+  const orbMaxPx = clampNumber(finiteNumber(orb.max_px, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 218 : 260), 140, 310);
+  const orbRightVw = clampNumber(finiteNumber(orb.right_vw, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 10 : 12), 5.5, 16);
+  const orbBottomVh = clampNumber(finiteNumber(orb.bottom_vh, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 16 : 19), 9, 23);
+  const speechMaxVw = clampNumber(finiteNumber(speech.max_vw, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 36 : 48), 24, 54);
+  const speechRightVw = clampNumber(finiteNumber(speech.right_vw, 29), 18, 34);
+  const speechBottomVh = clampNumber(finiteNumber(speech.bottom_vh, 18), 11, 22);
+  const fieldOpacity = clampNumber(finiteNumber(scene.field_opacity, requestedLayoutIntent(scenePlan) === "wide_particle_stage" ? 0.96 : 0.9), 0.64, 1);
+  return {
+    ["--atanor-scene-orb-size" as string]: `clamp(${orbMinPx}px, ${orbSizeVmin}vmin, ${orbMaxPx}px)`,
+    ["--atanor-scene-orb-right" as string]: `clamp(86px, ${orbRightVw}vw, 168px)`,
+    ["--atanor-scene-orb-bottom" as string]: `clamp(188px, ${orbBottomVh}vh, 224px)`,
+    ["--atanor-scene-speech-max" as string]: `${speechMaxVw}vw`,
+    ["--atanor-scene-speech-right" as string]: `${speechRightVw}vw`,
+    ["--atanor-scene-speech-bottom" as string]: `${speechBottomVh}vh`,
+    ["--atanor-scene-field-opacity" as string]: String(fieldOpacity),
+  };
 }
 
 function overlapArea(left: RectLike, right: RectLike, padding = 0) {
@@ -681,6 +734,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-stage-layout={stageLayout}
       data-speech-placement={speechPlacement}
       data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}
+      data-layout-basis={sceneChoreography?.dashboard_layout?.planning_basis ?? "none"}
+      style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
       <SplatraImaginationField
         state={orbState}

@@ -521,6 +521,8 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     assert scene["stage_layout"] == "scene_focus"
     assert scene["orb_anchor"] == "lower_right"
     assert scene["layout_intent"] == "wide_particle_stage"
+    assert scene["dashboard_layout"]["planning_basis"] == "scene_geometry_extent"
+    assert scene["dashboard_layout"]["orb"]["anchor"] == "lower_right"
     assert scene["topic_scene_templates"] is False
     assert scene["scene_extent"]["motion_count"] >= 1
     assert any("사과" in beat["narration"] for beat in scene["beats"])
