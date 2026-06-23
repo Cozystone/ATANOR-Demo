@@ -595,6 +595,12 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     assert scene["scene_extent"]["motion_count"] >= 1
     assert any("사과" in beat["narration"] for beat in scene["beats"])
     assert any(beat.get("motion_path") for beat in scene["beats"])
+    assert scene["speech_timeline"]
+    assert all(item["text_source"] == "verified_beat_narration" for item in scene["speech_timeline"])
+    assert all(item["text_rendering"] == "dom_text_not_particles" for item in scene["layout_timeline"])
+    assert any(item["action"] == "sync_orb_text_with_particle_beat" for item in scene["layout_timeline"])
+    assert any(item.get("text_anchor") in {"upper_left", "lower_left", "upper_right", "lower_center"} for item in scene["layout_timeline"])
+    assert any(item.get("particle_behavior") == "gravity_arc" for item in scene["speech_timeline"])
     assert payload["answer_engine"]["external_llm"] is False
     assert payload["answer_engine"]["external_sllm"] is False
     assert payload["answer_engine"]["rule_based_answer_used"] is False

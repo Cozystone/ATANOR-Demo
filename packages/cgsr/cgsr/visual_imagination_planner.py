@@ -699,7 +699,7 @@ def _particle_behavior_for_unit(unit: dict[str, Any], visual_affordance: str, op
     narration = unit.get("narration", "")
     folded = narration.casefold()
     has_motion = bool(motion_path) or op == "move" or "motion" in str(unit.get("semantic_role", ""))
-    if has_motion and any(cue in folded for cue in ("fall", "falling", "fell", "drop", "dropped", "toward", "towards")):
+    if has_motion and any(cue in folded for cue in ("fall", "falling", "fell", "drop", "dropped", "toward", "towards", "떨어", "낙하", "끌리", "쪽으로")):
         return "gravity_arc", {
             "basis": "verified_motion_phrase",
             "field": "downward_attraction",
