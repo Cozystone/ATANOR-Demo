@@ -14,3 +14,4 @@ In v0 rollback manifests are deliberately non-executable:
 
 The purpose is to make rollback planning mandatory before any future activation work exists. A later production gate must prove that the operator can inspect, sign, and execute rollback separately from promotion.
 
+UTF-8 cleanup note: rollback planning remains a non-executable safety artifact after cleanup. A rollback manifest is required before any future activation dry-run can be considered.

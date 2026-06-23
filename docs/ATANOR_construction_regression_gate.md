@@ -22,3 +22,4 @@ The regression result returns:
 
 This gate does not promote candidates. It only provides evidence for a human-reviewed manifest.
 
+UTF-8 cleanup note: visible UI and docs around the construction promotion surface were rechecked for mojibake. Regression metadata remains proof-only and must not enable production activation.

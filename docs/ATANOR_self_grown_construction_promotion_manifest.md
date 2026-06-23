@@ -26,3 +26,4 @@ Eligibility rules:
 
 The sign endpoint is a signature preview only. It can mark a manifest as `signed`, but it still does not create a production activation path. Real activation remains a future operator-controlled gate.
 
+UTF-8 cleanup note: the promotion manifest surface was rechecked after cleanup. The manifest remains non-activating, and production construction activation stays blocked until a future signed activation dry-run is explicitly designed and reviewed.

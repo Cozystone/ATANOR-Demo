@@ -377,22 +377,6 @@ function stableDirection(value: string) {
   };
 }
 
-const codexResearchGoalPrompt = `ATANOR1.0???κ린 ?곌뎄 紐⑺몴濡?怨꾩냽 媛쒖꽑?쒕떎.
-
-紐⑺몴: ?몃? LLM怨?濡쒖뺄 ?묒옄??LLM ?놁씠, 濡쒖뺄 ?뚰겕?ㅽ뀒?댁뀡?먯꽌 ?μ떆媛??꾩쟻?섎뒗 ?⑦넧濡쒖?/洹몃옒??硫붾え由ъ? ?낆옄 ?앹꽦湲곕? ?곌뎄??以묓삎 LLM??媛源뚯슫 ?듬? ?덉쭏???ㅽ뿕?곸쑝濡??ъ꽦?쒕떎.
-
-諛섎났 猷⑦봽:
-1. 濡쒖뺄 FastAPI? Next BakeBoard瑜??ㅽ뻾?섍퀬 釉뚮씪?곗?濡?吏곸젒 議곗옉?쒕떎.
-2. ?ㅽ뿕?ㅼ? ?섏쭛 -> ?숈뒿 -> 異쒕젰 ?쒖꽌濡쒕쭔 吏꾪뻾?쒕떎. ?섏쭛 100% ?꾩뿉???숈뒿?섏? ?딄퀬, ?숈뒿 100% ?꾩뿉??異쒕젰 ?덉쭏???됯??섏? ?딅뒗??
-3. 3D 洹몃옒?꾨뒗 ?ㅼ젣 ???몃뱶/愿怨꾧? ?앷만 ?뚮쭔 ?뺤옣/?쒖꽦 ?좏샇瑜?蹂댁뿬以?? 蹂댁뿬二쇨린???꾩뒪, 媛吏?吏꾪뻾瑜? fake running ?곹깭瑜?留뚮뱾吏 ?딅뒗??
-4. ?대씪?곕뱶 釉뚮젅??酉곕뒗 濡쒖뺄 FastAPI? local daemon???ㅼ젣濡??ㅽ뻾???뚮쭔 洹몃옒?꾨? 蹂댁뿬以?? ?곌껐 ?꾩씠??worker stopped ?곹깭?먯꽌??鍮?愿痢??붾㈃???좎??쒕떎.
-5. Knowledge Bakery SQLite/JSONL ?대깽?? daemon ?곹깭, 泥댄겕?ъ씤?? ?몃뱶/愿怨??쒖꽦 ?좏샇瑜?吏곸젒 議고쉶??UI? ?ㅼ젣 ????곹깭媛 ?쇱튂?섎뒗吏 寃利앺븳??
-6. ?앹꽦 寃곌낵媛 源⑥?硫?洹몃?濡?愿李고븯怨? 洹쒖튃 湲곕컲 ?ъ옣?쇰줈 ?④린吏 ?딅뒗??
-7. 蹂묐ぉ?대굹 ?먯썝 寃쎄퀬媛 ?⑤㈃ ?ㅽ뙣 ?ㅽ뿕?쇰줈 湲곕줉?섍퀬 ?숈닠/?꾨Ц ?먮즺瑜?李얠븘 ??援ъ“?덉쓣 諛섏쁺?쒕떎.
-8. 援ы쁽, ?뚯뒪?? 釉뚮씪?곗? ?ㅽ겕由곗꺑, 臾몄꽌 ?낅뜲?댄듃, 而ㅻ컠??諛섎났?쒕떎.
-
-?쒖빟: ?듬? ?붿쭊?먮뒗 ?몃? LLM, sLLM, ?ъ쟾?숈뒿 ?앹꽦 媛以묒튂瑜??곗? ?딅뒗?? ??寃?됯낵 ?쇰Ц 議곗궗???곌뎄/?섏쭛 ?낅젰?쇰줈留??ъ슜?섍퀬, ?붿쭊???ㅼ젣濡??숈뒿?섏? ?딆? ?λ젰??媛吏?寃껋쿂???쒖떆?섏? ?딅뒗??`;
-
 const learningVolumePresets: Record<LearningVolume, { label: string; textBudget: string; chunkBudget: number; visualNodes: number; targetNodes: number | null; edgeRatio: number; durationHours: number; detail: string }> = {
   lite: { label: "가볍게", textBudget: "12k chars", chunkBudget: 32, visualNodes: 12, targetNodes: 3_000, edgeRatio: 3, durationHours: 12, detail: "응답 확인용" },
   standard: { label: "표준", textBudget: "48k chars", chunkBudget: 128, visualNodes: 24, targetNodes: 10_000, edgeRatio: 4, durationHours: 72, detail: "기본 학습" },
@@ -1449,7 +1433,7 @@ function formatDuration(ms: number) {
 
 function LossChart({ losses }: { losses: Array<{ step: number; loss: number }> }) {
   if (!losses?.length) {
-    return <div className="chart-empty">?숈뒿 dry-run 湲곕줉 ?놁쓬</div>;
+    return <div className="chart-empty">학습 dry-run 기록 없음</div>;
   }
   const maxLoss = Math.max(...losses.map((loss) => loss.loss));
   const minLoss = Math.min(...losses.map((loss) => loss.loss));
@@ -2856,7 +2840,7 @@ export default function BakeBoardPage() {
 
   useEffect(() => {
     runHardwareBenchmark({ applyRecommendation: true }).catch((caught) => {
-      setError(caught instanceof Error ? caught.message : "?쒖뒪??踰ㅼ튂留덊겕???ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "시스템 벤치마크에 실패했습니다.");
     });
   }, []);
 
@@ -3031,12 +3015,12 @@ export default function BakeBoardPage() {
           edgeKeys: learnedEdges.map((edge) => edgeKeyFromParts(edge.source, edge.target)).filter(Boolean),
           nodeIds: Array.from(new Set(learnedEdges.flatMap((edge) => [String(edge.source), String(edge.target)]))).slice(0, 16),
           text: shouldKeepBuildGraph
-            ? `?숈뒿 愿怨??뺤씤: ???洹몃옒??愿怨?${learnedEdges.length}媛쒕? ?쒖꽦?뷀뻽?듬땲??`
-            : `?숈뒿 愿怨??뺤젙: ??愿怨?${learnedEdges.length}媛쒓? 硫붾え由ъ뿉 ??λ릱?듬땲??`,
+            ? `학습 관계 확인: 기존 그래프 관계 ${learnedEdges.length}개를 활성화했습니다.`
+            : `학습 관계 확정: 새 관계 ${learnedEdges.length}개가 메모리에 저장되었습니다.`,
         };
         window.setTimeout(() => activateSignal(learnedTrace, 12000), 80);
       } else {
-        setSignalTraceText("?숈뒿 ?꾨즺: ???곌껐 蹂???놁쓬");
+        setSignalTraceText("학습 완료: 새 연결 변화 없음");
       }
     }
   }
@@ -3380,12 +3364,12 @@ export default function BakeBoardPage() {
     const elapsed = learningStartedAt ? Date.now() - learningStartedAt : learningElapsedMs;
     setContinuousLearningActive(false);
     setLearningElapsedMs(elapsed);
-    const reasonText = reason ? ` ?덉쟾 以묒? ?ъ쑀: ${reason}.` : "";
+    const reasonText = reason ? ` 안전 중지 사유: ${reason}.` : "";
     setChatMessages((messages) => [
       ...messages,
       {
         role: "assistant",
-        text: `??吏???숈뒿??硫덉톬?듬땲??${reasonText} ?꾩쟻 ?숈뒿 ?쒓컙? ${formatDuration(elapsed)}?닿퀬, ?꾩옱 ?붾㈃?먮뒗 ????⑦넧濡쒖? ?몃뱶 ${displayGraph3D.nodes.length}媛쒖? 愿怨?${displayGraph3D.edges.length}媛쒓? ?⑥븘 ?덉뒿?덈떎.`,
+        text: `지속 학습을 멈췄습니다.${reasonText} 누적 학습 시간은 ${formatDuration(elapsed)}이고, 현재 화면에는 대표 노드 ${displayGraph3D.nodes.length}개와 관계 ${displayGraph3D.edges.length}개가 남아 있습니다.`,
       },
     ]);
   }
@@ -3393,10 +3377,10 @@ export default function BakeBoardPage() {
   async function startFactoryBuild() {
     setError(null);
     if (learningVolume === "infinite" && resourceStopReason) {
-      setError(`?덉쟾 議곌굔 ?뚮Ц?????숈뒿???쒖옉?섏? ?딆븯?듬땲?? ${resourceStopReason}`);
+      setError(`안전 조건 때문에 학습을 시작하지 않았습니다. ${resourceStopReason}`);
       setChatMessages((messages) => [
         ...messages,
-        { role: "assistant", text: `??吏???숈뒿 ?쒖옉 ???덉쟾 ?먭??먯꽌 硫덉톬?듬땲?? ?ъ쑀: ${resourceStopReason}.` },
+        { role: "assistant", text: `지속 학습 시작 전 안전 평가에서 멈췄습니다. 사유: ${resourceStopReason}.` },
       ]);
       return;
     }
@@ -3449,7 +3433,7 @@ export default function BakeBoardPage() {
       }
     } catch (caught) {
       setContinuousLearningActive(false);
-      setError(caught instanceof Error ? caught.message : "鍮뚮뱶 ?쒖옉???ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "빌드 시작에 실패했습니다.");
     } finally {
       setIsBuilding(false);
     }
@@ -3529,10 +3513,10 @@ export default function BakeBoardPage() {
           edge_count: buildRun.graph_3d.edges.length + growthPulseCount * liveGrowthBatchSize * 2,
           message:
             buildIsInfinite
-              ? `${continuousLearningActive ? "??吏???숈뒿" : "???숈뒿 ?뺤?"} ${learningElapsedText}: ?섏쭛 ?쇱슫??${growthPulseCount} / ?꾩쟻 ?꾨낫 ${accumulatedLearningNodes.toLocaleString()} ?몃뱶`
+              ? `${continuousLearningActive ? "지속 학습" : "학습 정지"} ${learningElapsedText}: 수집 라운드 ${growthPulseCount} / 누적 후보 ${accumulatedLearningNodes.toLocaleString()} 노드`
               : rawGrowthPulseCount > growthPulseCount
-              ? `洹몃옒??寃??紐⑤뱶: ${growthPulseCount}媛??꾩뒪?먯꽌 ?덉젙?뷀뻽?듬땲??`
-              : `?ㅼ떆媛??숈뒿 ?꾩뒪 ${growthPulseCount}: ???쒕깄?ㅺ? 湲곗뼲留앹뿉 ?곌껐?섏뿀?듬땲??`,
+              ? `그래프 검증 모드: ${growthPulseCount}개 펄스에서 안정화했습니다.`
+              : `실시간 학습 펄스 ${growthPulseCount}: 새 시냅스가 기억망에 연결되었습니다.`,
         }
       : buildRun.graph_frames?.[Math.min(buildTick, buildRun.graph_frames.length - 1)] ?? null
     : null;
@@ -3620,8 +3604,8 @@ export default function BakeBoardPage() {
   const graphOverlayMessage = graphSourceMode === "build"
     ? buildFrameMessageText(activeBuildFrame?.message)
     : buildRun
-      ? "?숈뒿 ?④퀎媛 ???洹몃옒?꾩쓽 愿怨꾨? ?뺤씤?덉뒿?덈떎."
-      : "鍮뚮뱶 ?쒖옉???꾨Ⅴ硫??몃뱶媛 ?뚯깮?⑸땲??";
+      ? "학습 단계가 대표 그래프의 관계를 확인했습니다."
+      : "빌드 시작을 누르면 노드가 생성됩니다.";
   const daemonCanOperate = learningDaemon?.mode === "local-daemon";
   const daemonGraphReady = workspaceMode !== "daemon" || (localBackendConnected && daemonCanOperate && Boolean(learningDaemon?.worker_alive));
   const graphSyncPending = workspaceMode === "lab"
@@ -3908,206 +3892,6 @@ export default function BakeBoardPage() {
     return () => window.clearInterval(timer);
   }, [mainSection]);
 
-  const advancedProcessSteps: never[] = []; /*
-    {
-      number: "KB",
-      title: "Knowledge Bakery",
-      api: "POST /api/memory/build",
-      state: activeAction === "KB" ? "running" : memoryStatus?.state ?? "idle",
-      description: "?뺤젣 臾몄꽌? ?⑦넧濡쒖??먯꽌 臾몄옣 ?붿냼, phrase ?몃뱶, ?꾪썑 ?좏겙 ?뺣쪧, 3D 濡쒖뺄 踰≫꽣瑜?SQLite 硫붾え由щ줈 援쎌뒿?덈떎.",
-      metrics: [
-        `${memoryStatus?.node_count ?? 0} nodes`,
-        `${memoryStatus?.edge_count ?? 0} edges`,
-        `${memoryStatus?.transition_count ?? 0} transitions`,
-        `${memoryStatus?.phrase_count ?? 0} phrases`,
-        `drift ${memoryDrift?.state ?? "waiting"}`,
-      ],
-      action: () => runProcessAction("KB", runMemoryBuildStep),
-      actionLabel: activeAction === "KB" ? "硫붾え由?援ъ텞 以? : "硫붾え由?援ъ텞",
-    },
-    {
-      number: "HW",
-      title: "?쒖뒪??踰ㅼ튂留덊겕",
-      api: "POST /api/neuro/benchmark",
-      state: activeAction === "HW" ? "running" : benchmark ? "completed" : "idle",
-      description: "?쒖옉 ??PC??CPU, RAM, GPU, ?붿뒪?щ? 吏㏐쾶 痢≪젙???⑦넧濡쒖? 諛곗튂? ?숈뒿?됱쓣 ?먮룞?쇰줈 議곗젅?⑸땲??",
-      metrics: [
-        benchmark?.profile_name ?? "痢≪젙 ?湲?,
-        `異붿쿇 ${benchmarkVolumeLabel}`,
-        `CPU ${benchmarkCpuThreads}`,
-        `RAM ${benchmarkRamGb}GB`,
-        telemetryLabel,
-        resourceStopReason ? "?덉쟾以묒? 議곌굔 媛먯?" : "?덉쟾 議곌굔 ?뺤긽",
-      ],
-      action: () => runProcessAction("HW", () => runHardwareBenchmark({ applyRecommendation: true })),
-      actionLabel: activeAction === "HW" ? "痢≪젙 以? : "踰ㅼ튂留덊겕 ?ъ륫??,
-    },
-    {
-      number: "00",
-      title: "鍮뚮뱶 ?쒖옉",
-      api: "POST /api/factory/build/start",
-      state: isBuilding || continuousLearningActive ? "running" : buildRun ? "completed" : "idle",
-      description: "?명꽣??李몄“瑜??섏쭛?섍퀬 DataGate, Ontology Forge, 3D GraphRAG ?먯깋, ATANOR Oven ?숈뒿 寃뚯씠?멸퉴吏 ??踰덉뿉 ?먮Ⅴ寃??⑸땲??",
-      metrics: [
-        `${selectedTargetNodeLabel} ?κ린 紐⑺몴`,
-        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 泥?겕`,
-        `${buildRun?.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}`,
-        `${activeGraph3D?.nodes?.length ?? 0}/${buildRun ? visualNodeCap : currentLearningPreset.visualNodes} ????섑뵆`,
-        buildRun ? `${buildRun.graph_3d.nodes.length.toLocaleString()} API ?듭빱` : `${currentLearningPreset.visualNodes} 珥덇린 ?쒖떆`,
-        representativeCapReached ? "?쒖떆 ?곹븳 ?꾨떖" : "?쒖떆 ?ъ쑀 ?덉쓬",
-        buildIsInfinite ? "臾댁젣??吏?? : buildRun?.training_gate?.target_realized ? "?κ린 紐⑺몴 ?ъ꽦" : buildRun ? "?κ린 紐⑺몴 誘몄떎?? : "?湲?,
-        buildIsInfinite ? `?꾩쟻 ${learningElapsedText}` : `${growthPulseCount} ?ㅼ떆媛??꾩뒪`,
-        buildIsInfinite ? `${accumulatedLearningNodes.toLocaleString()} ?꾨낫 ?몃뱶` : buildRun?.training_gate?.ready ? "?숈뒿 寃뚯씠??以鍮? : "寃뚯씠???湲?,
-      ],
-      action: () => continuousLearningActive ? stopContinuousLearning() : runProcessAction("00", startFactoryBuild),
-      actionLabel: continuousLearningActive ? "?숈뒿 以묒?" : isBuilding || activeAction === "00" ? "鍮뚮뱶 吏꾪뻾 以? : "鍮뚮뱶 ?쒖옉",
-    },
-    {
-      number: "01",
-      title: "DataGate ?뺤젣",
-      api: "POST /api/datagate/run",
-      state: activeAction === "01" ? "running" : datagate?.state ?? "idle",
-      description: "?먯쿇 臾몄꽌瑜??듦낵/嫄곗젅濡??섎늻怨?RAG???ㅼ뼱媛?源⑤걮???낅젰留??④퉩?덈떎.",
-      metrics: [`${datagate?.accepted ?? 0}/${datagate?.total ?? 0} ?듦낵`, `${percent(datagate?.accepted ?? 0, datagate?.total ?? 0)}% ?듦낵??],
-      action: () => runProcessAction("01", runDataGateStep),
-      actionLabel: activeAction === "01" ? "?뺤젣 以? : "?뺤젣 ?ㅽ뻾",
-    },
-    {
-      number: "02",
-      title: "?⑦넧濡쒖? 硫붾え由??앹꽦",
-      api: "POST /api/ontology/run",
-      state: activeAction === "02" ? "running" : ontology?.state ?? "idle",
-      description: "?뺤젣??臾몄꽌?먯꽌 媛쒕뀗怨?愿怨꾨? 異붿텧???쇱そ 硫붾え由?洹몃옒?꾨? 援ъ꽦?⑸땲??",
-      metrics: [`${ontology?.node_count ?? memoryNodes.length} ?몃뱶`, `${ontology?.edge_count ?? memoryEdges.length} ?ｌ?`],
-      action: () => runProcessAction("02", runOntologyStep),
-      actionLabel: activeAction === "02" ? "?앹꽦 以? : "硫붾え由??앹꽦",
-    },
-    {
-      number: "03",
-      title: "GraphRAG 寃??,
-      api: "POST /api/graphrag/query",
-      state: activeAction === "03" ? "running" : graphrag?.state ?? "idle",
-      description: "吏덈Ц???⑦넧濡쒖? 硫붾え由ъ? 臾몄꽌 洹쇨굅???곌껐?⑸땲?? ???④퀎媛 ?ㅼ젣 RAG ?묒뾽??낅땲??",
-      metrics: [`?좊ː??${Math.round((graphrag?.confidence ?? 0) * 100)}%`, `${graphResult?.evidence_docs?.length ?? 0} 洹쇨굅`],
-      action: () => runProcessAction("03", async () => {
-        setRightMode("chat");
-        await sendChat();
-      }),
-      actionLabel: activeAction === "03" ? "吏덈Ц 以? : "RAG 梨꾪똿 ?닿린",
-    },
-    {
-      number: "04",
-      title: "Guardrail 寃利?,
-      api: "POST /api/guard/check",
-      state: activeAction === "04" ? "running" : guard?.state ?? "idle",
-      description: "RAG 洹쇨굅? ?듬? 珥덉븞???議고빐 怨쇱옣 ?쒗쁽怨?誘몄???二쇱옣???쒖떆?⑸땲??",
-      metrics: [`${guard?.overall_guard_score ?? 0}??, `${guard?.result?.claims?.length ?? 0} 二쇱옣`],
-      action: () => runProcessAction("04", checkGuard),
-      actionLabel: activeAction === "04" ? "寃利?以? : "珥덉븞 寃利?,
-    },
-    {
-      number: "05",
-      title: "?숈뒿 dry-run",
-      api: "POST /api/oven/dry-run",
-      state: activeAction === "05" ? "running" : oven?.state ?? "idle",
-      description: "?숈뒿 ?뚯씠?꾨씪?몄쓣 吏㏐쾶 ?ㅽ뻾?섍퀬 ?꾨즺?섎㈃ ?ㅻⅨ履??⑤꼸??RAG 梨꾪똿 UI濡??꾪솚?⑸땲??",
-      metrics: [`?먯떎 ${oven?.last_loss ?? "?湲?}`, `${losses.length} ?④퀎`],
-      action: () => runProcessAction("05", runTrainingDryRun),
-      actionLabel: activeAction === "05" ? "?숈뒿 以? : "?숈뒿 ?ㅽ뻾",
-    },
-    {
-      number: "06",
-      title: "??꾨젰 ?⑥쑉 怨꾪쉷",
-      api: "POST /api/neuro/plan",
-      state: activeAction === "06" ? "running" : "completed",
-      description: "?대깽???ъ냼?? 紐⑤뱢 ?쇱슦?? ?뺤텞 ?ㅼ젙???ш퀎?고빐 ??ъ뼇 ?ㅽ뻾 媛?μ꽦??遊낅땲??",
-      metrics: [`${energyReduction}% ?덇컧`, `${eventSparsity}% ?ъ냼??],
-      action: () => runProcessAction("06", rebalanceNeuro),
-      actionLabel: activeAction === "06" ? "怨꾩궛 以? : "?⑥쑉 ?ш퀎??,
-    },
-    {
-      number: "07",
-      title: "吏???댁쟾 ?덉쟾?μ튂",
-      api: "POST /api/neuro/stability",
-      state: activeAction === "07" ? "running" : "completed",
-      description: "?섏쿇 媛??몃뱶/愿怨꾧? ?앷꺼???? 泥댄겕?ъ씤?? 洹몃옒??hot window, UI LOD濡??쒖뒪?쒖씠 二쎌? ?딄쾶 ?쒗븳?⑸땲??",
-      metrics: [`RAM soft ${ramSoftGb}GB`, `VRAM soft ${vramSoftGb}GB`, `hot ${hotWindowNodes} ?몃뱶`, `UI ${uiRenderNodes} ?몃뱶`],
-      action: () => runProcessAction("07", refreshStabilityPlan),
-      actionLabel: activeAction === "07" ? "怨꾩궛 以? : "?덉젙??怨꾩궛",
-    },
-  ];
-
-  const processSteps = [
-    {
-      key: "collect" as LabStageKey,
-      number: "01",
-      title: "?섏쭛",
-      api: "POST /api/factory/build/start + DataGate",
-      state: isBuilding || continuousLearningActive || activeAction === "collect" ? "running" : collectComplete ? "completed" : "idle",
-      description: "??臾몄꽌 ?낅젰??媛?몄? 臾몄옣 ?⑥쐞濡?履쇨컻怨? GraphRAG媛 ?쎌쓣 ???덈뒗 ?꾨낫 泥?겕? 珥덇린 ?듭빱 洹몃옒?꾨? 留뚮벊?덈떎.",
-      progress: labStageProgress.collect,
-      available: true,
-      metrics: [
-        `${buildRun?.harvest_docs?.length ?? datagate?.total ?? 0} ?먮즺`,
-        `${buildRun?.training_gate?.chunk_count ?? currentLearningPreset.chunkBudget} 泥?겕`,
-        `${collectionDisplayNodeCount.toLocaleString()} ?쒖떆 ?몃뱶`,
-        buildIsInfinite ? `??${learningElapsedText}` : `${selectedTargetNodeLabel} 紐⑺몴`,
-      ],
-      action: () => continuousLearningActive ? stopContinuousLearning() : runProcessAction("collect", startFactoryBuild),
-      actionLabel: continuousLearningActive ? "?섏쭛 以묒?" : isBuilding || activeAction === "collect" ? "?섏쭛 以? : "?섏쭛 ?쒖옉",
-      blockedText: "",
-    },
-    {
-      key: "learn" as LabStageKey,
-      number: "02",
-      title: "?숈뒿",
-      api: "POST /api/ontology/run + /api/memory/build",
-      state: activeAction === "learn" ? "running" : learnComplete ? "completed" : collectComplete ? "ready" : "idle",
-      description: "遺꾪빐??臾몄옣 ?붿냼瑜??⑦넧濡쒖? ?몃뱶濡??꾩쟻?섍퀬, 怨듭텧???꾪썑/?됱쐞 愿怨꾨? 怨꾩궛??洹몃옒??硫붾え由щ줈 援쎌뒿?덈떎.",
-      progress: labStageProgress.learn,
-      available: collectComplete,
-      metrics: buildRun
-        ? [
-          `${displayGraph3D.nodes.length.toLocaleString()} ????몃뱶`,
-          `${displayGraph3D.edges.length.toLocaleString()} ???愿怨?,
-          `${memoryStatus?.node_count ?? 0} ????몃뱶`,
-          `${memoryStatus?.edge_count ?? 0} ???愿怨?,
-        ]
-        : [
-          `${memoryStatus?.node_count ?? ontology?.node_count ?? displayGraph3D.nodes.length} ?몃뱶`,
-          `${memoryStatus?.edge_count ?? ontology?.edge_count ?? displayGraph3D.edges.length} 愿怨?,
-          `${memoryStatus?.transition_count ?? 0} ?꾩씠`,
-          `drift ${memoryDrift?.state ?? "waiting"}`,
-        ],
-      action: () => runProcessAction("learn", runLearningStage),
-      actionLabel: activeAction === "learn" ? "?숈뒿 以? : "愿怨?怨꾩궛",
-      blockedText: "?섏쭛 100% ?꾨즺 ???숈뒿?????덉뒿?덈떎.",
-    },
-    {
-      key: "output" as LabStageKey,
-      number: "03",
-      title: "異쒕젰",
-      api: "POST /api/graphrag/query + /api/guard/check",
-      state: activeAction === "output" || isGeneratingAnswer ? "running" : outputComplete ? "completed" : learnComplete ? "ready" : "idle",
-      description: "吏덈Ц???먯뿰?대줈 ?ｌ쑝硫??쒖꽦 ?몃뱶? 洹몃옒???꾩씠瑜??쎌뼱 ?듬???留뚮뱾怨? 媛숈? 洹쇨굅 臾띠쓬?쇰줈 Guardrail???먮룞 寃利앺빀?덈떎.",
-      progress: labStageProgress.output,
-      available: learnComplete,
-      metrics: [
-        `?좊ː??${Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%`,
-        `${graphResult?.evidence_docs?.length ?? 0} 洹쇨굅`,
-        guardScore === null ? "Guard ?먮룞 ?湲? : `Guard ${guardScore}??,
-        `??${webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}`,
-      ],
-      action: () => runProcessAction("output", async () => {
-        setRightMode("chat");
-        await sendChat();
-      }),
-      actionLabel: activeAction === "output" || isGeneratingAnswer ? "?앹꽦 以? : "吏덈Ц 蹂대궡湲?,
-      blockedText: "?숈뒿 100% ?꾨즺 ??異쒕젰 ?④퀎濡??섏뼱媛묐땲??",
-    },
-  ];
-
-  */
   const processSteps = [
     {
       key: "collect" as LabStageKey,
@@ -4188,7 +3972,6 @@ export default function BakeBoardPage() {
     },
   ];
 
-  void advancedProcessSteps;
 
   const activeLabStageIndex = Math.max(0, labStageOrder.indexOf(activeLabStage));
   const activeProcessStep = processSteps.find((step) => step.key === activeLabStage) ?? processSteps[0];
@@ -4460,93 +4243,7 @@ export default function BakeBoardPage() {
       cloudNode: copy.cloudNode,
       fragmentNode: copy.fragmentNode,
     };
-  })(); /*
-    ? {
-      graphTitle: language === "ko" ? "濡쒖뺄 釉뚮젅??媛쒖씤 硫붾え由? : "Local Brain Private Memory",
-      graphSubtitle: language === "ko"
-        ? "媛쒖씤 湲곗뼲, ?꾨줈?앺듃 臾몄꽌, ?????? Payload Vault瑜??곗꽑?⑸땲?? Cloud Brain? 湲곕낯?곸쑝濡??ъ슜?섏? ?딆뒿?덈떎."
-        : "Prioritizes private memory, project documents, saved conversations, and Payload Vault. Cloud Brain stays minimal by default.",
-      localLabel: language === "ko" ? "濡쒖뺄 釉뚮젅?? : "Local Brain",
-      localDetail: language === "ko" ? "媛쒖씤 湲곗뼲 / ?꾨줈?앺듃 臾몃㎘" : "Private Memory / Project Context",
-      cloudLabel: language === "ko" ? "Cloud 鍮꾪솢?? : "Cloud Disabled",
-      cloudDetail: language === "ko" ? "?먭꺽 吏?앹? 理쒖냼?? : "Remote knowledge minimized",
-      centerLabel: language === "ko" ? "Local Anchor" : "Local Anchor",
-      localNode: language === "ko" ? "媛쒖씤 硫붾え由? : "Private Memory",
-      cloudNode: language === "ko" ? "鍮꾪솢??Cloud" : "Disabled Cloud",
-      fragmentNode: "Payload Vault",
-    }
-    : graphPresentationMode === "cloud_world_knowledge"
-      ? {
-        graphTitle: language === "ko" ? "?대씪?곕뱶 釉뚮젅??怨듭슜 ?⑦넧濡쒖?" : "Cloud Brain Public Ontology",
-        graphSubtitle: language === "ko"
-          ? "?멸퀎 怨듦컻 吏?? 怨듭슜 source cluster, ?ㅼ떆媛?fragment, ?좊ː?꾩? 理쒖떊?깆쓣 愿李고빀?덈떎."
-          : "Observes world knowledge, public source clusters, live fragments, trust, provenance, and freshness.",
-        localLabel: language === "ko" ? "?ｌ? 誘몃윭" : "Edge Mirror",
-        localDetail: language === "ko" ? "?쎄린 ?꾩슜 ?뚮퉬?? : "Read-only consumer",
-        cloudLabel: language === "ko" ? "?대씪?곕뱶 釉뚮젅?? : "Cloud Brain",
-        cloudDetail: language === "ko" ? "Public Ontology / World Knowledge" : "Public Ontology / World Knowledge",
-        centerLabel: language === "ko" ? "Public Anchor" : "Public Anchor",
-        localNode: language === "ko" ? "?ｌ? 誘몃윭" : "Edge Mirror",
-        cloudNode: language === "ko" ? "怨듭슜 吏???몃뱶" : "Public Knowledge",
-        fragmentNode: language === "ko" ? "?ㅼ떆媛?Fragment" : "Live Fragment",
-      }
-      : {
-        graphTitle: mainSection === "home" ? copy.graphTitle : (language === "ko" ? "통합 지식 그래프" : "Unified Knowledge Graph"),
-        graphSubtitle: mainSection === "home" ? copy.graphSubtitle : (language === "ko"
-          ? "로컬 기억, 공용 Cloud Fragment, Seed Schema가 하나의 통합 graph projection으로 표시됩니다."
-          : "Local memory, public Cloud fragments, and Seed Schema are shown as one unified graph projection."),
-        localLabel: copy.localBrain,
-        localDetail: language === "ko" ? "Private Boundary" : "Private Boundary",
-        cloudLabel: copy.cloudBrain,
-        cloudDetail: language === "ko" ? "Public Fragment" : "Public Fragment",
-        centerLabel: language === "ko" ? "Working Memory" : "Working Memory",
-        localNode: copy.localNode,
-        cloudNode: copy.cloudNode,
-        fragmentNode: copy.fragmentNode,
-      };
-  if (language === "ko") {
-    presentationCopy = graphPresentationMode === "local_private_memory"
-      ? {
-        graphTitle: "濡쒖뺄 釉뚮젅??吏??洹몃옒??,
-        graphSubtitle: "媛쒖씤 Ghost Shell怨?Payload Vault ?덉뿉?쒕쭔 ?먯깋?섍퀬 ?듬??⑸땲??",
-        localLabel: "濡쒖뺄 釉뚮젅??,
-        localDetail: "媛쒖씤 硫붾え由?/ ?꾨줈?앺듃 臾몃㎘",
-        cloudLabel: "?대씪?곕뱶 鍮꾪솢??,
-        cloudDetail: "紐낆떆?곸쑝濡?耳쒓린 ?꾧퉴吏 ?ъ슜?섏? ?딆쓬",
-        centerLabel: "Local Anchor",
-        localNode: "媛쒖씤 硫붾え由?,
-        cloudNode: "鍮꾪솢??Cloud",
-        fragmentNode: "Payload Vault",
-      }
-      : graphPresentationMode === "cloud_world_knowledge"
-        ? {
-          graphTitle: "?대씪?곕뱶 釉뚮젅??吏??洹몃옒??,
-          graphSubtitle: "怨듭슜 ?⑦넧濡쒖? ?꾨낫? public fragment ?먮쫫???쎄린 ?꾩슜?쇰줈 愿李고빀?덈떎.",
-          localLabel: "?ｌ? 誘몃윭",
-          localDetail: "?쎄린 ?꾩슜 ?뚮퉬??,
-          cloudLabel: "?대씪?곕뱶 釉뚮젅??,
-          cloudDetail: "Public Ontology / World Knowledge",
-          centerLabel: "Public Anchor",
-          localNode: "?ｌ? 誘몃윭",
-          cloudNode: "怨듭슜 吏???몃뱶",
-          fragmentNode: "?ㅼ떆媛?Fragment",
-        }
-        : {
-          graphTitle: mainSection === "home" ? copy.graphTitle : "???釉뚮젅???듯빀 洹몃옒??,
-          graphSubtitle: mainSection === "home"
-            ? copy.graphSubtitle
-            : "Local Brain怨?Cloud Brain??Working Memory?먯꽌 留뚮굹??愿怨?寃쎈줈瑜?蹂댁뿬以띾땲??",
-          localLabel: "濡쒖뺄 釉뚮젅??,
-          localDetail: "Private Boundary",
-          cloudLabel: "?대씪?곕뱶 釉뚮젅??,
-          cloudDetail: "Public Fragment",
-          centerLabel: "Working Memory",
-          localNode: "濡쒖뺄 釉뚮젅???몃뱶",
-          cloudNode: "?대씪?곕뱶 釉뚮젅???몃뱶",
-          fragmentNode: "?대씪?곕뱶 ?꾨옒洹몃㉫??,
-        };
-  }
-  */
+  })();
   const activeTaskLabel = continuousLearningActive || learningDaemon?.worker_alive
     ? copy.learningEngine
     : isGeneratingAnswer
@@ -6981,621 +6678,4 @@ export default function BakeBoardPage() {
     </main>
   );
 
-  /*
-  const leftStyle =
-    layoutMode === "graph"
-      ? { width: "100%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const }
-      : layoutMode === "workbench"
-        ? { width: "0%", opacity: 0, transform: "translateX(-18px)", pointerEvents: "none" as const }
-        : { width: "70%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const };
-  const rightStyle =
-    layoutMode === "workbench"
-      ? { width: "100%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const }
-      : layoutMode === "graph"
-        ? { width: "0%", opacity: 0, transform: "translateX(18px)", pointerEvents: "none" as const }
-        : { width: "30%", opacity: 1, transform: "translateX(0)", pointerEvents: "auto" as const };
-
-  return (
-    <main className="console-shell">
-      <header className="console-header">
-        <div className="brand-block">
-          <button className="back-button" onClick={resetConsole} title="湲곕낯 ?붾㈃?쇰줈 ?뚯븘媛湲? aria-label="湲곕낯 ?붾㈃?쇰줈 ?뚯븘媛湲?>??/button>
-          <strong>ATANOR</strong>
-        </div>
-        <div className="workspace-switcher" aria-label="?묒뾽 怨듦컙 ?꾪솚">
-          <button data-active={workspaceMode === "lab"} onClick={() => changeWorkspaceMode("lab")}>濡쒖뺄 釉뚮젅??[LOCAL BRAIN]</button>
-          <button data-active={workspaceMode === "daemon"} onClick={() => changeWorkspaceMode("daemon")}>?대씪?곕뱶 釉뚮젅??[CLOUD BRAIN]</button>
-        </div>
-        <div className="layout-switcher" aria-label="?덉씠?꾩썐 ?꾪솚">
-          {[
-            ["graph", "洹몃옒??],
-            ["split", "遺꾪븷"],
-            ["workbench", "?뚰겕踰ㅼ튂"],
-          ].map(([mode, label]) => (
-            <button key={mode} data-active={layoutMode === mode} onClick={() => changeLayoutMode(mode as LayoutMode)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="header-status">
-          {workspaceMode === "lab" ? (
-            <button
-              className="build-button"
-              onClick={runNextLabStage}
-              disabled={isBuilding || (Boolean(activeAction) && !continuousLearningActive)}
-            >
-              {headerBuildLabel}
-            </button>
-          ) : (
-            <span className="viewer-pill">?쎄린 ?꾩슜</span>
-          )}
-          <span>{workspaceMode === "lab" ? `?④퀎 ${processSteps.length}` : "釉뚮젅??酉곗뼱"}</span>
-          <strong>{workspaceMode === "daemon" ? "?대씪?곕뱶 釉뚮젅???곹깭" : rightMode === "chat" ? "RAG 梨꾪똿" : "?숈뒿 怨쇱젙"}</strong>
-          <StatusDot state={headerStatusState} />
-        </div>
-      </header>
-
-      {error ? <p className="error-banner">?묒뾽 ?ㅽ뙣: {error}</p> : null}
-
-      <section className="console-content">
-        <aside className="panel-wrap left" style={leftStyle}>
-          <section className="memory-panel">
-            <div className="memory-header">
-              <div>
-                <h1>?⑦넧濡쒖? 硫붾え由?/h1>
-                <p>RAG媛 李몄“?섎뒗 媛쒕뀗 湲곗뼲留?/p>
-              </div>
-              <div className="memory-tools">
-                <span>{displayMemoryNodeCount} ?몃뱶</span>
-                <span>{displayMemoryEdgeCount} 愿怨?/span>
-                <button onClick={() => runAction(refreshAll)}>?덈줈怨좎묠</button>
-                <button onClick={() => changeLayoutMode(layoutMode === "graph" ? "split" : "graph")}>?뺣?</button>
-              </div>
-            </div>
-            <div className="graph-control-strip">
-              <div className="graph-search">
-                <input
-                  value={memoryQuery}
-                  onChange={(event) => setMemoryQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") focusSearchResult();
-                  }}
-                  placeholder="?몃뱶 寃??
-                  aria-label="?⑦넧濡쒖? ?몃뱶 寃??
-                />
-                <button onClick={focusSearchResult}>李얘린</button>
-              </div>
-              <div className="graph-nav" aria-label="洹몃옒???대룞 諛??뺣?">
-                <button onClick={() => zoomGraph(-0.18)} title="異뺤냼">??/button>
-                <button onClick={() => zoomGraph(0.18)} title="?뺣?">竊?/button>
-                <button onClick={() => panGraph(0, -8)} title="?꾨줈 ?대룞">??/button>
-                <button onClick={() => panGraph(-8, 0)} title="?쇱そ ?대룞">??/button>
-                <button onClick={() => panGraph(8, 0)} title="?ㅻⅨ履??대룞">??/button>
-                <button onClick={() => panGraph(0, 8)} title="?꾨옒濡??대룞">??/button>
-                <button onClick={resetGraph} title="洹몃옒??珥덇린?? aria-label="洹몃옒??珥덇린??>??/button>
-              </div>
-              <span className="zoom-readout">{Math.round(graphView.scale * 100)}%</span>
-            </div>
-            <div className="memory-canvas" data-dragging={dragState ? "true" : "false"}>
-              {graphMode === "3d" && visibleGraph3D.nodes.length ? (
-                <>
-                  <Rag3DScene
-                    activeEdgeKeys={activeSignalEdgeKeys}
-                    activeNodeIds={activeSignalNodeIds}
-                    graph={visibleGraph3D}
-                    control={rag3dControl}
-                    theme="dark"
-                    visualState={ragVisualState}
-                    onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
-                  />
-                  <div className="rag3d-overlay">
-                    <strong>3D GraphRAG ?먯깋</strong>
-                    <span>{visibleGraph3D.nodes.length} ?몃뱶 / {visibleGraph3D.edges.length} 愿怨?/span>
-                    <span>{graphOverlayMessage}</span>
-                    {buildRun && graphSourceMode === "build" && visibleLiveNodeCount > 0 ? (
-                      <span>
-                        湲곗〈 ?듭빱 {preservedAnchorNodeCount} ?좎? / ???몃뱶 {visibleLiveNodeCount} ?꾩껜 ?꾩쟻 ?쒖떆
-                      </span>
-                    ) : null}
-                    {buildRun && graphSourceMode === "build" && visibleLiveNodeCount === 0 ? (
-                      <span>????듭빱 {preservedAnchorNodeCount}媛?援ъ꽦</span>
-                    ) : null}
-                    {newestLiveNodeId && graphSourceMode === "build" ? <span>理쒖떊 ???몃뱶 {newestLiveNodeId} / ?꾩껜 live ?몃뱶 ?쒖떆 以?/span> : null}
-                    <span className="signal-trace" data-active={activeSignalNodeIds.length > 0 || isGeneratingAnswer}>{signalTraceText}</span>
-                  </div>
-                </>
-              ) : workspaceMode === "daemon" && !daemonGraphReady ? (
-                <div className="memory-empty-state">
-                  <strong>?대씪?곕뱶 釉뚮젅??洹몃옒???湲?/strong>
-                  <p>濡쒖뺄 FastAPI? 釉뚮젅???뚯빱媛 ?ㅼ젣濡??ㅽ뻾?섎㈃ ???곸뿭??怨듭쑀 ?⑦넧濡쒖? ?꾨낫 洹몃옒?꾧? ?섑??⑸땲??</p>
-                  <span>{localBackendConnected ? "濡쒖뺄 API ?곌껐??쨌 worker not alive" : "濡쒖뺄 API ?곌껐 ??쨌 鍮??붾㈃ ?좎?"}</span>
-                </div>
-              ) : (
-              <svg
-                ref={graphRef}
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                aria-label="?⑦넧濡쒖? 硫붾え由?洹몃옒??
-                onWheel={handleGraphWheel}
-                onPointerDown={handleGraphPointerDown}
-                onPointerMove={handleGraphPointerMove}
-                onPointerUp={handleGraphPointerUp}
-                onPointerCancel={handleGraphPointerUp}
-                onPointerLeave={handleGraphPointerUp}
-              >
-                <defs>
-                  <pattern id="memory-grid" width="6" height="6" patternUnits="userSpaceOnUse">
-                    <path d="M 6 0 L 0 0 0 6" fill="none" stroke="rgba(150,160,155,0.16)" strokeWidth="0.25" />
-                  </pattern>
-                </defs>
-                <rect width="100" height="100" fill="url(#memory-grid)" />
-                <g transform={`translate(${graphView.x} ${graphView.y}) scale(${graphView.scale})`}>
-                  {memoryEdges.map((edge) => {
-                    const source = memoryMap.get(edge.source);
-                    const target = memoryMap.get(edge.target);
-                    if (!source || !target) return null;
-                    return (
-                      <g key={edge.id} onClick={() => setSelectedMemory(edge)}>
-                        <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="memory-edge" />
-                        {memoryNodes.length <= 16 ? (
-                          <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2} className="memory-edge-label">
-                            {edge.relation}
-                          </text>
-                        ) : null}
-                      </g>
-                    );
-                  })}
-                  {memoryNodes.map((node) => (
-                    <g key={node.id} className="memory-node" onClick={() => focusMemory(node)}>
-                      <circle cx={node.x} cy={node.y} r="2.3" fill={node.color} />
-                      {!node.id.startsWith("live-synapse") || selectedMemory?.id === node.id ? (
-                        <text x={node.x + 2.8} y={node.y + 1.1}>{node.label.slice(0, memoryNodes.length > 16 ? 10 : 14)}</text>
-                      ) : null}
-                    </g>
-                  ))}
-                </g>
-              </svg>
-              )}
-              <div className="memory-legend">
-                {visibleGraph3D.nodes.length ? memoryLegendItems.slice(0, 12).map((node) => (
-                  <span key={node.type}><i style={{ background: node.color }} />{memoryTypeText(node.type)}</span>
-                )) : null}
-              </div>
-              {selectedMemory ? (
-                <div className="memory-detail">
-                  <button onClick={() => setSelectedMemory(null)}>횞</button>
-                  <span>{selectedMemory.relation ? "愿怨? : "硫붾え由??몃뱶"}</span>
-                  <strong>{selectedMemory.label ?? selectedMemory.relation}</strong>
-                  <p>{selectedMemory.type ? memoryTypeText(selectedMemory.type) : `${selectedMemory.source} ??${selectedMemory.target}`}</p>
-                </div>
-              ) : null}
-            </div>
-          </section>
-        </aside>
-
-        <section className="panel-wrap right" style={rightStyle}>
-          <div className="right-panel">
-            <div className="right-toolbar">
-              {workspaceMode === "lab" ? (
-                <div className="mode-tabs">
-                  <button data-active={rightMode === "process"} onClick={() => setRightMode("process")}>?숈뒿 怨쇱젙</button>
-                  <button data-active={rightMode === "chat"} onClick={() => setRightMode("chat")}>RAG 梨꾪똿</button>
-                </div>
-              ) : (
-                <span className="toolbar-title">?대씪?곕뱶 釉뚮젅??酉곗뼱</span>
-              )}
-              <button className="toolbar-toggle" onClick={() => setWorkbenchInfoOpen((open) => !open)}>
-                {workbenchInfoOpen ? "?뺣낫 ?묎린" : "?ㅼ젙/?곹깭"}
-              </button>
-              {!workbenchInfoOpen ? (
-                <div className="compact-toolbar-summary">
-                  <span>{workspaceMode === "daemon" ? `${daemonStateText} 쨌 worker ${learningDaemon?.worker_alive ? "alive" : "not alive"}` : compactInfoSummary}</span>
-                </div>
-              ) : (
-                <div className="toolbar-details">
-                  {workspaceMode === "lab" ? (
-                  <div className="learning-volume-switcher" aria-label="?숈뒿???좏깮">
-                    <span>?숈뒿??/span>
-                    {(Object.keys(learningVolumePresets) as LearningVolume[]).map((volume) => (
-                      <button
-                        data-active={learningVolume === volume}
-                        data-infinite={volume === "infinite"}
-                        disabled={isBuilding || continuousLearningActive}
-                        key={volume}
-                        onClick={() => {
-                          setLearningVolume(volume);
-                          setTargetNodeCount(defaultTargetNodesForVolume(volume));
-                        }}
-                        title={`${learningVolumePresets[volume].textBudget} / ${learningVolumePresets[volume].chunkBudget} 泥?겕`}
-                      >
-                        {learningVolumePresets[volume].label}
-                      </button>
-                    ))}
-                    <label className="node-target-input">
-                      <span>?κ린 紐⑺몴</span>
-                      {learningVolume === "infinite" ? (
-                        <input
-                          aria-label="?κ린 紐⑺몴 ?몃뱶 ??
-                          disabled={isBuilding || continuousLearningActive}
-                          readOnly
-                          type="text"
-                          value="??
-                        />
-                      ) : (
-                        <input
-                          aria-label="?κ린 紐⑺몴 ?몃뱶 ??
-                          disabled={isBuilding || continuousLearningActive}
-                          inputMode="numeric"
-                          max={maxTargetNodes}
-                          min={100}
-                          step={100}
-                          type="number"
-                          value={targetNodeCount}
-                          onChange={(event) => {
-                            const nextValue = Number(event.currentTarget.value);
-                            setTargetNodeCount(Number.isFinite(nextValue) ? clamp(nextValue, 100, maxTargetNodes) : defaultTargetNodesForVolume(learningVolume));
-                          }}
-                        />
-                      )}
-                    </label>
-                    <label className="web-search-toggle">
-                      <input
-                        checked={webSearchEnabled}
-                        type="checkbox"
-                        onChange={(event) => setWebSearchEnabled(event.currentTarget.checked)}
-                      />
-                      <span>??寃??/span>
-                    </label>
-                  </div>
-                  ) : null}
-                  <div className="local-backend-control" data-state={localBackendStatus}>
-                    <span>濡쒖뺄 FastAPI</span>
-                    <input
-                      aria-label="濡쒖뺄 FastAPI 二쇱냼"
-                      disabled={localBackendStatus === "checking"}
-                      value={localBackendUrl}
-                      onChange={(event) => {
-                        setLocalBackendUrl(event.currentTarget.value);
-                        if (localBackendConnected) {
-                          setLocalBackendStatus("idle");
-                          setLocalBackendMessage("二쇱냼媛 諛붾뚯뿀?듬땲?? ?ㅼ떆 ?곌껐?섏꽭??");
-                        }
-                      }}
-                    />
-                    <button
-                      disabled={localBackendStatus === "checking"}
-                      onClick={() => connectLocalBackend()}
-                    >
-                      {localBackendStatus === "checking" ? "?뺤씤 以? : localBackendConnected ? "?ъ뿰寃? : "?곌껐"}
-                    </button>
-                    {localBackendConnected ? <button onClick={disconnectLocalBackend}>?댁젣</button> : null}
-                    <small>{localBackendDisplay}</small>
-                  </div>
-                  <div className="mini-metrics">
-                    <span>?먮쫫 {flowHealth}%</span>
-                    <span>{edgeBrokerLabel}</span>
-                    <span>GPU {gpu?.utilization ?? 0}%</span>
-                    <span>RAM soft {ramSoftGb}GB</span>
-                    <span>{telemetryLabel}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {workspaceMode === "daemon" ? (
-              <div className="daemon-view">
-                <section className="daemon-hero" data-viewer-only={daemonViewerOnly}>
-                  <div>
-                    <span>{daemonModeText}</span>
-                    <h2>?대씪?곕뱶 釉뚮젅??怨듭쑀 ?⑦넧濡쒖?</h2>
-                    <p>
-                      ?μ떆媛???湲곕컲 ?숈뒿???뚮젮 怨듭슜 ?⑦넧濡쒖? ?꾨낫瑜??ㅼ슦??釉뚮젅??怨듦컙?낅땲?? 諛고룷蹂몄뿉?쒕뒗
-                      援ъ“? ?곹깭留?蹂댁뿬二쇨퀬, ?ㅼ젣 ?곸떆 ?섏쭛怨?怨좎젙/媛吏移섍린??濡쒖뺄 FastAPI? ??μ냼?먯꽌 ?ㅽ뻾?⑸땲??
-                    </p>
-                  </div>
-                  <strong>{daemonStateText}</strong>
-                </section>
-
-                {daemonViewerOnly ? (
-                  <div className="viewer-notice">
-                    諛고룷蹂몄? ?묒? ?대씪?곕뱶 釉뚮젅??酉곗뼱?낅땲?? ?ㅼ젣 ?κ린 ?댁쟾, 泥댄겕?ъ씤?? ?щ???蹂듦뎄??濡쒖뺄?먯꽌
-                    FastAPI瑜??ㅽ뻾???????붾㈃??濡쒖뺄 ?깆쑝濡??댁뿀?????쒖꽦?붾맗?덈떎.
-                  </div>
-                ) : null}
-
-                <div className="daemon-metrics">
-                  <div><span>?꾩쟻 ?쒓컙</span><strong>{daemonRuntimeText}</strong></div>
-                  <div><span>?쇱슫??/span><strong>{learningDaemon?.total_rounds ?? 0}</strong></div>
-                  <div><span>?숈뒿 諛섏쁺</span><strong>{learningDaemon?.learned_rounds ?? 0}</strong></div>
-                  <div><span>HW Tier</span><strong>{edgeTierLabel}</strong></div>
-                  <div><span>Broker</span><strong>{edgeBrokerState}</strong></div>
-                  <div><span>?몃뱶</span><strong>{learningDaemon?.latest_node_count ?? memoryStatus?.node_count ?? 0}</strong></div>
-                  <div><span>愿怨?/span><strong>{learningDaemon?.latest_edge_count ?? memoryStatus?.edge_count ?? 0}</strong></div>
-                  <div><span>?대깽??/span><strong>{learningDaemon?.latest_event_count ?? memoryStatus?.event_count ?? 0}</strong></div>
-                </div>
-
-                <div className="daemon-readonly">
-                  <span>?쎄린 ?꾩슜 愿痢?/span>
-                  <strong>{localBackendConnected ? "濡쒖뺄 API ?곌껐?? : "濡쒖뺄 API ?곌껐 ?湲?}</strong>
-                  <p>
-                    ???붾㈃? ?대씪?곕뱶 釉뚮젅???뚯빱瑜?吏곸젒 議곗옉?섏? ?딆뒿?덈떎. 濡쒖뺄 FastAPI媛 ?곌껐?섎㈃ ?뚯빱 ?곹깭,
-                    泥댄겕?ъ씤?? ?먯썝 ?ㅻ깄?? 怨듭슜 ?꾨낫 洹몃옒???꾩쟻?됰쭔 諛쏆븘??蹂댁뿬以띾땲??
-                  </p>
-                </div>
-
-                <section className="daemon-section">
-                  <div>
-                    <h3>濡쒖뺄 釉뚮젅??蹂듦뎄</h3>
-                    <p>
-                      ?곹깭 ?뚯씪? {learningDaemon?.reboot_resilience?.state_file ?? "data/memory/daemon_state.json"}????λ맗?덈떎.
-                      留덉?留?泥댄겕?ъ씤?몃뒗 {daemonCheckpointText}?낅땲?? PC ?щ?????濡쒖뺄 FastAPI瑜??ㅼ떆 耳쒕㈃
-                      ?곹깭媛 `resume_needed`濡??밸땲?? ?ш컻??濡쒖뺄 釉뚮젅???뚯빱 紐낅졊 ?먮뒗 FastAPI 愿由?API?먯꽌 ?섑뻾?섍퀬,
-                      ???붾㈃? ?댁뼱吏??곹깭瑜?愿痢≫빀?덈떎.
-                    </p>
-                  </div>
-                  <div className="daemon-lines">
-                    <span>worker {learningDaemon?.worker_alive ? "alive" : "not alive"}</span>
-                    <span>checkpoint {learningDaemon?.checkpoint_count ?? 0}</span>
-                    <span>disk {learningDaemon?.resource_snapshot?.disk_free_gb ?? "n/a"}GB free</span>
-                    <span>RAM {learningDaemon?.resource_snapshot?.ram_available_gb ?? "n/a"}GB free</span>
-                  </div>
-                </section>
-
-                <section className="daemon-section">
-                  <div>
-                    <h3>연구 목표 프롬프트</h3>
-                    <p>
-                      Codex Desktop 목표 설정에 넣을 장기 연구 지시문입니다. 생성 결과가 깨지면 그대로 관찰하고,
-                      자원 한계 경고가 뜨면 실패 실험으로 기록한 뒤 새로운 연구책을 찾아 반영하는 루프를 명시합니다.
-                    </p>
-                  </div>
-                  <textarea className="goal-prompt-box" readOnly value={codexResearchGoalPrompt} />
-                </section>
-
-                <section className="daemon-section">
-                  <div>
-                    <h3>?ㅽ뿕???곕룞 寃쎄퀎</h3>
-                    <p>
-                      ?ㅽ뿕?ㅼ씠 ?밴????쒓퀎??洹쇨굅 遺議깆뿉 留됲엳硫? ?대씪?곕뱶 釉뚮젅?몄? 寃利앸맂 怨듭슜 ?몃뱶 議곌컖留?                      ?꾩떆 而⑦뀓?ㅽ듃濡?鍮뚮젮以띾땲?? 濡쒖뺄 媛쒖씤 洹몃옒?꾩뿉 ?곴뎄 怨좎젙?섎젮硫?異쒖쿂, 諛섎났 鍮덈룄, Guardrail
-                      ?듦낵, ?먯썝 ?ъ쑀 議곌굔??紐⑤몢 留뚯”?댁빞 ?⑸땲??
-                    </p>
-                  </div>
-                </section>
-              </div>
-            ) : rightMode === "process" ? (
-              <div className="process-view process-stage-screen">
-                <div className="process-stage-switcher" aria-label="?ㅽ뿕???④퀎 ?꾪솚">
-                  {processSteps.map((step, index) => (
-                    <button
-                      aria-current={step.key === activeLabStage ? "step" : undefined}
-                      data-active={step.key === activeLabStage}
-                      data-state={step.state}
-                      disabled={!canOpenProcessStep(step.key)}
-                      key={step.key}
-                      onClick={() => openProcessStep(step.key)}
-                    >
-                      <span>{step.number}</span>
-                      <strong>{step.title}</strong>
-                      <em>{step.progress}%</em>
-                      {index < processSteps.length - 1 ? <i /> : null}
-                    </button>
-                  ))}
-                </div>
-                {processSteps.filter((step) => step.key === activeProcessStep.key).map((step) => (
-                  <article className="process-card process-card-stage" data-state={step.state} key={step.number}>
-                    <div className="process-head">
-                      <span className="process-num">{step.number}</span>
-                      <div>
-                        <h2>{step.title}</h2>
-                        <small>{step.api}</small>
-                      </div>
-                      <span className="process-state">{statusText(step.state)}</span>
-                    </div>
-                    <p>{step.description}</p>
-                    <div className="process-metrics">
-                      {step.metrics.map((metric, metricIndex) => <span key={`${step.number}-${metricIndex}-${metric}`}>{metric}</span>)}
-                    </div>
-                    <div className="process-progress" aria-label={`${step.title} 吏꾪뻾??${step.progress}%`}>
-                      <span style={{ width: `${step.progress}%` }} />
-                      <em>{step.progress}%</em>
-                    </div>
-                    {!step.available ? <small className="stage-gate-note">{step.blockedText}</small> : null}
-                    <button
-                      className="inline-action"
-                      onClick={step.action}
-                      disabled={step.number === "01" && continuousLearningActive ? false : !step.available || Boolean(activeAction) || isBuilding}
-                    >
-                      {step.actionLabel}
-                    </button>
-                    {step.number === "01" && buildRun ? (
-                      <div className="build-run-detail">
-                        <div className="build-trace">
-                          {buildRun.learning_trace.map((trace) => (
-                            <span key={trace.step} data-state={trace.state}>{traceStepText(trace.step)}: {statusText(trace.state)}</span>
-                          ))}
-                          {growthPulseCount > 0 ? (
-                            <span data-state="running">?ㅼ떆媛??깆옣 +{growthPulseCount}</span>
-                          ) : null}
-                          {buildIsInfinite ? (
-                            <span data-state={continuousLearningActive ? "running" : "complete"}>???꾩쟻 {learningElapsedText}</span>
-                          ) : null}
-                          {buildRun ? (
-                            <span data-state="complete">湲곗〈 ?듭빱 {preservedAnchorNodeCount} ?좎?</span>
-                          ) : null}
-                          {representativeCapReached ? (
-                            <span data-state="running">???湲곗? {visualNodeCap} 珥덇낵, ?④? ?놁쓬</span>
-                          ) : null}
-                          {buildIsInfinite ? (
-                            <span data-state="running">???몃뱶 ?쒖떆 {visibleLiveNodeCount} / ?④? ?놁쓬</span>
-                          ) : null}
-                          {resourceStopReason ? (
-                            <span data-state="running">?덉쟾以묒? ?湲? {resourceStopReason}</span>
-                          ) : null}
-                        </div>
-                        <div className="learning-budget-summary">
-                          <span>{buildRun.learning_profile?.label ?? currentLearningPreset.label}</span>
-                          <strong>??寃??{buildRun.web_search?.provider ?? (webSearchEnabled ? "static" : "off")}</strong>
-                          <strong>{buildRun.training_gate.chunk_count ?? buildRun.training_units?.length ?? currentLearningPreset.chunkBudget} 泥?겕</strong>
-                          <strong>{buildRun.learning_profile?.text_budget_label ?? currentLearningPreset.textBudget}</strong>
-                          {buildRun.web_search?.bing_query_url ? (
-                            <small>寃??query: {buildRun.web_search.query} / Bing ?쒖떆 URL: {buildRun.web_search.bing_query_url}</small>
-                          ) : null}
-                          <small>
-                            ????몃뱶 理쒕? {buildRun.training_gate.visual_node_budget ?? buildRun.graph_3d.nodes.length}媛?                            {buildIsInfinite ? ` / ?꾩쟻 ?쒖떆 ${accumulatedLearningNodes.toLocaleString()}媛?/ ?꾩껜 ?쒖떆` : ""}
-                          </small>
-                          <small>
-                            ?κ린 紐⑺몴 {buildTargetNodeLabel}{buildIsInfinite ? "" : "媛?}??????숈뒿 ?덉궛?닿퀬, API graph_3d??????듭빱 {buildRun.training_gate.representative_node_count ?? buildRun.graph_3d.nodes.length}媛쒕? 蹂대깄?덈떎.
-                          </small>
-                          <small>
-                            ?꾩옱 ?붾㈃? {displayGraph3D.nodes.length}媛??몃뱶瑜??뚮뜑留?以묒엯?덈떎. ?섏쭛 ?④퀎?먯꽌??API媛 蹂대궦 ????듭빱瑜??쒖떆?섍퀬, ?숈뒿 ?④퀎?먯꽌??洹????洹몃옒?꾩쓽 愿怨꾨? ?뺤씤?⑸땲??
-                          </small>
-                          <small>
-                            {buildIsInfinite ? "API ????듭빱??臾댁젣???숈뒿???꾩옱 ?섑뵆?낅땲??" : `API ????듭빱留?蹂대㈃ ?κ린 紐⑺몴????${representativeTargetPercent}%?낅땲??`} ?κ린 紐⑺몴 ?꾩껜瑜??ㅼ젣 ??ν븯?ㅻ㈃ append-only ?⑦넧濡쒖? ?대깽??濡쒓렇? SQLite hot index媛 怨꾩냽 ?꾩쟻?섏뼱???⑸땲??
-                          </small>
-                          {buildIsInfinite ? (
-                            <small>?댁쁺 寃쎄퀎: ?섏쭛 臾몄꽌? ?듭빱 洹몃옒?꾨뒗 API 寃곌낵, live-synapse???????吏???깆옣 ?대깽?몄엯?덈떎.</small>
-                          ) : null}
-                        </div>
-                        <div className="build-sources">
-                          {buildRun.harvest_docs.map((doc) => (
-                            <a key={doc.id} href={doc.url} target="_blank" rel="noreferrer">
-                              <strong>{doc.title}</strong>
-                              <small>{sourceTypeText(doc.source_type)} / {sourceStatusText(doc.status)} / {licenseStatusText(doc.license_status)}</small>
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                    {step.number === "HW" && benchmark ? (
-                      <div className="build-run-detail">
-                        <div className="build-trace">
-                          <span data-state={benchmark.can_read_local_hardware ? "complete" : "running"}>{benchmarkSourceLabel}</span>
-                          <span data-state="complete">CPU {benchmarkCpuThreads} threads</span>
-                          <span data-state="complete">Disk {benchmarkDiskScore ?? "n/a"} MB/s</span>
-                          <span data-state={isRealTelemetrySource(system, benchmark) ? "complete" : "running"}>{telemetryLabel}</span>
-                          {ramUsedGb !== null ? <span data-state="complete">RAM used {ramUsedGb.toFixed(1)}GB</span> : null}
-                          {vramUsedGb !== null && gpu?.available ? <span data-state="complete">VRAM used {vramUsedGb.toFixed(1)}GB</span> : null}
-                          {diskFreeGb !== null ? <span data-state={resourceStopReason?.includes("?붿뒪??) ? "running" : "complete"}>Disk free {diskFreeGb.toFixed(1)}GB</span> : null}
-                        </div>
-                        <div className="learning-budget-summary">
-                          <span>{benchmark.profile_name ?? "Hardware Benchmark"}</span>
-                          <strong>異붿쿇 {benchmarkVolumeLabel}</strong>
-                          <strong>{benchmark.training_tuning?.microbatch_tokens ?? 0} tokens</strong>
-                          <small>
-                            CPU score {benchmarkCpuScore ?? "n/a"} / {benchmark?.can_read_local_hardware ? "?ㅼ젣 PC 湲곗??쇰줈 ?먮룞 ?곸슜?? : "諛고룷 ?붾㈃??CPU/RAM? Vercel ?뚮뱶諛뺤뒪?대ŉ ?ㅼ젣 PC媛 ?꾨떃?덈떎"}
-                          </small>
-                          {resourceStopReason ? <small>?덉쟾以묒?: {resourceStopReason}</small> : null}
-                        </div>
-                      </div>
-                    ) : null}
-                    {step.number === "07" && stability ? (
-                      <div className="build-run-detail">
-                        <div className="build-trace">
-                          <span data-state="running">Backpressure: {stability.backpressure_policy?.length ?? 0} 洹쒖튃</span>
-                          <span data-state="complete">Checkpoint {stability.checkpoint_policy?.training_checkpoint_interval_minutes ?? 15}遺?/span>
-                          <span data-state="complete" title={stability.graph_policy?.ui_render_strategy ?? "enabled"}>Graph LOD: frontier/anchor</span>
-                          <span data-state={resourceStopReason ? "running" : "complete"}>{resourceStopReason ? "Auto-stop armed" : "Auto-stop clear"}</span>
-                        </div>
-                        <div className="learning-budget-summary">
-                          <span>{stability.profile_name ?? "Sustained Profile"}</span>
-                          <strong>{learningVolume === "infinite" ? "?? : stability.target_workload?.target_nodes ?? 10000} ?몃뱶</strong>
-                          <strong>{learningVolume === "infinite" ? "?? : stability.target_workload?.target_edges ?? 40000} 愿怨?/strong>
-                          <small>????ъ쑀 {stability.runtime_envelope?.storage_reserve_gb ?? 200}GB ?좎?</small>
-                          {diskFreeGb !== null ? <small>?꾩옱 ?붿뒪???ъ쑀 {diskFreeGb.toFixed(1)}GB / {telemetryLabel}</small> : null}
-                          {resourceStopReason ? <small>?꾩옱 ?먮떒: {resourceStopReason}</small> : null}
-                        </div>
-                      </div>
-                    ) : null}
-                    {step.title.includes("?숈뒿") ? <LossChart losses={losses} /> : null}
-                    <div className="process-stage-footer">
-                      <button
-                        disabled={!previousProcessKey}
-                        onClick={() => previousProcessKey ? openProcessStep(previousProcessKey) : undefined}
-                      >
-                        ?댁쟾 ?④퀎
-                      </button>
-                      <button
-                        disabled={!nextProcessKey || !canOpenProcessStep(nextProcessKey)}
-                        onClick={() => nextProcessKey ? openProcessStep(nextProcessKey) : undefined}
-                      >
-                        {nextProcessKey ? "?ㅼ쓬 ?④퀎" : "?꾨즺"}
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="chat-view">
-                <button className="chat-info-toggle" onClick={() => setChatInfoOpen((open) => !open)}>
-                  {chatInfoOpen ? "?곹깭 ?묎린" : `?곹깭 ?쇱튂湲?쨌 ${chatSummaryText}`}
-                </button>
-                {chatInfoOpen ? (
-                  <div className="chat-status-row">
-                    <div><span>RAG ?좊ː??/span><strong>{Math.round((graphResult?.confidence ?? graphrag?.confidence ?? 0) * 100)}%</strong></div>
-                    <div><span>Local/Cloud</span><strong>{fusionDisplayText}</strong></div>
-                    <div><span>洹쇨굅 臾몄꽌</span><strong>{graphResult?.evidence_docs?.length ?? 0}</strong></div>
-                    <div><span>?앹꽦 諛⑹떇</span><strong>{graphResult?.answer_kind ?? graphResult?.answer_engine?.mode ?? "以鍮?}</strong></div>
-                    <div><span>Guardrail</span><strong>{guardScore === null ? "?먮룞 ?湲? : `${guardScore}??/ ${guardClaimCount} 二쇱옣`}</strong></div>
-                    <div><span>??寃??/span><strong>{webSearchEnabled ? graphResult?.web_search?.provider ?? "on" : "off"}</strong></div>
-                  </div>
-                ) : null}
-                <div className="chat-scroll" ref={chatScrollRef}>
-                  {chatMessages.map((message, index) => (
-                    <article className="message" data-role={message.role} key={`${message.role}-${index}`}>
-                      <span>{message.role === "user" ? "?ъ슜?? : "ATANOR RAG"}</span>
-                      <p>{message.text}</p>
-                      {message.evidence?.length ? (
-                        <details className="message-evidence atanor-trace-details">
-                          <summary>{language === "ko" ? "근거 / Brain path" : "Evidence / Brain path"}</summary>
-                          {message.evidence.slice(0, 3).map((doc) => (
-                            <div key={doc.chunk_id ?? doc.doc_id}>
-                              <strong>{doc.chunk_id ?? doc.doc_id}</strong>
-                              <em>
-                                ?먯닔 {doc.score ?? "-"}
-                                {evidenceSignalText(doc)}
-                              </em>
-                              <small>{doc.snippet}</small>
-                            </div>
-                          ))}
-                        </details>
-                      ) : null}
-                      {message.role === "assistant" && message.diagnostics?.degeneration ? (
-                        <div className="message-evidence native-diagnostics">
-                          <div>
-                            <strong>Native diagnostics</strong>
-                            <em>
-                              loop {String(message.diagnostics.degeneration.loop_detected)} / stop {message.diagnostics.native_stop_reason ?? "n/a"}
-                            </em>
-                            <small>
-                              repeated bigram {message.diagnostics.degeneration.repeated_bigram_ratio ?? "n/a"} 쨌 unique token {message.diagnostics.degeneration.unique_token_ratio ?? "n/a"} 쨌 trace saved {String(message.diagnostics.training_feedback_recorded ?? false)}
-                            </small>
-                          </div>
-                        </div>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
-                <div className="chat-composer">
-                  <textarea value={chatInput} onChange={(event) => setChatInput(event.target.value)} aria-label="RAG 吏덈Ц ?낅젰" />
-                  <button disabled={isGeneratingAnswer} onClick={sendChat}>{isGeneratingAnswer ? "?앹꽦 以? : "吏덈Ц 蹂대궡湲?}</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      </section>
-
-      <section className="system-log">
-        <div className="log-head">
-          <span>?쒖뒪??濡쒓렇</span>
-          <span>{pipeline?.generated_at ? new Date(pipeline.generated_at).toLocaleString("ko-KR") : "waiting"}</span>
-        </div>
-        {logs.map((log, index) => (
-          <p key={`${log.message}-${index}`}><span>{log.time}</span>{log.message}</p>
-        ))}
-      </section>
-      <TauriUpdatePrompt />
-    </main>
-  );
-  */
 }
