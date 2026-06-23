@@ -659,6 +659,11 @@ function sceneObjectTrackId(beat: ScenePlanBeat, index = 0) {
   return String(beat.object_track_id || beat.object_id || beat.prompt || `scene-track-${index}`);
 }
 
+function sceneBeatStart(beat: ScenePlanBeat | null | undefined) {
+  const value = Number(beat?.t_start ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
 function sameSceneGroup(left: ScenePlanBeat | null | undefined, right: ScenePlanBeat | null | undefined) {
   const leftGroup = String(left?.scene_group_id ?? "");
   const rightGroup = String(right?.scene_group_id ?? "");
@@ -786,10 +791,29 @@ function sceneObjectCanvasCenter(
   return scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
 }
 
+function sceneVisibleTrackObjects(objects: SceneRenderObject[], activeObjectId: string | null, sceneElapsed: number) {
+  const byTrack = new Map<string, { object: SceneRenderObject; score: number; order: number }>();
+  objects.forEach((object, order) => {
+    const trackId = sceneObjectTrackId(object.beat, order);
+    const activeScore = object.id === activeObjectId ? 1_000_000 : 0;
+    const start = sceneBeatStart(object.beat);
+    const startedScore = start <= sceneElapsed ? 10_000 + start : start;
+    const preCoherenceScore = sceneMotionSourceHold(object.beat, sceneElapsed) > 0 ? 9_000 + start : 0;
+    const score = activeScore + Math.max(startedScore, preCoherenceScore);
+    const current = byTrack.get(trackId);
+    if (!current || score > current.score || (score === current.score && order > current.order)) {
+      byTrack.set(trackId, { object, score, order });
+    }
+  });
+  return Array.from(byTrack.values())
+    .sort((left, right) => left.order - right.order)
+    .map((entry) => entry.object);
+}
+
 function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const seen = new Set<string>();
-  const maxObjects = Math.min(10, Math.max(1, beats.length));
+  const maxObjects = Math.min(16, Math.max(1, beats.length));
   const perObjectBudget = clamp(Math.floor(Math.max(280, budget * 1.8) / maxObjects), 96, 260);
   return beats
     .slice(0, maxObjects)
@@ -1614,7 +1638,8 @@ function drawSceneFocusParticles(
   ctx.fillStyle = centerGlow;
   ctx.fillRect(0, 0, width, height);
 
-  const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
+  const visibleCandidates = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
+  const visibleObjects = sceneVisibleTrackObjects(visibleCandidates, activeObjectId, sceneElapsed);
   const activeObject = visibleObjects.find((object) => object.id === activeObjectId) ?? visibleObjects[0] ?? null;
   const cameraView = blendedSceneCameraView(activeObject, visibleObjects, sceneElapsed);
   cameraView.zoom = clamp(cameraView.zoom * centralScale, 0.82, 1.82);

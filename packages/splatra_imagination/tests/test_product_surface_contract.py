@@ -117,6 +117,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "semantic_role" in field
     assert "object_track_id" in field
     assert "sceneObjectTrackId" in field
+    assert "sceneVisibleTrackObjects" in field
+    assert "visibleCandidates" in field
+    assert "const maxObjects = Math.min(16" in field
     assert "data-active-scene-track" in field
     assert "verified_motion_subject" in field
     assert "verified_motion_source" in field
