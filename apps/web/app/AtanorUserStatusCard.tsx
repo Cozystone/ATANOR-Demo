@@ -67,13 +67,21 @@ function useTypewriterText(text: string, stepMs = 22) {
 function isAsmConversationPayload(payload: Record<string, any>) {
   const result = payload?.result ?? {};
   const engine = result?.answer_engine ?? {};
+  const generationBasis = String(engine.generation_basis ?? "");
+  const isAllowedLocalConversation =
+    generationBasis === "local_corpus_construction_transition_model"
+    || generationBasis === "semantic_grounded_conversation_router_v0";
   return (
-    engine.generation_basis === "local_corpus_construction_transition_model"
+    isAllowedLocalConversation
     && engine.external_llm === false
     && engine.external_sllm === false
+    && engine.external_llm_used === false
+    && engine.external_sllm_used === false
     && engine.rule_based_answer_used === false
-    && engine.template_free_surface === true
     && engine.internal_trace_exposed === false
+    && engine.local_brain_write === false
+    && engine.production_store_mutated === false
+    && engine.candidate_promotion === false
   );
 }
 

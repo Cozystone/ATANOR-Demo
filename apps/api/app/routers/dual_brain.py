@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from app.services.alpha_services import alpha_service
 from packages.base_brain.zero_user_answer import answer_with_base_brain
 from packages.cgsr.cgsr.conversation_surface import generate_conversation_surface
+from packages.cgsr.cgsr.conversation_grounding import gather_grounded_context
+from packages.cgsr.cgsr.conversation_router import route_conversation_request
 from packages.core_proof.three_core_answer_path import run_prompt_proof
 from packages.voice_loop.runtime_availability import check_voice_runtime_availability
 from packages.surface_brain.monitor import monitor_answer, repair_answer_for_mode
@@ -367,35 +369,58 @@ def _live_selfhood_payload(
     question: str,
     language: str,
 ) -> dict[str, Any]:
+    route = route_conversation_request(question)
+    grounded_context = gather_grounded_context(question, route)
     speech_act = _live_selfhood_speech_act(question, language)
-    generated = generate_conversation_surface(question, language=language)
+    generated = generate_conversation_surface(
+        question,
+        language=language,
+        route=route,
+        grounded_context=grounded_context,
+    )
     inner_voice_frame = emit_inner_voice_from_state(
-        source_event_id=f"asm_v0:{speech_act}",
+        source_event_id=f"conversation_router:{speech_act}",
         mode="lab_visible",
         emotion_snapshot=EVENT_BUS.engine.snapshot().to_dict(),
         policy_decision={},
         agent_loop_state={},
         permission_tier="OBSERVE_ONLY",
         latest_user_input=question,
-        latest_action_result={"speech_act": speech_act, "generated": bool(generated.answer)},
+        latest_action_result={
+            "speech_act": speech_act,
+            "generated": bool(generated.answer),
+            "route_type": route.route_type,
+            "grounding_quality": grounded_context.grounding_quality,
+        },
         review_queue_pressure=0.0,
         splatra_state={},
     )
+    diagnostics = dict(generated.diagnostics or {})
+    answer_mode = str(diagnostics.get("answer_mode") or "unknown_fallback")
+    grounding_used = bool(diagnostics.get("semantic_grounding_used"))
     compact_trace = {
-        "local_coverage": "live_selfhood_conversation",
+        "local_coverage": "semantic_grounded_conversation" if grounding_used else "live_selfhood_conversation",
         "selfhood_loop": {
             "used": True,
             "internal_scratchpad_visible": False,
             "rule_based_answer_blocked": True,
+            "asm_v0_is_general_lm": False,
             "requires_learned_generator": False,
             "speech_act": speech_act,
             "emotion_hint": "warm" if speech_act in {"greeting", "thanks"} else "calm",
         },
-        "semantic_cloud_graph": {"attached_nodes": 0, "evidence_docs": 0},
+        "conversation_router": route.to_dict(),
+        "semantic_grounding": grounded_context.to_dict(),
+        "semantic_cloud_graph": {
+            "attached_nodes": 0,
+            "evidence_docs": len(grounded_context.source_refs),
+            "grounding_source": grounded_context.grounding_source,
+            "grounding_quality": grounded_context.grounding_quality,
+        },
         "surface_graph": {
             "construction_families": [],
             "discourse_moves": [],
-            "conversation_surface": generated.diagnostics,
+            "conversation_surface": diagnostics,
         },
         "q_cortex": {"used": False, "run_id": None, "real_quantum_hardware_used": False},
         "working_memory": {"temporary_context": False, "local_brain_write": False},
@@ -408,12 +433,43 @@ def _live_selfhood_payload(
             "raw_hidden_cot_claim": False,
         },
     }
+    engine = {
+        "name": "ATANOR Semantic-Grounded Conversation Router v0",
+        "semantic_plane": "semantic_grounding_router" if grounding_used else "conversation_surface_only",
+        "surface_plane": "asm_v0_construction_conditioned_surface",
+        "external_llm": False,
+        "external_sllm": False,
+        "external_llm_used": False,
+        "external_sllm_used": False,
+        "local_brain_write": False,
+        "production_store_mutated": False,
+        "candidate_promotion": False,
+        "trace_hidden_by_default": True,
+        "internal_scratchpad_visible": False,
+        "internal_trace_exposed": False,
+        "rule_based_answer_used": False,
+        "direct_prompt_answer_table_used": bool(diagnostics.get("direct_prompt_answer_table_used", False)),
+        "hand_authored_construction_used": bool(diagnostics.get("hand_authored_construction_used", True)),
+        "heuristic_act_inference_used": bool(diagnostics.get("heuristic_act_inference_used", True)),
+        "local_transition_surface_used": bool(diagnostics.get("local_transition_surface_used", False)),
+        "semantic_grounding_used": grounding_used,
+        "grounding_source": diagnostics.get("grounding_source", grounded_context.grounding_source),
+        "grounding_quality": diagnostics.get("grounding_quality", grounded_context.grounding_quality),
+        "answer_mode": answer_mode,
+        "route_type": route.route_type,
+        "honesty_note": diagnostics.get("honesty_note"),
+        "semantic_grounding_metadata_present": True,
+        "honesty_metadata_present": True,
+        "generation_basis": diagnostics.get("generation_basis"),
+        "template_free_surface": bool(diagnostics.get("template_free_surface", False)),
+        "diagnostics": diagnostics,
+    }
     if not generated.answer:
         payload = {
             "answer": None,
             "language": language,
             "confidence": 0.0,
-            "answer_kind": "generation_abstained_no_rule_based_model",
+            "answer_kind": "grounded_conversation_abstained",
             "speech_act": speech_act,
             "can_speak": False,
             "abstain_reason": generated.diagnostics.get("abstain_reason", "no_safe_token_walk"),
@@ -431,23 +487,7 @@ def _live_selfhood_payload(
                 "q_cortex_used": False,
                 "q_cortex_run_id": None,
             },
-            "answer_engine": {
-                "name": "ATANOR Live Selfhood Conversation Surface",
-                "semantic_plane": "conversation_only",
-                "surface_plane": "asm_v0_construction_conditioned_surface",
-                "external_llm": False,
-                "external_sllm": False,
-                "local_brain_write": False,
-                "production_store_mutated": False,
-                "candidate_promotion": False,
-                "trace_hidden_by_default": True,
-                "internal_scratchpad_visible": False,
-                "internal_trace_exposed": False,
-                "rule_based_answer_used": False,
-                "template_free_surface": True,
-                "generation_basis": generated.diagnostics.get("generation_basis"),
-                "diagnostics": generated.diagnostics,
-            },
+            "answer_engine": engine,
             **{**_flags(), "final_answer_generation_claimed": False},
         }
         return {"state": "abstained", "result": payload, **{**_flags(), "final_answer_generation_claimed": False}}
@@ -457,6 +497,8 @@ def _live_selfhood_payload(
         "language": language,
         "confidence": generated.confidence,
         "answer_kind": "asm_v0_conversation_surface",
+        "answer_mode": answer_mode,
+        "route_type": route.route_type,
         "speech_act": speech_act,
         "can_speak": True,
         "voice_output": voice_output,
@@ -474,23 +516,7 @@ def _live_selfhood_payload(
             "q_cortex_used": False,
             "q_cortex_run_id": None,
         },
-        "answer_engine": {
-            "name": "ATANOR Live Selfhood Conversation Surface",
-            "semantic_plane": "conversation_only",
-            "surface_plane": "asm_v0_construction_conditioned_surface",
-            "external_llm": False,
-            "external_sllm": False,
-            "local_brain_write": False,
-            "production_store_mutated": False,
-            "candidate_promotion": False,
-            "trace_hidden_by_default": True,
-            "internal_scratchpad_visible": False,
-            "internal_trace_exposed": False,
-            "rule_based_answer_used": False,
-            "template_free_surface": True,
-            "generation_basis": generated.diagnostics.get("generation_basis"),
-            "diagnostics": generated.diagnostics,
-        },
+        "answer_engine": engine,
         **_flags(),
     }
     return {"state": "completed", "result": payload, **_flags()}

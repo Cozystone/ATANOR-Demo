@@ -398,6 +398,8 @@ def test_live_selfhood_self_model_generates_without_scratchpad_or_rule_answer(tm
     assert payload["compact_trace"]["selfhood_loop"]["internal_scratchpad_visible"] is False
     assert payload["compact_trace"]["selfhood_loop"]["rule_based_answer_blocked"] is True
     assert payload["answer_engine"]["rule_based_answer_used"] is False
-    assert payload["answer_engine"]["generation_basis"] == "local_corpus_construction_transition_model"
+    assert payload["answer_engine"]["generation_basis"] == "semantic_grounded_conversation_router_v0"
+    assert payload["answer_engine"]["semantic_grounding_used"] is True
+    assert payload["route_type"] == "limitation_question"
     assert payload["external_llm_used"] is False
     assert payload["external_sllm_used"] is False

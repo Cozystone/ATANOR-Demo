@@ -3143,8 +3143,8 @@ export default function BakeBoardPage() {
     const normalized = question.toLowerCase().replace(/\s+/g, " ").trim();
     const compact = normalized.replace(/[\s_\-./]/g, "");
     const actionTokens = [
-      "\uBCF4\uC5EC", "\uC5F4\uC5B4", "\uC774\uB3D9", "\uAC00\uC918", "\uAC00\uC790", "\uB118\uC5B4", "\uCC3E\uC544", "\uC124\uBA85", "\uBCF4\uC790",
-      "open", "show", "go to", "navigate", "switch", "move", "take me", "explain",
+      "\uBCF4\uC5EC", "\uC5F4\uC5B4", "\uC774\uB3D9", "\uAC00\uC918", "\uAC00\uC790", "\uB118\uC5B4", "\uCC3E\uC544", "\uBCF4\uC790",
+      "open", "show", "go to", "navigate", "switch", "move", "take me",
     ];
     const hasActionIntent = actionTokens.some((token) => normalized.includes(token) || compact.includes(token.replace(/\s+/g, "")));
     if (!hasActionIntent) return null;
