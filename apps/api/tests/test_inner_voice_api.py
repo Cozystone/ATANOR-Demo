@@ -27,13 +27,15 @@ def test_lab_emit_and_log() -> None:
     assert emitted["production_store_mutated"] is False
 
 
-def test_product_hides_raw_inner_voice() -> None:
+def test_product_hides_raw_frame_but_exposes_safe_self_narration() -> None:
     client = _client()
     client.post("/api/inner-voice/emit", json={"latest_user_input": "안녕"})
 
     payload = client.get("/api/inner-voice/log?workspace=product").json()
 
     assert payload["raw_inner_voice_hidden"] is True
+    assert payload["product_summary"]["visible_self_narration"]
+    assert payload["product_summary"]["inner_voice_is_explicit_generated_channel"] is True
     assert "frames" not in payload
     assert payload["safety_flags"]["raw_hidden_cot_claim"] is False
 

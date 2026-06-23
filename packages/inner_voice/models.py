@@ -76,10 +76,12 @@ class InnerVoiceLog:
         return {
             "available": True,
             "raw_inner_voice_hidden": True,
+            "inner_voice_is_explicit_generated_channel": True,
+            "visible_self_narration": latest.monologue_text if latest else "\uc9c0\uae08\uc740 \uc870\uc6a9\ud788 \ub300\uae30\ud558\uace0 \uc788\ub2e4.",
             "summary": (
                 f"{latest.felt_state_label}: {latest.next_intent}"
                 if latest
-                else "아직 표시할 자기-서술 프레임이 없습니다."
+                else "\uc544\uc9c1 \ud45c\uc2dc\ud560 \uc790\uae30-\uc11c\uc220 \ud504\ub808\uc784\uc774 \uc5c6\uc2b5\ub2c8\ub2e4."
             ),
             "safety_flags": inner_voice_safety_flags(),
         }

@@ -8417,6 +8417,25 @@ p {
   z-index: 6;
 }
 
+.atanor-hologram-self-narration {
+  color: rgba(255, 132, 56, 0.82);
+  filter:
+    drop-shadow(0 0 12px rgba(255, 104, 40, 0.22))
+    drop-shadow(0 0 28px rgba(255, 104, 40, 0.08));
+  font: 700 clamp(0.78rem, 0.96vw, 0.98rem)/1.52 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: 0;
+  left: calc(50% + clamp(128px, 18vmin, 238px));
+  margin: 0;
+  max-width: min(360px, 28vw);
+  opacity: 0.9;
+  pointer-events: none;
+  position: absolute;
+  text-align: left;
+  text-wrap: balance;
+  top: calc(50% - clamp(226px, 28vmin, 310px));
+  z-index: 7;
+}
+
 .atanor-hologram-voice-status {
   bottom: clamp(76px, 10vh, 112px);
   color: rgba(194, 226, 239, 0.64);
@@ -8801,6 +8820,13 @@ p {
     max-width: calc(100% - 56px);
     right: auto;
     text-align: center;
+  }
+
+  .atanor-hologram-self-narration {
+    left: 24px;
+    max-width: calc(100% - 48px);
+    right: 24px;
+    top: 96px;
   }
 
   .atanor-hologram-voice-status {

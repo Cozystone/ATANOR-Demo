@@ -41,22 +41,27 @@ function firstSpeechBeat(text: string) {
   return `${clean.slice(0, 44).trim()}...`;
 }
 
-function safeStatusLine(language: Language) {
-  return language === "ko"
-    ? "로컬 대화 엔진을 확인하는 중입니다."
-    : "The local conversation engine is being checked.";
-}
+function useTypewriterText(text: string, stepMs = 22) {
+  const [visible, setVisible] = useState("");
 
-function voiceUnavailableLine(language: Language) {
-  return language === "ko"
-    ? "음성 엔진이 아직 설치되어 있지 않습니다. 텍스트 응답은 계속 사용할 수 있습니다."
-    : "The voice engine is not installed yet. Text replies remain available.";
-}
+  useEffect(() => {
+    if (!text) {
+      setVisible("");
+      return;
+    }
+    let index = 0;
+    setVisible("");
+    const timer = window.setInterval(() => {
+      index += 1;
+      setVisible(text.slice(0, index));
+      if (index >= text.length) {
+        window.clearInterval(timer);
+      }
+    }, stepMs);
+    return () => window.clearInterval(timer);
+  }, [text, stepMs]);
 
-function voiceFailedLine(language: Language) {
-  return language === "ko"
-    ? "음성 합성 중 오류가 발생했습니다. 텍스트 응답으로 계속합니다."
-    : "Voice synthesis failed. Continuing with text replies.";
+  return visible;
 }
 
 function isAsmConversationPayload(payload: Record<string, any>) {
@@ -70,6 +75,24 @@ function isAsmConversationPayload(payload: Record<string, any>) {
     && engine.template_free_surface === true
     && engine.internal_trace_exposed === false
   );
+}
+
+function cleanSafeStatusLine(language: Language) {
+  return language === "ko"
+    ? "\uB85C\uCEEC \uB300\uD654 \uC5D4\uC9C4\uC744 \uD655\uC778\uD558\uB294 \uC911\uC785\uB2C8\uB2E4."
+    : "The local conversation engine is being checked.";
+}
+
+function cleanVoiceUnavailableLine(language: Language) {
+  return language === "ko"
+    ? "\uC74C\uC131 \uC5D4\uC9C4\uC740 \uC544\uC9C1 \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4. \uD14D\uC2A4\uD2B8 \uC751\uB2F5\uC740 \uACC4\uC18D \uC0AC\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
+    : "The voice engine is not installed yet. Text replies remain available.";
+}
+
+function cleanVoiceFailedLine(language: Language) {
+  return language === "ko"
+    ? "\uC74C\uC131 \uD569\uC131 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4. \uD14D\uC2A4\uD2B8 \uC751\uB2F5\uC73C\uB85C \uACC4\uC18D\uD569\uB2C8\uB2E4."
+    : "Voice synthesis failed. Continuing with text replies.";
 }
 
 function emitNeuralEmotionEvent(eventType: string, payloadSummary: string) {
@@ -91,13 +114,16 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [voiceMode, setVoiceMode] = useState(false);
   const [speechLine, setSpeechLine] = useState("");
   const [voiceNotice, setVoiceNotice] = useState("");
+  const [selfNarration, setSelfNarration] = useState("");
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const placeholder = voiceMode
-    ? language === "ko" ? "음성 모드 · 텍스트도 입력할 수 있어요" : "Voice mode · text still works"
-    : language === "ko" ? "ATANOR에게 말하기" : "Message ATANOR";
   const speakingVisual = orbState === "speaking" || audioPlaying;
+  const cleanPlaceholder = voiceMode
+    ? language === "ko" ? "\uC74C\uC131 \uBAA8\uB4DC · \uD14D\uC2A4\uD2B8\uB3C4 \uC785\uB825\uD560 \uC218 \uC788\uC5B4\uC694" : "Voice mode · text still works"
+    : language === "ko" ? "ATANOR\uC5D0\uAC8C \uB9D0\uD558\uAE30" : "Message ATANOR";
+  const typedSpeechLine = useTypewriterText(speechLine, 24);
+  const typedSelfNarration = useTypewriterText(selfNarration, 28);
 
   useEffect(() => {
     if (orbState !== "listening") return;
@@ -139,6 +165,30 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshSelfNarration() {
+      const payload = await fetch("/api/inner-voice/status?workspace=product", { cache: "no-store" })
+        .then((response) => response.json())
+        .catch(() => null);
+      const next = String(
+        payload?.product_summary?.visible_self_narration
+          ?? payload?.visible_self_narration
+          ?? payload?.product_summary?.summary
+          ?? "",
+      ).trim();
+      if (!cancelled && next) {
+        setSelfNarration(next);
+      }
+    }
+    refreshSelfNarration().catch(() => undefined);
+    const timer = window.setInterval(() => refreshSelfNarration().catch(() => undefined), 2600);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   function stopAudio() {
     const audio = audioRef.current;
     if (audio) {
@@ -167,7 +217,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   async function playVoiceOutput(voiceOutput: VoiceOutput | undefined) {
     stopAudio();
     if (!voiceOutput?.audio_available || !voiceOutput.audio_url) {
-      setVoiceNotice(voiceOutput?.user_message || voiceUnavailableLine(language));
+      setVoiceNotice(voiceOutput?.user_message || cleanVoiceUnavailableLine(language));
       return;
     }
     try {
@@ -185,7 +235,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       };
       audio.onerror = () => {
         setAudioPlaying(false);
-        setVoiceNotice(voiceFailedLine(language));
+        setVoiceNotice(cleanVoiceFailedLine(language));
         setOrbState(voiceMode ? "listening" : "resting");
         emitNeuralEmotionEvent("voice_unavailable", "audio playback error");
       };
@@ -193,7 +243,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       await audio.play();
     } catch {
       setAudioPlaying(false);
-      setVoiceNotice(voiceFailedLine(language));
+      setVoiceNotice(cleanVoiceFailedLine(language));
       setOrbState(voiceMode ? "listening" : "resting");
       emitNeuralEmotionEvent("voice_unavailable", "audio playback unavailable");
     }
@@ -234,6 +284,31 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         throw new Error("conversation surface unavailable");
       }
       setOrbState("speaking");
+      void fetch("/api/inner-voice/emit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source_event_id: "product_hologram_conversation",
+          mode: "product_summary",
+          latest_user_input: trimmed,
+          latest_action_result: {
+            speech_act: payload?.result?.answer_kind ?? "conversation",
+            answered: true,
+          },
+          review_queue_pressure: 0,
+          permission_tier: "OBSERVE_ONLY",
+        }),
+      })
+        .then((response) => response.json())
+        .then((innerVoicePayload) => {
+          const next = String(
+            innerVoicePayload?.product_summary?.visible_self_narration
+              ?? innerVoicePayload?.product_summary?.summary
+              ?? "",
+          ).trim();
+          if (next) setSelfNarration(next);
+        })
+        .catch(() => undefined);
       emitNeuralEmotionEvent("speaking_start", "text conversation visible speech");
       setSpeechLine(firstSpeechBeat(answer));
       setMessage("");
@@ -246,8 +321,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
     } catch {
       setOrbState("blocked");
-      setSpeechLine(safeStatusLine(language));
-      setVoiceNotice(voiceFailedLine(language));
+      setSpeechLine(cleanSafeStatusLine(language));
+      setVoiceNotice(cleanVoiceFailedLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);
     }
   }
@@ -255,7 +330,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   return (
     <section
       className="atanor-ai-dashboard"
-      aria-label={language === "ko" ? "ATANOR 파티클 본체" : "ATANOR particle body"}
+      aria-label={language === "ko" ? "ATANOR 입자 본체" : "ATANOR particle body"}
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
     >
@@ -269,9 +344,14 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       />
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
-        {speechLine ? (
+        {typedSelfNarration ? (
+          <p className="atanor-hologram-self-narration" aria-live="polite">
+            {typedSelfNarration}
+          </p>
+        ) : null}
+        {typedSpeechLine ? (
           <p className="atanor-hologram-speech" aria-live="polite">
-            {speechLine}
+            {typedSpeechLine}
           </p>
         ) : null}
         {voiceNotice ? (
@@ -290,10 +370,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           ))}
         </div>
         <input
-          aria-label={placeholder}
+          aria-label={cleanPlaceholder}
           value={message}
           onChange={(event) => setMessage(event.target.value)}
-          placeholder={placeholder}
+          placeholder={cleanPlaceholder}
         />
         <button type="submit" aria-label={language === "ko" ? "보내기" : "Send"}>
           <Send size={18} strokeWidth={1.8} />
