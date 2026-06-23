@@ -16,6 +16,7 @@ from packages.cgsr.cgsr.conversation_grounding import (
     realize_grounded_context,
 )
 from packages.cgsr.cgsr.conversation_router import ConversationRoute
+from packages.construction_bank.retriever import retrieve_constructions
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,41 @@ def _confidence_from_score(score: float | None) -> float:
     if score is None:
         return 0.0
     return round(max(0.0, min(0.78, 0.36 + score * 0.16)), 4)
+
+
+def _construction_retrieval_metadata(
+    *,
+    route: ConversationRoute | None,
+    language: str,
+    context: dict[str, Any] | None,
+    grounding_context: GroundedContext | None,
+) -> dict[str, Any]:
+    route_type = route.route_type if route else "unknown"
+    audience = str((context or {}).get("audience") or (context or {}).get("workspace") or "product")
+    retrieval = retrieve_constructions(
+        route_type=route_type,
+        language=language,
+        act=route_type,
+        audience="lab" if audience == "lab" else "product",
+        grounding_context=grounding_context.to_dict() if grounding_context else {},
+    )
+    return {
+        "self_grown_construction_retrieved": retrieval["retrieved_self_grown_construction"],
+        "construction_candidate_id": retrieval["construction_candidate_id"],
+        "construction_status": retrieval["candidate_status"],
+        "construction_production_active": False,
+        "construction_auto_promoted": False,
+        "self_grown_candidate_preview_only": True,
+        "human_review_required": True,
+        "hand_authored_construction_used": True,
+        "hand_authored_construction_used_disclosed": True,
+        "template_risk": (
+            retrieval["top_candidates"][0]["template_risk"]
+            if retrieval["top_candidates"]
+            else None
+        ),
+        "construction_retrieval": retrieval,
+    }
 
 
 def generate_conversation_surface(
@@ -75,6 +111,14 @@ def generate_conversation_surface(
             "route": route.to_dict(),
             **metadata,
         }
+        diagnostics.update(
+            _construction_retrieval_metadata(
+                route=route,
+                language=language,
+                context=context,
+                grounding_context=grounded_context,
+            )
+        )
         if not grounded_answer:
             return ConversationSurfaceResult(
                 answer=None,
@@ -114,6 +158,14 @@ def generate_conversation_surface(
         "candidate_promotion": False,
         "internal_trace_exposed": asm_result.internal_trace_exposed,
     }
+    diagnostics.update(
+        _construction_retrieval_metadata(
+            route=route,
+            language=language,
+            context=context,
+            grounding_context=grounded_context,
+        )
+    )
     if fallback_route is not None:
         diagnostics["route"] = fallback_route.to_dict()
     if fallback_context is not None:

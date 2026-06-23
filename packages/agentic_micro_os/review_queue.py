@@ -6,7 +6,7 @@ import hashlib
 from typing import Any, Literal
 
 
-ReviewItemType = Literal["cloud_candidate", "skill_draft", "source_summary", "splatra_patch", "tool_trajectory"]
+ReviewItemType = Literal["cloud_candidate", "skill_draft", "source_summary", "splatra_patch", "tool_trajectory", "construction_candidate"]
 ReviewStatus = Literal["pending", "approved", "rejected", "deferred", "needs_more_evidence"]
 ApprovedFor = Literal["draft_only", "candidate_queue", "skill_registry_draft", "promotion_request"]
 
@@ -292,7 +292,7 @@ def _usefulness_for(item_type: ReviewItemType, payload: dict[str, Any], summary:
         score += 0.15
     if payload.get("claims") or payload.get("procedure_steps"):
         score += 0.15
-    if item_type in {"cloud_candidate", "skill_draft", "tool_trajectory"}:
+    if item_type in {"cloud_candidate", "skill_draft", "tool_trajectory", "construction_candidate"}:
         score += 0.1
     return _bounded(score)
 

@@ -58,6 +58,7 @@ from app.routers.base_brain import router as base_brain_router
 from app.routers.brain_graph import router as brain_graph_router
 from app.routers.cloud_brain import router as cloud_brain_router
 from app.routers.contribution import router as contribution_router
+from app.routers.construction_bank import router as construction_bank_router
 from app.routers.cortex import router as cortex_router
 from app.routers.datagate import router as datagate_router
 from app.routers.dual_brain import router as dual_brain_router
@@ -177,6 +178,7 @@ app.include_router(learning_router)
 app.include_router(local_memory_approval_router)
 app.include_router(cloud_brain_router)
 app.include_router(contribution_router)
+app.include_router(construction_bank_router)
 app.include_router(cortex_router)
 app.include_router(dual_brain_router)
 app.include_router(factory_router)
