@@ -5,7 +5,7 @@ import random
 from dataclasses import dataclass
 
 from .archetypes import generate_archetype
-from .emotion_bridge import imagination_controls
+from .emotion_bridge import clamp, imagination_controls
 from .models import ARCHETYPES, Archetype, ImaginationFrame, ImaginationObject, ImaginationSeed, default_safety_flags
 from .turbovec_bridge import compress_imagination_object
 
@@ -19,6 +19,42 @@ def select_archetype(seed_id: str, curiosity: float) -> Archetype:
     rng = random.Random(deterministic_seed(f"archetype:{seed_id}:{curiosity:.4f}"))
     index = int(rng.random() * len(ARCHETYPES)) % len(ARCHETYPES)
     return ARCHETYPES[index]
+
+
+def projection_metadata(archetype: Archetype, particle_count: int, controls: dict[str, object]) -> dict[str, object]:
+    arousal = float(controls.get("motion_multiplier", 0.75))
+    density = float(controls.get("density_multiplier", 0.75))
+    state = str(controls.get("visual_state", "imagining"))
+    resting = state == "resting"
+    base_intensity = 0.66 + density * 0.18 + min(arousal, 1.8) * 0.07
+    visual_intensity = clamp(base_intensity - (0.22 if resting else 0.0), 0.34, 0.96)
+    feature_map: dict[str, list[str]] = {
+        "orb": ["glass shell", "inner ribbon", "central body"],
+        "tower": ["vertical spine", "window bands", "stacked floors"],
+        "tree": ["trunk", "branch fan", "canopy clusters"],
+        "creature": ["abstract body", "head cluster", "limb clusters"],
+        "circuit": ["orthogonal traces", "junction nodes", "signal lanes"],
+        "city_block": ["skyline masses", "window grid", "street depth"],
+        "constellation": ["star anchors", "faint connective lines", "deep field"],
+        "machine_core": ["concentric rings", "reactor core", "rotating spokes"],
+        "abstract_memory_cloud": ["nebula clusters", "memory knots", "soft bridges"],
+    }
+    return {
+        "visible_object": True,
+        "product_visible": True,
+        "active_archetype": archetype,
+        "display_archetype": "memory_cloud" if archetype == "abstract_memory_cloud" else archetype,
+        "projected_geometry": {
+            "kind": "procedural_particle_archetype",
+            "features": feature_map[archetype],
+            "recognizable": True,
+        },
+        "particle_count": particle_count,
+        "visual_intensity": round(visual_intensity, 4),
+        "clear_radius": 0.34,
+        "input_overlay_blocked": False,
+        "reduced_motion_static_frame": resting,
+    }
 
 
 @dataclass
@@ -40,6 +76,7 @@ class ImaginationGenerator:
         count = max(16, min(budget, int(round(budget * density))))
         rng = random.Random(deterministic_seed(f"{seed.seed_id}:{seed.archetype}:{seed.randomness:.5f}"))
         particles = generate_archetype(seed.archetype, count, rng, controls)
+        visible_metadata = projection_metadata(seed.archetype, len(particles), controls)
         object_id = f"imag_{hashlib.sha1((seed.seed_id + seed.archetype).encode('utf-8')).hexdigest()[:16]}"
         item = ImaginationObject(
             object_id=object_id,
@@ -51,6 +88,7 @@ class ImaginationGenerator:
                 "label": "imagination",
                 "source": "procedural",
                 "not_verified_memory": True,
+                **visible_metadata,
             },
             lod_level=seed.lod_target,
             safety_flags=default_safety_flags(),

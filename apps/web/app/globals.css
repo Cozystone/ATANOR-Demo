@@ -8522,7 +8522,7 @@ p {
   inset: 0;
   left: 0 !important;
   min-height: 100dvh;
-  opacity: 0.34;
+  opacity: 0.72;
   pointer-events: none;
   position: absolute !important;
   right: 0 !important;
@@ -8587,6 +8587,19 @@ p {
 .splatra-imagination-canvas-button canvas {
   height: 100%;
   width: 100%;
+}
+
+.splatra-imagination-product-label {
+  bottom: clamp(92px, 12vh, 128px);
+  color: rgba(255, 148, 82, 0.5);
+  font: 700 0.66rem/1 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  left: 50%;
+  letter-spacing: 0;
+  pointer-events: none;
+  position: absolute;
+  text-transform: lowercase;
+  transform: translateX(-50%);
+  z-index: 2;
 }
 
 .splatra-imagination-canvas-button:focus-visible {
@@ -8659,6 +8672,22 @@ p {
   color: rgba(255, 255, 255, 0.9);
   min-height: 36px;
   padding: 0 10px;
+}
+
+.splatra-imagination-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.splatra-imagination-actions button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+  font: 800 0.72rem/1 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .splatra-imagination-flags {

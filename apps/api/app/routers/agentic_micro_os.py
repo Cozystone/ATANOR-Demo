@@ -170,12 +170,16 @@ class SplatraEvaluateApiRequest(BaseModel):
 
 class SplatraImaginationGenerateApiRequest(BaseModel):
     seed_id: str = "api_imagination_0"
-    archetype: str = "orb"
+    archetype: str = "constellation"
     randomness: float = 0.5
     valence: float = 0.0
     arousal: float = 0.45
     curiosity: float = 0.5
     speaking_energy: float = 0.0
+    fatigue: float = 0.0
+    review_pressure: float = 0.0
+    novelty_found: float = 0.0
+    reduced_motion: bool = False
     state: str = "imagining"
     particle_budget: int = 1600
     lod_target: int = 0
@@ -752,8 +756,33 @@ def splatra_evaluate(request: SplatraEvaluateApiRequest) -> dict[str, Any]:
     return {**SAFETY_FLAGS, **result.to_dict()}
 
 
+def _splatra_visible_summary(frame_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    item: dict[str, Any] = {}
+    metadata: dict[str, Any] = {}
+    if frame_payload:
+        objects = frame_payload.get("objects") or []
+        if objects:
+            item = objects[0]
+            metadata = item.get("metadata") or {}
+    turbovec = metadata.get("turbovec") or {}
+    compressed_ref = item.get("compressed_ref") or turbovec.get("compressed_ref") or {}
+    lod_summary = turbovec.get("lod_summary") or {}
+    return {
+        "active_archetype": metadata.get("active_archetype") or item.get("archetype") or "constellation",
+        "visible_object": bool(metadata.get("visible_object", True)),
+        "product_visible": bool(metadata.get("product_visible", True)),
+        "particle_count": int(item.get("particle_count") or metadata.get("particle_count") or 1600),
+        "compression_ratio": compressed_ref.get("compression_ratio"),
+        "lod_levels": lod_summary.get("levels", [0, 1, 2]),
+        "visual_intensity": metadata.get("visual_intensity", 0.72),
+        "clear_radius": metadata.get("clear_radius", 0.34),
+        "input_overlay_blocked": bool(metadata.get("input_overlay_blocked", False)),
+    }
+
+
 @router.get("/splatra/imagination/status")
 def splatra_imagination_status() -> dict[str, Any]:
+    visible_summary = _splatra_visible_summary()
     return {
         **SAFETY_FLAGS,
         **default_safety_flags(),
@@ -765,6 +794,7 @@ def splatra_imagination_status() -> dict[str, Any]:
         "archetypes": list(ARCHETYPES),
         "product_budget": 1600,
         "lab_budget": 6500,
+        **visible_summary,
     }
 
 
@@ -798,6 +828,8 @@ def splatra_imagination_generate(request: SplatraImaginationGenerateApiRequest) 
         created_at="api_procedural_seed",
     )
     frame = ImaginationGenerator(max_particle_budget=100_000).generate_frame(seed)
+    frame_payload = frame.to_dict(include_particles=request.include_particles)
+    visible_summary = _splatra_visible_summary(frame_payload)
     emit_runtime_event(
         source="splatra_imagination",
         event_type="splatra_generation_success",
@@ -808,14 +840,15 @@ def splatra_imagination_generate(request: SplatraImaginationGenerateApiRequest) 
         **SAFETY_FLAGS,
         **default_safety_flags(),
         "allowed": True,
-        "frame": frame.to_dict(include_particles=request.include_particles),
+        "frame": frame_payload,
+        **visible_summary,
     }
 
 
 @router.post("/splatra/imagination/evaluate")
 def splatra_imagination_evaluate(request: SplatraImaginationEvaluateApiRequest) -> dict[str, Any]:
     proof = run_imagination_proof(particle_budget=max(16, min(request.particle_budget, 10_000)))
-    return {**SAFETY_FLAGS, **default_safety_flags(), **proof}
+    return {**SAFETY_FLAGS, **default_safety_flags(), **proof, **_splatra_visible_summary()}
 
 
 @router.get("/web-explorer/status")

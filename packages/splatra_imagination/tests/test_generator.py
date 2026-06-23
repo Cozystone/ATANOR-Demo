@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from packages.splatra_imagination.generator import ImaginationGenerator
-from packages.splatra_imagination.models import ImaginationSeed
+from packages.splatra_imagination.models import ARCHETYPES, ImaginationSeed
 
 
 def _seed() -> ImaginationSeed:
@@ -37,3 +37,34 @@ def test_particle_budget_respected_and_not_verified_knowledge() -> None:
     assert frame.label == "imagination"
     assert frame.source == "procedural"
     assert item.safety_flags["local_brain_write"] is False
+
+
+def test_product_frame_reports_visible_object_and_clear_radius() -> None:
+    frame = ImaginationGenerator(max_particle_budget=1000).generate_frame(_seed())
+    metadata = frame.objects[0].metadata
+
+    assert metadata["visible_object"] is True
+    assert metadata["product_visible"] is True
+    assert metadata["input_overlay_blocked"] is False
+    assert metadata["clear_radius"] == 0.34
+    assert metadata["visual_intensity"] >= 0.34
+
+
+def test_each_archetype_reports_recognizable_projected_geometry() -> None:
+    generator = ImaginationGenerator(max_particle_budget=500)
+
+    for archetype in ARCHETYPES:
+        seed = ImaginationSeed(seed_id=f"visible_{archetype}", archetype=archetype, particle_budget=220)
+        item = generator.generate_object(seed)
+        geometry = item.metadata["projected_geometry"]
+
+        assert geometry["kind"] == "procedural_particle_archetype"
+        assert geometry["recognizable"] is True
+        assert len(geometry["features"]) >= 2
+
+
+def test_reduced_motion_resting_seed_marks_static_frame() -> None:
+    seed = ImaginationSeed(seed_id="static", archetype="constellation", state="resting", particle_budget=120)
+    item = ImaginationGenerator(max_particle_budget=500).generate_object(seed)
+
+    assert item.metadata["reduced_motion_static_frame"] is True

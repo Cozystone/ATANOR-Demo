@@ -1,13 +1,17 @@
-# ATANOR SPLATRA Imagination Field v0
+# ATANOR SPLATRA Imagination Field v1
 
 Status: proof-only procedural renderer.
 
-SPLATRA Imagination Field v0 gives ATANOR a bounded particle visualization layer for the dashboard and Agentic Micro-OS lab. It is designed to show internal state and creative exploration as procedural particle forms without treating those forms as verified knowledge.
+SPLATRA Imagination Field v1 gives ATANOR a bounded particle visualization layer for the dashboard and Agentic Micro-OS lab. It is designed to show internal state and creative exploration as procedural particle forms without treating those forms as verified knowledge.
+
+Stage v1 makes the product surface visibly legible: the central hologram orb remains ATANOR's body, while the surrounding dashboard space becomes a particle imagination stage that can form recognizable procedural objects around and behind the orb.
 
 ## Scope
 
 - Generates procedural particle objects from deterministic seeds.
 - Supports archetypes: `orb`, `tower`, `tree`, `creature`, `circuit`, `city_block`, `constellation`, `machine_core`, and `abstract_memory_cloud`.
+- Product mode excludes `orb` from the surrounding imagination cycle because the orb is the central body. The visible field cycles through `constellation`, `city_block`, `circuit`, `tree`, `machine_core`, `tower`, `abstract_memory_cloud`, and `creature`.
+- Each generated object reports visible projection metadata: `visible_object=true`, `product_visible=true`, `active_archetype`, `particle_count`, `compression_ratio`, `lod_levels`, `visual_intensity`, and `clear_radius`.
 - Maps bounded visual controls from state-like inputs: valence, arousal, curiosity, speaking energy, and resting.
 - Connects to the existing Turbovec proof package for compression metrics, LOD summaries, and client budget hints.
 - Exposes proof-only API routes under `/api/agentic-os/splatra/imagination/*`.
@@ -41,7 +45,9 @@ It may not execute generated code, mutate production stores, write Local Brain m
 
 ## Product vs Lab
 
-Product home uses a small particle budget and rotates through archetypes without exposing internal controls. Lab mode exposes archetype selection, particle count, compression ratio, and LOD summary for inspection.
+Product home uses a bounded particle budget and rotates through recognizable archetypes without exposing internal controls. It preserves a clear radius around the central orb and input bar so the conversation surface remains readable.
+
+Lab mode exposes archetype selection, switch/random controls, particle count, compression ratio, LOD summary, visual intensity, clear radius, and a warning when the object is too subtle for product use.
 
 ## Future Gates
 
