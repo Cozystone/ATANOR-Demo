@@ -8484,11 +8484,35 @@ p {
   width: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
 }
 
+.atanor-ai-dashboard[data-layout-orb-anchor="lower_right"] .hologram-voice-orb {
+  height: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
+  left: calc(100% - var(--atanor-scene-orb-right, clamp(86px, 12vw, 168px)));
+  min-height: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
+  min-width: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
+  top: calc(100% - var(--atanor-scene-orb-bottom, clamp(188px, 19vh, 224px)));
+  transform: translate(-50%, -50%);
+  width: var(--atanor-scene-orb-size, clamp(168px, 24vmin, 260px));
+}
+
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .hologram-voice-orb:hover {
   transform: translate(-50%, -50%) scale(1.012);
 }
 
+.atanor-ai-dashboard[data-layout-orb-anchor="lower_right"] .hologram-voice-orb:hover {
+  transform: translate(-50%, -50%) scale(1.012);
+}
+
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-scene-intent="wide_particle_stage"] .hologram-voice-orb {
+  height: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
+  left: calc(100% - var(--atanor-scene-orb-right, clamp(86px, 10vw, 136px)));
+  min-height: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
+  min-width: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
+  top: calc(100% - var(--atanor-scene-orb-bottom, clamp(188px, 16vh, 204px)));
+  width: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
+}
+
+.atanor-ai-dashboard[data-layout-action="yield_center_to_particle_scene"] .hologram-voice-orb,
+.atanor-ai-dashboard[data-layout-action="sync_orb_text_with_particle_beat"][data-layout-orb-anchor="lower_right"] .hologram-voice-orb {
   height: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
   left: calc(100% - var(--atanor-scene-orb-right, clamp(86px, 10vw, 136px)));
   min-height: var(--atanor-scene-orb-size, clamp(132px, 19vmin, 218px));
@@ -8502,6 +8526,11 @@ p {
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"][data-scene-intent="wide_particle_stage"] .atanor-dashboard-imagination-field {
+  opacity: var(--atanor-scene-field-opacity, 0.96);
+}
+
+.atanor-ai-dashboard[data-layout-action="yield_center_to_particle_scene"] .atanor-dashboard-imagination-field,
+.atanor-ai-dashboard[data-layout-action="sync_orb_text_with_particle_beat"] .atanor-dashboard-imagination-field {
   opacity: var(--atanor-scene-field-opacity, 0.96);
 }
 

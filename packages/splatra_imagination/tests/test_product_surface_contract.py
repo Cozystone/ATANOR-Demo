@@ -147,6 +147,9 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     css = (ROOT / "apps" / "web" / "app" / "globals.css").read_text(encoding="utf-8")
 
     assert '[data-stage-layout="scene_focus"] .hologram-voice-orb' in css
+    assert '[data-layout-orb-anchor="lower_right"] .hologram-voice-orb' in css
+    assert '[data-layout-action="yield_center_to_particle_scene"] .hologram-voice-orb' in css
+    assert '[data-layout-action="sync_orb_text_with_particle_beat"][data-layout-orb-anchor="lower_right"] .hologram-voice-orb' in css
     assert '[data-stage-layout="scene_focus"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="lower_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_left"] .atanor-hologram-speech' in css
@@ -155,6 +158,8 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert '[data-self-narration-placement="lower_left"] .atanor-hologram-self-narration' in css
     assert '[data-self-narration-placement="upper_right"] .atanor-hologram-self-narration' in css
     assert '[data-scene-intent="wide_particle_stage"] .hologram-voice-orb' in css
+    assert '[data-layout-action="yield_center_to_particle_scene"] .atanor-dashboard-imagination-field' in css
+    assert '[data-layout-action="sync_orb_text_with_particle_beat"] .atanor-dashboard-imagination-field' in css
     assert "--atanor-scene-orb-size" in css
     assert "--atanor-scene-field-opacity" in css
     assert "--atanor-scene-speech-upper-left-top" in css
