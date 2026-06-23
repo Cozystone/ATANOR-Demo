@@ -495,8 +495,11 @@ function sceneCameraView(beat: ScenePlanBeat | null | undefined, stageMode: bool
   const position = Array.isArray(beat.position) ? beat.position : [];
   const camera = beat.camera && typeof beat.camera === "object" ? beat.camera : {};
   const cameraTarget = Array.isArray(camera.target) ? camera.target : [];
-  const rawTargetX = Number(cameraTarget[0] ?? position[0] ?? 0);
-  const rawTargetY = Number(cameraTarget[1] ?? position[1] ?? 0);
+  const pathCameraTarget = beat.op === "move" && Array.isArray(beat.motion_path?.from) && Array.isArray(beat.motion_path?.to)
+    ? sceneMotionPathPoint(beat, elapsedSeconds)
+    : null;
+  const rawTargetX = Number(pathCameraTarget?.x ?? cameraTarget[0] ?? position[0] ?? 0);
+  const rawTargetY = Number(pathCameraTarget?.y ?? cameraTarget[1] ?? position[1] ?? 0);
   const rawZoom = Number(camera.zoom ?? 1);
   const progress = sceneBeatFocusProgress(beat, elapsedSeconds);
   const focusBias = beat.op === "focus_camera" ? 0.16 : beat.op === "move" ? 0.08 : 0;

@@ -93,6 +93,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneCameraView" in field
     assert "sceneBeatFocusProgress" in field
     assert "start - leadIn" in field
+    assert "pathCameraTarget" in field
+    assert "sceneMotionPathPoint(beat, elapsedSeconds)" in field
     assert "type SceneCameraView" in field
     assert "SceneRenderObject" in field
     assert "buildSceneRenderObjects" in field
