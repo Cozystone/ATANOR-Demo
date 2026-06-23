@@ -405,6 +405,19 @@ function sceneObjectAlpha(beat: ScenePlanBeat, elapsedSeconds: number, active: b
   return clamp(base * (active ? 1 : 0.48), 0, 1);
 }
 
+function sceneRoleStyle(beat: ScenePlanBeat, active: boolean) {
+  const role = String(beat.semantic_role ?? "");
+  const moving = beat.op === "move" || role.includes("motion");
+  const relation = role.includes("relation");
+  const anchor = role.includes("anchor");
+  return {
+    alpha: moving ? 1.16 : relation ? 1.02 : anchor ? 0.86 : 0.94,
+    scale: moving ? 1.2 : relation ? 1.08 : anchor ? 0.92 : 1,
+    trail: moving ? (active ? 1 : 0.62) : relation ? 0.34 : 0.16,
+    focus: active ? 1 : moving ? 0.72 : 0.48,
+  };
+}
+
 function sceneObjectId(beat: ScenePlanBeat, index: number) {
   return `${beat.object_id || beat.prompt || "scene"}:${index}`;
 }
@@ -777,19 +790,34 @@ function drawSceneObjectCloud(
 ) {
   const alphaMultiplier = sceneObjectAlpha(object.beat, sceneElapsed, active);
   if (alphaMultiplier <= 0.02) return;
+  const roleStyle = sceneRoleStyle(object.beat, active);
   const position = sceneObjectPosition(object.beat);
   const transform = sceneTransform(object.beat, true, sceneElapsed);
-  const cx = width / 2 + (position.x * 0.34 + transform.offsetX * 0.52) * width;
-  const cy = height / 2 + (-position.y * 0.28 + transform.offsetY * 0.52) * height;
-  const scaleBias = active ? 1.12 : 0.78;
+  const beatProgress = sceneObjectProgress(object.beat, sceneElapsed);
+  const motionSwing = object.beat.op === "move" ? Math.sin(beatProgress * Math.PI) : 0;
+  const flowSalt = stableUnit(object.id, 43);
+  const cx = width / 2 + (position.x * 0.34 + transform.offsetX * 0.52 + motionSwing * (flowSalt - 0.5) * 0.11) * width;
+  const cy = height / 2 + (-position.y * 0.28 + transform.offsetY * 0.52 + motionSwing * (stableUnit(object.id, 47) - 0.5) * 0.08) * height;
+  const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale;
   const scale = Math.min(width, height) * 0.11 * transform.zoom * scaleBias;
   const rotation = elapsed * (0.12 + controls.arousal * 0.11) + stableUnit(object.id, 5) * Math.PI * 2;
   const tilt = Math.sin(elapsed * 0.16 + stableUnit(object.id, 9) * 4) * 0.18;
-  const pulse = 1 + Math.sin(elapsed * 2.1 + stableUnit(object.id, 17) * 4) * (active ? 0.035 : 0.018);
+  const pulse = 1 + Math.sin(elapsed * (2.1 + roleStyle.trail) + stableUnit(object.id, 17) * 4) * (active ? 0.035 : 0.018) * roleStyle.focus;
   const cosY = Math.cos(rotation);
   const sinY = Math.sin(rotation);
   const cosX = Math.cos(tilt);
   const sinX = Math.sin(tilt);
+
+  if (roleStyle.trail > 0.4) {
+    const wakeLength = Math.min(width, height) * (0.06 + roleStyle.trail * 0.035);
+    const wakeAngle = flowFieldAngle(cx, cy, elapsed, flowSalt * 11);
+    for (let index = 0; index < 9; index += 1) {
+      const t = index / 8;
+      const wakeX = cx - Math.cos(wakeAngle) * wakeLength * t;
+      const wakeY = cy - Math.sin(wakeAngle) * wakeLength * t;
+      drawGuideParticle(ctx, wakeX, wakeY, Math.min(width, height) * (0.002 + (1 - t) * 0.003), [76, 230, 255], alphaMultiplier * roleStyle.trail * (0.12 + (1 - t) * 0.26));
+    }
+  }
 
   for (const point of object.particles) {
     let x = point.x;
@@ -811,9 +839,9 @@ function drawSceneObjectCloud(
       Math.floor(point.b * 255),
     ];
     const size = clamp(point.scale * (0.66 + depth * 1.08) * scaleBias, 0.52, active ? 4.1 : 2.8);
-    const alpha = clamp(point.a * (0.16 + depth * 0.66) * alphaMultiplier, 0.025, active ? 0.82 : 0.46);
+    const alpha = clamp(point.a * (0.16 + depth * 0.66) * alphaMultiplier * roleStyle.alpha, 0.025, active ? 0.82 : 0.5);
     const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9 + stableUnit(object.id, 31));
-    drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6), 1.6, 9), size, color, alpha);
+    drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6 + roleStyle.trail * 1.7), 1.6, 11), size, color, alpha);
   }
 }
 

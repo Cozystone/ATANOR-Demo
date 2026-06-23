@@ -35,6 +35,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneTransform" in field
     assert "SceneRenderObject" in field
     assert "buildSceneRenderObjects" in field
+    assert "sceneRoleStyle" in field
+    assert "semantic_role" in field
     assert "drawSceneFocusParticles" in field
     assert "data-scene-objects" in field
     assert "data-scene-beat" in field
