@@ -927,19 +927,24 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     }
   }
 
-  async function playVoiceOutput(voiceOutput: VoiceOutput | undefined) {
+  async function playVoiceOutput(voiceOutput: VoiceOutput | undefined, onPlaybackStart?: () => void): Promise<boolean> {
     if (!voiceOutput?.audio_available || !voiceOutput.audio_url) {
       stopAudio();
       setVoiceNotice(voiceOutput?.user_message || cleanVoiceUnavailableLine(language));
-      return;
+      return false;
     }
     try {
       const audio = audioRef.current ?? new Audio();
+      let playbackStarted = false;
       audio.pause();
       audio.muted = false;
       audio.src = voiceOutput.audio_url;
       audio.preload = "auto";
       audio.onplaying = () => {
+        if (!playbackStarted) {
+          playbackStarted = true;
+          onPlaybackStart?.();
+        }
         setAudioPlaying(true);
         setOrbState("speaking");
         emitNeuralEmotionEvent("speaking_start", "audio playback started");
@@ -958,11 +963,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       audioRef.current = audio;
       audio.load();
       await audio.play();
+      return true;
     } catch {
       setAudioPlaying(false);
       setVoiceNotice(cleanVoiceFailedLine(language));
       setOrbState(voiceMode ? "listening" : "resting");
       emitNeuralEmotionEvent("voice_unavailable", "audio playback unavailable");
+      return false;
     }
   }
 
@@ -1003,9 +1010,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
       const nextStageLayout = requestedStageLayout(payload);
       const nextSceneChoreography = requestedSceneChoreography(payload);
+      const startVisibleSpeech = () => {
+        if (nextSceneChoreography) setSceneSpeechStartedAt(performance.now());
+        setSpeechLine(firstSceneNarration(nextSceneChoreography) || firstSpeechBeat(answer));
+      };
       setStageLayout(nextStageLayout);
       setSceneChoreography(nextSceneChoreography);
-      setSceneSpeechStartedAt(nextSceneChoreography ? performance.now() : 0);
+      setSceneSpeechStartedAt(0);
       setOrbState("speaking");
       void fetch("/api/inner-voice/generate-frame", {
         method: "POST",
@@ -1038,13 +1049,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
             selfNarrationHoldUntilRef.current = Date.now() + 30000;
             setSelfNarration(next);
           }
-        })
+      })
         .catch(() => undefined);
       emitNeuralEmotionEvent("speaking_start", "text conversation visible speech");
-      setSpeechLine(firstSceneNarration(nextSceneChoreography) || firstSpeechBeat(answer));
       setMessage("");
-      await playVoiceOutput(payload?.result?.voice_output);
-      if (!payload?.result?.voice_output?.audio_available) {
+      const audioStarted = await playVoiceOutput(payload?.result?.voice_output, startVisibleSpeech);
+      if (!audioStarted) {
+        startVisibleSpeech();
         window.setTimeout(() => {
           setOrbState("listening");
           emitNeuralEmotionEvent("speaking_end", "text fallback speech ended");

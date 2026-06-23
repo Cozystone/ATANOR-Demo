@@ -34,6 +34,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert '"conversation_default"' in status_card
     assert "speech_timeline?: Array" in status_card
     assert "scenePlan?.speech_timeline" in status_card
+    assert "onPlaybackStart" in status_card
+    assert "startVisibleSpeech" in status_card
+    assert "setSceneSpeechStartedAt(0)" in status_card
     assert "beat.speech_cue !== false" in status_card
     assert "firstSceneNarration" in status_card
     assert "sceneSpeechBeatIndex" in status_card
