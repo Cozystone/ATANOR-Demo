@@ -775,6 +775,20 @@ function layoutTelemetryForRect(rect: RectLike | null, blockers: RectLike[]): La
   return { blockers: blockers.length, collisionState, offscreen, overlap };
 }
 
+function effectiveOrbMovementForTelemetry(stageLayout: StageLayout, requestedMovement: string, telemetry: LayoutTelemetry) {
+  if (stageLayout !== "scene_focus") return requestedMovement;
+  if (telemetry.collisionState === "dom_text_clipped") return "lower_right_lifted_compact";
+  if (telemetry.collisionState === "dom_text_overlap_risk") {
+    return requestedMovement === "lower_right_lifted" || requestedMovement === "lower_right_lifted_compact"
+      ? "lower_right_tucked_compact"
+      : "lower_right_lifted_compact";
+  }
+  if (telemetry.collisionState === "dom_text_minimized_overlap" && telemetry.overlap > 0) {
+    return requestedMovement === "lower_right_scaled_down" ? "lower_right_tucked_compact" : requestedMovement;
+  }
+  return requestedMovement;
+}
+
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
@@ -1192,6 +1206,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   }
 
   const currentLayoutState = activeLayoutState(sceneChoreography, stageLayout, sceneSpeechBeatIndex);
+  const effectiveOrbMovement = effectiveOrbMovementForTelemetry(stageLayout, currentLayoutState.orbMovement, layoutTelemetry);
+  const orbMovementFeedback = effectiveOrbMovement === currentLayoutState.orbMovement
+    ? "server_scene_geometry"
+    : "client_dom_collision_feedback";
 
   return (
     <section
@@ -1210,7 +1228,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-action={currentLayoutState.action}
       data-layout-action-basis={currentLayoutState.basis}
       data-layout-orb-anchor={currentLayoutState.orbAnchor}
-      data-layout-orb-movement={currentLayoutState.orbMovement}
+      data-layout-orb-movement={effectiveOrbMovement}
+      data-layout-requested-orb-movement={currentLayoutState.orbMovement}
+      data-layout-orb-feedback={orbMovementFeedback}
       data-layout-stage-region={currentLayoutState.stageRegion}
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}

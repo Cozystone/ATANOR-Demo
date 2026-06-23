@@ -26,6 +26,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-action-basis" in status_card
     assert "data-layout-orb-anchor" in status_card
     assert "data-layout-orb-movement" in status_card
+    assert "data-layout-requested-orb-movement" in status_card
+    assert "data-layout-orb-feedback" in status_card
     assert "data-layout-text-anchor" in status_card
     assert "data-layout-text-anchor-basis" in status_card
     assert "data-layout-text-anchor-points" in status_card
@@ -87,6 +89,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "DashboardLayoutMetrics" in status_card
     assert "LayoutTelemetry" in status_card
     assert "layoutTelemetryForRect" in status_card
+    assert "effectiveOrbMovementForTelemetry" in status_card
+    assert "client_dom_collision_feedback" in status_card
     assert "offscreenAmount" in status_card
     assert "dashboardLayoutMetrics" in status_card
     assert "textLayoutSegments" in status_card
