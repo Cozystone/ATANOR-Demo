@@ -8697,7 +8697,7 @@ p {
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  bottom: clamp(24px, 4vh, 48px);
+  bottom: clamp(34px, 5.5vh, 62px);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
   display: grid;
   gap: 8px;

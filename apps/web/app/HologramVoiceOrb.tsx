@@ -150,6 +150,7 @@ function buildAuraGeometry() {
 
 export default function HologramVoiceOrb({ state, onActivate, onCancel }: HologramVoiceOrbProps) {
   const hostRef = useRef<HTMLButtonElement | null>(null);
+  const clickGuardRef = useRef({ dragged: false, x: 0, y: 0 });
   const stateRef = useRef(state);
 
   useEffect(() => {
@@ -380,7 +381,28 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
       data-state={state}
       aria-label="ATANOR particle hologram"
       aria-pressed={state === "listening"}
-      onClick={state === "listening" ? onCancel : onActivate}
+      onPointerDown={(event) => {
+        clickGuardRef.current = { dragged: false, x: event.clientX, y: event.clientY };
+      }}
+      onPointerMove={(event) => {
+        const dx = event.clientX - clickGuardRef.current.x;
+        const dy = event.clientY - clickGuardRef.current.y;
+        if (Math.hypot(dx, dy) > 8) {
+          clickGuardRef.current.dragged = true;
+        }
+      }}
+      onClick={(event) => {
+        if (clickGuardRef.current.dragged) {
+          event.preventDefault();
+          clickGuardRef.current.dragged = false;
+          return;
+        }
+        if (state === "listening") {
+          onCancel();
+        } else {
+          onActivate();
+        }
+      }}
     />
   );
 }
