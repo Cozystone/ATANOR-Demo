@@ -75,6 +75,7 @@ type ScenePlanBeat = {
 };
 
 type SceneMotionRole = "subject" | "source" | "target" | "";
+type ScenePose = "standing" | "seated" | "reaching";
 
 type ScenePlan = {
   stage_layout?: "conversation" | "scene_focus";
@@ -105,6 +106,7 @@ type SceneRenderObject = {
   beat: ScenePlanBeat;
   id: string;
   particles: Particle[];
+  poseBaseParticles?: Particle[];
 };
 
 type Props = {
@@ -580,6 +582,15 @@ function sceneObjectAlpha(beat: ScenePlanBeat, elapsedSeconds: number, active: b
   return clamp(base * (active ? 1 : 0.42), 0, 1);
 }
 
+function sceneFigurePoseProgress(beat: ScenePlanBeat, elapsedSeconds: number) {
+  if (String(beat.visual_affordance ?? "") !== "entity_figure") return 1;
+  const pose = scenePoseForBeat(beat);
+  if (pose === "standing") return 1;
+  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  const duration = Math.max(0.24, Number.isFinite(Number(beat.duration)) ? Number(beat.duration) : 1.2);
+  return smoothstep((elapsedSeconds - start) / Math.min(1.2, Math.max(0.46, duration * 0.58)));
+}
+
 function sceneMotionRole(beat: ScenePlanBeat): SceneMotionRole {
   const role = String(beat.semantic_role ?? "");
   if (role === "verified_motion_subject") return "subject";
@@ -765,11 +776,15 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
     .map((beat, index) => {
       const archetype = beat.archetype && PRODUCT_ARCHETYPES.includes(beat.archetype) ? beat.archetype : sceneArchetype(scenePlan, index) ?? "abstract_memory_cloud";
       const id = sceneObjectId(beat, index);
+      const seed = `${beat.object_id ?? ""}:${beat.prompt ?? ""}`;
+      const pose = scenePoseForBeat(beat);
+      const isFigure = String(beat.visual_affordance ?? "") === "entity_figure";
       return {
         archetype,
         beat,
         id,
         particles: sceneParticlesForBeat(beat, archetype, perObjectBudget),
+        poseBaseParticles: isFigure && pose !== "standing" ? figureParticles(perObjectBudget, seed, "standing") : undefined,
       };
     })
     .filter((object) => {
@@ -791,7 +806,7 @@ function sceneParticlesForBeat(beat: ScenePlanBeat, archetype: Archetype, count:
   return fallbackParticles(archetype, count);
 }
 
-function scenePoseForBeat(beat: ScenePlanBeat) {
+function scenePoseForBeat(beat: ScenePlanBeat): ScenePose {
   const relation = String(beat.spatial_relation ?? "");
   const motionRole = sceneMotionRole(beat);
   if (relation === "under_target") return "seated";
@@ -830,7 +845,7 @@ function segmentParticle(
   };
 }
 
-function figureParticles(count: number, seed: string, pose: "standing" | "seated" | "reaching" = "standing"): Particle[] {
+function figureParticles(count: number, seed: string, pose: ScenePose = "standing"): Particle[] {
   const salt = Math.floor(stableUnit(seed, 221) * 10000);
   const seated = pose === "seated";
   const reaching = pose === "reaching";
@@ -1309,10 +1324,12 @@ function drawSceneObjectCloud(
     }
   }
 
-  for (const point of object.particles) {
-    let x = point.x;
-    let y = point.y;
-    let z = point.z;
+  const poseProgress = sceneFigurePoseProgress(object.beat, sceneElapsed);
+  object.particles.forEach((point, index) => {
+    const basePoint = object.poseBaseParticles?.[index];
+    let x = basePoint ? basePoint.x * (1 - poseProgress) + point.x * poseProgress : point.x;
+    let y = basePoint ? basePoint.y * (1 - poseProgress) + point.y * poseProgress : point.y;
+    let z = basePoint ? basePoint.z * (1 - poseProgress) + point.z * poseProgress : point.z;
     const rx = x * cosY - z * sinY;
     const rz = x * sinY + z * cosY;
     x = rx;
@@ -1332,7 +1349,7 @@ function drawSceneObjectCloud(
     const alpha = clamp(point.a * (0.16 + depth * 0.66) * alphaMultiplier * roleStyle.alpha, 0.025, active ? 0.82 : 0.5);
     const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9 + stableUnit(object.id, 31));
     drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6 + roleStyle.trail * 1.7), 1.6, 11), size, color, alpha);
-  }
+  });
 }
 
 function drawSceneMotionPathFlow(

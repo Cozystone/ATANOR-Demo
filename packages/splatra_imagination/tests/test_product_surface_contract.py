@@ -98,6 +98,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "buildSceneRenderObjects" in field
     assert "sceneParticlesForBeat" in field
     assert "scenePoseForBeat" in field
+    assert "type ScenePose" in field
+    assert "poseBaseParticles" in field
+    assert "sceneFigurePoseProgress" in field
+    assert "basePoint.x * (1 - poseProgress)" in field
     assert "figureParticles" in field
     assert "organicStructureParticles" in field
     assert "smallObjectParticles" in field
