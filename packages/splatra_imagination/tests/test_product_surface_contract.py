@@ -27,6 +27,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-orb-anchor" in status_card
     assert "data-layout-stage-region" in status_card
     assert "data-layout-text-rendering" in status_card
+    assert '"conversation_default"' in status_card
     assert "speech_timeline?: Array" in status_card
     assert "scenePlan?.speech_timeline" in status_card
     assert "beat.speech_cue !== false" in status_card

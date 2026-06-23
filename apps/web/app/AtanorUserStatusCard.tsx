@@ -322,7 +322,7 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
   const item = active ?? base ?? {};
   return {
     action: String(item.action ?? fallbackAction),
-    basis: String(item.decision_basis ?? requestedLayoutBasis(scenePlan, stageLayout)),
+    basis: String(item.decision_basis ?? (stageLayout === "scene_focus" ? requestedLayoutBasis(scenePlan, stageLayout) : "conversation_default")),
     orbAnchor: String(item.orb_anchor ?? scenePlan?.dashboard_layout?.orb?.anchor ?? (stageLayout === "scene_focus" ? "lower_right" : "center")),
     stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
     textRendering: String(item.text_rendering ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_rendering ?? "dom_text_not_particles"),
