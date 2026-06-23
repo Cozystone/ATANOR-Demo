@@ -88,6 +88,51 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
     assert plan.topic_scene_templates is False
 
 
+def test_scene_choreography_exports_verified_speech_timeline() -> None:
+    plan = compile_scene_choreography({
+        "stage_layout": "scene_focus",
+        "beats": [
+            {
+                "op": "spawn_object",
+                "object_id": "tree_anchor",
+                "prompt": "tree",
+                "narration": "A tree is the visible anchor.",
+                "speech_cue": False,
+                "speech_cue_basis": "visual_anchor_only",
+                "t_start": 0.0,
+            },
+            {
+                "op": "move",
+                "object_id": "apple_motion",
+                "prompt": "apple",
+                "narration": "The apple moves downward in the verified account.",
+                "speech_cue": True,
+                "speech_cue_basis": "verified_evidence_unit",
+                "scene_group_id": "gravity_example",
+                "scene_group_role": "motion_event",
+                "t_start": 1.4,
+                "duration": 2.2,
+                "particle_behavior": "gravity_arc",
+                "physics_hint": {"basis": "verified_motion_phrase", "field": "downward_attraction", "gravity_bias": 0.7},
+                "motion_path": {"from": [0.0, 0.5, 0.0], "to": [0.0, -0.6, 0.0], "basis": "verified_motion_phrase"},
+            },
+        ],
+    })
+
+    assert len(plan.speech_timeline) == 1
+    item = plan.speech_timeline[0]
+    assert item["beat_index"] == 1
+    assert item["text"] == "The apple moves downward in the verified account."
+    assert item["text_source"] == "verified_beat_narration"
+    assert item["speech_cue_basis"] == "verified_evidence_unit"
+    assert item["scene_group_id"] == "gravity_example"
+    assert item["particle_behavior"] == "gravity_arc"
+    assert item["physics_hint"]["field"] == "downward_attraction"
+    assert item["motion_path"]["basis"] == "verified_motion_phrase"
+    assert plan.dashboard_layout["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
+    assert plan.topic_scene_templates is False
+
+
 def test_command_adapter_keeps_safety_flags_closed() -> None:
     plan, frame = compile_splatra_command("visual scene request", particle_budget=128)
 

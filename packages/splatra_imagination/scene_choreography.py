@@ -54,6 +54,7 @@ class SceneChoreographyPlan:
     primary_surface: str
     beats: list[SceneBeat]
     safety_flags: dict[str, bool]
+    speech_timeline: list[dict[str, Any]] = field(default_factory=list)
     external_splatra_called: bool = False
     raw_buffer_in_agent_context: bool = False
     topic_scene_templates: bool = False
@@ -296,6 +297,37 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     }
 
 
+def _speech_timeline(beats: list[SceneBeat]) -> list[dict[str, Any]]:
+    """Expose verified speech beats as a renderer timeline without inventing text."""
+
+    timeline: list[dict[str, Any]] = []
+    previous_text = ""
+    for index, beat in enumerate(beats):
+        if beat.speech_cue is False:
+            continue
+        text = _clean_text(beat.narration or beat.prompt, limit=240)
+        if not text or text == previous_text:
+            continue
+        previous_text = text
+        timeline.append({
+            "beat_index": index,
+            "object_id": beat.object_id,
+            "scene_group_id": beat.scene_group_id,
+            "scene_group_role": beat.scene_group_role,
+            "text": text,
+            "text_source": "verified_beat_narration",
+            "speech_cue_basis": beat.speech_cue_basis,
+            "t_start": beat.t_start,
+            "duration": beat.duration,
+            "particle_behavior": beat.particle_behavior,
+            "physics_hint": dict(beat.physics_hint),
+            "motion_path": dict(beat.motion_path),
+            "semantic_role": beat.semantic_role,
+            "visual_affordance": beat.visual_affordance,
+        })
+    return timeline
+
+
 def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     """Validate an agent-authored SPLATRA scene plan without inventing content.
 
@@ -323,5 +355,6 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
         dashboard_layout=dashboard_layout,
         primary_surface="splatra_stage" if stage_layout == "scene_focus" else "conversation",
         beats=beats,
+        speech_timeline=_speech_timeline(beats),
         safety_flags=default_safety_flags(),
     )

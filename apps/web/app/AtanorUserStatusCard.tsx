@@ -117,6 +117,22 @@ type SceneChoreographyPayload = {
     };
   };
   primary_surface?: string;
+  speech_timeline?: Array<{
+    beat_index?: number;
+    object_id?: string;
+    scene_group_id?: string;
+    scene_group_role?: string;
+    text?: string;
+    text_source?: string;
+    speech_cue_basis?: string;
+    t_start?: number;
+    duration?: number;
+    particle_behavior?: string;
+    physics_hint?: Record<string, any>;
+    motion_path?: Record<string, any>;
+    semantic_role?: string;
+    visual_affordance?: string;
+  }>;
   beats?: Array<{
     op?: SceneBeatOp;
     archetype?: "orb" | "tower" | "tree" | "creature" | "circuit" | "city_block" | "constellation" | "machine_core" | "abstract_memory_cloud";
@@ -126,6 +142,8 @@ type SceneChoreographyPayload = {
     semantic_role?: string;
     visual_affordance?: string;
     spatial_relation?: string;
+    particle_behavior?: string;
+    physics_hint?: Record<string, any>;
     source_fact?: string;
     speech_cue?: boolean;
     speech_cue_basis?: string;
@@ -281,6 +299,18 @@ function requestedLayoutDecision(scenePlan: SceneChoreographyPayload, stageLayou
 
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const timeline = Array.isArray(scenePlan?.speech_timeline) ? scenePlan?.speech_timeline ?? [] : [];
+  const timelineBeats = timeline
+    .map((item, index) => ({
+      beatIndex: Number.isFinite(Number(item.beat_index)) ? Number(item.beat_index) : index,
+      tStart: Number.isFinite(Number(item.t_start)) ? Number(item.t_start) : index * 1.35,
+      text: stripEmotionTag(String(item.text || "").trim()),
+    }))
+    .filter((beat) => beat.text.length > 0)
+    .filter((beat, index, array) => index === 0 || beat.text !== array[index - 1].text)
+    .sort((left, right) => left.tStart - right.tStart);
+  if (timelineBeats.length) return timelineBeats;
+
   const speechCueBeats = beats.filter((beat) => beat.speech_cue !== false);
   const sourceBeats = speechCueBeats.length ? speechCueBeats : beats;
   return sourceBeats
@@ -289,8 +319,8 @@ function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
       const index = beatIndex >= 0 ? beatIndex : 0;
       return {
         beatIndex: index,
-      tStart: Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : index * 1.35,
-      text: stripEmotionTag(String(beat.narration || beat.prompt || "").trim()),
+        tStart: Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : index * 1.35,
+        text: stripEmotionTag(String(beat.narration || beat.prompt || "").trim()),
       };
     })
     .filter((beat) => beat.text.length > 0)
