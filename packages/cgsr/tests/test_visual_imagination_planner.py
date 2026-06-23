@@ -88,6 +88,26 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
 
 
+def test_visual_planner_does_not_scene_from_function_word_overlap(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": "The Second Law of Thermodynamics explains entropy in closed systems.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "Thermodynamics"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("What is the law of gravity?", tmp_path)
+
+    assert plan.enabled is False
+    assert plan.scene_choreography is None
+    assert plan.diagnostics["topic_scene_templates"] is False
+
+
 def test_visual_planner_uses_contentful_korean_scene_anchors(tmp_path: Path) -> None:
     (tmp_path / "evidence.jsonl").write_text(
         json.dumps(

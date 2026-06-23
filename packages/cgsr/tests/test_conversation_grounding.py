@@ -87,6 +87,38 @@ def test_general_knowledge_can_use_readonly_verified_store(tmp_path: Path) -> No
     assert "universal gravitation" in answer
 
 
+def test_general_knowledge_does_not_ground_on_english_function_words(tmp_path: Path) -> None:
+    evidence_path = tmp_path / "evidence.jsonl"
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "text": "The Second Law of Thermodynamics explains entropy in closed systems.",
+                "verification": {"status": "verified"},
+                "provenance": {
+                    "source_name": "licensed_fixture",
+                    "title": "Thermodynamics",
+                    "url": "https://example.test/thermodynamics",
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    prompt = "What is the law of gravity?"
+    route = route_conversation_request(prompt)
+    context = gather_grounded_context(prompt, route, runtime={"verified_store_path": str(tmp_path)})
+    answer = realize_grounded_context(prompt, context)
+
+    assert route.route_type == "general_knowledge_question"
+    assert context.grounding_source == "none"
+    assert context.grounding_quality == "none"
+    assert not context.facts
+    assert "Thermodynamics" not in answer
+    assert "entropy" not in answer
+
+
 def test_korean_general_knowledge_uses_utf8_verified_store_tokens(tmp_path: Path) -> None:
     evidence_path = tmp_path / "evidence.jsonl"
     evidence_path.write_text(
