@@ -23,12 +23,17 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "firstSceneNarration" in status_card
     assert "sceneSpeechStartedAt" in status_card
     assert "data-speech-placement" in status_card
+    assert "data-self-narration-placement" in status_card
+    assert "selfNarrationPlacement" in status_card
+    assert "selfNarrationRef" in status_card
     assert "requestedTextAnchor" in status_card
     assert "requestedLayoutIntent" in status_card
     assert "scenePlanBlockers" in status_card
     assert "rectsOverlap" in status_card
     assert "data-layout-decision" in status_card
     assert "requestedLayoutDecision" in status_card
+    assert "requestedLayoutBasis" in status_card
+    assert "client_scene_geometry_fallback" in status_card
     assert "ParticleText" not in status_card
     assert "scenePlan?: ScenePlan | null" in field
     assert "type SceneTransform" in field
@@ -86,6 +91,9 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert '[data-speech-placement="lower_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_right"] .atanor-hologram-speech' in css
+    assert '[data-self-narration-placement="upper_left"] .atanor-hologram-self-narration' in css
+    assert '[data-self-narration-placement="lower_left"] .atanor-hologram-self-narration' in css
+    assert '[data-self-narration-placement="upper_right"] .atanor-hologram-self-narration' in css
     assert '[data-scene-intent="wide_particle_stage"] .hologram-voice-orb' in css
     assert "--atanor-scene-orb-size" in css
     assert "--atanor-scene-field-opacity" in css

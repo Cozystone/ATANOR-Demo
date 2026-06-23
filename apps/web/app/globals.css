@@ -8512,6 +8512,28 @@ p {
   top: clamp(108px, 16vh, 176px);
 }
 
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-self-narration-placement="upper_left"] .atanor-hologram-self-narration {
+  left: clamp(28px, 6vw, 92px);
+  max-width: min(360px, 28vw);
+  right: auto;
+  top: clamp(112px, 17vh, 188px);
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-self-narration-placement="lower_left"] .atanor-hologram-self-narration {
+  bottom: clamp(176px, 24vh, 260px);
+  left: clamp(28px, 6vw, 92px);
+  max-width: min(360px, 30vw);
+  right: auto;
+  top: auto;
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-self-narration-placement="upper_right"] .atanor-hologram-self-narration {
+  left: auto;
+  max-width: min(360px, 28vw);
+  right: clamp(42px, 8vw, 126px);
+  top: clamp(108px, 16vh, 176px);
+}
+
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-hologram-speech {
   bottom: clamp(112px, var(--atanor-scene-speech-bottom, 18vh), 204px);
   left: auto;

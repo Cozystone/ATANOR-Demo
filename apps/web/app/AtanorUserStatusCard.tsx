@@ -224,13 +224,24 @@ function requestedLayoutIntent(scenePlan: SceneChoreographyPayload) {
   return "balanced_scene";
 }
 
-function requestedLayoutDecision(scenePlan: SceneChoreographyPayload) {
+function requestedLayoutBasis(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout) {
+  const basis = scenePlan?.dashboard_layout?.planning_basis;
+  if (typeof basis === "string" && basis) return basis;
+  if (stageLayout === "scene_focus") return "client_scene_geometry_fallback";
+  return "none";
+}
+
+function requestedLayoutDecision(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout) {
   const decision = scenePlan?.dashboard_layout?.agent_layout_decision;
   const action = typeof decision?.agent_action === "string" ? decision.agent_action : "";
   const textRendering = typeof decision?.text_rendering === "string" ? decision.text_rendering : "";
   if (action && textRendering) return `${action}:${textRendering}`;
   if (action) return action;
   if (textRendering) return textRendering;
+  if (stageLayout === "scene_focus" && requestedLayoutIntent(scenePlan) === "wide_particle_stage") {
+    return "yield_center_to_particle_scene:dom_text_not_particles";
+  }
+  if (stageLayout === "scene_focus") return "share_center_with_particle_scene:dom_text_not_particles";
   return "none";
 }
 
@@ -427,8 +438,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
   const [sceneSpeechStartedAt, setSceneSpeechStartedAt] = useState(0);
   const [speechPlacement, setSpeechPlacement] = useState<TextAnchor>("lower_center");
+  const [selfNarrationPlacement, setSelfNarrationPlacement] = useState<TextAnchor>("upper_right");
   const dashboardRef = useRef<HTMLElement | null>(null);
   const speechRef = useRef<HTMLParagraphElement | null>(null);
+  const selfNarrationRef = useRef<HTMLParagraphElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const selfNarrationHoldUntilRef = useRef(0);
@@ -486,38 +499,63 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   useEffect(() => {
     if (stageLayout !== "scene_focus") {
       setSpeechPlacement("lower_center");
+      setSelfNarrationPlacement("upper_right");
       return undefined;
     }
     const requested = requestedTextAnchor(sceneChoreography);
     const preferred: TextAnchor = requested === "auto" ? "lower_left" : requested;
+    const preferredSelfNarration: TextAnchor = requestedLayoutIntent(sceneChoreography) === "wide_particle_stage" ? "upper_right" : "upper_left";
     let frameId = 0;
     let timer = 0;
 
     const updatePlacement = () => {
       const dashboard = dashboardRef.current;
       const speech = speechRef.current;
-      if (!dashboard || !speech) {
+      const selfNarrationElement = selfNarrationRef.current;
+      if (!dashboard || (!speech && !selfNarrationElement)) {
         setSpeechPlacement(preferred);
+        setSelfNarrationPlacement(preferredSelfNarration);
         return;
       }
-      const speechBox = rectFromDom(speech.getBoundingClientRect());
       const dashboardBox = rectFromDom(dashboard.getBoundingClientRect());
-      const blockers = [
+      const baseBlockers = [
         dashboard.querySelector(".hologram-voice-orb")?.getBoundingClientRect(),
-        dashboard.querySelector(".atanor-hologram-self-narration")?.getBoundingClientRect(),
         composerRef.current?.getBoundingClientRect(),
       ]
         .filter((rect): rect is DOMRect => Boolean(rect))
         .map(rectFromDom);
-      blockers.push(...scenePlanBlockers(sceneChoreography, dashboardBox));
       const candidates: TextAnchor[] = ["lower_left", "upper_left", "upper_right", "lower_center"];
-      const next = candidates
-        .map((anchor) => ({
-          anchor,
-          score: scoreSpeechAnchor(anchor, speechBox, dashboardBox, blockers, preferred),
-        }))
-        .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferred;
-      setSpeechPlacement((current) => (current === next ? current : next));
+      const sceneBlockers = scenePlanBlockers(sceneChoreography, dashboardBox);
+      const blockers = [...baseBlockers, ...sceneBlockers];
+      let nextSpeechRect: RectLike | null = null;
+
+      if (speech) {
+        const speechBox = rectFromDom(speech.getBoundingClientRect());
+        const speechBlockers = selfNarrationElement
+          ? [...blockers, rectFromDom(selfNarrationElement.getBoundingClientRect())]
+          : blockers;
+        const next = candidates
+          .map((anchor) => ({
+            anchor,
+            score: scoreSpeechAnchor(anchor, speechBox, dashboardBox, speechBlockers, preferred),
+          }))
+          .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferred;
+        nextSpeechRect = candidateSpeechRect(next, speechBox, dashboardBox);
+        setSpeechPlacement((current) => (current === next ? current : next));
+      }
+
+      if (selfNarrationElement) {
+        const selfBox = rectFromDom(selfNarrationElement.getBoundingClientRect());
+        const selfCandidates: TextAnchor[] = ["upper_right", "upper_left", "lower_left"];
+        const selfBlockers = nextSpeechRect ? [...blockers, nextSpeechRect] : blockers;
+        const nextSelf = selfCandidates
+          .map((anchor) => ({
+            anchor,
+            score: scoreSpeechAnchor(anchor, selfBox, dashboardBox, selfBlockers, preferredSelfNarration),
+          }))
+          .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferredSelfNarration;
+        setSelfNarrationPlacement((current) => (current === nextSelf ? current : nextSelf));
+      }
     };
 
     frameId = window.requestAnimationFrame(updatePlacement);
@@ -528,7 +566,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       window.clearInterval(timer);
       window.removeEventListener("resize", updatePlacement);
     };
-  }, [sceneChoreography, stageLayout, typedSpeechLine]);
+  }, [sceneChoreography, stageLayout, typedSelfNarration, typedSpeechLine]);
 
   useEffect(() => {
     let cancelled = false;
@@ -752,9 +790,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-speaking={speakingVisual ? "true" : "false"}
       data-stage-layout={stageLayout}
       data-speech-placement={speechPlacement}
+      data-self-narration-placement={selfNarrationPlacement}
       data-scene-intent={stageLayout === "scene_focus" ? requestedLayoutIntent(sceneChoreography) : "conversation"}
-      data-layout-basis={sceneChoreography?.dashboard_layout?.planning_basis ?? "none"}
-      data-layout-decision={requestedLayoutDecision(sceneChoreography)}
+      data-layout-basis={requestedLayoutBasis(sceneChoreography, stageLayout)}
+      data-layout-decision={requestedLayoutDecision(sceneChoreography, stageLayout)}
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
       <SplatraImaginationField
@@ -770,7 +809,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
         {typedSelfNarration ? (
-          <p className="atanor-hologram-self-narration" aria-live="polite">
+          <p ref={selfNarrationRef} className="atanor-hologram-self-narration" aria-live="polite">
             {typedSelfNarration}
           </p>
         ) : null}
