@@ -541,6 +541,11 @@ function estimatedTextRectFromDom(element: HTMLElement, text: string, maxWidth: 
   };
 }
 
+function stableLayoutMeasurementText(fullText: string, typedText: string) {
+  // Reserve the final DOM footprint while the typewriter is still catching up.
+  return (fullText || typedText || "").trim();
+}
+
 function finiteNumber(value: unknown, fallback: number) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -843,7 +848,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
 
       if (speech) {
         const speechMaxWidth = Math.min(540, window.innerWidth * (layoutMetrics.speechMaxVw / 100));
-        const speechBox = estimatedTextRectFromDom(speech, typedSpeechLine || speechLine, speechMaxWidth);
+        const speechBox = estimatedTextRectFromDom(speech, stableLayoutMeasurementText(speechLine, typedSpeechLine), speechMaxWidth);
         const speechBlockers = selfNarrationElement
           ? [...blockers, rectFromDom(selfNarrationElement.getBoundingClientRect())]
           : blockers;
@@ -859,7 +864,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
 
       if (selfNarrationElement) {
         const selfMaxWidth = Math.min(360, window.innerWidth * (layoutMetrics.selfNarrationMaxVw / 100));
-        const selfBox = estimatedTextRectFromDom(selfNarrationElement, typedSelfNarration || selfNarration, selfMaxWidth);
+        const selfBox = estimatedTextRectFromDom(selfNarrationElement, stableLayoutMeasurementText(selfNarration, typedSelfNarration), selfMaxWidth);
         const selfCandidates: TextAnchor[] = ["upper_right", "upper_left", "lower_left"];
         const selfBlockers = nextSpeechRect ? [...blockers, nextSpeechRect] : blockers;
         const nextSelf = selfCandidates
@@ -1136,7 +1141,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
-      data-text-layout-basis="dom_text_canvas_metrics_no_particle_text"
+      data-text-layout-basis="dom_text_canvas_metrics_preallocated_no_particle_text"
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
       <SplatraImaginationField
