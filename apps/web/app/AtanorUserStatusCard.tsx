@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
 import HologramVoiceOrb, { HologramVoiceOrbState } from "./HologramVoiceOrb";
+import ParticleText from "./ParticleText";
 import SplatraImaginationField from "./SplatraImaginationField";
 
 type Language = "en" | "ko";
@@ -36,32 +37,9 @@ function firstSpeechBeat(text: string) {
   if (clean.length <= 46) return clean;
   const naturalBreak = clean.search(/[.!?]\s?/);
   if (naturalBreak > 16 && naturalBreak < 64) return clean.slice(0, naturalBreak + 1);
-  const commaBreak = clean.search(/[,，]\s?/);
+  const commaBreak = clean.search(/[,\u3001]\s?/);
   if (commaBreak > 16 && commaBreak < 58) return clean.slice(0, commaBreak + 1);
   return `${clean.slice(0, 44).trim()}...`;
-}
-
-function useTypewriterText(text: string, stepMs = 22) {
-  const [visible, setVisible] = useState("");
-
-  useEffect(() => {
-    if (!text) {
-      setVisible("");
-      return;
-    }
-    let index = 0;
-    setVisible("");
-    const timer = window.setInterval(() => {
-      index += 1;
-      setVisible(text.slice(0, index));
-      if (index >= text.length) {
-        window.clearInterval(timer);
-      }
-    }, stepMs);
-    return () => window.clearInterval(timer);
-  }, [text, stepMs]);
-
-  return visible;
 }
 
 function isAsmConversationPayload(payload: Record<string, any>) {
@@ -130,9 +108,6 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const cleanPlaceholder = voiceMode
     ? language === "ko" ? "\uC74C\uC131 \uBAA8\uB4DC · \uD14D\uC2A4\uD2B8\uB3C4 \uC785\uB825\uD560 \uC218 \uC788\uC5B4\uC694" : "Voice mode · text still works"
     : language === "ko" ? "ATANOR\uC5D0\uAC8C \uB9D0\uD558\uAE30" : "Message ATANOR";
-  const typedSpeechLine = useTypewriterText(speechLine, 24);
-  const typedSelfNarration = useTypewriterText(selfNarration, 28);
-
   useEffect(() => {
     if (orbState !== "listening") return;
     const thinkingTimer = window.setTimeout(() => setOrbState("thinking"), 1500);
@@ -374,15 +349,25 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       />
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
-        {typedSelfNarration ? (
-          <p className="atanor-hologram-self-narration" aria-live="polite">
-            {typedSelfNarration}
-          </p>
+        {selfNarration ? (
+          <ParticleText
+            text={selfNarration}
+            tone="self"
+            className="atanor-hologram-self-narration"
+            speedMs={28}
+            maxLines={3}
+            aria-live="polite"
+          />
         ) : null}
-        {typedSpeechLine ? (
-          <p className="atanor-hologram-speech" aria-live="polite">
-            {typedSpeechLine}
-          </p>
+        {speechLine ? (
+          <ParticleText
+            text={speechLine}
+            tone="speech"
+            className="atanor-hologram-speech"
+            speedMs={24}
+            maxLines={2}
+            aria-live="polite"
+          />
         ) : null}
         {voiceNotice ? (
           <p className="atanor-hologram-voice-status" aria-live="polite">

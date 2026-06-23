@@ -140,6 +140,37 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function flowFieldAngle(x: number, y: number, elapsed: number, salt = 0) {
+  const low = Math.sin(x * 0.006 + elapsed * 0.36 + salt) + Math.cos(y * 0.005 - elapsed * 0.29);
+  const high = Math.sin((x + y) * 0.0028 + elapsed * 0.48 + salt * 1.7);
+  return (low * 0.72 + high * 0.46) * Math.PI;
+}
+
+function drawParticleStroke(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  length: number,
+  size: number,
+  color: [number, number, number],
+  alpha: number,
+) {
+  const dx = Math.cos(angle) * length;
+  const dy = Math.sin(angle) * length;
+  const [r, g, b] = color;
+  ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.36})`;
+  ctx.lineWidth = Math.max(0.35, size * 0.46);
+  ctx.beginPath();
+  ctx.moveTo(x - dx * 0.22, y - dy * 0.22);
+  ctx.lineTo(x + dx, y + dy);
+  ctx.stroke();
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  ctx.beginPath();
+  ctx.arc(x + dx, y + dy, size * 0.52, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function seeded(index: number, salt = 0) {
   const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453123;
   return value - Math.floor(value);
@@ -421,6 +452,11 @@ function drawParticles(
     drawArchetypeGuides(ctx, archetype, width, height, elapsed, controls);
   }
 
+  if (ambient) {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+  }
+
   for (const point of particles) {
     let x = point.x;
     let y = point.y;
@@ -460,10 +496,25 @@ function drawParticles(
       if (clearance < 0.08) size *= 0.62;
     }
 
-    ctx.fillStyle = `rgba(${Math.floor(point.r * 255)}, ${Math.floor(point.g * 255)}, ${Math.floor(point.b * 255)}, ${alpha})`;
-    ctx.beginPath();
-    ctx.arc(px, py, size, 0, Math.PI * 2);
-    ctx.fill();
+    const color: [number, number, number] = [
+      Math.floor(point.r * 255),
+      Math.floor(point.g * 255),
+      Math.floor(point.b * 255),
+    ];
+    if (ambient) {
+      const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9);
+      const trailLength = clamp(size * (3.6 + controls.curiosity * 3.8 + controls.speaking_energy * 2.4), 1.8, 12);
+      drawParticleStroke(ctx, px, py, angle, trailLength, size, color, alpha);
+    } else {
+      ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(px, py, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (ambient) {
+    ctx.globalCompositeOperation = "source-over";
   }
 
   if (ambient) {

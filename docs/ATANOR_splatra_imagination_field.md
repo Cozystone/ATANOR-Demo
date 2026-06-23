@@ -47,6 +47,8 @@ It may not execute generated code, mutate production stores, write Local Brain m
 
 Product home uses a bounded particle budget and rotates through recognizable archetypes without exposing internal controls. It preserves a clear radius around the central orb and input bar so the conversation surface remains readable.
 
+Product home renders generative visual elements as particles. The surrounding dashboard field uses short particle strokes in a deterministic flow field instead of hard connector lines, inspired by the CodePen particle-swarm reference. Visible speech and self narration use a Pretext-inspired canvas layout path: text is line-wrapped with canvas measurement, sampled into particles, and animated into glyph shapes. The accessible text remains available for screen readers.
+
 Lab mode exposes archetype selection, switch/random controls, particle count, compression ratio, LOD summary, visual intensity, clear radius, and a warning when the object is too subtle for product use.
 
 ## SPLATRA Command Adapter
@@ -69,6 +71,8 @@ This endpoint compiles a visual command into:
 It does not call external LLMs, sLLMs, image models, Local Brain writes, Cloud production writes, candidate promotion, arbitrary JavaScript, git, or shell execution.
 
 Product mode no longer draws constellation guide lines around the central orb. Those guide lines are kept for Lab inspection only because they were visually distracting on the user-facing dashboard.
+
+The command path is intended to let ATANOR use SPLATRA as a bounded dashboard manipulator: move, morph, or recompose particles inside the UI surface without shell execution, production mutation, or hidden model calls.
 
 ## Future Gates
 

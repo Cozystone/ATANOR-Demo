@@ -8405,6 +8405,7 @@ p {
   color: rgba(236, 249, 255, 0.72);
   filter: drop-shadow(0 0 18px rgba(42, 226, 255, 0.2));
   font: 650 clamp(0.9rem, 1.2vw, 1.1rem)/1.45 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  height: clamp(62px, 10vh, 104px);
   letter-spacing: 0;
   margin: 0;
   max-width: min(420px, 34vw);
@@ -8423,6 +8424,7 @@ p {
     drop-shadow(0 0 12px rgba(255, 104, 40, 0.22))
     drop-shadow(0 0 28px rgba(255, 104, 40, 0.08));
   font: 700 clamp(0.78rem, 0.96vw, 0.98rem)/1.52 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  height: clamp(76px, 11vh, 116px);
   letter-spacing: 0;
   left: calc(50% + clamp(128px, 18vmin, 238px));
   margin: 0;
@@ -8434,6 +8436,25 @@ p {
   text-wrap: balance;
   top: calc(50% - clamp(226px, 28vmin, 310px));
   z-index: 7;
+}
+
+.atanor-hologram-speech canvas,
+.atanor-hologram-self-narration canvas {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.atanor-particle-text-accessible {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .atanor-hologram-voice-status {

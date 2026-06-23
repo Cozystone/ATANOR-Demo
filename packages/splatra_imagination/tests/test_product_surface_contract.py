@@ -14,7 +14,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert 'interactive={false}' in status_card
     assert 'className="atanor-dashboard-imagination-field"' in status_card
     assert "atanor-hologram-composer" in status_card
+    assert "ParticleText" in status_card
     assert "splatra-imagination-product-label" in field
+    assert "flowFieldAngle" in field
+    assert "drawParticleStroke" in field
     assert "SPLATRA Imagination Field" in field
     assert 'mode === "lab"' in field
 
