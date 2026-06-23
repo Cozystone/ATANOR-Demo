@@ -464,7 +464,7 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
         archetype,
         beat,
         id,
-        particles: fallbackParticles(archetype, perObjectBudget),
+        particles: sceneParticlesForBeat(beat, archetype, perObjectBudget),
       };
     })
     .filter((object) => {
@@ -472,6 +472,105 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
       seen.add(object.id);
       return true;
     });
+}
+
+function sceneParticlesForBeat(beat: ScenePlanBeat, archetype: Archetype, count: number): Particle[] {
+  const affordance = String(beat.visual_affordance ?? "");
+  if (affordance === "entity_figure") return figureParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`);
+  if (affordance === "small_object" || affordance === "small_moving_object") {
+    return smallObjectParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`, affordance === "small_moving_object");
+  }
+  return fallbackParticles(archetype, count);
+}
+
+function semanticParticleColor(index: number, salt: number, warm = 0.32) {
+  return {
+    r: 0.1 + warm * 0.74 + seeded(index, salt + 3) * 0.14,
+    g: 0.68 + seeded(index, salt + 5) * 0.24,
+    b: 0.92 + seeded(index, salt + 7) * 0.08,
+    a: 0.5 + seeded(index, salt + 11) * 0.42,
+    scale: 0.76 + seeded(index, salt + 13) * 1.18,
+  };
+}
+
+function segmentParticle(
+  index: number,
+  start: [number, number, number],
+  end: [number, number, number],
+  thickness: number,
+  salt: number,
+) {
+  const t = seeded(index, salt);
+  const angle = seeded(index, salt + 1) * Math.PI * 2;
+  const radius = Math.sqrt(seeded(index, salt + 2)) * thickness;
+  return {
+    x: start[0] * (1 - t) + end[0] * t + Math.cos(angle) * radius,
+    y: start[1] * (1 - t) + end[1] * t + (seeded(index, salt + 3) - 0.5) * thickness,
+    z: start[2] * (1 - t) + end[2] * t + Math.sin(angle) * radius * 0.7,
+  };
+}
+
+function figureParticles(count: number, seed: string): Particle[] {
+  const salt = Math.floor(stableUnit(seed, 221) * 10000);
+  const limbs: Array<{ start: [number, number, number]; end: [number, number, number]; thickness: number; warm: number }> = [
+    { start: [0, 0.42, 0], end: [0, -0.35, 0], thickness: 0.13, warm: 0.26 },
+    { start: [-0.05, 0.28, 0], end: [-0.42, -0.02, 0], thickness: 0.06, warm: 0.38 },
+    { start: [0.05, 0.28, 0], end: [0.42, -0.02, 0], thickness: 0.06, warm: 0.38 },
+    { start: [-0.05, -0.34, 0], end: [-0.27, -0.88, 0], thickness: 0.07, warm: 0.3 },
+    { start: [0.05, -0.34, 0], end: [0.27, -0.88, 0], thickness: 0.07, warm: 0.3 },
+  ];
+  return Array.from({ length: count }, (_, index) => {
+    const headCutoff = Math.floor(count * 0.22);
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    let warm = 0.34;
+    let scaleBoost = 1;
+    if (index < headCutoff) {
+      const local = index / Math.max(1, headCutoff);
+      const theta = index * Math.PI * (3 - Math.sqrt(5));
+      const yy = 1 - 2 * local;
+      const ring = Math.sqrt(Math.max(0, 1 - yy * yy));
+      const radius = 0.17 + (seeded(index, salt + 31) - 0.5) * 0.025;
+      x = Math.cos(theta) * ring * radius;
+      y = 0.66 + yy * radius;
+      z = Math.sin(theta) * ring * radius * 0.72;
+      warm = 0.46;
+      scaleBoost = 1.22;
+    } else {
+      const limb = limbs[(index - headCutoff) % limbs.length];
+      const point = segmentParticle(index, limb.start, limb.end, limb.thickness, salt + (index % limbs.length) * 19);
+      x = point.x;
+      y = point.y;
+      z = point.z;
+      warm = limb.warm;
+      scaleBoost = limb.thickness > 0.1 ? 1.08 : 0.82;
+    }
+    const color = semanticParticleColor(index, salt, warm);
+    return { x, y, z, ...color, scale: color.scale * scaleBoost };
+  });
+}
+
+function smallObjectParticles(count: number, seed: string, moving: boolean): Particle[] {
+  const salt = Math.floor(stableUnit(seed, 337) * 10000);
+  return Array.from({ length: count }, (_, index) => {
+    const t = (index + 0.5) / count;
+    const theta = index * Math.PI * (3 - Math.sqrt(5));
+    const yy = 1 - 2 * t;
+    const ring = Math.sqrt(Math.max(0, 1 - yy * yy));
+    const radius = 0.26 + Math.sin(index * 0.29 + salt) * 0.018;
+    const tail = moving && index > count * 0.72;
+    const tailT = tail ? (index - count * 0.72) / Math.max(1, count * 0.28) : 0;
+    const color = semanticParticleColor(index, salt, tail ? 0.62 : 0.78);
+    return {
+      x: Math.cos(theta) * ring * radius - tailT * (0.32 + seeded(index, salt + 17) * 0.18),
+      y: yy * radius + Math.sin(tailT * Math.PI) * 0.05,
+      z: Math.sin(theta) * ring * radius * 0.72,
+      ...color,
+      a: tail ? color.a * (1 - tailT * 0.62) : color.a,
+      scale: color.scale * (tail ? 0.58 : 1.28),
+    };
+  });
 }
 
 function fallbackParticles(archetype: Archetype, count: number): Particle[] {
