@@ -239,7 +239,26 @@ def _scene_op_for_unit(unit: str, *, index: int, is_last: bool) -> str:
     return "morph"
 
 
-def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: float) -> dict[str, Any]:
+def _beat_duration_for_unit(unit: dict[str, str], op: str) -> float:
+    """Estimate visual beat duration from the grounded narration length.
+
+    This keeps the stage synchronized with the evidence-backed utterance
+    cadence. It is not a content script and it does not author narration.
+    """
+
+    narration = unit.get("narration") or unit.get("prompt") or ""
+    compact_length = len(re.sub(r"\s+", "", narration))
+    word_count = len(re.findall(r"[0-9A-Za-z가-힣]+", narration))
+    length_signal = max(compact_length / 32.0, word_count / 9.0)
+    base = 1.05 + min(1.65, length_signal * 0.34)
+    if op == "move":
+        base += 0.34
+    elif op == "focus_camera":
+        base += 0.18
+    return round(min(3.2, max(1.05, base)), 2)
+
+
+def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: float, duration: float | None = None) -> dict[str, Any]:
     phrase = unit["prompt"]
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
     visual_affordance = _visual_affordance_for_phrase(phrase, unit["narration"], unit["semantic_role"], op)
@@ -256,7 +275,7 @@ def _make_scene_beat(unit: dict[str, str], *, index: int, op: str, t_start: floa
         "source_fact": unit["source_fact"],
         "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index, visual_affordance),
         "t_start": round(t_start, 2),
-        "duration": 1.35 if op == "move" else 1.25,
+        "duration": duration if duration is not None else _beat_duration_for_unit(unit, op),
         "position": position,
         "camera": _camera_for_unit(position, visual_affordance, op, spatial_relation, index) if op in {"focus_camera", "move"} else {},
     }
@@ -628,12 +647,17 @@ def plan_visual_imagination(
             },
         ]
     beats: list[dict[str, Any]] = []
+    t_start = 0.0
     for index, unit in enumerate(scene_units):
         op = _scene_op_for_unit(unit["narration"], index=index, is_last=index == len(scene_units) - 1 and index > 0)
-        t_start = index * 1.35
-        beats.append(_make_scene_beat(unit, index=index, op=op, t_start=t_start))
+        duration = _beat_duration_for_unit(unit, op)
+        beats.append(_make_scene_beat(unit, index=index, op=op, t_start=t_start, duration=duration))
         if op != "move" and _has_any_cue(unit["narration"], MOTION_CUES):
-            beats.append(_make_scene_beat(unit, index=index, op="move", t_start=t_start + 0.68))
+            move_duration = _beat_duration_for_unit(unit, "move")
+            beats.append(_make_scene_beat(unit, index=index, op="move", t_start=t_start + duration * 0.42, duration=move_duration))
+            t_start += max(duration, duration * 0.42 + move_duration) + 0.16
+        else:
+            t_start += duration + 0.16
     if not beats:
         return VisualImaginationPlan(
             enabled=False,

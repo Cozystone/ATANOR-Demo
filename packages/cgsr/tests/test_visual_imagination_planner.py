@@ -178,6 +178,10 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography is not None
     beats = plan.scene_choreography["beats"]
     prompts = [beat["prompt"] for beat in beats]
+    starts = [beat["t_start"] for beat in beats]
+    assert starts == sorted(starts)
+    assert all(beat["duration"] >= 1.05 for beat in beats)
+    assert len({beat["duration"] for beat in beats}) >= 2
     assert any(prompt == "Isaac Newton" for prompt in prompts)
     assert any(prompt == "apple" for prompt in prompts)
     assert any(prompt == "tree" for prompt in prompts)
