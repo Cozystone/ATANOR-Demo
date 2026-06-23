@@ -476,11 +476,21 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
 
 function sceneParticlesForBeat(beat: ScenePlanBeat, archetype: Archetype, count: number): Particle[] {
   const affordance = String(beat.visual_affordance ?? "");
-  if (affordance === "entity_figure") return figureParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`);
+  if (affordance === "entity_figure") return figureParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`, scenePoseForBeat(beat));
+  if (affordance === "organic_structure") {
+    return organicStructureParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`, beat);
+  }
   if (affordance === "small_object" || affordance === "small_moving_object") {
     return smallObjectParticles(count, `${beat.object_id ?? ""}:${beat.prompt ?? ""}`, affordance === "small_moving_object");
   }
   return fallbackParticles(archetype, count);
+}
+
+function scenePoseForBeat(beat: ScenePlanBeat) {
+  const text = `${beat.prompt ?? ""} ${beat.narration ?? ""} ${beat.source_fact ?? ""}`.toLowerCase();
+  if (/\b(sat|sitting|seated|rested|under)\b/.test(text)) return "seated";
+  if (/\b(fell|falling|dropped|moved|toward|towards)\b/.test(text)) return "reaching";
+  return "standing";
 }
 
 function semanticParticleColor(index: number, salt: number, warm = 0.32) {
@@ -510,14 +520,16 @@ function segmentParticle(
   };
 }
 
-function figureParticles(count: number, seed: string): Particle[] {
+function figureParticles(count: number, seed: string, pose: "standing" | "seated" | "reaching" = "standing"): Particle[] {
   const salt = Math.floor(stableUnit(seed, 221) * 10000);
+  const seated = pose === "seated";
+  const reaching = pose === "reaching";
   const limbs: Array<{ start: [number, number, number]; end: [number, number, number]; thickness: number; warm: number }> = [
     { start: [0, 0.42, 0], end: [0, -0.35, 0], thickness: 0.13, warm: 0.26 },
-    { start: [-0.05, 0.28, 0], end: [-0.42, -0.02, 0], thickness: 0.06, warm: 0.38 },
-    { start: [0.05, 0.28, 0], end: [0.42, -0.02, 0], thickness: 0.06, warm: 0.38 },
-    { start: [-0.05, -0.34, 0], end: [-0.27, -0.88, 0], thickness: 0.07, warm: 0.3 },
-    { start: [0.05, -0.34, 0], end: [0.27, -0.88, 0], thickness: 0.07, warm: 0.3 },
+    { start: [-0.05, 0.28, 0], end: [reaching ? -0.58 : -0.42, reaching ? 0.22 : -0.02, 0], thickness: 0.06, warm: 0.38 },
+    { start: [0.05, 0.28, 0], end: [reaching ? 0.58 : 0.42, reaching ? 0.22 : -0.02, 0], thickness: 0.06, warm: 0.38 },
+    { start: [-0.05, -0.34, 0], end: [seated ? -0.5 : -0.27, seated ? -0.48 : -0.88, 0], thickness: 0.07, warm: 0.3 },
+    { start: [0.05, -0.34, 0], end: [seated ? 0.5 : 0.27, seated ? -0.48 : -0.88, 0], thickness: 0.07, warm: 0.3 },
   ];
   return Array.from({ length: count }, (_, index) => {
     const headCutoff = Math.floor(count * 0.22);
@@ -549,6 +561,31 @@ function figureParticles(count: number, seed: string): Particle[] {
     const color = semanticParticleColor(index, salt, warm);
     return { x, y, z, ...color, scale: color.scale * scaleBoost };
   });
+}
+
+function organicStructureParticles(count: number, seed: string, beat: ScenePlanBeat): Particle[] {
+  const particles = fallbackParticles("tree", count);
+  const factText = `${beat.prompt ?? ""} ${beat.narration ?? ""} ${beat.source_fact ?? ""}`.toLowerCase();
+  const hasFruit = /\b(apple|fruit|berry|seed)\b/.test(factText);
+  if (!hasFruit) return particles;
+  const salt = Math.floor(stableUnit(seed, 419) * 10000);
+  const fruitCount = Math.max(8, Math.floor(count * 0.1));
+  for (let index = 0; index < fruitCount && index < particles.length; index += 1) {
+    const target = particles.length - 1 - index;
+    const theta = index * Math.PI * (3 - Math.sqrt(5)) + seeded(index, salt) * 0.4;
+    const r = 0.24 + seeded(index, salt + 3) * 0.56;
+    particles[target] = {
+      x: Math.cos(theta) * r * 0.78,
+      y: 0.24 + seeded(index, salt + 5) * 0.88,
+      z: Math.sin(theta) * r * 0.5,
+      r: 0.9 + seeded(index, salt + 7) * 0.08,
+      g: 0.28 + seeded(index, salt + 11) * 0.16,
+      b: 0.38 + seeded(index, salt + 13) * 0.12,
+      a: 0.74,
+      scale: 1.42 + seeded(index, salt + 17) * 0.74,
+    };
+  }
+  return particles;
 }
 
 function smallObjectParticles(count: number, seed: string, moving: boolean): Particle[] {
