@@ -479,6 +479,15 @@ function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boole
   };
 }
 
+function sceneBeatFocusProgress(beat: ScenePlanBeat | null | undefined, elapsedSeconds: number) {
+  if (!beat) return 0;
+  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  const duration = Math.max(0.1, Number.isFinite(Number(beat.duration)) ? Number(beat.duration) : 1.2);
+  const leadIn = beat.op === "focus_camera" || beat.op === "move" || beat.motion_path ? 0.48 : 0.22;
+  const focusWindow = Math.max(0.46, duration * 0.62);
+  return smoothstep((elapsedSeconds - (start - leadIn)) / focusWindow);
+}
+
 function sceneCameraView(beat: ScenePlanBeat | null | undefined, stageMode: boolean, elapsedSeconds = 0): SceneCameraView {
   if (!stageMode || !beat) return { targetX: 0, targetY: 0, zoom: 1 };
   const position = Array.isArray(beat.position) ? beat.position : [];
@@ -487,9 +496,7 @@ function sceneCameraView(beat: ScenePlanBeat | null | undefined, stageMode: bool
   const rawTargetX = Number(cameraTarget[0] ?? position[0] ?? 0);
   const rawTargetY = Number(cameraTarget[1] ?? position[1] ?? 0);
   const rawZoom = Number(camera.zoom ?? 1);
-  const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
-  const duration = Math.max(0.1, Number.isFinite(Number(beat.duration)) ? Number(beat.duration) : 1.2);
-  const progress = smoothstep((elapsedSeconds - start) / duration);
+  const progress = sceneBeatFocusProgress(beat, elapsedSeconds);
   const focusBias = beat.op === "focus_camera" ? 0.16 : beat.op === "move" ? 0.08 : 0;
   return {
     targetX: Number.isFinite(rawTargetX) ? rawTargetX * progress : 0,
