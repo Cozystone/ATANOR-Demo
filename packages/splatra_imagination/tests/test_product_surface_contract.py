@@ -51,6 +51,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "small_moving_object" in field
     assert "motion_path" in field
     assert "sceneMotionPathPoint" in field
+    assert "drawSceneMotionPathFlow" in field
     assert "drawSceneFocusParticles" in field
     assert "data-scene-objects" in field
     assert "data-scene-beat" in field
@@ -63,6 +64,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "drawParticleEllipse" in field
     assert "ctx.stroke" not in field
     assert "ctx.lineTo" not in field
+    assert "centers.forEach" not in field
     assert "SPLATRA Imagination Field" in field
     assert 'mode === "lab"' in field
 

@@ -416,6 +416,21 @@ function sceneMotionPathPoint(beat: ScenePlanBeat | null | undefined, elapsedSec
   };
 }
 
+function scenePointToCanvas(
+  beat: ScenePlanBeat,
+  point: { x: number; y: number },
+  width: number,
+  height: number,
+  sceneElapsed: number,
+  swing = { x: 0, y: 0 },
+) {
+  const transform = sceneTransform(beat, true, sceneElapsed);
+  return {
+    x: width / 2 + (point.x * 0.34 + transform.offsetX * 0.52 + swing.x) * width,
+    y: height / 2 + (-point.y * 0.28 + transform.offsetY * 0.52 + swing.y) * height,
+  };
+}
+
 function sceneObjectProgress(beat: ScenePlanBeat, elapsedSeconds: number) {
   const start = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
   const duration = Math.max(0.1, Number.isFinite(Number(beat.duration)) ? Number(beat.duration) : 1.2);
@@ -960,12 +975,23 @@ function drawSceneObjectCloud(
   if (alphaMultiplier <= 0.02) return;
   const roleStyle = sceneRoleStyle(object.beat, active);
   const position = sceneMotionPathPoint(object.beat, sceneElapsed);
-  const transform = sceneTransform(object.beat, true, sceneElapsed);
   const beatProgress = sceneObjectProgress(object.beat, sceneElapsed);
   const motionSwing = object.beat.op === "move" ? Math.sin(beatProgress * Math.PI) : 0;
   const flowSalt = stableUnit(object.id, 43);
-  const cx = width / 2 + (position.x * 0.34 + transform.offsetX * 0.52 + motionSwing * (flowSalt - 0.5) * 0.11) * width;
-  const cy = height / 2 + (-position.y * 0.28 + transform.offsetY * 0.52 + motionSwing * (stableUnit(object.id, 47) - 0.5) * 0.08) * height;
+  const center = scenePointToCanvas(
+    object.beat,
+    position,
+    width,
+    height,
+    sceneElapsed,
+    {
+      x: motionSwing * (flowSalt - 0.5) * 0.11,
+      y: motionSwing * (stableUnit(object.id, 47) - 0.5) * 0.08,
+    },
+  );
+  const cx = center.x;
+  const cy = center.y;
+  const transform = sceneTransform(object.beat, true, sceneElapsed);
   const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale;
   const scale = Math.min(width, height) * 0.11 * transform.zoom * scaleBias;
   const rotation = elapsed * (0.12 + controls.arousal * 0.11) + stableUnit(object.id, 5) * Math.PI * 2;
@@ -1013,6 +1039,65 @@ function drawSceneObjectCloud(
   }
 }
 
+function drawSceneMotionPathFlow(
+  ctx: CanvasRenderingContext2D,
+  object: SceneRenderObject,
+  width: number,
+  height: number,
+  elapsed: number,
+  sceneElapsed: number,
+  active: boolean,
+) {
+  const from = Array.isArray(object.beat.motion_path?.from) ? object.beat.motion_path?.from ?? [] : [];
+  const to = Array.isArray(object.beat.motion_path?.to) ? object.beat.motion_path?.to ?? [] : [];
+  if (from.length < 2 || to.length < 2) return;
+
+  const fromPoint = {
+    x: Number.isFinite(Number(from[0])) ? Number(from[0]) : 0,
+    y: Number.isFinite(Number(from[1])) ? Number(from[1]) : 0,
+  };
+  const toPoint = {
+    x: Number.isFinite(Number(to[0])) ? Number(to[0]) : 0,
+    y: Number.isFinite(Number(to[1])) ? Number(to[1]) : 0,
+  };
+  const progress = sceneObjectProgress(object.beat, sceneElapsed);
+  const unit = Math.min(width, height);
+  const steps = 18;
+  const points: Array<[number, number]> = [];
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    const arc = Math.sin(t * Math.PI) * 0.22;
+    const modelPoint = {
+      x: fromPoint.x * (1 - t) + toPoint.x * t,
+      y: fromPoint.y * (1 - t) + toPoint.y * t + arc,
+    };
+    const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed);
+    points.push([canvasPoint.x, canvasPoint.y]);
+  }
+  const baseAlpha = active ? 0.18 : 0.075;
+  drawParticlePolyline(ctx, points, [76, 230, 255], baseAlpha, unit, Math.floor(stableUnit(object.id, 73) * 1000), elapsed);
+
+  const streamCount = active ? 13 : 7;
+  for (let index = 0; index < streamCount; index += 1) {
+    const local = clamp(progress - index * 0.034 + Math.sin(elapsed * 0.9 + index) * 0.01, 0, 1);
+    const arc = Math.sin(local * Math.PI) * 0.22;
+    const modelPoint = {
+      x: fromPoint.x * (1 - local) + toPoint.x * local,
+      y: fromPoint.y * (1 - local) + toPoint.y * local + arc,
+    };
+    const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed);
+    const fade = 1 - index / Math.max(1, streamCount);
+    drawGuideParticle(
+      ctx,
+      canvasPoint.x,
+      canvasPoint.y,
+      unit * (0.0022 + fade * 0.0038),
+      index % 3 === 0 ? [255, 104, 177] : [76, 230, 255],
+      (active ? 0.38 : 0.18) * fade,
+    );
+  }
+}
+
 function drawSceneFocusParticles(
   ctx: CanvasRenderingContext2D,
   sceneObjects: SceneRenderObject[],
@@ -1032,21 +1117,8 @@ function drawSceneFocusParticles(
   ctx.fillRect(0, 0, width, height);
 
   const visibleObjects = sceneObjects.filter((object) => sceneObjectAlpha(object.beat, sceneElapsed, object.id === activeObjectId) > 0.02);
-  const centers = visibleObjects.map((object) => {
-    const position = sceneMotionPathPoint(object.beat, sceneElapsed);
-    const transform = sceneTransform(object.beat, true, sceneElapsed);
-    return {
-      id: object.id,
-      point: [
-        width / 2 + (position.x * 0.34 + transform.offsetX * 0.52) * width,
-        height / 2 + (-position.y * 0.28 + transform.offsetY * 0.52) * height,
-      ] as [number, number],
-    };
-  });
-  centers.forEach((center, index) => {
-    const next = centers[index + 1];
-    if (!next) return;
-    drawParticleSegment(ctx, center.point, next.point, [76, 230, 255], 0.07, Math.min(width, height), index * 41 + 17, elapsed);
+  visibleObjects.forEach((object) => {
+    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId);
   });
 
   visibleObjects.forEach((object) => {
