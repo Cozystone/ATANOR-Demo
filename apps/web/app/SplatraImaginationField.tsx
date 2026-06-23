@@ -664,11 +664,22 @@ function sceneGroupCameraView(activeObject: SceneRenderObject | null, visibleObj
   const groupTargetX = (minX + maxX) / 2;
   const groupTargetY = (minY + maxY) / 2;
   const groupZoom = clamp(1.48 - spread * 0.34 + groupObjects.length * 0.018, 0.9, 1.46);
+  const motionFocusBoost = sceneMotionFocusBoost(activeObject.beat);
+  const zoomCeiling = groupZoom + motionFocusBoost * 0.72;
   return {
     targetX: baseView.targetX * 0.38 + groupTargetX * 0.62,
     targetY: baseView.targetY * 0.38 + groupTargetY * 0.62,
-    zoom: clamp(Math.min(baseView.zoom, groupZoom), 0.82, 1.56),
+    zoom: clamp(Math.min(baseView.zoom + motionFocusBoost, zoomCeiling), 0.82, 1.68),
   };
+}
+
+function sceneMotionFocusBoost(beat: ScenePlanBeat | null | undefined) {
+  if (!beat?.motion_path && beat?.op !== "move") return 0;
+  const behavior = String(beat?.particle_behavior ?? "");
+  const gravityBias = physicsNumber(beat, "gravity_bias", 0.28);
+  if (behavior === "gravity_arc") return clamp(0.16 + gravityBias * 0.12, 0.16, 0.32);
+  if (behavior === "kinetic_flow") return 0.14;
+  return 0.08;
 }
 
 function sceneRelationRank(object: SceneRenderObject) {
