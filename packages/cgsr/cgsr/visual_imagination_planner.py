@@ -32,11 +32,31 @@ VISUAL_ROUTE_TYPES = {
 
 ANCHOR_STOPWORDS = {
     "therefore",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "associated",
     "however",
     "because",
+    "event",
+    "explain",
     "first",
+    "for",
+    "from",
+    "helped",
+    "is",
+    "of",
+    "on",
+    "sat",
+    "the",
     "second",
     "third",
+    "to",
+    "toward",
+    "under",
+    "with",
     "따라서",
     "그러나",
     "그리고",
@@ -267,6 +287,25 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "semantic_role": semantic_role,
                 }
             )
+            if _has_any_cue(unit, MOTION_CUES):
+                for anchor_index, anchor in enumerate(anchors[:3]):
+                    units.append(
+                        {
+                            "prompt": anchor,
+                            "narration": _clean_phrase(unit, limit=180),
+                            "source_fact": clean_fact,
+                            "semantic_role": "verified_motion_anchor" if anchor_index == 0 else "verified_motion_context",
+                        }
+                    )
+            for anchor_index, anchor in enumerate(anchors[:4]):
+                units.append(
+                    {
+                        "prompt": anchor,
+                        "narration": _clean_phrase(unit, limit=180),
+                        "source_fact": clean_fact,
+                        "semantic_role": "verified_entity_anchor",
+                    }
+                )
 
     if not units:
         clean_question = _clean_phrase(question)
@@ -287,14 +326,34 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
         if key not in seen:
             seen.add(key)
             deduped.append(unit)
-    return deduped[:6]
+    selected = deduped[:14]
+    selected_keys = {f"{unit['prompt']}::{unit['narration']}::{unit['semantic_role']}".casefold() for unit in selected}
+    for unit in deduped[14:]:
+        role = unit["semantic_role"]
+        if role not in {"verified_motion_event", "verified_motion_anchor", "verified_motion_context"}:
+            continue
+        key = f"{unit['prompt']}::{unit['narration']}::{role}".casefold()
+        if key in selected_keys:
+            continue
+        for replace_index in range(len(selected) - 1, -1, -1):
+            if selected[replace_index]["semantic_role"] in {"verified_entity_anchor", "verified_fact_unit"}:
+                selected[replace_index] = unit
+                selected_keys.add(key)
+                break
+    return selected
 
 
 def _archetype_for_phrase(phrase: str, semantic_role: str, index: int) -> Archetype:
     # This is deliberately not a topic dictionary. It only chooses a bounded
     # visual carrier deterministically so the planner does not smuggle in
     # prompt-specific templates such as "gravity -> Newton/apple/tree".
-    role_seed = semantic_role if semantic_role in {"verified_motion_event", "verified_entity_relation"} else "grounded"
+    role_seed = semantic_role if semantic_role in {
+        "verified_motion_anchor",
+        "verified_motion_context",
+        "verified_motion_event",
+        "verified_entity_anchor",
+        "verified_entity_relation",
+    } else "grounded"
     return PRODUCT_ARCHETYPES[_stable_index(f"{role_seed}:{index}:{phrase}", len(PRODUCT_ARCHETYPES))]
 
 

@@ -150,3 +150,36 @@ def test_visual_planner_text_anchor_is_scene_position_dependent(tmp_path: Path) 
     assert plan.scene_choreography is not None
     assert plan.scene_choreography["text_anchor"] in TEXT_ANCHORS
     assert plan.scene_choreography["text_anchor"] != "auto"
+
+
+def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": (
+                    "Gravity is associated with Isaac Newton. "
+                    "Isaac Newton sat under an apple tree. "
+                    "An apple fell from the tree toward Newton, and the event helped explain gravitational attraction."
+                ),
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "Newton apple tree"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("What is gravity?", tmp_path)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    beats = plan.scene_choreography["beats"]
+    prompts = [beat["prompt"] for beat in beats]
+    assert any(prompt == "Isaac Newton" for prompt in prompts)
+    assert any(prompt == "apple" for prompt in prompts)
+    assert any(prompt == "tree" for prompt in prompts)
+    assert any("apple fell" in prompt for prompt in prompts)
+    assert any(beat["op"] == "move" and "apple fell" in beat["prompt"] for beat in beats)
+    assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())
+    assert plan.scene_choreography["topic_scene_templates"] is False
+    assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
