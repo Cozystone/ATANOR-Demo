@@ -222,14 +222,34 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setVoiceNotice("");
   }
 
+  function primeVoiceAudioElement() {
+    try {
+      const audio = audioRef.current ?? new Audio();
+      audio.muted = true;
+      audio.preload = "auto";
+      audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQAAAAAAA==";
+      audioRef.current = audio;
+      void audio.play().then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+      }).catch(() => undefined);
+    } catch {
+      audioRef.current = null;
+    }
+  }
+
   async function playVoiceOutput(voiceOutput: VoiceOutput | undefined) {
-    stopAudio();
     if (!voiceOutput?.audio_available || !voiceOutput.audio_url) {
+      stopAudio();
       setVoiceNotice(voiceOutput?.user_message || cleanVoiceUnavailableLine(language));
       return;
     }
     try {
-      const audio = new Audio(voiceOutput.audio_url);
+      const audio = audioRef.current ?? new Audio();
+      audio.pause();
+      audio.muted = false;
+      audio.src = voiceOutput.audio_url;
       audio.preload = "auto";
       audio.onplaying = () => {
         setAudioPlaying(true);
@@ -248,6 +268,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         emitNeuralEmotionEvent("voice_unavailable", "audio playback error");
       };
       audioRef.current = audio;
+      audio.load();
       await audio.play();
     } catch {
       setAudioPlaying(false);
@@ -273,6 +294,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setOrbState("thinking");
     setVoiceNotice("");
     setSpeechLine(language === "ko" ? "잠깐 생각할게." : "Let me think.");
+    primeVoiceAudioElement();
     try {
       const response = await fetch("/api/chat/atanor", {
         method: "POST",

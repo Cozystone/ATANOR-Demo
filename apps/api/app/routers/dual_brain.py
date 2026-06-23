@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.services.alpha_services import alpha_service
@@ -12,6 +13,7 @@ from packages.cgsr.cgsr.conversation_surface import generate_conversation_surfac
 from packages.cgsr.cgsr.conversation_grounding import gather_grounded_context
 from packages.cgsr.cgsr.conversation_router import route_conversation_request
 from packages.core_proof.three_core_answer_path import run_prompt_proof
+from packages.voice_loop.local_tts import LocalTTSUnavailable, synthesize_windows_sapi, voice_audio_path
 from packages.voice_loop.runtime_availability import check_voice_runtime_availability
 from packages.surface_brain.monitor import monitor_answer, repair_answer_for_mode
 from packages.surface_brain.dual_projection import ingest_source_sentence_dual_projection
@@ -363,6 +365,58 @@ def _voice_runtime_snapshot(text: str, language: str) -> dict[str, Any]:
     }
 
 
+def _voice_runtime_snapshot_with_local_audio(text: str, language: str) -> dict[str, Any]:
+    """Add a local temp WAV fallback without claiming Fish synthesis is wired."""
+
+    snapshot = _voice_runtime_snapshot(text, language)
+    if snapshot.get("audio_available") and snapshot.get("audio_url"):
+        return snapshot
+    try:
+        fallback = synthesize_windows_sapi(text, language=language)
+    except LocalTTSUnavailable as exc:
+        return {**snapshot, "fallback_error": str(exc)}
+    return {
+        **snapshot,
+        "selected_engine": snapshot.get("selected_engine") if snapshot.get("selected_engine") != "none" else "fallback",
+        "tts_engine": fallback.engine,
+        "runtime_available": True,
+        "available": True,
+        "audio_available": True,
+        "audio_output_available": True,
+        "audio_url": fallback.audio_url,
+        "audio_mime": fallback.audio_mime,
+        "audio_duration_ms": fallback.duration_ms,
+        "status": "local_tts_audio_available",
+        "reason": (
+            "Fish direct synthesis is not wired; local Windows speech generated a temporary WAV."
+            if snapshot.get("runtime_available")
+            else "Fish runtime is unavailable; local Windows speech generated a temporary WAV."
+        ),
+        "error_reason": None,
+        "fallback_engine": fallback.engine,
+        "text_fallback": True,
+        "external_service": False,
+        "generated_audio_persisted": False,
+        "raw_voice_saved": False,
+        "user_message": (
+            "Fish 직접 합성은 아직 연결 전이라 Windows 로컬 음성으로 발화합니다."
+            if language == "ko"
+            else "Fish direct synthesis is not wired yet; using local Windows speech output."
+        ),
+    }
+
+
+@router.get("/api/voice-loop/audio/{filename}")
+def get_voice_loop_audio(filename: str) -> FileResponse:
+    try:
+        path = voice_audio_path(filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="voice audio not found") from exc
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="voice audio not found")
+    return FileResponse(path, media_type="audio/wav", filename=filename)
+
+
 def _live_selfhood_payload(
     request: AtanorChatRequest,
     *,
@@ -491,7 +545,7 @@ def _live_selfhood_payload(
             **{**_flags(), "final_answer_generation_claimed": False},
         }
         return {"state": "abstained", "result": payload, **{**_flags(), "final_answer_generation_claimed": False}}
-    voice_output = _voice_runtime_snapshot(generated.answer, language)
+    voice_output = _voice_runtime_snapshot_with_local_audio(generated.answer, language)
     payload = {
         "answer": generated.answer,
         "language": language,

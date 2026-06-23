@@ -4,6 +4,15 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routers import dual_brain
+from packages.voice_loop.local_tts import LocalTTSResult, local_voice_audio_dir
+
+
+def _fake_voice_synthesis(text: str, *, language: str = "ko") -> LocalTTSResult:
+    root = local_voice_audio_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "atanor_voice_22222222222222222222222222222222.wav"
+    path.write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
+    return LocalTTSResult(engine="windows_sapi", audio_path=path, audio_url=f"/api/voice-loop/audio/{path.name}")
 
 
 def test_dual_brain_ingest_links_semantic_and_surface(tmp_path, monkeypatch) -> None:
@@ -293,6 +302,7 @@ def test_live_selfhood_greeting_uses_native_conversation_surface(tmp_path, monke
         raise AssertionError("short live conversation must not enter graph retrieval")
 
     monkeypatch.setattr(dual_brain.alpha_service, "query_graphrag", fail_query_graphrag)
+    monkeypatch.setattr(dual_brain, "synthesize_windows_sapi", _fake_voice_synthesis)
     client = TestClient(app)
 
     response = client.post(
@@ -325,10 +335,11 @@ def test_live_selfhood_greeting_uses_native_conversation_surface(tmp_path, monke
     assert payload["answer_engine"]["internal_trace_exposed"] is False
     assert payload["voice_output"]["requested"] is True
     assert payload["voice_output"]["enabled"] is True
-    assert payload["voice_output"]["selected_engine"] in {"none", "fish_2", "fish_1_5"}
-    assert payload["voice_output"]["audio_available"] is False
-    assert payload["voice_output"]["audio_url"] is None
-    assert payload["voice_output"]["error_reason"] in {"fish_runtime_missing", "fish_model_missing", "synthesis_adapter_not_wired"}
+    assert payload["voice_output"]["selected_engine"] in {"fallback", "fish_2", "fish_1_5"}
+    assert payload["voice_output"]["tts_engine"] == "windows_sapi"
+    assert payload["voice_output"]["audio_available"] is True
+    assert payload["voice_output"]["audio_url"] == "/api/voice-loop/audio/atanor_voice_22222222222222222222222222222222.wav"
+    assert payload["voice_output"]["error_reason"] is None
     assert payload["voice_output"]["text_fallback"] is True
     assert payload["voice_output"]["microphone_enabled"] is False
     assert payload["voice_output"]["always_listening_enabled"] is False
@@ -336,6 +347,9 @@ def test_live_selfhood_greeting_uses_native_conversation_surface(tmp_path, monke
     assert payload["voice_output"]["external_service"] is False
     assert payload["voice_output"]["generated_audio_persisted"] is False
     assert payload["local_brain_write"] is False
+    audio_response = client.get(payload["voice_output"]["audio_url"])
+    assert audio_response.status_code == 200
+    assert audio_response.headers["content-type"].startswith("audio/wav")
 
 
 def test_dashboard_conversation_mode_forces_asm_v0_surface(tmp_path, monkeypatch) -> None:
