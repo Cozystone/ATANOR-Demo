@@ -8499,9 +8499,9 @@ p {
 }
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-hologram-speech {
-  bottom: clamp(92px, 13vh, 132px);
-  max-width: min(520px, 52vw);
-  right: clamp(156px, 22vw, 310px);
+  bottom: clamp(138px, 18vh, 204px);
+  max-width: min(540px, calc(100vw - clamp(286px, 38vw, 520px)));
+  right: clamp(196px, 29vw, 390px);
 }
 
 .hologram-voice-orb:hover {

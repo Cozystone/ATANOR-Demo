@@ -36,6 +36,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "imagination ·" not in field
     assert "flowFieldAngle" in field
     assert "drawParticleStroke" in field
+    assert "drawParticleSegment" in field
+    assert "drawParticleEllipse" in field
+    assert "ctx.stroke" not in field
+    assert "ctx.lineTo" not in field
     assert "SPLATRA Imagination Field" in field
     assert 'mode === "lab"' in field
 
