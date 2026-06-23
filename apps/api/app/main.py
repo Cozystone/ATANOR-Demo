@@ -71,6 +71,7 @@ from app.routers.hybrid_network import router as hybrid_network_router
 from app.routers.learning import router as learning_router
 from app.routers.local_memory_approval import router as local_memory_approval_router
 from app.routers.memory import router as memory_router
+from app.routers.neural_emotion import router as neural_emotion_router
 from app.routers.neuro import router as neuro_router
 from app.routers.ontology import router as ontology_router
 from app.routers.oven import router as oven_router
@@ -183,6 +184,7 @@ app.include_router(ontology_router)
 app.include_router(graphrag_router)
 app.include_router(guard_router)
 app.include_router(memory_router)
+app.include_router(neural_emotion_router)
 app.include_router(working_memory_router)
 app.include_router(neuro_router)
 app.include_router(q_cortex_router)

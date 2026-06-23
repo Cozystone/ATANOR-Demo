@@ -46,6 +46,7 @@ type Props = {
   particleBudget?: number;
   className?: string;
   interactive?: boolean;
+  controlOverride?: Partial<{ valence: number; arousal: number; curiosity: number; speaking_energy: number; resting: boolean }>;
   onActivate?: () => void;
   onCancel?: () => void;
 };
@@ -237,6 +238,7 @@ export default function SplatraImaginationField({
   particleBudget,
   className,
   interactive = true,
+  controlOverride,
   onActivate,
   onCancel,
 }: Props) {
@@ -247,7 +249,16 @@ export default function SplatraImaginationField({
   const [error, setError] = useState("");
   const [reducedMotion, setReducedMotion] = useState(false);
   const budget = particleBudget ?? (mode === "lab" ? 1400 : 520);
-  const controls = useMemo(() => STATE_CONTROLS[state] ?? STATE_CONTROLS.idle, [state]);
+  const controls = useMemo(() => {
+    const base = STATE_CONTROLS[state] ?? STATE_CONTROLS.idle;
+    if (!controlOverride) return base;
+    return {
+      ...base,
+      ...Object.fromEntries(
+        Object.entries(controlOverride).filter(([, value]) => value !== undefined && value !== null),
+      ),
+    };
+  }, [controlOverride, state]);
   const particles = frame?.object?.particles?.length ? frame.object.particles : fallbackParticles(archetype, budget);
   const activeArchetype = frame?.object?.archetype ?? archetype;
 

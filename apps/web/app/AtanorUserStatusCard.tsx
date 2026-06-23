@@ -79,6 +79,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [speechLine, setSpeechLine] = useState("");
   const [voiceNotice, setVoiceNotice] = useState("");
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const placeholder = voiceMode
     ? language === "ko" ? "음성 모드 · 텍스트도 입력할 수 있어요" : "Voice mode · text still works"
@@ -106,6 +107,24 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     const clearTimer = window.setTimeout(() => setVoiceNotice(""), 5200);
     return () => window.clearTimeout(clearTimer);
   }, [voiceNotice]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshEmotionControls() {
+      const payload = await fetch("/api/neural-emotion/snapshot", { cache: "no-store" })
+        .then((response) => response.json())
+        .catch(() => null);
+      if (!cancelled) {
+        setEmotionControls(payload?.snapshot?.splatra_controls ?? payload?.splatra_controls ?? null);
+      }
+    }
+    refreshEmotionControls().catch(() => undefined);
+    const timer = window.setInterval(() => refreshEmotionControls().catch(() => undefined), 12000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   function stopAudio() {
     const audio = audioRef.current;
@@ -224,6 +243,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         mode="product"
         particleBudget={960}
         interactive={false}
+        controlOverride={emotionControls ?? undefined}
         className="atanor-dashboard-imagination-field"
       />
       <div className="atanor-hologram-stage">

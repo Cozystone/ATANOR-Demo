@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import SplatraImaginationField from "./SplatraImaginationField";
+import NeuralEmotionPanel from "./NeuralEmotionPanel";
 
 type Language = "en" | "ko";
 type AnyRecord = Record<string, any>;
@@ -354,6 +355,8 @@ export default function AgenticMicroOSPanel({ language, localBackendUrl }: Props
           <p>Procedural particle imagination preview. It is proof-only visual state, not verified knowledge, memory mutation, or generated code execution.</p>
           <SplatraImaginationField mode="lab" state="thinking" particleBudget={1200} />
         </article>
+
+        <NeuralEmotionPanel />
 
         <article className="agentic-os-card">
           <h3>{t.modules}</h3>
