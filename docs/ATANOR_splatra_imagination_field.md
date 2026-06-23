@@ -86,9 +86,12 @@ The product dashboard now plays validated scene beats over time. `t_start`, `pos
 
 `packages/cgsr/cgsr/visual_imagination_planner.py` is the first CGSR-side bridge into that contract. It reads the conversation route, grounded facts, and ASM/CGSR safety diagnostics, then either abstains or emits a bounded scene choreography. General knowledge questions with no verified grounding abstain instead of inventing an illustrative story. SPLATRA or grounded architecture questions may receive a scene-focus plan whose beats are derived from grounded phrases, not from a topic template dictionary.
 
+When the user explicitly asks SPLATRA to visualize something, the planner preserves that user-authored visual request as the first bounded beat. Additional beats come from grounded local facts when available. This lets ATANOR move particles toward the requested scene without introducing hidden dictionaries such as `gravity -> Newton/apple/tree`.
+
 ## Future Gates
 
 - WebGL/WebGPU SPL3 decoder for client-side quantized data textures.
 - Fish 2 audio envelope to speaking-energy mapping.
 - User-approved character/persona-shaped hologram generation.
+- Verified knowledge retrieval for general explanatory scenes, so ungrounded questions can become grounded particle narratives without rule-based scene templates.
 - Strict review queue for any generated SPLATRA patch before source changes.

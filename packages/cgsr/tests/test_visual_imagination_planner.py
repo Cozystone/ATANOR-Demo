@@ -27,11 +27,12 @@ def test_visual_planner_abstains_without_grounded_general_knowledge() -> None:
 
 
 def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
-    route = route_conversation_request("Use SPLATRA to visualize this")
-    context = gather_grounded_context("Use SPLATRA to visualize this", route)
+    question = "Use SPLATRA to visualize gravity as moving particles"
+    route = route_conversation_request(question)
+    context = gather_grounded_context(question, route)
 
     plan = plan_visual_imagination(
-        "Use SPLATRA to visualize this",
+        question,
         route=route,
         grounded_context=context,
         diagnostics={
@@ -49,4 +50,8 @@ def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
     assert plan.diagnostics["topic_scene_templates"] is False
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.scene_choreography["beats"]
+    assert plan.scene_choreography["beats"][0]["prompt"] == question
+    assert any(beat["op"] == "focus_camera" for beat in plan.scene_choreography["beats"])
+    assert any(beat.get("camera") for beat in plan.scene_choreography["beats"])
     assert all("Newton" not in beat["prompt"] for beat in plan.scene_choreography["beats"])
+    assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])

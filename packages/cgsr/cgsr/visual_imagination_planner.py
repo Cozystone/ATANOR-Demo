@@ -51,14 +51,16 @@ def _clean_phrase(value: str, *, limit: int = 96) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip())[:limit]
 
 
-def _visual_phrases(question: str, grounded_context: GroundedContext) -> list[str]:
+def _visual_phrases(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[str]:
     phrases: list[str] = []
+    clean_question = _clean_phrase(question)
+    if route_type == "splatra_request" and clean_question:
+        phrases.append(clean_question)
     for fact in grounded_context.facts:
         clean = _clean_phrase(fact)
         if clean:
             phrases.append(clean)
     if not phrases:
-        clean_question = _clean_phrase(question)
         if clean_question:
             phrases.append(clean_question)
     deduped: list[str] = []
@@ -76,6 +78,23 @@ def _archetype_for_phrase(phrase: str, index: int) -> Archetype:
     # visual carrier deterministically so the scene planner does not smuggle in
     # prompt-specific templates such as "gravity -> Newton/apple/tree".
     return PRODUCT_ARCHETYPES[_stable_index(f"{index}:{phrase}", len(PRODUCT_ARCHETYPES))]
+
+
+def _position_for_phrase(phrase: str, index: int) -> list[float]:
+    # Phrase-dependent placement gives the renderer room to move without
+    # smuggling in topic templates. The same grounded phrase always lands in
+    # the same bounded area, but there is no dictionary such as gravity->tree.
+    x_bucket = _stable_index(f"x:{index}:{phrase}", 9) - 4
+    y_bucket = _stable_index(f"y:{index}:{phrase}", 7) - 3
+    return [round(x_bucket * 0.22, 2), round(y_bucket * 0.16, 2), 0.0]
+
+
+def _camera_for_phrase(phrase: str, index: int) -> dict[str, Any]:
+    zoom_bucket = _stable_index(f"z:{index}:{phrase}", 5)
+    return {
+        "target": _position_for_phrase(phrase, index),
+        "zoom": round(0.94 + zoom_bucket * 0.07, 2),
+    }
 
 
 def plan_visual_imagination(
@@ -118,18 +137,22 @@ def plan_visual_imagination(
             },
         )
 
-    phrases = _visual_phrases(question, grounded_context)
+    phrases = _visual_phrases(question, route_type=route_type, grounded_context=grounded_context)
     beats: list[dict[str, Any]] = []
     for index, phrase in enumerate(phrases[:3]):
+        op = "spawn_object" if index == 0 else "morph"
+        if index == min(2, len(phrases[:3]) - 1) and index > 0:
+            op = "focus_camera"
         beats.append(
             {
-                "op": "spawn_object" if index == 0 else "morph",
+                "op": op,
                 "prompt": phrase,
                 "object_id": f"grounded_visual_{index}",
                 "archetype": _archetype_for_phrase(phrase, index),
                 "t_start": round(index * 1.35, 2),
                 "duration": 1.25,
-                "position": [round((index - 1) * 0.72, 2), 0.0, 0.0],
+                "position": _position_for_phrase(phrase, index),
+                "camera": _camera_for_phrase(phrase, index) if op == "focus_camera" else {},
             }
         )
     if not beats:
