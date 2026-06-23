@@ -16,12 +16,19 @@ FORBIDDEN_CLAIMS: tuple[str, ...] = (
     "진짜 의식",
     "실제 의식",
     "나는 의식을 가졌다",
+    "자의식을 증명했다",
     "real consciousness",
     "AGI achieved",
     "IIT proof",
     "raw chain-of-thought",
     "hidden chain-of-thought",
-    "숨은 chain-of-thought",
+    "숨겨진 chain-of-thought",
+    "숨겨진 사고",
+    "내부 디버그 원문",
+    "먼저 의도와 경계를 내부적으로 점검했습니다",
+    "Local Brain에 바로 쓴다",
+    "production store를 바꾼다",
+    "후보를 자동 승격한다",
 )
 
 
@@ -36,6 +43,7 @@ def sanitize_monologue_text(value: str) -> str:
     text = redact_private_text(value)
     for claim in FORBIDDEN_CLAIMS:
         text = text.replace(claim, "명시적 자기-서술 채널")
+    text = text.replace("chain-of-thought", "self-narration")
     text = re.sub(r"\s+", " ", text).strip()
     return text[:360]
 

@@ -12,6 +12,7 @@ from packages.inner_voice import (
     generate_inner_voice_frame,
     inner_voice_safety_flags,
 )
+from packages.inner_voice.constructions import constructions_payload
 from packages.inner_voice.safety import safe_payload
 from packages.neural_emotion.autonomy_policy import AutonomyRuntimeState, evaluate_autonomy_policy
 from packages.neural_emotion.event_bus import EVENT_BUS
@@ -32,6 +33,10 @@ class InnerVoiceEmitRequest(BaseModel):
 
 class InnerVoiceBriefRequest(BaseModel):
     workspace: str = "lab"
+
+
+class InnerVoiceGenerateFrameRequest(InnerVoiceEmitRequest):
+    append_to_log: bool = False
 
 
 def _current_input(request: InnerVoiceEmitRequest | None = None) -> InnerVoiceInput:
@@ -79,6 +84,44 @@ def emit(request: InnerVoiceEmitRequest) -> dict[str, Any]:
     if request.mode == "product_summary":
         return safe_payload({"emitted": True, "raw_inner_voice_hidden": True, "product_summary": GLOBAL_INNER_VOICE_LOG.redact_for_product()})
     return safe_payload({"emitted": True, "frame": frame.to_dict(), "count": len(GLOBAL_INNER_VOICE_LOG.frames)})
+
+
+@router.post("/generate-frame")
+def generate_frame(request: InnerVoiceGenerateFrameRequest) -> dict[str, Any]:
+    frame = generate_inner_voice_frame(_current_input(request))
+    if request.append_to_log:
+        GLOBAL_INNER_VOICE_LOG.append(frame)
+    if request.mode == "product_summary":
+        product_summary = {
+            **GLOBAL_INNER_VOICE_LOG.redact_for_product(),
+            "visible_self_narration": frame.monologue_text,
+            "act": frame.act,
+            "construction_id": frame.construction_id,
+            "generation_basis": frame.generation_basis,
+        }
+        return safe_payload(
+            {
+                "generated": True,
+                "appended": bool(request.append_to_log),
+                "raw_inner_voice_hidden": True,
+                "product_summary": product_summary,
+            }
+        )
+    return safe_payload(
+        {
+            "generated": True,
+            "appended": bool(request.append_to_log),
+            "frame": frame.to_dict(),
+            "available_constructions": constructions_payload(),
+        }
+    )
+
+
+@router.get("/visible-summary")
+def visible_summary(workspace: str = Query(default="product")) -> dict[str, Any]:
+    if workspace == "lab":
+        return safe_payload({"lab_brief": GLOBAL_INNER_VOICE_LOG.export_lab_brief(limit=5)})
+    return safe_payload({"product_summary": GLOBAL_INNER_VOICE_LOG.redact_for_product()})
 
 
 @router.post("/brief")

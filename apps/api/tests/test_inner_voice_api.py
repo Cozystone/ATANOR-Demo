@@ -48,3 +48,31 @@ def test_brief_endpoint() -> None:
 
     assert payload["brief"]
     assert payload["external_llm"] is False
+
+
+def test_generate_frame_product_hides_raw_frame_and_exposes_summary() -> None:
+    client = _client()
+
+    payload = client.post(
+        "/api/inner-voice/generate-frame",
+        json={"mode": "product_summary", "latest_user_input": "안녕"},
+    ).json()
+
+    assert payload["generated"] is True
+    assert payload["raw_inner_voice_hidden"] is True
+    assert payload["product_summary"]["visible_self_narration"]
+    assert payload["product_summary"]["generation_basis"] == "asm_cgsr_construction_conditioned_inner_voice_v1"
+    assert "frame" not in payload
+    assert payload["external_llm"] is False
+    assert payload["raw_hidden_cot_claim"] is False
+
+
+def test_visible_summary_endpoint_keeps_product_redaction() -> None:
+    client = _client()
+    client.post("/api/inner-voice/emit", json={"latest_user_input": "안녕"})
+
+    payload = client.get("/api/inner-voice/visible-summary?workspace=product").json()
+
+    assert payload["product_summary"]["raw_inner_voice_hidden"] is True
+    assert payload["product_summary"]["visible_self_narration"]
+    assert payload["product_safe"] is True

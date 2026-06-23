@@ -12,6 +12,8 @@ def inner_voice_safety_flags() -> dict[str, bool]:
     return {
         "external_llm": False,
         "external_sllm": False,
+        "external_llm_used": False,
+        "external_sllm_used": False,
         "consciousness_claim": False,
         "real_emotion_claim": False,
         "local_brain_write": False,
@@ -21,6 +23,7 @@ def inner_voice_safety_flags() -> dict[str, bool]:
         "auto_push": False,
         "inner_voice_is_explicit_generated_channel": True,
         "raw_hidden_cot_claim": False,
+        "product_safe": True,
     }
 
 
@@ -44,6 +47,12 @@ class InnerVoiceFrame:
     next_intent: str
     monologue_text: str
     safety_flags: dict[str, bool] = field(default_factory=inner_voice_safety_flags)
+    act: str = "goal_selection"
+    construction_id: str = "iv.goal.select.v1"
+    construction_stance: str = "steady_orientation"
+    surface_score: float = 1.0
+    generation_basis: str = "asm_cgsr_construction_conditioned_inner_voice_v1"
+    act_scores: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -83,6 +92,9 @@ class InnerVoiceLog:
                 if latest
                 else "\uc544\uc9c1 \ud45c\uc2dc\ud560 \uc790\uae30-\uc11c\uc220 \ud504\ub808\uc784\uc774 \uc5c6\uc2b5\ub2c8\ub2e4."
             ),
+            "act": latest.act if latest else "waiting",
+            "construction_id": latest.construction_id if latest else "",
+            "generation_basis": latest.generation_basis if latest else "asm_cgsr_construction_conditioned_inner_voice_v1",
             "safety_flags": inner_voice_safety_flags(),
         }
 

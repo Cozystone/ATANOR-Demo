@@ -112,10 +112,14 @@ export default function InnerVoicePanel({ localBackendUrl }: Props) {
       {latest ? (
         <div className="agentic-os-host-result">
           <strong>{latest.goal}</strong>
+          <span>
+            construction={latest.construction_id ?? "unknown"} / act={latest.act ?? "unknown"} / stance={latest.construction_stance ?? "unknown"} / score={String(latest.surface_score ?? "-")}
+          </span>
           <p>{latest.monologue_text}</p>
           <span>chosen={latest.chosen_action}</span>
           <span>blocked={(latest.blocked_actions ?? []).join(" / ")}</span>
           <span>next={latest.next_intent}</span>
+          <span>basis={latest.generation_basis ?? "asm_cgsr_construction_conditioned_inner_voice_v1"}</span>
         </div>
       ) : <p>no inner voice frames yet</p>}
       <div className="agentic-os-flags">
