@@ -169,6 +169,20 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+function smoothstep(value: number) {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function stableUnit(value: string, salt = 0) {
+  let hash = 2166136261 ^ salt;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
 function flowFieldAngle(x: number, y: number, elapsed: number, salt = 0) {
   const low = Math.sin(x * 0.006 + elapsed * 0.36 + salt) + Math.cos(y * 0.005 - elapsed * 0.29);
   const high = Math.sin((x + y) * 0.0028 + elapsed * 0.48 + salt * 1.7);
@@ -230,22 +244,27 @@ function drawParticleSegment(
   alpha: number,
   unit: number,
   salt = 0,
+  elapsed = 0,
 ) {
   const dx = to[0] - from[0];
   const dy = to[1] - from[1];
   const distance = Math.hypot(dx, dy);
-  const steps = Math.max(4, Math.ceil(distance / Math.max(5, unit * 0.012)));
+  const steps = Math.max(4, Math.ceil(distance / Math.max(7, unit * 0.018)));
+  const normalX = distance > 0 ? -dy / distance : 0;
+  const normalY = distance > 0 ? dx / distance : 0;
   for (let index = 0; index <= steps; index += 1) {
     const t = index / steps;
-    const jitter = (seeded(index, salt) - 0.5) * unit * 0.0025;
-    const wave = Math.sin(t * Math.PI * 2 + salt) * unit * 0.0018;
+    if (index > 0 && index < steps && seeded(index, salt + 41) < 0.18) continue;
+    const jitter = (seeded(index, salt) - 0.5) * unit * 0.009;
+    const wave = Math.sin(t * Math.PI * 2 + salt + elapsed * 1.7) * unit * 0.006;
+    const flow = Math.sin(elapsed * 0.9 + t * Math.PI * 3 + salt) * unit * 0.004;
     drawGuideParticle(
       ctx,
-      from[0] + dx * t + jitter,
-      from[1] + dy * t + wave,
-      unit * (0.0024 + seeded(index, salt + 7) * 0.0022),
+      from[0] + dx * t + normalX * (jitter + wave) + flow,
+      from[1] + dy * t + normalY * (jitter + wave) + flow * 0.35,
+      unit * (0.0018 + seeded(index, salt + 7) * 0.002),
       color,
-      alpha * (0.36 + seeded(index, salt + 13) * 0.58),
+      alpha * (0.24 + seeded(index, salt + 13) * 0.46),
     );
   }
 }
@@ -257,9 +276,10 @@ function drawParticlePolyline(
   alpha: number,
   unit: number,
   salt = 0,
+  elapsed = 0,
 ) {
   for (let index = 0; index < points.length - 1; index += 1) {
-    drawParticleSegment(ctx, points[index], points[index + 1], color, alpha, unit, salt + index * 17);
+    drawParticleSegment(ctx, points[index], points[index + 1], color, alpha, unit, salt + index * 17, elapsed);
   }
 }
 
@@ -274,21 +294,23 @@ function drawParticleEllipse(
   alpha: number,
   unit: number,
   salt = 0,
+  elapsed = 0,
 ) {
-  const steps = Math.max(36, Math.ceil((rx + ry) / Math.max(4, unit * 0.01)));
+  const steps = Math.max(30, Math.ceil((rx + ry) / Math.max(6, unit * 0.015)));
   for (let index = 0; index < steps; index += 1) {
     const t = (index / steps) * Math.PI * 2;
     const rawX = Math.cos(t) * rx;
     const rawY = Math.sin(t) * ry;
-    const x = cx + rawX * Math.cos(rotation) - rawY * Math.sin(rotation);
-    const y = cy + rawX * Math.sin(rotation) + rawY * Math.cos(rotation);
+    const jitter = Math.sin(t * 3 + elapsed * 1.1 + salt) * unit * 0.003;
+    const x = cx + rawX * Math.cos(rotation) - rawY * Math.sin(rotation) + Math.cos(t) * jitter;
+    const y = cy + rawX * Math.sin(rotation) + rawY * Math.cos(rotation) + Math.sin(t) * jitter;
     drawGuideParticle(
       ctx,
       x,
       y,
-      unit * (0.0022 + seeded(index, salt + 3) * 0.002),
+      unit * (0.0018 + seeded(index, salt + 3) * 0.0018),
       color,
-      alpha * (0.3 + seeded(index, salt + 9) * 0.55),
+      alpha * (0.22 + seeded(index, salt + 9) * 0.46),
     );
   }
 }
@@ -303,8 +325,9 @@ function drawParticleRect(
   alpha: number,
   unit: number,
   salt = 0,
+  elapsed = 0,
 ) {
-  drawParticlePolyline(ctx, [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]], color, alpha, unit, salt);
+  drawParticlePolyline(ctx, [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]], color, alpha, unit, salt, elapsed);
 }
 
 function sceneBeatIndex(scenePlan: ScenePlan | null | undefined, elapsedSeconds: number): number {
@@ -330,7 +353,7 @@ function sceneArchetype(scenePlan: ScenePlan | null | undefined, beatIndex = -1)
   return PRODUCT_ARCHETYPES[hash % PRODUCT_ARCHETYPES.length];
 }
 
-function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boolean): SceneTransform {
+function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boolean, elapsedSeconds = 0): SceneTransform {
   if (!stageMode || !beat) return { offsetX: 0, offsetY: 0, zoom: 1 };
   const position = Array.isArray(beat.position) ? beat.position : [];
   const camera = beat.camera && typeof beat.camera === "object" ? beat.camera : {};
@@ -340,10 +363,16 @@ function sceneTransform(beat: ScenePlanBeat | null | undefined, stageMode: boole
   const rawZoom = Number(camera.zoom ?? camera.distance ?? 1);
   const opBias = beat.op === "focus_camera" ? 1.08 : beat.op === "move" ? 1.16 : beat.op === "despawn" ? 0.82 : 1;
   const motionBias = beat.op === "move" ? 1.45 : 1;
+  const beatStart = Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : 0;
+  const duration = Math.max(0.1, Number.isFinite(Number(beat.duration)) ? Number(beat.duration) : 1.2);
+  const progress = smoothstep((elapsedSeconds - beatStart) / duration);
+  const flowKey = `${beat.object_id ?? ""}:${beat.prompt ?? ""}:${beat.semantic_role ?? ""}`;
+  const moveX = beat.op === "move" ? (stableUnit(flowKey, 11) - 0.5) * 0.18 * Math.sin(progress * Math.PI) : 0;
+  const moveY = beat.op === "move" ? (stableUnit(flowKey, 19) - 0.5) * 0.12 * Math.sin(progress * Math.PI) : 0;
   return {
-    offsetX: clamp(Number.isFinite(rawX) ? rawX * 0.08 * motionBias : 0, -0.3, 0.3),
-    offsetY: clamp(Number.isFinite(rawY) ? -rawY * 0.08 * motionBias : 0, -0.24, 0.24),
-    zoom: clamp((Number.isFinite(rawZoom) ? rawZoom : 1) * opBias, 0.72, 1.36),
+    offsetX: clamp((Number.isFinite(rawX) ? rawX * 0.08 * motionBias : 0) + moveX, -0.34, 0.34),
+    offsetY: clamp((Number.isFinite(rawY) ? -rawY * 0.08 * motionBias : 0) + moveY, -0.28, 0.28),
+    zoom: clamp((Number.isFinite(rawZoom) ? rawZoom : 1) * opBias * (beat.op === "move" ? 1 + progress * 0.05 : 1), 0.72, 1.42),
   };
 }
 
@@ -495,7 +524,7 @@ function drawArchetypeGuides(
     });
     stars.forEach(([x, y], index) => {
       const next = stars[(index * 5 + 3) % stars.length];
-      drawParticleSegment(ctx, [x, y], [next[0], next[1]], guideColor, alpha * 0.72, unit, index + 101);
+      drawParticleSegment(ctx, [x, y], [next[0], next[1]], guideColor, alpha * 0.72, unit, index + 101, elapsed);
       drawGuideParticle(ctx, x, y, index % 3 === 0 ? unit * 0.006 : unit * 0.0032, accentColor, alpha * 0.9);
     });
   } else if (archetype === "city_block") {
@@ -504,10 +533,10 @@ function drawArchetypeGuides(
       const h = unit * (0.13 + seeded(i, 112) * 0.3);
       const x = -unit * 0.43 + i * unit * 0.095;
       const y = unit * 0.31 - h;
-      drawParticleRect(ctx, x, y, w, h, guideColor, alpha * 0.72, unit, i + 111);
+      drawParticleRect(ctx, x, y, w, h, guideColor, alpha * 0.72, unit, i + 111, elapsed);
       for (let row = 0; row < 5; row += 1) {
         const yy = y + h * (0.2 + row * 0.15);
-        drawParticleSegment(ctx, [x + w * 0.18, yy], [x + w * 0.82, yy], accentColor, alpha * 0.45, unit, i * 19 + row);
+        drawParticleSegment(ctx, [x + w * 0.18, yy], [x + w * 0.82, yy], accentColor, alpha * 0.45, unit, i * 19 + row, elapsed);
       }
     }
   } else if (archetype === "circuit") {
@@ -518,22 +547,22 @@ function drawArchetypeGuides(
         [-unit * 0.16, y],
         [-unit * 0.06, y + (i % 2 ? -unit * 0.045 : unit * 0.045)],
         [unit * 0.44, y + (i % 2 ? -unit * 0.045 : unit * 0.045)],
-      ], guideColor, alpha * 0.8, unit, i + 211);
+      ], guideColor, alpha * 0.8, unit, i + 211, elapsed);
       drawGuideParticle(ctx, -unit * 0.16, y, unit * 0.0048, accentColor, alpha * 0.76);
     }
   } else if (archetype === "tree") {
-    drawParticleSegment(ctx, [0, unit * 0.32], [0, -unit * 0.12], guideColor, alpha * 0.86, unit, 311);
+    drawParticleSegment(ctx, [0, unit * 0.32], [0, -unit * 0.12], guideColor, alpha * 0.86, unit, 311, elapsed);
     for (let i = 0; i < 9; i += 1) {
       const y = unit * (0.17 - i * 0.045);
       const side = i % 2 ? -1 : 1;
       const mid: [number, number] = [side * unit * 0.14, y - unit * 0.08];
       const end: [number, number] = [side * unit * (0.23 + seeded(i, 121) * 0.12), y - unit * 0.13];
-      drawParticlePolyline(ctx, [[0, y], mid, end], guideColor, alpha * 0.72, unit, i + 321);
+      drawParticlePolyline(ctx, [[0, y], mid, end], guideColor, alpha * 0.72, unit, i + 321, elapsed);
     }
-    drawParticleEllipse(ctx, 0, -unit * 0.16, unit * 0.28, unit * 0.18, 0, guideColor, alpha * 0.72, unit, 331);
+    drawParticleEllipse(ctx, 0, -unit * 0.16, unit * 0.28, unit * 0.18, 0, guideColor, alpha * 0.72, unit, 331, elapsed);
   } else if (archetype === "machine_core") {
     for (let i = 0; i < 5; i += 1) {
-      drawParticleEllipse(ctx, 0, 0, unit * (0.09 + i * 0.055), unit * (0.05 + i * 0.034), elapsed * 0.18 + i * 0.42, guideColor, alpha * 0.72, unit, i + 411);
+      drawParticleEllipse(ctx, 0, 0, unit * (0.09 + i * 0.055), unit * (0.05 + i * 0.034), elapsed * 0.18 + i * 0.42, guideColor, alpha * 0.72, unit, i + 411, elapsed);
     }
   } else if (archetype === "tower") {
     drawParticlePolyline(ctx, [
@@ -543,23 +572,23 @@ function drawArchetypeGuides(
       [unit * 0.22, -unit * 0.28],
       [unit * 0.12, unit * 0.36],
       [-unit * 0.12, unit * 0.36],
-    ], guideColor, alpha * 0.78, unit, 501);
+    ], guideColor, alpha * 0.78, unit, 501, elapsed);
     for (let i = 0; i < 10; i += 1) {
       const y = -unit * 0.24 + i * unit * 0.055;
-      drawParticleSegment(ctx, [-unit * (0.18 - i * 0.006), y], [unit * (0.18 - i * 0.006), y], accentColor, alpha * 0.52, unit, i + 521);
+      drawParticleSegment(ctx, [-unit * (0.18 - i * 0.006), y], [unit * (0.18 - i * 0.006), y], accentColor, alpha * 0.52, unit, i + 521, elapsed);
     }
   } else if (archetype === "abstract_memory_cloud") {
     for (let i = 0; i < 7; i += 1) {
       const angle = i * 0.9;
       const x = Math.cos(angle) * unit * (0.08 + seeded(i, 131) * 0.18);
       const y = Math.sin(angle * 1.7) * unit * 0.16;
-      drawParticleEllipse(ctx, x, y, unit * (0.08 + seeded(i, 132) * 0.08), unit * (0.045 + seeded(i, 133) * 0.05), angle, guideColor, alpha * 0.62, unit, i + 611);
+      drawParticleEllipse(ctx, x, y, unit * (0.08 + seeded(i, 132) * 0.08), unit * (0.045 + seeded(i, 133) * 0.05), angle, guideColor, alpha * 0.62, unit, i + 611, elapsed);
     }
   } else if (archetype === "creature") {
-    drawParticleEllipse(ctx, 0, unit * 0.04, unit * 0.18, unit * 0.12, 0, guideColor, alpha * 0.78, unit, 701);
-    drawParticleEllipse(ctx, 0, -unit * 0.16, unit * 0.1, unit * 0.1, 0, guideColor, alpha * 0.78, unit, 711);
+    drawParticleEllipse(ctx, 0, unit * 0.04, unit * 0.18, unit * 0.12, 0, guideColor, alpha * 0.78, unit, 701, elapsed);
+    drawParticleEllipse(ctx, 0, -unit * 0.16, unit * 0.1, unit * 0.1, 0, guideColor, alpha * 0.78, unit, 711, elapsed);
     [[-0.28, 0.18], [0.28, 0.18], [-0.24, -0.05], [0.24, -0.05]].forEach(([x, y]) => {
-      drawParticleSegment(ctx, [0, unit * 0.02], [x * unit, y * unit], guideColor, alpha * 0.72, unit, Math.round((x + y) * 1000));
+      drawParticleSegment(ctx, [0, unit * 0.02], [x * unit, y * unit], guideColor, alpha * 0.72, unit, Math.round((x + y) * 1000), elapsed);
     });
   }
   ctx.restore();
@@ -676,7 +705,7 @@ function drawParticles(
   ctx.beginPath();
   ctx.arc(cx, cy, shellRadius * 1.35, 0, Math.PI * 2);
   ctx.fill();
-  drawParticleEllipse(ctx, cx, cy, shellRadius, shellRadius, 0, [128, 226, 255], 0.22, Math.min(width, height), 901);
+  drawParticleEllipse(ctx, cx, cy, shellRadius, shellRadius, 0, [128, 226, 255], 0.22, Math.min(width, height), 901, elapsed);
 }
 
 export default function SplatraImaginationField({
@@ -715,7 +744,6 @@ export default function SplatraImaginationField({
   const activeArchetype = frame?.object?.archetype ?? archetype;
   const stageMode = sceneFocus || scenePlan?.stage_layout === "scene_focus";
   const activeSceneBeat = activeSceneBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[activeSceneBeatIndex] : null;
-  const activeTransform = useMemo(() => sceneTransform(activeSceneBeat, stageMode), [activeSceneBeat, stageMode]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -834,13 +862,16 @@ export default function SplatraImaginationField({
         canvas.width = width;
         canvas.height = height;
       }
+      const elapsed = reducedMotion ? 0.5 : (performance.now() - startedAt) / 1000;
+      const sceneElapsed = sceneStartedAt ? Math.max(0, (performance.now() - sceneStartedAt) / 1000) : elapsed;
+      const activeTransform = sceneTransform(activeSceneBeat, stageMode, sceneElapsed);
       drawParticles(
         ctx,
         particles,
         activeArchetype,
         width,
         height,
-        reducedMotion ? 0.5 : (performance.now() - startedAt) / 1000,
+        elapsed,
         controls,
         !stageMode && !interactive && mode === "product",
         mode === "lab",
@@ -850,7 +881,7 @@ export default function SplatraImaginationField({
     };
     render();
     return () => window.cancelAnimationFrame(animationId);
-  }, [activeArchetype, activeTransform, controls, interactive, mode, particles, reducedMotion, stageMode]);
+  }, [activeArchetype, activeSceneBeat, controls, interactive, mode, particles, reducedMotion, sceneStartedAt, stageMode]);
 
   function handleClick() {
     if (state === "listening") {
