@@ -50,6 +50,7 @@ def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
     assert plan.scene_choreography is not None
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
     assert plan.scene_choreography["orb_anchor"] == "lower_right"
+    assert plan.scene_choreography["text_anchor"] == "lower_left"
     assert plan.diagnostics["topic_scene_templates"] is False
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.scene_choreography["beats"]
@@ -99,4 +100,5 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert any("Gravity is a force" in beat["source_fact"] for beat in plan.scene_choreography["beats"])
     assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
+    assert plan.scene_choreography["text_anchor"] == "lower_left"
     assert plan.scene_choreography["topic_scene_templates"] is False

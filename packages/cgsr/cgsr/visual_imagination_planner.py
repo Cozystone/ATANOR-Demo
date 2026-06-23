@@ -271,6 +271,7 @@ def plan_visual_imagination(
         {
             "stage_layout": "scene_focus",
             "orb_anchor": "lower_right",
+            "text_anchor": "lower_left",
             "primary_surface": "splatra_stage",
             "beats": beats,
         }

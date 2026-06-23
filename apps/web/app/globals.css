@@ -8500,8 +8500,47 @@ p {
 
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-hologram-speech {
   bottom: clamp(138px, 18vh, 204px);
+  left: auto;
   max-width: min(540px, calc(100vw - clamp(286px, 38vw, 520px)));
   right: clamp(196px, 29vw, 390px);
+  top: auto;
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-speech-placement="lower_left"] .atanor-hologram-speech {
+  bottom: clamp(120px, 16vh, 178px);
+  left: clamp(28px, 6vw, 92px);
+  max-width: min(540px, 48vw);
+  right: auto;
+  text-align: left;
+  top: auto;
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-speech-placement="upper_left"] .atanor-hologram-speech {
+  bottom: auto;
+  left: clamp(28px, 6vw, 92px);
+  max-width: min(520px, 46vw);
+  right: auto;
+  text-align: left;
+  top: clamp(156px, 23vh, 236px);
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-speech-placement="upper_right"] .atanor-hologram-speech {
+  bottom: auto;
+  left: auto;
+  max-width: min(440px, 34vw);
+  right: clamp(42px, 8vw, 126px);
+  text-align: left;
+  top: clamp(112px, 17vh, 188px);
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-speech-placement="lower_center"] .atanor-hologram-speech {
+  bottom: clamp(128px, 17vh, 188px);
+  left: 50%;
+  max-width: min(540px, 50vw);
+  right: auto;
+  text-align: center;
+  top: auto;
+  transform: translateX(-50%);
 }
 
 .hologram-voice-orb:hover {

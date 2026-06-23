@@ -11,6 +11,7 @@ from .models import ARCHETYPES, Archetype, default_safety_flags
 SceneBeatOp = Literal["spawn_object", "morph", "move", "focus_camera", "label", "despawn"]
 StageLayout = Literal["conversation", "scene_focus"]
 OrbAnchor = Literal["center", "lower_right"]
+TextAnchor = Literal["auto", "upper_left", "lower_left", "upper_right", "lower_center"]
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class SceneChoreographyPlan:
     plan_id: str
     stage_layout: StageLayout
     orb_anchor: OrbAnchor
+    text_anchor: TextAnchor
     primary_surface: str
     beats: list[SceneBeat]
     safety_flags: dict[str, bool]
@@ -104,6 +106,15 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
     )
 
 
+def _coerce_text_anchor(value: Any, stage_layout: StageLayout) -> TextAnchor:
+    text_anchor = str(value or "auto")
+    if text_anchor not in {"auto", "upper_left", "lower_left", "upper_right", "lower_center"}:
+        text_anchor = "auto"
+    if text_anchor == "auto" and stage_layout == "scene_focus":
+        return "lower_left"
+    return text_anchor  # type: ignore[return-value]
+
+
 def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     """Validate an agent-authored SPLATRA scene plan without inventing content.
 
@@ -116,11 +127,13 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     beats = [_coerce_beat(item, index) for index, item in enumerate(raw_beats[:32]) if isinstance(item, dict)]
     stage_layout: StageLayout = "scene_focus" if plan.get("stage_layout") == "scene_focus" or beats else "conversation"
     orb_anchor: OrbAnchor = "lower_right" if stage_layout == "scene_focus" or plan.get("orb_anchor") == "lower_right" else "center"
-    seed = f"{stage_layout}:{orb_anchor}:{[(beat.op, beat.prompt, beat.object_id) for beat in beats]}"
+    text_anchor = _coerce_text_anchor(plan.get("text_anchor"), stage_layout)
+    seed = f"{stage_layout}:{orb_anchor}:{text_anchor}:{[(beat.op, beat.prompt, beat.object_id) for beat in beats]}"
     return SceneChoreographyPlan(
         plan_id=_stable_id("scene_choreo", seed),
         stage_layout=stage_layout,
         orb_anchor=orb_anchor,
+        text_anchor=text_anchor,
         primary_surface="splatra_stage" if stage_layout == "scene_focus" else "conversation",
         beats=beats,
         safety_flags=default_safety_flags(),

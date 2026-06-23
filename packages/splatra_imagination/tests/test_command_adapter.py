@@ -43,6 +43,7 @@ def test_scene_choreography_validates_agent_authored_beats_without_inventing_con
 
     assert plan.stage_layout == "scene_focus"
     assert plan.orb_anchor == "lower_right"
+    assert plan.text_anchor == "lower_left"
     assert plan.primary_surface == "splatra_stage"
     assert len(plan.beats) == 2
     assert plan.topic_scene_templates is False
@@ -55,6 +56,7 @@ def test_scene_choreography_validates_agent_authored_beats_without_inventing_con
 def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None:
     plan = compile_scene_choreography({
         "stage_layout": "scene_focus",
+        "text_anchor": "upper_right",
         "beats": [
             {
                 "op": "focus_camera",
@@ -70,6 +72,7 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
     })
 
     beat = plan.beats[0]
+    assert plan.text_anchor == "upper_right"
     assert beat.op == "focus_camera"
     assert beat.narration == "agent-authored visible narration"
     assert beat.t_start == 2.5

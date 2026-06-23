@@ -8,6 +8,7 @@ import SplatraImaginationField from "./SplatraImaginationField";
 
 type Language = "en" | "ko";
 type StageLayout = "conversation" | "scene_focus";
+type TextAnchor = "auto" | "upper_left" | "lower_left" | "upper_right" | "lower_center";
 
 type AtanorUserStatusCardProps = {
   language: Language;
@@ -33,6 +34,7 @@ type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" 
 type SceneChoreographyPayload = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
+  text_anchor?: TextAnchor;
   primary_surface?: string;
   beats?: Array<{
     op?: SceneBeatOp;
@@ -142,6 +144,14 @@ function requestedSceneChoreography(payload: Record<string, any>): SceneChoreogr
   return visualPlan as SceneChoreographyPayload;
 }
 
+function requestedTextAnchor(scenePlan: SceneChoreographyPayload): TextAnchor {
+  const value = scenePlan?.text_anchor;
+  if (value === "upper_left" || value === "lower_left" || value === "upper_right" || value === "lower_center") {
+    return value;
+  }
+  return "auto";
+}
+
 function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   return beats
@@ -171,6 +181,15 @@ function emitNeuralEmotionEvent(eventType: string, payloadSummary: string) {
   }).catch(() => undefined);
 }
 
+function rectsOverlap(left: DOMRect, right: DOMRect, padding = 10) {
+  return !(
+    left.right + padding < right.left
+    || left.left - padding > right.right
+    || left.bottom + padding < right.top
+    || left.top - padding > right.bottom
+  );
+}
+
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
@@ -183,6 +202,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
   const [sceneSpeechStartedAt, setSceneSpeechStartedAt] = useState(0);
+  const [speechPlacement, setSpeechPlacement] = useState<TextAnchor>("lower_center");
+  const dashboardRef = useRef<HTMLElement | null>(null);
+  const speechRef = useRef<HTMLParagraphElement | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speakingVisual = orbState === "speaking" || audioPlaying;
   const cleanPlaceholder = voiceMode
@@ -233,6 +256,51 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     const timer = window.setInterval(update, 180);
     return () => window.clearInterval(timer);
   }, [sceneChoreography, sceneSpeechStartedAt, stageLayout]);
+
+  useEffect(() => {
+    if (stageLayout !== "scene_focus") {
+      setSpeechPlacement("lower_center");
+      return undefined;
+    }
+    const requested = requestedTextAnchor(sceneChoreography);
+    const preferred: TextAnchor = requested === "auto" ? "lower_left" : requested;
+    let frameId = 0;
+
+    const updatePlacement = () => {
+      const dashboard = dashboardRef.current;
+      const speech = speechRef.current;
+      if (!dashboard || !speech) {
+        setSpeechPlacement(preferred);
+        return;
+      }
+      const speechBox = speech.getBoundingClientRect();
+      const orbBox = dashboard.querySelector(".hologram-voice-orb")?.getBoundingClientRect();
+      const composerBox = composerRef.current?.getBoundingClientRect();
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const clipped =
+        speechBox.left < 12
+        || speechBox.right > viewport.width - 12
+        || speechBox.top < 12
+        || speechBox.bottom > viewport.height - 12;
+      const collides =
+        (orbBox ? rectsOverlap(speechBox, orbBox, 14) : false)
+        || (composerBox ? rectsOverlap(speechBox, composerBox, 16) : false);
+      const next = clipped || collides
+        ? preferred === "lower_left" ? "upper_left"
+          : preferred === "upper_left" ? "upper_right"
+            : preferred === "upper_right" ? "lower_center"
+              : "upper_left"
+        : preferred;
+      setSpeechPlacement(next);
+    };
+
+    frameId = window.requestAnimationFrame(updatePlacement);
+    window.addEventListener("resize", updatePlacement);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updatePlacement);
+    };
+  }, [sceneChoreography, stageLayout, typedSpeechLine]);
 
   useEffect(() => {
     let cancelled = false;
@@ -446,11 +514,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
 
   return (
     <section
+      ref={dashboardRef}
       className="atanor-ai-dashboard"
       aria-label={language === "ko" ? "ATANOR \uC785\uC790 \uBCF8\uCCB4" : "ATANOR particle body"}
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
       data-stage-layout={stageLayout}
+      data-speech-placement={speechPlacement}
     >
       <SplatraImaginationField
         state={orbState}
@@ -470,7 +540,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           </p>
         ) : null}
         {typedSpeechLine ? (
-          <p className="atanor-hologram-speech" aria-live="polite">
+          <p ref={speechRef} className="atanor-hologram-speech" aria-live="polite">
             {typedSpeechLine}
           </p>
         ) : null}
@@ -480,7 +550,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           </p>
         ) : null}
       </div>
-      <form className="atanor-hologram-composer" data-voice-mode={voiceMode ? "true" : "false"} onSubmit={submitMessage}>
+      <form ref={composerRef} className="atanor-hologram-composer" data-voice-mode={voiceMode ? "true" : "false"} onSubmit={submitMessage}>
         <button type="button" aria-label={language === "ko" ? "\uC74C\uC131 \uB300\uD654 \uBAA8\uB4DC" : "Voice conversation mode"} onClick={voiceMode ? cancelVoiceMode : startVoiceMode}>
           <Mic size={18} strokeWidth={1.8} />
         </button>
