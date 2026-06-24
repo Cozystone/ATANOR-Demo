@@ -62,6 +62,8 @@ type LayoutTelemetry = {
   blockers: number;
   collisionState: string;
   offscreen: number;
+  orbOffscreen: number;
+  orbOverlap: number;
   overlap: number;
 };
 
@@ -506,6 +508,8 @@ function splatraLayoutTelemetryOrDefault(stageLayout: StageLayout, layoutTelemet
     blockers: 0,
     collisionState: stageLayout === "scene_focus" ? "unmeasured" : "conversation_default",
     offscreen: 0,
+    orbOffscreen: 0,
+    orbOverlap: 0,
     overlap: 0,
   };
 }
@@ -618,6 +622,8 @@ function splatraStateForInnerVoice(
       measured_blockers: layoutFeedback.blockers,
       overlap_px: layoutFeedback.overlap,
       offscreen_px: layoutFeedback.offscreen,
+      orb_overlap_px: layoutFeedback.orbOverlap,
+      orb_offscreen_px: layoutFeedback.orbOffscreen,
       feedback_basis: "client_dom_scene_collision_telemetry",
     },
     orb_layout_feedback: orbLayoutFeedback,
@@ -959,7 +965,7 @@ function scoreSpeechAnchor(
 
 function layoutTelemetryForRect(rect: RectLike | null, blockers: RectLike[]): LayoutTelemetry {
   if (!rect) {
-    return { blockers: blockers.length, collisionState: "no_dom_text", offscreen: 0, overlap: 0 };
+    return { blockers: blockers.length, collisionState: "no_dom_text", offscreen: 0, orbOffscreen: 0, orbOverlap: 0, overlap: 0 };
   }
   const overlap = Math.round(blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 0), 0));
   const offscreen = Math.round(offscreenAmount(rect));
@@ -971,11 +977,38 @@ function layoutTelemetryForRect(rect: RectLike | null, blockers: RectLike[]): La
   } else if (overlap > 0) {
     collisionState = "dom_text_minimized_overlap";
   }
-  return { blockers: blockers.length, collisionState, offscreen, overlap };
+  return { blockers: blockers.length, collisionState, offscreen, orbOffscreen: 0, orbOverlap: 0, overlap };
+}
+
+function layoutTelemetryForScene(
+  textRect: RectLike | null,
+  textBlockers: RectLike[],
+  orbRect: RectLike | null,
+  orbBlockers: RectLike[],
+): LayoutTelemetry {
+  const textTelemetry = layoutTelemetryForRect(textRect, textBlockers);
+  const orbOverlap = orbRect
+    ? Math.round(orbBlockers.reduce((total, blocker) => total + overlapArea(orbRect, blocker, 6), 0))
+    : 0;
+  const orbOffscreen = orbRect ? Math.round(offscreenAmount(orbRect, 8)) : 0;
+  let collisionState = textTelemetry.collisionState;
+  if (orbOffscreen > 0) {
+    collisionState = "orb_clipped";
+  } else if (orbOverlap > 220) {
+    collisionState = "orb_overlap_risk";
+  }
+  return {
+    ...textTelemetry,
+    blockers: textBlockers.length + orbBlockers.length,
+    collisionState,
+    orbOffscreen,
+    orbOverlap,
+  };
 }
 
 function effectiveOrbMovementForTelemetry(stageLayout: StageLayout, requestedMovement: string, telemetry: LayoutTelemetry) {
   if (stageLayout !== "scene_focus") return requestedMovement;
+  if (telemetry.collisionState === "orb_clipped" || telemetry.collisionState === "orb_overlap_risk") return "lower_right_lifted_compact";
   if (telemetry.collisionState === "dom_text_clipped") return "lower_right_lifted_compact";
   if (telemetry.collisionState === "dom_text_overlap_risk") {
     return requestedMovement === "lower_right_lifted" || requestedMovement === "lower_right_lifted_compact"
@@ -991,12 +1024,16 @@ function effectiveOrbMovementForTelemetry(stageLayout: StageLayout, requestedMov
 function layoutCollisionPressureFromTelemetry(telemetry: LayoutTelemetry) {
   const statePressure =
     telemetry.collisionState === "dom_text_clipped" ? 1
+      : telemetry.collisionState === "orb_clipped" ? 1
+        : telemetry.collisionState === "orb_overlap_risk" ? 0.82
       : telemetry.collisionState === "dom_text_overlap_risk" ? 0.76
         : telemetry.collisionState === "dom_text_minimized_overlap" ? 0.32
           : 0;
   const measuredPressure = Math.max(
     clampNumber(telemetry.offscreen / 180, 0, 1),
+    clampNumber(telemetry.orbOffscreen / 160, 0, 1),
     clampNumber(telemetry.overlap / 1600, 0, 0.86),
+    clampNumber(telemetry.orbOverlap / 1400, 0, 0.86),
   );
   const blockerPressure = clampNumber(Math.max(0, telemetry.blockers - 2) / 7, 0, 0.24);
   return clampNumber(Math.max(statePressure, measuredPressure) + blockerPressure, 0, 1);
@@ -1037,6 +1074,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     blockers: 0,
     collisionState: "conversation_default",
     offscreen: 0,
+    orbOffscreen: 0,
+    orbOverlap: 0,
     overlap: 0,
   });
   const dashboardRef = useRef<HTMLElement | null>(null);
@@ -1116,8 +1155,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setSelfNarrationPlacement("upper_right");
       setLayoutTelemetry((current) => (
         current.collisionState === "conversation_default" && current.blockers === 0 && current.overlap === 0 && current.offscreen === 0
+          && current.orbOffscreen === 0 && current.orbOverlap === 0
           ? current
-          : { blockers: 0, collisionState: "conversation_default", offscreen: 0, overlap: 0 }
+          : { blockers: 0, collisionState: "conversation_default", offscreen: 0, orbOffscreen: 0, orbOverlap: 0, overlap: 0 }
       ));
       return undefined;
     }
@@ -1139,9 +1179,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
       const dashboardBox = rectFromDom(dashboard.getBoundingClientRect());
       const layoutMetrics = dashboardLayoutMetrics(sceneChoreography, stageLayout);
+      const orbRect = dashboard.querySelector(".hologram-voice-orb")?.getBoundingClientRect();
+      const composerRect = composerRef.current?.getBoundingClientRect();
       const baseBlockers = [
-        dashboard.querySelector(".hologram-voice-orb")?.getBoundingClientRect(),
-        composerRef.current?.getBoundingClientRect(),
+        orbRect,
+        composerRect,
       ]
         .filter((rect): rect is DOMRect => Boolean(rect))
         .map(rectFromDom);
@@ -1181,12 +1223,24 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferredSelfNarration;
         setSelfNarrationPlacement((current) => (current === nextSelf ? current : nextSelf));
       }
-      const telemetry = layoutTelemetryForRect(nextSpeechRect, nextSpeechBlockers);
+      const orbBlockers = [
+        composerRect ? rectFromDom(composerRect) : null,
+        nextSpeechRect,
+        selfNarrationElement ? rectFromDom(selfNarrationElement.getBoundingClientRect()) : null,
+      ].filter((rect): rect is RectLike => Boolean(rect));
+      const telemetry = layoutTelemetryForScene(
+        nextSpeechRect,
+        nextSpeechBlockers,
+        orbRect ? rectFromDom(orbRect) : null,
+        orbBlockers,
+      );
       setLayoutTelemetry((current) => (
         current.collisionState === telemetry.collisionState
           && current.blockers === telemetry.blockers
           && current.overlap === telemetry.overlap
           && current.offscreen === telemetry.offscreen
+          && current.orbOverlap === telemetry.orbOverlap
+          && current.orbOffscreen === telemetry.orbOffscreen
           ? current
           : telemetry
       ));
@@ -1400,6 +1454,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
               measured_blockers: layoutTelemetry.blockers,
               overlap_px: layoutTelemetry.overlap,
               offscreen_px: layoutTelemetry.offscreen,
+              orb_overlap_px: layoutTelemetry.orbOverlap,
+              orb_offscreen_px: layoutTelemetry.orbOffscreen,
             },
             orb_layout_feedback: nextOrbLayoutFeedback,
             splatra_scene_policy: nextScenePolicy,
@@ -1483,6 +1539,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-measured-blockers={layoutTelemetry.blockers}
       data-layout-overlap-px={layoutTelemetry.overlap}
       data-layout-offscreen-px={layoutTelemetry.offscreen}
+      data-layout-orb-overlap-px={layoutTelemetry.orbOverlap}
+      data-layout-orb-offscreen-px={layoutTelemetry.orbOffscreen}
       data-layout-collision-pressure={splatraDashboardControls.layout_collision_pressure}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}

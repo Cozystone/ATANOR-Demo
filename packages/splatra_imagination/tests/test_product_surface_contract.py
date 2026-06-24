@@ -141,7 +141,16 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "DashboardLayoutMetrics" in status_card
     assert "LayoutTelemetry" in status_card
     assert "layoutTelemetryForRect" in status_card
+    assert "layoutTelemetryForScene" in status_card
     assert "effectiveOrbMovementForTelemetry" in status_card
+    assert "orbOverlap" in status_card
+    assert "orbOffscreen" in status_card
+    assert "orb_overlap_px" in status_card
+    assert "orb_offscreen_px" in status_card
+    assert "data-layout-orb-overlap-px" in status_card
+    assert "data-layout-orb-offscreen-px" in status_card
+    assert 'telemetry.collisionState === "orb_clipped"' in status_card
+    assert 'telemetry.collisionState === "orb_overlap_risk"' in status_card
     assert "client_dom_collision_feedback" in status_card
     assert "offscreenAmount" in status_card
     assert "dashboardLayoutMetrics" in status_card
