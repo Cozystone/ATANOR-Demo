@@ -118,6 +118,86 @@ def test_general_knowledge_does_not_ground_on_english_function_words(tmp_path: P
     assert "entropy" not in answer
 
 
+def test_general_knowledge_adds_same_document_motion_evidence_without_topic_template(tmp_path: Path) -> None:
+    evidence_path = tmp_path / "evidence.jsonl"
+    rows = [
+        {
+            "text": "Gravity is a force of attraction between masses. Isaac Newton formulated the law of universal gravitation.",
+            "verification": {"status": "verified"},
+            "provenance": {
+                "document_id": "licensed_gravity_doc",
+                "source_id": "licensed:gravity:1",
+                "source_name": "licensed_fixture",
+                "title": "Gravity",
+            },
+        },
+        {
+            "text": "Universal gravitation described free fall near Earth and orbital motion of planets as connected motion.",
+            "verification": {"status": "verified"},
+            "provenance": {
+                "document_id": "licensed_gravity_doc",
+                "source_id": "licensed:gravity:2",
+                "source_name": "licensed_fixture",
+                "title": "Gravity",
+            },
+        },
+    ]
+    evidence_path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    prompt = "What is the law of gravity?"
+    route = route_conversation_request(prompt)
+    context = gather_grounded_context(prompt, route, runtime={"verified_store_path": str(tmp_path)})
+
+    facts = " ".join(context.facts)
+    assert context.grounding_source == "verified_store_v0_readonly"
+    assert "universal gravitation" in facts
+    assert "free fall near Earth" in facts
+    assert "orbital motion" in facts
+
+
+def test_general_knowledge_does_not_add_unrelated_adjacent_scene_words(tmp_path: Path) -> None:
+    evidence_path = tmp_path / "evidence.jsonl"
+    rows = [
+        {
+            "text": "Gravity is a force of attraction between masses. Isaac Newton formulated the law of universal gravitation.",
+            "verification": {"status": "verified"},
+            "provenance": {
+                "document_id": "licensed_gravity_doc",
+                "source_id": "licensed:gravity:1",
+                "source_name": "licensed_fixture",
+                "title": "Gravity",
+            },
+        },
+        {
+            "text": "An apple fell from a tree in an unrelated orchard story.",
+            "verification": {"status": "verified"},
+            "provenance": {
+                "document_id": "licensed_orchard_doc",
+                "source_id": "licensed:orchard:1",
+                "source_name": "licensed_fixture",
+                "title": "Orchard",
+            },
+        },
+    ]
+    evidence_path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    prompt = "What is the law of gravity?"
+    route = route_conversation_request(prompt)
+    context = gather_grounded_context(prompt, route, runtime={"verified_store_path": str(tmp_path)})
+
+    facts = " ".join(context.facts)
+    assert context.grounding_source == "verified_store_v0_readonly"
+    assert "universal gravitation" in facts
+    assert "apple" not in facts.casefold()
+    assert "orchard" not in facts.casefold()
+
+
 def test_korean_general_knowledge_uses_utf8_verified_store_tokens(tmp_path: Path) -> None:
     evidence_path = tmp_path / "evidence.jsonl"
     evidence_path.write_text(

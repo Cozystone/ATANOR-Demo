@@ -18,6 +18,49 @@ FILE_PRIORITIES = {
     "case_frames.jsonl": 0.72,
     "concepts.jsonl": 0.58,
 }
+ADJACENT_EVIDENCE_TOKENS = {
+    "acceleration",
+    "attraction",
+    "fall",
+    "falling",
+    "force",
+    "mass",
+    "motion",
+    "orbit",
+    "가속도",
+    "낙하",
+    "떨어지는",
+    "떨어뜨린",
+    "떨어진",
+    "물체",
+    "운동",
+    "자유낙하",
+    "힘",
+}
+CONCRETE_MOTION_TOKENS = {
+    "fall",
+    "falling",
+    "freefall",
+    "가속도",
+    "낙하",
+    "떨어지는",
+    "떨어뜨린",
+    "떨어진",
+    "물체",
+    "자유낙하",
+}
+ADJACENT_GENERIC_TOKENS = {
+    "것이다",
+    "그리고",
+    "대한",
+    "대해",
+    "따라서",
+    "또는",
+    "법칙",
+    "설명",
+    "이것은",
+    "있다",
+}
 STOP_TOKENS = {
     "a",
     "an",
@@ -90,7 +133,19 @@ class VerifiedFactHit:
     score: float
 
 
-def _read_jsonl(path: Path, *, limit: int = 10000) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class _FactCandidate:
+    filename: str
+    row: dict[str, Any]
+    text: str
+    source_ref: str
+    document_key: str
+    tokens: set[str]
+    score: float
+    adjacent: bool = False
+
+
+def _read_jsonl(path: Path, *, limit: int = 50000) -> list[dict[str, Any]]:
     if not path.exists() or not path.is_file():
         return []
     rows: list[dict[str, Any]] = []
@@ -149,10 +204,115 @@ def _source_ref(row: dict[str, Any], fallback: str) -> str:
     return fallback
 
 
+def _document_key(row: dict[str, Any], fallback: str) -> str:
+    provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+    document_id = row.get("document_id") or provenance.get("document_id")
+    if document_id:
+        return str(document_id)
+    source_id = row.get("source_id") or provenance.get("source_id")
+    if source_id:
+        source_id = str(source_id)
+        return source_id.rsplit(":", 1)[0] if ":" in source_id else source_id
+    return _source_ref(row, fallback)
+
+
 def _is_verified(row: dict[str, Any]) -> bool:
     verification = row.get("verification") if isinstance(row.get("verification"), dict) else {}
     status = str(row.get("status") or row.get("verification_status") or verification.get("status") or "verified")
     return status in {"verified", "accepted"}
+
+
+def _has_adjacent_evidence_signal(text: str, tokens: set[str]) -> bool:
+    folded = text.casefold()
+    return bool(tokens & ADJACENT_EVIDENCE_TOKENS) or any(token in folded for token in ADJACENT_EVIDENCE_TOKENS)
+
+
+def _scene_signal_count(text: str, tokens: set[str]) -> int:
+    folded = text.casefold()
+    return sum(1 for token in ADJACENT_EVIDENCE_TOKENS if token in tokens or token in folded)
+
+
+def _concrete_motion_count(text: str, tokens: set[str]) -> int:
+    folded = text.casefold()
+    return sum(1 for token in CONCRETE_MOTION_TOKENS if token in tokens or token in folded)
+
+
+def _salient_seed_tokens(candidates: list[_FactCandidate], query_tokens: set[str]) -> set[str]:
+    seed: set[str] = set(query_tokens)
+    for candidate in candidates[:8]:
+        seed.update(
+            token
+            for token in candidate.tokens
+            if len(token) >= 3 and token not in STOP_TOKENS and token not in ADJACENT_GENERIC_TOKENS
+        )
+    return seed
+
+
+def _adjacent_verified_candidates(
+    rows: list[tuple[str, dict[str, Any]]],
+    *,
+    primary: list[_FactCandidate],
+    query_tokens: set[str],
+    seen_texts: set[str],
+) -> list[_FactCandidate]:
+    """Find same-source evidence that adds concrete motion/scene structure.
+
+    This is still extractive retrieval. It does not map topics to canned
+    scenes; adjacent facts must live in the same source/document as a primary
+    verified hit and share salient tokens with that hit.
+    """
+
+    if not primary:
+        return []
+    document_keys = {candidate.document_key for candidate in primary[:8] if candidate.document_key}
+    seed_tokens = _salient_seed_tokens(primary, query_tokens)
+    adjacent: list[_FactCandidate] = []
+    for filename, row in rows:
+        if not _is_verified(row):
+            continue
+        text = _row_text(row)
+        if not text or has_mock_signal(text):
+            continue
+        key = text.casefold()
+        if key in seen_texts:
+            continue
+        document_key = _document_key(row, filename)
+        if document_key not in document_keys:
+            continue
+        row_tokens = _tokens(text)
+        if not row_tokens:
+            continue
+        overlap = row_tokens & seed_tokens
+        if not overlap:
+            continue
+        has_scene_signal = _has_adjacent_evidence_signal(text, row_tokens)
+        if not has_scene_signal and len(overlap) < 2:
+            continue
+        scene_count = _scene_signal_count(text, row_tokens)
+        concrete_motion_count = _concrete_motion_count(text, row_tokens)
+        score = (
+            0.1
+            + (0.03 * min(len(overlap), 4))
+            + (0.04 * min(scene_count, 4))
+            + (0.08 * min(concrete_motion_count, 3))
+        )
+        score *= FILE_PRIORITIES.get(filename, 0.5)
+        if score < 0.14:
+            continue
+        adjacent.append(
+            _FactCandidate(
+                filename=filename,
+                row=row,
+                text=text,
+                source_ref=_source_ref(row, filename),
+                document_key=document_key,
+                tokens=row_tokens,
+                score=round(score, 4),
+                adjacent=True,
+            )
+        )
+    adjacent.sort(key=lambda candidate: (-candidate.score, len(candidate.text), candidate.text))
+    return adjacent
 
 
 def retrieve_verified_facts(
@@ -181,7 +341,7 @@ def retrieve_verified_facts(
         for row in _read_jsonl(root / filename):
             rows.append((filename, row))
 
-    hits: list[VerifiedFactHit] = []
+    primary: list[_FactCandidate] = []
     seen: set[str] = set()
     for filename, row in rows:
         if not _is_verified(row):
@@ -205,7 +365,32 @@ def retrieve_verified_facts(
         if key in seen:
             continue
         seen.add(key)
-        hits.append(VerifiedFactHit(fact=text, source_ref=_source_ref(row, filename), score=round(score, 4)))
+        primary.append(
+            _FactCandidate(
+                filename=filename,
+                row=row,
+                text=text,
+                source_ref=_source_ref(row, filename),
+                document_key=_document_key(row, filename),
+                tokens=row_tokens,
+                score=round(score, 4),
+            )
+        )
 
-    hits.sort(key=lambda hit: (-hit.score, len(hit.fact), hit.fact))
-    return hits[:limit]
+    primary.sort(key=lambda candidate: (-candidate.score, len(candidate.text), candidate.text))
+    adjacent = _adjacent_verified_candidates(rows, primary=primary, query_tokens=query_tokens, seen_texts=seen)
+    if adjacent and limit > 1:
+        selected = primary[: max(1, limit - 1)]
+        selected_seen = {candidate.text.casefold() for candidate in selected}
+        for candidate in adjacent:
+            if len(selected) >= limit:
+                break
+            if candidate.text.casefold() not in selected_seen:
+                selected.append(candidate)
+                selected_seen.add(candidate.text.casefold())
+    else:
+        selected = primary[:limit]
+    return [
+        VerifiedFactHit(fact=candidate.text, source_ref=candidate.source_ref, score=candidate.score)
+        for candidate in selected[:limit]
+    ]
