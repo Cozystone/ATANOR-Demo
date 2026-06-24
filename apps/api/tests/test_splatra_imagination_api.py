@@ -124,5 +124,11 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert first_beat["scene_directive"]["text_rendering"] == "dom_text_not_particles"
     assert first_beat["scene_directive"]["particle_text"] is False
     assert first_beat["scene_directive"]["topic_scene_templates"] is False
+    assert first_beat["scene_evidence"]["source_type"] == "verified_evidence_unit"
+    assert first_beat["scene_evidence"]["prompt_span"] == "concept figure"
+    assert first_beat["scene_evidence"]["text_rendering"] == "dom_text_not_particles"
+    assert first_beat["scene_evidence"]["particle_text"] is False
+    assert first_beat["scene_evidence"]["topic_scene_templates"] is False
+    assert first_beat["scene_evidence"]["renderer_may_infer_topic"] is False
     assert payload["local_brain_write"] is False
     assert payload["production_store_mutated"] is False

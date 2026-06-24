@@ -100,6 +100,12 @@ def test_scene_choreography_preserves_timing_position_and_camera_hints() -> None
     assert beat.scene_directive["directive_owner"] == "cgsr_visual_imagination_planner"
     assert beat.scene_directive["stage_instruction"] == "animate_verified_motion_path"
     assert beat.scene_directive["particle_text"] is False
+    assert beat.scene_evidence["source_type"] == "verified_evidence_unit"
+    assert beat.scene_evidence["prompt_span"] == "agent-authored subject"
+    assert beat.scene_evidence["text_rendering"] == "dom_text_not_particles"
+    assert beat.scene_evidence["particle_text"] is False
+    assert beat.scene_evidence["topic_scene_templates"] is False
+    assert beat.scene_evidence["renderer_may_infer_topic"] is False
     assert beat.physics_hint == {"basis": "verified_motion_phrase", "field": "downward_attraction", "gravity_bias": 0.7}
     assert beat.motion_path == {"from": (-0.5, 0.25, 0.0), "to": (0.5, -0.25, 0.0), "basis": "verified_motion_phrase"}
     assert beat.camera == {"target": [0.5, -0.25, 0], "zoom": 1.2}
@@ -148,6 +154,12 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert item["particle_behavior"] == "gravity_arc"
     assert item["scene_directive"]["stage_instruction"] == "animate_verified_motion_path"
     assert item["scene_directive"]["particle_text"] is False
+    assert item["scene_evidence"]["source_type"] == "verified_evidence_unit"
+    assert item["scene_evidence"]["prompt_span"] == "apple"
+    assert item["scene_evidence"]["motion_basis"] == "verified_motion_phrase"
+    assert item["scene_evidence"]["particle_text"] is False
+    assert item["scene_evidence"]["topic_scene_templates"] is False
+    assert item["scene_evidence"]["renderer_may_infer_topic"] is False
     assert item["physics_hint"]["field"] == "downward_attraction"
     assert item["motion_path"]["basis"] == "verified_motion_phrase"
     assert plan.dashboard_layout["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
@@ -166,6 +178,9 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert active_layout["text_rendering"] == "dom_text_not_particles"
     assert active_layout["decision_owner"] == "cgsr_scene_choreography_agent"
     assert active_layout["scene_directive"]["stage_instruction"] == "animate_verified_motion_path"
+    assert active_layout["scene_evidence"]["source_type"] == "verified_evidence_unit"
+    assert active_layout["scene_evidence"]["motion_basis"] == "verified_motion_phrase"
+    assert active_layout["scene_evidence"]["renderer_may_infer_topic"] is False
     assert "object_track_id" in active_layout
     assert active_layout["orb_movement"] == "lower_right_lifted"
     assert active_layout["text_anchor"] == "lower_left"

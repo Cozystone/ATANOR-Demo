@@ -418,6 +418,46 @@ def _scene_directive_for_unit(
     }
 
 
+def _scene_evidence_for_unit(
+    unit: dict[str, Any],
+    *,
+    visual_affordance: str,
+    spatial_relation: str,
+    surface_features: list[str],
+    motion_path: dict[str, Any],
+    particle_behavior: str,
+) -> dict[str, Any]:
+    """Preserve the verified evidence behind a particle beat.
+
+    The renderer should never infer "gravity means apple tree" on its own.
+    This trace makes each generated visual affordance auditable against a
+    verified text span and keeps topic templates explicitly disabled.
+    """
+
+    source_fact = _clean_phrase(str(unit.get("source_fact") or ""), limit=360)
+    prompt = _clean_phrase(str(unit.get("prompt") or ""), limit=96)
+    narration = _clean_phrase(str(unit.get("narration") or ""), limit=240)
+    return {
+        "evidence_owner": "cgsr_visual_imagination_planner",
+        "source_type": "verified_evidence_unit",
+        "source_fact_hash": hashlib.sha256(source_fact.encode("utf-8")).hexdigest()[:16] if source_fact else "",
+        "prompt_span": prompt,
+        "narration_span": narration,
+        "semantic_role": str(unit.get("semantic_role") or ""),
+        "visual_affordance": visual_affordance,
+        "spatial_relation": spatial_relation,
+        "surface_features": list(surface_features),
+        "motion_basis": str(motion_path.get("basis") or ""),
+        "motion_source_prompt": str(motion_path.get("source_prompt") or ""),
+        "motion_target_prompt": str(motion_path.get("target_prompt") or ""),
+        "particle_behavior": particle_behavior,
+        "text_rendering": "dom_text_not_particles",
+        "particle_text": False,
+        "topic_scene_templates": False,
+        "renderer_may_infer_topic": False,
+    }
+
+
 def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: float, duration: float | None = None) -> dict[str, Any]:
     phrase = unit["prompt"]
     object_seed = f"{index}:{op}:{unit['prompt']}:{unit['narration']}"
@@ -464,6 +504,14 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
     beat["particle_behavior"] = particle_behavior
     beat["physics_hint"] = physics_hint
     beat["scene_directive"] = scene_directive
+    beat["scene_evidence"] = _scene_evidence_for_unit(
+        unit,
+        visual_affordance=visual_affordance,
+        spatial_relation=spatial_relation,
+        surface_features=surface_features,
+        motion_path=motion_path,
+        particle_behavior=particle_behavior,
+    )
     if motion_path:
         beat["motion_path"] = motion_path
     return beat
@@ -515,6 +563,7 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "speech_cue_basis": "verified_evidence_unit",
                     "scene_group_id": group_id,
                     "scene_group_role": "speech_unit",
+                    "known_anchors": fact_anchors,
                 }
             )
             if _has_any_cue(unit, MOTION_CUES):
@@ -536,6 +585,7 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                             "speech_cue_basis": "visual_anchor_only",
                             "scene_group_id": group_id,
                             "scene_group_role": "visual_anchor",
+                            "known_anchors": fact_anchors,
                         }
                     )
                 for anchor_index, anchor in enumerate(anchors[:3]):
@@ -549,6 +599,7 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                             "speech_cue_basis": "visual_anchor_only",
                             "scene_group_id": group_id,
                             "scene_group_role": "visual_anchor",
+                            "known_anchors": fact_anchors,
                         }
                     )
             for anchor_index, anchor in enumerate(anchors[:4]):
@@ -562,6 +613,7 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                         "speech_cue_basis": "visual_anchor_only",
                         "scene_group_id": group_id,
                         "scene_group_role": "visual_anchor",
+                        "known_anchors": fact_anchors,
                     }
                 )
 
@@ -782,6 +834,7 @@ def _motion_path_for_unit(unit: dict[str, Any], *, index: int) -> dict[str, Any]
         target_prompt = _clean_phrase(target_match.group(1), limit=72)
 
     anchors = _entity_spans(narration)
+    known_anchors = unit.get("known_anchors") if isinstance(unit.get("known_anchors"), list) else _entity_spans(unit.get("source_fact", ""))
     if not source_prompt and any(term in narration for term in KOREAN_ORGANIC_TERMS):
         source_prompt = next((term for term in KOREAN_ORGANIC_TERMS if term in narration), "")
     if not target_prompt:
@@ -790,6 +843,8 @@ def _motion_path_for_unit(unit: dict[str, Any], *, index: int) -> dict[str, Any]
         source_prompt = anchors[-2]
     if not target_prompt and anchors:
         target_prompt = anchors[-1]
+    source_prompt = _expand_known_anchor(source_prompt, known_anchors)
+    target_prompt = _expand_known_anchor(target_prompt, known_anchors)
     if not source_prompt or not target_prompt or source_prompt.casefold() == target_prompt.casefold():
         return {}
     source_affordance = _visual_affordance_for_phrase(source_prompt, narration, "verified_motion_context", "morph")

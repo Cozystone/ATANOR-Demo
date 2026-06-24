@@ -79,6 +79,9 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert any("Isaac Newton" in beat["narration"] for beat in plan.scene_choreography["beats"])
     assert len({beat["object_id"] for beat in plan.scene_choreography["beats"]}) >= 2
     assert all(beat["semantic_role"] for beat in plan.scene_choreography["beats"])
+    assert all(beat["scene_evidence"]["source_type"] == "verified_evidence_unit" for beat in plan.scene_choreography["beats"])
+    assert all(beat["scene_evidence"]["topic_scene_templates"] is False for beat in plan.scene_choreography["beats"])
+    assert all(beat["scene_evidence"]["renderer_may_infer_topic"] is False for beat in plan.scene_choreography["beats"])
     assert any("Gravity is a force" in beat["source_fact"] for beat in plan.scene_choreography["beats"])
     assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])
     assert plan.scene_choreography["stage_layout"] == "scene_focus"
@@ -288,6 +291,16 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert apple_motion["scene_directive"]["text_rendering"] == "dom_text_not_particles"
     assert apple_motion["scene_directive"]["particle_text"] is False
     assert apple_motion["scene_directive"]["topic_scene_templates"] is False
+    assert apple_motion["scene_evidence"]["source_type"] == "verified_evidence_unit"
+    assert apple_motion["scene_evidence"]["prompt_span"] == "apple"
+    assert apple_motion["scene_evidence"]["motion_basis"] == "verified_motion_phrase"
+    assert apple_motion["scene_evidence"]["motion_source_prompt"] == "tree"
+    assert apple_motion["scene_evidence"]["motion_target_prompt"] == "Isaac Newton"
+    assert apple_motion["scene_evidence"]["particle_behavior"] == "gravity_arc"
+    assert apple_motion["scene_evidence"]["text_rendering"] == "dom_text_not_particles"
+    assert apple_motion["scene_evidence"]["particle_text"] is False
+    assert apple_motion["scene_evidence"]["topic_scene_templates"] is False
+    assert apple_motion["scene_evidence"]["renderer_may_infer_topic"] is False
     assert apple_motion["physics_hint"]["basis"] == "verified_motion_phrase"
     assert apple_motion["physics_hint"]["field"] == "downward_attraction"
     assert apple_motion["physics_hint"]["gravity_bias"] > 0

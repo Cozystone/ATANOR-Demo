@@ -79,6 +79,25 @@ type SceneDirective = {
   topic_scene_templates?: boolean;
 };
 
+type SceneEvidence = {
+  evidence_owner?: string;
+  source_type?: string;
+  source_fact_hash?: string;
+  prompt_span?: string;
+  narration_span?: string;
+  semantic_role?: string;
+  visual_affordance?: string;
+  spatial_relation?: string;
+  motion_basis?: string;
+  motion_source_prompt?: string;
+  motion_target_prompt?: string;
+  particle_behavior?: string;
+  text_rendering?: string;
+  particle_text?: boolean;
+  topic_scene_templates?: boolean;
+  renderer_may_infer_topic?: boolean;
+};
+
 type SceneChoreographyPayload = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
@@ -187,6 +206,7 @@ type SceneChoreographyPayload = {
     duration?: number;
     particle_behavior?: string;
     scene_directive?: SceneDirective;
+    scene_evidence?: SceneEvidence;
     physics_hint?: Record<string, any>;
     motion_path?: Record<string, any>;
     semantic_role?: string;
@@ -207,6 +227,7 @@ type SceneChoreographyPayload = {
     speech_cue?: boolean;
     speech_cue_basis?: string;
     scene_directive?: SceneDirective;
+    scene_evidence?: SceneEvidence;
     scene_group_id?: string;
     scene_group_role?: string;
     t_start?: number;
@@ -478,18 +499,46 @@ function sceneDirectiveForInnerVoice(scenePlan: SceneChoreographyPayload, active
   };
 }
 
+function sceneEvidenceForInnerVoice(scenePlan: SceneChoreographyPayload, activeBeatIndex = -1) {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const activeBeat = activeBeatIndex >= 0 ? beats[activeBeatIndex] : null;
+  const firstEvidenceBeat = beats.find((beat) => beat?.scene_evidence);
+  const speechEvidenceBeat = Array.isArray(scenePlan?.speech_timeline)
+    ? scenePlan?.speech_timeline?.find((beat) => beat?.scene_evidence)
+    : null;
+  const evidence = activeBeat?.scene_evidence ?? speechEvidenceBeat?.scene_evidence ?? firstEvidenceBeat?.scene_evidence ?? null;
+  return {
+    active_scene_evidence_owner: String(evidence?.evidence_owner ?? "none"),
+    active_scene_evidence_source: String(evidence?.source_type ?? "none"),
+    active_scene_evidence_hash: String(evidence?.source_fact_hash ?? "none"),
+    active_scene_evidence_prompt_span: String(evidence?.prompt_span ?? ""),
+    active_scene_evidence_narration_span: String(evidence?.narration_span ?? ""),
+    active_scene_motion_basis: String(evidence?.motion_basis ?? ""),
+    active_scene_renderer_may_infer_topic: evidence?.renderer_may_infer_topic === true,
+    scene_evidence_source: activeBeat?.scene_evidence
+      ? "active_scene_beat"
+      : speechEvidenceBeat?.scene_evidence
+        ? "speech_timeline"
+        : firstEvidenceBeat?.scene_evidence
+          ? "first_scene_beat"
+          : "none",
+  };
+}
+
 function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, layoutTelemetry?: LayoutTelemetry, activeBeatIndex = -1) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const firstBeat = beats[0] ?? {};
   const layoutFeedback = splatraLayoutTelemetryOrDefault(stageLayout, layoutTelemetry);
   const orbLayoutFeedback = splatraOrbLayoutFeedback(scenePlan, stageLayout, layoutFeedback, activeBeatIndex);
   const sceneDirective = sceneDirectiveForInnerVoice(scenePlan, activeBeatIndex);
+  const sceneEvidence = sceneEvidenceForInnerVoice(scenePlan, activeBeatIndex);
   return {
     stage_layout: stageLayout,
     layout_intent: requestedLayoutIntent(scenePlan),
     layout_decision: requestedLayoutDecision(scenePlan, stageLayout),
     text_rendering: "dom_text_not_particles",
     ...sceneDirective,
+    ...sceneEvidence,
     layout_feedback: {
       collision_state: layoutFeedback.collisionState,
       measured_blockers: layoutFeedback.blockers,

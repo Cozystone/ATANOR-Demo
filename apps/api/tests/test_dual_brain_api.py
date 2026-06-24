@@ -596,9 +596,15 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     assert any("사과" in beat["narration"] for beat in scene["beats"])
     assert any(beat.get("motion_path") for beat in scene["beats"])
     assert all("scene_directive" in beat for beat in scene["beats"])
+    assert all("scene_evidence" in beat for beat in scene["beats"])
     assert all(beat["scene_directive"]["text_rendering"] == "dom_text_not_particles" for beat in scene["beats"])
     assert all(beat["scene_directive"]["particle_text"] is False for beat in scene["beats"])
     assert all(beat["scene_directive"]["topic_scene_templates"] is False for beat in scene["beats"])
+    assert all(beat["scene_evidence"]["source_type"] == "verified_evidence_unit" for beat in scene["beats"])
+    assert all(beat["scene_evidence"]["text_rendering"] == "dom_text_not_particles" for beat in scene["beats"])
+    assert all(beat["scene_evidence"]["particle_text"] is False for beat in scene["beats"])
+    assert all(beat["scene_evidence"]["topic_scene_templates"] is False for beat in scene["beats"])
+    assert all(beat["scene_evidence"]["renderer_may_infer_topic"] is False for beat in scene["beats"])
     assert any(
         beat["scene_directive"]["stage_instruction"] == "animate_verified_motion_path"
         for beat in scene["beats"]
@@ -607,9 +613,11 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     assert scene["speech_timeline"]
     assert all(item["text_source"] == "verified_beat_narration" for item in scene["speech_timeline"])
     assert all("scene_directive" in item for item in scene["speech_timeline"])
+    assert all("scene_evidence" in item for item in scene["speech_timeline"])
     assert any(item["scene_directive"]["stage_instruction"] == "animate_verified_motion_path" for item in scene["speech_timeline"])
     assert all(item["text_rendering"] == "dom_text_not_particles" for item in scene["layout_timeline"])
     assert all("scene_directive" in item for item in scene["layout_timeline"] if item["action"] == "sync_orb_text_with_particle_beat")
+    assert all("scene_evidence" in item for item in scene["layout_timeline"] if item["action"] == "sync_orb_text_with_particle_beat")
     assert any(item["action"] == "sync_orb_text_with_particle_beat" for item in scene["layout_timeline"])
     assert any(item.get("text_anchor") in {"upper_left", "lower_left", "upper_right", "lower_center"} for item in scene["layout_timeline"])
     assert any(item.get("particle_behavior") == "gravity_arc" for item in scene["speech_timeline"])

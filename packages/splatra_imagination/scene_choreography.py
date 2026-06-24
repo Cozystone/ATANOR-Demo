@@ -31,6 +31,7 @@ class SceneBeat:
     particle_behavior: str = ""
     physics_hint: dict[str, Any] = field(default_factory=dict)
     scene_directive: dict[str, Any] = field(default_factory=dict)
+    scene_evidence: dict[str, Any] = field(default_factory=dict)
     source_fact: str = ""
     speech_cue: bool = True
     speech_cue_basis: str = "verified_evidence_unit"
@@ -191,6 +192,32 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         "particle_text": False,
         "topic_scene_templates": False,
     }
+    raw_evidence = raw.get("scene_evidence") if isinstance(raw.get("scene_evidence"), dict) else {}
+    raw_evidence_features = raw_evidence.get("surface_features")
+    if not isinstance(raw_evidence_features, list):
+        raw_evidence_features = list(surface_features)
+    scene_evidence = {
+        "evidence_owner": _clean_text(raw_evidence.get("evidence_owner") or scene_directive["directive_owner"], limit=80),
+        "source_type": _clean_text(raw_evidence.get("source_type") or "verified_evidence_unit", limit=80),
+        "source_fact_hash": _clean_text(raw_evidence.get("source_fact_hash") or "", limit=80),
+        "prompt_span": _clean_text(raw_evidence.get("prompt_span") or prompt, limit=120),
+        "narration_span": _clean_text(raw_evidence.get("narration_span") or narration, limit=240),
+        "semantic_role": _clean_text(raw_evidence.get("semantic_role") or semantic_role, limit=80),
+        "visual_affordance": _clean_text(raw_evidence.get("visual_affordance") or visual_affordance, limit=80),
+        "spatial_relation": _clean_text(raw_evidence.get("spatial_relation") or spatial_relation, limit=80),
+        "surface_features": [
+            feature for feature in raw_evidence_features
+            if isinstance(feature, str)
+        ][:12],
+        "motion_basis": _clean_text(raw_evidence.get("motion_basis") or motion_path.get("basis") or "", limit=80),
+        "motion_source_prompt": _clean_text(raw_evidence.get("motion_source_prompt") or motion_path.get("source_prompt") or "", limit=96),
+        "motion_target_prompt": _clean_text(raw_evidence.get("motion_target_prompt") or motion_path.get("target_prompt") or "", limit=96),
+        "particle_behavior": _clean_text(raw_evidence.get("particle_behavior") or particle_behavior, limit=80),
+        "text_rendering": "dom_text_not_particles",
+        "particle_text": False,
+        "topic_scene_templates": False,
+        "renderer_may_infer_topic": False,
+    }
     return SceneBeat(
         op=op,  # type: ignore[arg-type]
         prompt=prompt,
@@ -206,6 +233,7 @@ def _coerce_beat(raw: dict[str, Any], index: int) -> SceneBeat:
         particle_behavior=particle_behavior,
         physics_hint=physics_hint,
         scene_directive=scene_directive,
+        scene_evidence=scene_evidence,
         source_fact=source_fact,
         speech_cue=speech_cue,
         speech_cue_basis=speech_cue_basis,
@@ -417,6 +445,7 @@ def _speech_timeline(beats: list[SceneBeat]) -> list[dict[str, Any]]:
             "particle_behavior": beat.particle_behavior,
             "physics_hint": dict(beat.physics_hint),
             "scene_directive": dict(beat.scene_directive),
+            "scene_evidence": dict(beat.scene_evidence),
             "motion_path": dict(beat.motion_path),
             "semantic_role": beat.semantic_role,
             "visual_affordance": beat.visual_affordance,
@@ -483,6 +512,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "stage_region": "dashboard_center",
             "particle_behavior": beat.particle_behavior,
             "scene_directive": dict(beat.scene_directive),
+            "scene_evidence": dict(beat.scene_evidence),
         })
     return timeline
 

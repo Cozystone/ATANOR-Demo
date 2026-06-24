@@ -41,6 +41,7 @@ type ImaginationFrame = {
 };
 
 type ScenePlanBeat = {
+  beat_index?: number;
   op?: "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
   archetype?: Archetype;
   prompt?: string;
@@ -64,6 +65,24 @@ type ScenePlanBeat = {
     text_rendering?: string;
     particle_text?: boolean;
     topic_scene_templates?: boolean;
+  };
+  scene_evidence?: {
+    evidence_owner?: string;
+    source_type?: string;
+    source_fact_hash?: string;
+    prompt_span?: string;
+    narration_span?: string;
+    semantic_role?: string;
+    visual_affordance?: string;
+    spatial_relation?: string;
+    motion_basis?: string;
+    motion_source_prompt?: string;
+    motion_target_prompt?: string;
+    particle_behavior?: string;
+    text_rendering?: string;
+    particle_text?: boolean;
+    topic_scene_templates?: boolean;
+    renderer_may_infer_topic?: boolean;
   };
   physics_hint?: {
     basis?: string;
@@ -104,6 +123,8 @@ type ScenePlan = {
     };
   };
   beats?: ScenePlanBeat[];
+  speech_timeline?: ScenePlanBeat[];
+  layout_timeline?: ScenePlanBeat[];
 };
 
 type SceneTransform = {
@@ -1779,7 +1800,15 @@ export default function SplatraImaginationField({
   const stageMode = sceneFocus || scenePlan?.stage_layout === "scene_focus";
   const centralSceneScale = scenePlanCentralScale(scenePlan);
   const syncedBeatIndex = activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : activeSceneBeatIndex;
-  const activeSceneBeat = syncedBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[syncedBeatIndex] : null;
+  const activeSpeechTimelineBeat = activeSpeechBeatIndex >= 0 && Array.isArray(scenePlan?.speech_timeline)
+    ? scenePlan?.speech_timeline?.find((beat) => beat?.beat_index === activeSpeechBeatIndex)
+    : null;
+  const activeLayoutTimelineBeat = syncedBeatIndex >= 0 && Array.isArray(scenePlan?.layout_timeline)
+    ? scenePlan?.layout_timeline?.find((beat) => beat?.beat_index === syncedBeatIndex)
+    : null;
+  const activeSceneBeat = (
+    syncedBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[syncedBeatIndex] : null
+  ) ?? activeSpeechTimelineBeat ?? activeLayoutTimelineBeat ?? null;
   const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
   const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : null;
   const activeSceneGroupId = activeSceneBeat?.scene_group_id ?? "";
@@ -1790,6 +1819,9 @@ export default function SplatraImaginationField({
   const activeSceneDirective = activeSceneBeat?.scene_directive?.stage_instruction ?? "none";
   const activeSceneNarrativeFunction = activeSceneBeat?.scene_directive?.narrative_function ?? "none";
   const activeSceneDirectiveOwner = activeSceneBeat?.scene_directive?.directive_owner ?? "none";
+  const activeSceneEvidenceSource = activeSceneBeat?.scene_evidence?.source_type ?? "none";
+  const activeSceneEvidenceHash = activeSceneBeat?.scene_evidence?.source_fact_hash ?? "none";
+  const activeSceneEvidenceOwner = activeSceneBeat?.scene_evidence?.evidence_owner ?? "none";
   const activeSceneTrackId = activeSceneBeat ? sceneObjectTrackId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : "";
 
   useEffect(() => {
@@ -1957,6 +1989,9 @@ export default function SplatraImaginationField({
       data-active-scene-directive={activeSceneDirective}
       data-active-scene-narrative-function={activeSceneNarrativeFunction}
       data-active-scene-directive-owner={activeSceneDirectiveOwner}
+      data-active-scene-evidence-source={activeSceneEvidenceSource}
+      data-active-scene-evidence-hash={activeSceneEvidenceHash}
+      data-active-scene-evidence-owner={activeSceneEvidenceOwner}
       data-active-scene-track={activeSceneTrackId || "none"}
       data-active-scene-focus-basis={activeSceneFocusBasis}
       data-layout-collision-pressure={layoutCollisionPressure(controls)}

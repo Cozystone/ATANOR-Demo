@@ -70,7 +70,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "\"object_track_id\": beat.object_track_id" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
     assert "type SceneDirective" in status_card
+    assert "type SceneEvidence" in status_card
     assert "sceneDirectiveForInnerVoice" in status_card
+    assert "sceneEvidenceForInnerVoice" in status_card
     assert "active_scene_directive" in status_card
     assert "active_scene_narrative_function" in status_card
     assert "active_scene_directive_owner" in status_card
@@ -79,6 +81,11 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "active_scene_particle_text" in status_card
     assert "active_scene_topic_templates" in status_card
     assert "scene_directive_source" in status_card
+    assert "active_scene_evidence_owner" in status_card
+    assert "active_scene_evidence_source" in status_card
+    assert "active_scene_evidence_hash" in status_card
+    assert "active_scene_renderer_may_infer_topic" in status_card
+    assert "scene_evidence_source" in status_card
     assert '"/api/inner-voice/generate-frame"' in status_card
     assert '"/api/inner-voice/emit"' not in status_card
     assert "append_to_log: true" in status_card
@@ -181,9 +188,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "visual_affordance" in field
     assert "particle_behavior" in field
     assert "scene_directive?: {" in field
+    assert "scene_evidence?: {" in field
     assert "data-active-scene-directive" in field
     assert "data-active-scene-narrative-function" in field
     assert "data-active-scene-directive-owner" in field
+    assert "data-active-scene-evidence-source" in field
+    assert "data-active-scene-evidence-hash" in field
+    assert "data-active-scene-evidence-owner" in field
     assert "activeSceneDirective" in field
     assert "physics_hint" in field
     assert "pose_hint?: ScenePose" in field
@@ -241,6 +252,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-active-scene-behavior" in field
     assert "data-active-scene-focus-basis" in field
     assert "speech_timeline" in field
+    assert "speech_timeline?: ScenePlanBeat[]" in field
+    assert "layout_timeline?: ScenePlanBeat[]" in field
+    assert "activeSpeechTimelineBeat" in field
+    assert "activeLayoutTimelineBeat" in field
     assert "scene_timer" in field
     assert "ambient_field" in field
     assert "data-active-scene-group" in field
