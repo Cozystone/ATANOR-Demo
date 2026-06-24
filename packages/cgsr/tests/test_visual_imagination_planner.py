@@ -364,6 +364,12 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["dashboard_layout"]["planning_basis"] == "scene_geometry_extent"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_owner"] == "cgsr_scene_choreography_agent"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_model"] == "geometry_pressure_argmax_no_topic_templates"
+    decision_candidates = plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_candidates"]
+    assert decision_candidates
+    assert decision_candidates[0]["action"] == plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["agent_action"]
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["selected_action_score"] == decision_candidates[0]["score"]
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["selection_reason"] == decision_candidates[0]["reason"]
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["agent_action"] == "yield_center_to_particle_scene"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["content_source"] == "verified_beats_only"
@@ -394,6 +400,9 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     decisions = plan.scene_choreography["agent_scene_decisions"]
     assert decisions[0]["decision_id"] == "scene_space_allocation"
     assert decisions[0]["selected_action"] == "yield_center_to_particle_scene"
+    assert decisions[0]["decision_model"] == "geometry_pressure_argmax_no_topic_templates"
+    assert decisions[0]["decision_candidates"][0]["action"] == "yield_center_to_particle_scene"
+    assert decisions[0]["selection_reason"] == "verified_motion_or_wide_scene_needs_uncovered_center_particle_stage"
     assert decisions[0]["orb_movement"] == "lower_right_micro_stage_guard"
     assert decisions[0]["orb_yield_strength"] >= 0.82
     assert decisions[0]["topic_scene_templates"] is False

@@ -300,6 +300,37 @@ def _scene_extent(beats: list[SceneBeat]) -> dict[str, Any]:
     }
 
 
+def _layout_decision_candidates(load: float, layout_intent: LayoutIntent, scene_extent: dict[str, Any]) -> list[dict[str, Any]]:
+    """Score orb/stage placement alternatives from geometry, not topic words."""
+
+    motion_count = float(scene_extent.get("motion_count") or 0.0)
+    beat_count = float(scene_extent.get("beat_count") or 0.0)
+    spread_x = float(scene_extent.get("spread_x") or 0.0)
+    spread_y = float(scene_extent.get("spread_y") or 0.0)
+    wide_bonus = 0.18 if layout_intent == "wide_particle_stage" else 0.0
+    candidates = [
+        {
+            "action": "keep_orb_primary",
+            "score": round(max(0.0, 1.0 - load - motion_count * 0.18 - wide_bonus), 3),
+            "orb_movement": "center",
+            "reason": "conversation_space_has_priority_when_verified_particle_load_is_low",
+        },
+        {
+            "action": "share_center_with_particle_scene",
+            "score": round(max(0.0, 0.44 + beat_count * 0.035 + spread_x * 0.08 + spread_y * 0.06 - max(0.0, load - 0.72) * 0.38), 3),
+            "orb_movement": "lower_right_scaled_down",
+            "reason": "moderate_verified_scene_load_can_share_center_with_orb",
+        },
+        {
+            "action": "yield_center_to_particle_scene",
+            "score": round(max(0.0, 0.22 + load * 0.78 + motion_count * 0.18 + wide_bonus), 3),
+            "orb_movement": "lower_right_micro_stage_guard" if load >= 0.82 else "lower_right_scaled_down",
+            "reason": "verified_motion_or_wide_scene_needs_uncovered_center_particle_stage",
+        },
+    ]
+    return sorted(candidates, key=lambda item: float(item["score"]), reverse=True)
+
+
 def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anchor: TextAnchor, layout_intent: LayoutIntent, scene_extent: dict[str, Any]) -> dict[str, Any]:
     """Derive dashboard placement from scene geometry, not subject templates."""
 
@@ -330,6 +361,14 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     if layout_intent == "wide_particle_stage":
         load = max(load, 0.72)
     orb_movement = "lower_right_micro_stage_guard" if load >= 0.82 else "lower_right_scaled_down"
+    decision_candidates = _layout_decision_candidates(load, layout_intent, scene_extent)
+    selected_candidate = decision_candidates[0] if decision_candidates else {
+        "action": "share_center_with_particle_scene",
+        "score": 0.0,
+        "orb_movement": orb_movement,
+        "reason": "fallback_geometry_decision",
+    }
+    selected_action = str(selected_candidate.get("action") or ("yield_center_to_particle_scene" if load >= 0.72 else "share_center_with_particle_scene"))
 
     orb_size_vmin = round(25.0 - load * 7.5, 2)
     orb_min_px = round(170.0 - load * 38.0)
@@ -411,10 +450,14 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
         "agent_layout_decision": {
             "decision_owner": "cgsr_scene_choreography_agent",
             "decision_basis": "verified_scene_geometry",
+            "decision_model": "geometry_pressure_argmax_no_topic_templates",
+            "decision_candidates": decision_candidates,
+            "selected_action_score": selected_candidate.get("score", 0.0),
+            "selection_reason": selected_candidate.get("reason", "verified_scene_geometry"),
             "scene_geometry_inputs": dict(scene_extent),
             "topic_scene_templates": False,
-            "agent_action": "yield_center_to_particle_scene" if load >= 0.72 else "share_center_with_particle_scene",
-            "orb_movement": orb_movement,
+            "agent_action": selected_action,
+            "orb_movement": selected_candidate.get("orb_movement") or orb_movement,
             "orb_identity": "atanor_self_body_not_scene_object",
             "layout_autonomy": "agent_authored_from_verified_scene_geometry_and_client_feedback",
             "text_strategy": "dom_text_collision_avoidance",
@@ -497,6 +540,9 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
         "action": decision.get("agent_action") or "share_center_with_particle_scene",
         "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
         "decision_basis": decision.get("decision_basis") or "verified_scene_geometry",
+        "decision_model": decision.get("decision_model") or "geometry_pressure_argmax_no_topic_templates",
+        "selected_action_score": decision.get("selected_action_score", 0.0),
+        "selection_reason": decision.get("selection_reason") or "verified_scene_geometry",
         "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
         "orb_movement": decision.get("orb_movement") or "lower_right_scaled_down",
         "orb_identity": decision.get("orb_identity") or "atanor_self_body_not_scene_object",
@@ -525,6 +571,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "action": "sync_orb_text_with_particle_beat",
             "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
             "decision_basis": "verified_speech_cue_beat",
+            "decision_model": decision.get("decision_model") or "geometry_pressure_argmax_no_topic_templates",
             "beat_index": index,
             "scene_group_id": beat.scene_group_id,
             "object_id": beat.object_id,
@@ -581,6 +628,10 @@ def _agent_scene_decisions(
             "layout_intent": layout_intent,
             "selected_action": decision.get("agent_action") or ("share_center_with_particle_scene" if stage_layout == "scene_focus" else "keep_orb_primary"),
             "scene_geometry_inputs": dict(scene_extent),
+            "decision_model": decision.get("decision_model") or "geometry_pressure_argmax_no_topic_templates",
+            "decision_candidates": list(decision.get("decision_candidates") or []),
+            "selected_action_score": decision.get("selected_action_score", 0.0),
+            "selection_reason": decision.get("selection_reason") or "verified_scene_geometry",
             "particle_space": decision.get("particle_space") or ("uncovered_dashboard_field_minus_sidebar_composer_and_text" if stage_layout == "scene_focus" else "orb_local_field"),
             "orb_self_body_yield": decision.get("orb_self_body_yield") or ("orb_moves_and_scales_to_clear_verified_particle_scene" if stage_layout == "scene_focus" else "none"),
             "orb_movement": decision.get("orb_movement") or ("lower_right_scaled_down" if stage_layout == "scene_focus" else "center"),

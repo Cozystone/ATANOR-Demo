@@ -205,6 +205,11 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert active_layout["self_narration_anchor"] in {"upper_left", "upper_right"}
     assert plan.agent_scene_decisions[0]["decision_id"] == "scene_space_allocation"
     assert plan.agent_scene_decisions[0]["selected_action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
+    assert plan.agent_scene_decisions[0]["decision_model"] == "geometry_pressure_argmax_no_topic_templates"
+    assert plan.agent_scene_decisions[0]["decision_candidates"]
+    assert plan.agent_scene_decisions[0]["decision_candidates"][0]["action"] == plan.agent_scene_decisions[0]["selected_action"]
+    assert plan.agent_scene_decisions[0]["selected_action_score"] == plan.agent_scene_decisions[0]["decision_candidates"][0]["score"]
+    assert plan.agent_scene_decisions[0]["selection_reason"]
     assert plan.agent_scene_decisions[0]["topic_scene_templates"] is False
     assert plan.agent_scene_decisions[0]["renderer_may_infer_topic"] is False
     assert plan.agent_scene_decisions[0]["line_rendering"] == "particle_segments_not_canvas_strokes"
