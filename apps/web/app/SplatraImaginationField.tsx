@@ -755,6 +755,15 @@ function sameSceneGroup(left: ScenePlanBeat | null | undefined, right: ScenePlan
   return Boolean(leftGroup && rightGroup && leftGroup === rightGroup);
 }
 
+function firstEvidenceBearingBeat(scenePlan: ScenePlan | null | undefined) {
+  const sources = [
+    ...(Array.isArray(scenePlan?.speech_timeline) ? scenePlan?.speech_timeline ?? [] : []),
+    ...(Array.isArray(scenePlan?.layout_timeline) ? scenePlan?.layout_timeline ?? [] : []),
+    ...(Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : []),
+  ];
+  return sources.find((beat) => beat?.scene_evidence || beat?.scene_directive) ?? null;
+}
+
 function sceneBeatModelPoints(beat: ScenePlanBeat, sceneElapsed: number) {
   const points = [sceneObjectPosition(beat), sceneMotionPathPoint(beat, sceneElapsed)];
   const from = Array.isArray(beat.motion_path?.from) ? beat.motion_path?.from ?? [] : [];
@@ -1808,7 +1817,7 @@ export default function SplatraImaginationField({
     : null;
   const activeSceneBeat = (
     syncedBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[syncedBeatIndex] : null
-  ) ?? activeSpeechTimelineBeat ?? activeLayoutTimelineBeat ?? null;
+  ) ?? activeSpeechTimelineBeat ?? activeLayoutTimelineBeat ?? firstEvidenceBearingBeat(scenePlan);
   const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
   const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : null;
   const activeSceneGroupId = activeSceneBeat?.scene_group_id ?? "";

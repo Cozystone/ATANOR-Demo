@@ -256,6 +256,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "layout_timeline?: ScenePlanBeat[]" in field
     assert "activeSpeechTimelineBeat" in field
     assert "activeLayoutTimelineBeat" in field
+    assert "firstEvidenceBearingBeat" in field
+    assert "firstEvidenceBearingBeat(scenePlan)" in field
     assert "scene_timer" in field
     assert "ambient_field" in field
     assert "data-active-scene-group" in field
