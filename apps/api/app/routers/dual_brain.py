@@ -16,6 +16,7 @@ from packages.cgsr.cgsr.conversation_grounding import gather_grounded_context
 from packages.cgsr.cgsr.conversation_router import route_conversation_request
 from packages.cgsr.cgsr.visual_imagination_planner import plan_visual_imagination
 from packages.core_proof.three_core_answer_path import run_prompt_proof
+from packages.splatra_imagination import compile_scene_choreography_commands
 from packages.voice_loop.local_tts import LocalTTSUnavailable, synthesize_windows_sapi, voice_audio_path
 from packages.voice_loop.runtime_availability import check_voice_runtime_availability
 from packages.surface_brain.monitor import monitor_answer, repair_answer_for_mode
@@ -500,6 +501,11 @@ def _live_selfhood_payload(
         diagnostics=diagnostics,
         answer_available=bool(generated.answer),
     )
+    splatra_command_sequence = (
+        compile_scene_choreography_commands(visual_plan.scene_choreography).to_dict()
+        if visual_plan.scene_choreography
+        else None
+    )
     visual_policy = {
         "scene_content_source": visual_plan.diagnostics.get("scene_content_source", "none"),
         "scene_authoring_basis": visual_plan.diagnostics.get("scene_authoring_basis"),
@@ -540,6 +546,14 @@ def _live_selfhood_payload(
         "working_memory": {"temporary_context": False, "local_brain_write": False},
         "visual_imagination": visual_plan.diagnostics,
         "splatra_scene_policy": visual_policy,
+        "splatra_command_sequence": {
+            "available": bool(splatra_command_sequence),
+            "action_count": len(splatra_command_sequence.get("scene_actions", [])) if splatra_command_sequence else 0,
+            "raw_buffers_in_agent_context": False,
+            "topic_scene_templates": False,
+            "renderer_may_infer_topic": False,
+            "text_rendering": "dom_text_not_particles",
+        },
         "confidence": "medium" if generated.confidence >= 0.5 else "abstained",
         "inner_voice": {
             "emitted": True,
@@ -607,6 +621,7 @@ def _live_selfhood_payload(
             "scene_choreography": None,
             "visual_scene_plan": None,
             "splatra_scene_plan": None,
+            "splatra_command_sequence": None,
             "splatra_scene_policy": visual_policy,
             "answer_engine": engine,
             **{**_flags(), "final_answer_generation_claimed": False},
@@ -640,6 +655,7 @@ def _live_selfhood_payload(
         "scene_choreography": visual_plan.scene_choreography,
         "visual_scene_plan": visual_plan.scene_choreography,
         "splatra_scene_plan": visual_plan.scene_choreography,
+        "splatra_command_sequence": splatra_command_sequence,
         "splatra_scene_policy": visual_policy,
         "answer_engine": engine,
         **_flags(),

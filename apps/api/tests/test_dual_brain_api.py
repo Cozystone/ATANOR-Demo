@@ -241,7 +241,19 @@ def test_dashboard_conversation_returns_verified_speech_timeline_for_motion_scen
     assert response.status_code == 200
     payload = response.json()["result"]
     scene = payload["splatra_scene_plan"]
+    command_sequence = payload["splatra_command_sequence"]
     assert scene == payload["scene_choreography"] == payload["visual_scene_plan"]
+    assert command_sequence["hot_swap_policy"]["mode"] == "candidate_only"
+    assert command_sequence["hot_swap_policy"]["viewer_side_channel"] == "GET /v1/cartridge"
+    assert command_sequence["splatra_contract"]["agent_context_payload"] == "sgf_summary_and_command_sequence_only"
+    assert command_sequence["splatra_contract"]["raw_buffers_in_agent_context"] is False
+    assert command_sequence["splatra_contract"]["topic_scene_templates"] is False
+    assert command_sequence["splatra_contract"]["renderer_may_infer_topic"] is False
+    assert command_sequence["particle_motion_policy"]["agent_control"] == "airbend_recompose_particles_inside_safe_region"
+    assert len(command_sequence["scene_actions"]) == len(scene["beats"])
+    assert any(action["op"] == "move" for action in command_sequence["scene_actions"])
+    assert all(action["args"]["text_rendering"] == "dom_text_not_particles" for action in command_sequence["scene_actions"])
+    assert all(action["args"]["particle_text"] is False for action in command_sequence["scene_actions"])
     assert scene["stage_layout"] == "scene_focus"
     assert scene["layout_intent"] == "wide_particle_stage"
     assert scene["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry"
@@ -609,11 +621,20 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     assert response.status_code == 200
     payload = response.json()["result"]
     scene = payload["splatra_scene_plan"]
+    command_sequence = payload["splatra_command_sequence"]
     assert payload["route_type"] == "general_knowledge_question"
     assert payload["compact_trace"]["semantic_grounding"]["grounding_source"] == "verified_store_v0_readonly"
     assert payload["answer"]
     assert "아이작 뉴턴" in payload["answer"]
     assert scene == payload["scene_choreography"] == payload["visual_scene_plan"]
+    assert command_sequence["splatra_contract"]["raw_buffers_in_agent_context"] is False
+    assert command_sequence["splatra_contract"]["topic_scene_templates"] is False
+    assert command_sequence["splatra_contract"]["renderer_may_infer_topic"] is False
+    assert command_sequence["hot_swap_policy"]["viewer_side_channel"] == "GET /v1/cartridge"
+    assert len(command_sequence["scene_actions"]) == len(scene["beats"])
+    assert any(action["op"] == "move" for action in command_sequence["scene_actions"])
+    assert all(action["execute_js"] is False for action in command_sequence["scene_actions"])
+    assert all(action["mutation_performed"] is False for action in command_sequence["scene_actions"])
     assert scene["stage_layout"] == "scene_focus"
     assert scene["orb_anchor"] == "lower_right"
     assert scene["layout_intent"] == "wide_particle_stage"

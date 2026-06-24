@@ -178,6 +178,27 @@ const FLOW_FIELD_BASIS = "magnetic_simplex_inspired_airbend_particles";
 const FLOW_MOTION_REFERENCE = "codepen_magnetic_swarm_noise_decay_reference";
 const SPLATRA_COMMAND_CONTRACT = "agent_scene_commands_to_particle_cartridges";
 
+type SplatraCommandSequence = {
+  scene_actions?: Array<{ op?: string; args?: Record<string, unknown> }>;
+  splatra_contract?: {
+    side_channel?: string;
+    agent_context_payload?: string;
+    raw_buffers_in_agent_context?: boolean;
+    topic_scene_templates?: boolean;
+    renderer_may_infer_topic?: boolean;
+  };
+  hot_swap_policy?: {
+    mode?: string;
+    viewer_side_channel?: string;
+    mutation_performed?: boolean;
+  };
+  particle_motion_policy?: {
+    field_model?: string;
+    agent_control?: string;
+    text_rendering?: string;
+  };
+};
+
 type Props = {
   mode?: ImaginationMode;
   state?: VisualState;
@@ -186,6 +207,7 @@ type Props = {
   interactive?: boolean;
   sceneFocus?: boolean;
   scenePlan?: ScenePlan | null;
+  splatraCommandSequence?: SplatraCommandSequence | null;
   activeSpeechBeatIndex?: number;
   controlOverride?: Partial<ParticleControls>;
   onActivate?: () => void;
@@ -1820,6 +1842,7 @@ export default function SplatraImaginationField({
   onCancel,
   sceneFocus = false,
   scenePlan = null,
+  splatraCommandSequence = null,
   activeSpeechBeatIndex = -1,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1874,6 +1897,10 @@ export default function SplatraImaginationField({
   const particleStageStrategy = scenePlanParticleStageStrategy(scenePlan);
   const layoutAutonomy = scenePlanLayoutAutonomy(scenePlan);
   const orbIdentity = scenePlanOrbIdentity(scenePlan);
+  const splatraSceneActions = Array.isArray(splatraCommandSequence?.scene_actions) ? splatraCommandSequence?.scene_actions ?? [] : [];
+  const splatraContract = splatraCommandSequence?.splatra_contract ?? {};
+  const splatraHotSwap = splatraCommandSequence?.hot_swap_policy ?? {};
+  const splatraMotionPolicy = splatraCommandSequence?.particle_motion_policy ?? {};
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -2056,6 +2083,16 @@ export default function SplatraImaginationField({
       data-flow-field-basis={FLOW_FIELD_BASIS}
       data-flow-motion-reference={FLOW_MOTION_REFERENCE}
       data-splatra-command-contract={SPLATRA_COMMAND_CONTRACT}
+      data-splatra-command-sequence={splatraSceneActions.length > 0 ? "available" : "none"}
+      data-splatra-command-actions={splatraSceneActions.length}
+      data-splatra-command-side-channel={String(splatraHotSwap.viewer_side_channel ?? splatraContract.side_channel ?? "none")}
+      data-splatra-command-agent-payload={String(splatraContract.agent_context_payload ?? "none")}
+      data-splatra-command-hot-swap-mode={String(splatraHotSwap.mode ?? "none")}
+      data-splatra-command-raw-buffers={splatraContract.raw_buffers_in_agent_context === true ? "true" : "false"}
+      data-splatra-command-topic-templates={splatraContract.topic_scene_templates === true ? "true" : "false"}
+      data-splatra-command-renderer-inference={splatraContract.renderer_may_infer_topic === true ? "true" : "false"}
+      data-splatra-command-motion-field={String(splatraMotionPolicy.field_model ?? "none")}
+      data-splatra-command-agent-control={String(splatraMotionPolicy.agent_control ?? "none")}
       data-renderer-content-inference="explicit_scene_plan_hints_only"
       data-active-scene-group={activeSceneGroupId || "none"}
       data-active-scene-group-size={activeSceneGroupSize}

@@ -117,6 +117,13 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert payload["topic_scene_templates"] is False
     assert payload["scene_choreography"]["stage_layout"] == "scene_focus"
     assert payload["scene_choreography"]["orb_anchor"] == "lower_right"
+    assert payload["splatra_command_sequence"]["hot_swap_policy"]["mode"] == "candidate_only"
+    assert payload["splatra_command_sequence"]["hot_swap_policy"]["viewer_side_channel"] == "GET /v1/cartridge"
+    assert payload["splatra_command_sequence"]["splatra_contract"]["raw_buffers_in_agent_context"] is False
+    assert payload["splatra_command_sequence"]["splatra_contract"]["topic_scene_templates"] is False
+    assert payload["splatra_command_sequence"]["splatra_contract"]["renderer_may_infer_topic"] is False
+    assert payload["splatra_command_sequence"]["particle_motion_policy"]["agent_control"] == "airbend_recompose_particles_inside_safe_region"
+    assert len(payload["splatra_command_sequence"]["scene_actions"]) == len(payload["scene_choreography"]["beats"])
     assert len(payload["scene_choreography"]["beats"]) == 2
     first_beat = payload["scene_choreography"]["beats"][0]
     assert first_beat["scene_directive"]["directive_owner"] == "cgsr_visual_imagination_planner"

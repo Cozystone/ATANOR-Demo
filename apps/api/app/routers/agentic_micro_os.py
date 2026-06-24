@@ -45,6 +45,7 @@ from packages.splatra_imagination import (
     ImaginationGenerator,
     ImaginationSeed,
     compile_scene_choreography,
+    compile_scene_choreography_commands,
     compile_splatra_command,
     default_safety_flags,
     run_imagination_proof,
@@ -911,6 +912,7 @@ def splatra_imagination_command(request: SplatraImaginationCommandApiRequest) ->
 @router.post("/splatra/imagination/choreography")
 def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> dict[str, Any]:
     plan = compile_scene_choreography(request.model_dump())
+    command_sequence = compile_scene_choreography_commands(plan)
     emit_runtime_event(
         source="splatra_imagination",
         event_type="splatra_generation_success",
@@ -927,6 +929,7 @@ def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> d
         "raw_buffer_in_agent_context": False,
         "topic_scene_templates": False,
         "scene_choreography": plan.to_dict(),
+        "splatra_command_sequence": command_sequence.to_dict(),
     }
 
 
