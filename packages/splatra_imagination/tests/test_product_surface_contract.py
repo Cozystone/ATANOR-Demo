@@ -47,6 +47,22 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-autonomy" in status_card
     assert "data-particle-stage-strategy" in status_card
     assert "data-layout-text-rendering" in status_card
+    assert "type SplatraScenePolicy" in status_card
+    assert "defaultSplatraScenePolicy" in status_card
+    assert "requestedSplatraScenePolicy" in status_card
+    assert "setScenePolicy(nextScenePolicy)" in status_card
+    assert "splatra_scene_policy: nextScenePolicy" in status_card
+    assert "splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex, nextScenePolicy)" in status_card
+    assert "data-scene-content-source" in status_card
+    assert "data-scene-authoring-basis" in status_card
+    assert "data-visual-affordance-basis" in status_card
+    assert "data-layout-decision-basis" in status_card
+    assert "data-topic-scene-templates" in status_card
+    assert "data-renderer-may-infer-topic" in status_card
+    assert "data-particle-text" in status_card
+    assert "data-scene-policy-text-rendering" in status_card
+    assert "data-verified-evidence-required" in status_card
+    assert 'text_rendering: "dom_text_not_particles"' in status_card
     assert '"conversation_default"' in status_card
     assert "speech_timeline?: Array" in status_card
     assert "scenePlan?.speech_timeline" in status_card
@@ -75,6 +91,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "atanor_self_body_not_scene_object" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "airbend_recompose_particles_inside_safe_region" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "agent_authored_from_verified_scene_geometry_and_client_feedback" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "15.2 - load * 3.7" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "16.0 - load * 3.0" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
     assert "type SceneDirective" in status_card
     assert "type SceneEvidence" in status_card
@@ -98,7 +116,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "append_to_log: true" in status_card
     assert "splatra_state: splatraStateForInnerVoice" in status_card
     assert "nextInitialSceneBeatIndex" in status_card
-    assert "splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex)" in status_card
+    assert "splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex, nextScenePolicy)" in status_card
     assert "layout_feedback" in status_card
     assert "splatraOrbLayoutFeedback" in status_card
     assert "nextOrbLayoutFeedback" in status_card
@@ -136,6 +154,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "dom_text_canvas_metrics_preallocated_no_particle_text" in status_card
     assert "speechUpperLeftTopVh" in status_card
     assert "selfNarrationMaxVw" in status_card
+    assert "wideScene ? 11.5 : 16" in status_card
+    assert "wideScene ? 13 : 17" in status_card
     assert "agent_layout_missing_safe_default" in status_card
     assert "agent_layout_missing:dom_text_not_particles" in status_card
     assert "decision_owner?: string" in status_card

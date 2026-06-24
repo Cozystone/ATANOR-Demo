@@ -251,6 +251,19 @@ type SceneChoreographyPayload = {
   }>;
 } | null;
 
+type SplatraScenePolicy = {
+  scene_content_source?: string;
+  scene_authoring_basis?: string | null;
+  visual_affordance_basis?: string | null;
+  layout_decision_basis?: string | null;
+  topic_scene_templates?: boolean;
+  renderer_may_infer_topic?: boolean;
+  particle_text?: boolean;
+  text_rendering?: string;
+  orb_identity?: string;
+  verified_evidence_required_for_general_knowledge?: boolean;
+};
+
 function stripEmotionTag(text: string) {
   return text.replace(/^\[[^\]]+\]\s*/, "").trim();
 }
@@ -342,6 +355,40 @@ function requestedSceneChoreography(payload: Record<string, any>): SceneChoreogr
   const visualPlan = result?.splatra_scene_plan ?? result?.visual_scene_plan ?? result?.scene_choreography ?? null;
   if (!visualPlan || typeof visualPlan !== "object") return null;
   return visualPlan as SceneChoreographyPayload;
+}
+
+function defaultSplatraScenePolicy(): SplatraScenePolicy {
+  return {
+    scene_content_source: "none",
+    scene_authoring_basis: null,
+    visual_affordance_basis: null,
+    layout_decision_basis: null,
+    topic_scene_templates: false,
+    renderer_may_infer_topic: false,
+    particle_text: false,
+    text_rendering: "dom_text_not_particles",
+    orb_identity: "atanor_primary_self_body",
+    verified_evidence_required_for_general_knowledge: false,
+  };
+}
+
+function requestedSplatraScenePolicy(payload: Record<string, any>): SplatraScenePolicy {
+  const result = payload?.result ?? {};
+  const policy = result?.splatra_scene_policy;
+  if (!policy || typeof policy !== "object") return defaultSplatraScenePolicy();
+  return {
+    ...defaultSplatraScenePolicy(),
+    scene_content_source: typeof policy.scene_content_source === "string" ? policy.scene_content_source : "none",
+    scene_authoring_basis: typeof policy.scene_authoring_basis === "string" ? policy.scene_authoring_basis : null,
+    visual_affordance_basis: typeof policy.visual_affordance_basis === "string" ? policy.visual_affordance_basis : null,
+    layout_decision_basis: typeof policy.layout_decision_basis === "string" ? policy.layout_decision_basis : null,
+    topic_scene_templates: policy.topic_scene_templates === true,
+    renderer_may_infer_topic: policy.renderer_may_infer_topic === true,
+    particle_text: policy.particle_text === true,
+    text_rendering: typeof policy.text_rendering === "string" ? policy.text_rendering : "dom_text_not_particles",
+    orb_identity: typeof policy.orb_identity === "string" ? policy.orb_identity : "atanor_primary_self_body",
+    verified_evidence_required_for_general_knowledge: policy.verified_evidence_required_for_general_knowledge === true,
+  };
 }
 
 function requestedTextAnchor(scenePlan: SceneChoreographyPayload): TextAnchor {
@@ -535,7 +582,13 @@ function sceneEvidenceForInnerVoice(scenePlan: SceneChoreographyPayload, activeB
   };
 }
 
-function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, layoutTelemetry?: LayoutTelemetry, activeBeatIndex = -1) {
+function splatraStateForInnerVoice(
+  scenePlan: SceneChoreographyPayload,
+  stageLayout: StageLayout,
+  layoutTelemetry?: LayoutTelemetry,
+  activeBeatIndex = -1,
+  scenePolicy: SplatraScenePolicy = defaultSplatraScenePolicy(),
+) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const firstBeat = beats[0] ?? {};
   const layoutFeedback = splatraLayoutTelemetryOrDefault(stageLayout, layoutTelemetry);
@@ -547,6 +600,17 @@ function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLay
     layout_intent: requestedLayoutIntent(scenePlan),
     layout_decision: requestedLayoutDecision(scenePlan, stageLayout),
     text_rendering: "dom_text_not_particles",
+    scene_policy: {
+      scene_content_source: scenePolicy.scene_content_source ?? "none",
+      scene_authoring_basis: scenePolicy.scene_authoring_basis ?? "none",
+      visual_affordance_basis: scenePolicy.visual_affordance_basis ?? "none",
+      layout_decision_basis: scenePolicy.layout_decision_basis ?? "none",
+      topic_scene_templates: scenePolicy.topic_scene_templates === true,
+      renderer_may_infer_topic: scenePolicy.renderer_may_infer_topic === true,
+      particle_text: scenePolicy.particle_text === true,
+      text_rendering: scenePolicy.text_rendering ?? "dom_text_not_particles",
+      verified_evidence_required_for_general_knowledge: scenePolicy.verified_evidence_required_for_general_knowledge === true,
+    },
     ...sceneDirective,
     ...sceneEvidence,
     layout_feedback: {
@@ -723,8 +787,8 @@ function dashboardLayoutMetrics(scenePlan: SceneChoreographyPayload, stageLayout
     speechBottomVh: clampNumber(finiteNumber(speech.bottom_vh, wideScene ? 16 : 18), 11, 22),
     speechUpperLeftTopVh: clampNumber(finiteNumber(speech.upper_left_top_vh, wideScene ? 20 : 23), 14, 28),
     speechUpperRightTopVh: clampNumber(finiteNumber(speech.upper_right_top_vh, wideScene ? 21 : 17), 12, 32),
-    speechLowerLeftBottomVh: clampNumber(finiteNumber(speech.lower_left_bottom_vh, wideScene ? 19 : 16), 11, 28),
-    speechLowerCenterBottomVh: clampNumber(finiteNumber(speech.lower_center_bottom_vh, wideScene ? 20 : 17), 12, 30),
+    speechLowerLeftBottomVh: clampNumber(finiteNumber(speech.lower_left_bottom_vh, wideScene ? 11.5 : 16), 11, 28),
+    speechLowerCenterBottomVh: clampNumber(finiteNumber(speech.lower_center_bottom_vh, wideScene ? 13 : 17), 12, 30),
     selfNarrationTopVh: clampNumber(finiteNumber(selfNarration.top_vh, wideScene ? 14 : 16), 8, 24),
     selfNarrationRightVw: clampNumber(finiteNumber(selfNarration.right_vw, wideScene ? 6.8 : 8), 4.8, 14),
     selfNarrationMaxVw: clampNumber(finiteNumber(selfNarration.max_vw, wideScene ? 24 : 28), 18, 34),
@@ -964,6 +1028,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
+  const [scenePolicy, setScenePolicy] = useState<SplatraScenePolicy>(() => defaultSplatraScenePolicy());
   const [sceneSpeechStartedAt, setSceneSpeechStartedAt] = useState(0);
   const [sceneSpeechBeatIndex, setSceneSpeechBeatIndex] = useState(-1);
   const [speechPlacement, setSpeechPlacement] = useState<TextAnchor>("lower_center");
@@ -1304,6 +1369,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
       const nextStageLayout = requestedStageLayout(payload);
       const nextSceneChoreography = requestedSceneChoreography(payload);
+      const nextScenePolicy = requestedSplatraScenePolicy(payload);
       const nextInitialSceneBeatIndex = sceneNarrationBeats(nextSceneChoreography)[0]?.beatIndex ?? -1;
       const startVisibleSpeech = () => {
         if (nextSceneChoreography) setSceneSpeechStartedAt(performance.now());
@@ -1312,6 +1378,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       const nextOrbLayoutFeedback = splatraOrbLayoutFeedback(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex);
       setStageLayout(nextStageLayout);
       setSceneChoreography(nextSceneChoreography);
+      setScenePolicy(nextScenePolicy);
       setSceneSpeechStartedAt(0);
       setOrbState("speaking");
       void fetch("/api/inner-voice/generate-frame", {
@@ -1335,8 +1402,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
               offscreen_px: layoutTelemetry.offscreen,
             },
             orb_layout_feedback: nextOrbLayoutFeedback,
+            splatra_scene_policy: nextScenePolicy,
           },
-          splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex),
+          splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex, nextScenePolicy),
           review_queue_pressure: 0,
           permission_tier: "OBSERVE_ONLY",
         }),
@@ -1368,6 +1436,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setOrbState("blocked");
       setStageLayout("conversation");
       setSceneChoreography(null);
+      setScenePolicy(defaultSplatraScenePolicy());
       setSceneSpeechStartedAt(0);
       setSceneSpeechBeatIndex(-1);
       setSpeechLine(cleanSafeStatusLine(language));
@@ -1417,6 +1486,15 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-collision-pressure={splatraDashboardControls.layout_collision_pressure}
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
+      data-scene-content-source={scenePolicy.scene_content_source ?? "none"}
+      data-scene-authoring-basis={scenePolicy.scene_authoring_basis ?? "none"}
+      data-visual-affordance-basis={scenePolicy.visual_affordance_basis ?? "none"}
+      data-layout-decision-basis={scenePolicy.layout_decision_basis ?? "none"}
+      data-topic-scene-templates={scenePolicy.topic_scene_templates === true ? "true" : "false"}
+      data-renderer-may-infer-topic={scenePolicy.renderer_may_infer_topic === true ? "true" : "false"}
+      data-particle-text={scenePolicy.particle_text === true ? "true" : "false"}
+      data-scene-policy-text-rendering={scenePolicy.text_rendering ?? "dom_text_not_particles"}
+      data-verified-evidence-required={scenePolicy.verified_evidence_required_for_general_knowledge === true ? "true" : "false"}
       data-text-layout-basis={TEXT_LAYOUT_BASIS}
       data-text-layout-reference={TEXT_LAYOUT_REFERENCE}
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}

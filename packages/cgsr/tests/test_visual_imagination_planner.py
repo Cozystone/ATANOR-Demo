@@ -374,7 +374,8 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["dashboard_layout"]["orb"]["size_vmin"] < 24
     assert plan.scene_choreography["dashboard_layout"]["speech"]["max_vw"] < 50
     assert plan.scene_choreography["dashboard_layout"]["speech"]["upper_left_top_vh"] < 23
-    assert plan.scene_choreography["dashboard_layout"]["speech"]["lower_center_bottom_vh"] > 17
+    assert plan.scene_choreography["dashboard_layout"]["speech"]["lower_left_bottom_vh"] < 16
+    assert plan.scene_choreography["dashboard_layout"]["speech"]["lower_center_bottom_vh"] < 17
     assert plan.scene_choreography["dashboard_layout"]["self_narration"]["anchor"] == "upper_right"
     assert plan.scene_choreography["dashboard_layout"]["stage_safe_region"]["primary"] == "center_particle_stage"
     assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())
