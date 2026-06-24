@@ -500,6 +500,18 @@ def _live_selfhood_payload(
         diagnostics=diagnostics,
         answer_available=bool(generated.answer),
     )
+    visual_policy = {
+        "scene_content_source": visual_plan.diagnostics.get("scene_content_source", "none"),
+        "scene_authoring_basis": visual_plan.diagnostics.get("scene_authoring_basis"),
+        "visual_affordance_basis": visual_plan.diagnostics.get("visual_affordance_basis"),
+        "layout_decision_basis": visual_plan.diagnostics.get("layout_decision_basis"),
+        "topic_scene_templates": False,
+        "renderer_may_infer_topic": False,
+        "particle_text": False,
+        "text_rendering": "dom_text_not_particles",
+        "orb_identity": "atanor_self_body_not_scene_object" if visual_plan.scene_choreography else "atanor_primary_self_body",
+        "verified_evidence_required_for_general_knowledge": route.route_type == "general_knowledge_question",
+    }
     compact_trace = {
         "local_coverage": "semantic_grounded_conversation" if grounding_used else "live_selfhood_conversation",
         "selfhood_loop": {
@@ -527,6 +539,7 @@ def _live_selfhood_payload(
         "q_cortex": {"used": False, "run_id": None, "real_quantum_hardware_used": False},
         "working_memory": {"temporary_context": False, "local_brain_write": False},
         "visual_imagination": visual_plan.diagnostics,
+        "splatra_scene_policy": visual_policy,
         "confidence": "medium" if generated.confidence >= 0.5 else "abstained",
         "inner_voice": {
             "emitted": True,
@@ -565,6 +578,7 @@ def _live_selfhood_payload(
         "honesty_metadata_present": True,
         "generation_basis": diagnostics.get("generation_basis"),
         "template_free_surface": bool(diagnostics.get("template_free_surface", False)),
+        "splatra_scene_policy": visual_policy,
         "diagnostics": diagnostics,
     }
     if not generated.answer:
@@ -593,6 +607,7 @@ def _live_selfhood_payload(
             "scene_choreography": None,
             "visual_scene_plan": None,
             "splatra_scene_plan": None,
+            "splatra_scene_policy": visual_policy,
             "answer_engine": engine,
             **{**_flags(), "final_answer_generation_claimed": False},
         }
@@ -625,6 +640,7 @@ def _live_selfhood_payload(
         "scene_choreography": visual_plan.scene_choreography,
         "visual_scene_plan": visual_plan.scene_choreography,
         "splatra_scene_plan": visual_plan.scene_choreography,
+        "splatra_scene_policy": visual_policy,
         "answer_engine": engine,
         **_flags(),
     }

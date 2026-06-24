@@ -89,6 +89,47 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     assert plan.scene_choreography["layout_intent"] in {"balanced_scene", "wide_particle_stage"}
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
+    assert plan.diagnostics["scene_content_source"] == "verified_store_facts"
+    assert plan.diagnostics["renderer_may_infer_topic"] is False
+    assert plan.diagnostics["particle_text"] is False
+    assert plan.diagnostics["text_rendering"] == "dom_text_not_particles"
+    assert plan.diagnostics["visual_affordance_basis"] == "source_phrase_affordance_extraction_no_topic_template"
+    assert plan.diagnostics["layout_decision_basis"] == "verified_scene_geometry_and_client_feedback"
+
+
+def test_visual_planner_ignores_prompted_newton_apple_scene_without_verified_evidence(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": "Gravity is a force of attraction between masses. Isaac Newton formulated the law of universal gravitation.",
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "Gravity"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("Explain gravity with Newton, an apple tree, and a falling apple.", tmp_path)
+
+    if not plan.enabled:
+        assert plan.scene_choreography is None
+        assert plan.diagnostics["scene_content_source"] == "none"
+        assert plan.diagnostics["renderer_may_infer_topic"] is False
+        assert plan.diagnostics["particle_text"] is False
+        return
+
+    prompts = [beat["prompt"].casefold() for beat in plan.scene_choreography["beats"]]
+    narrations = [beat["narration"].casefold() for beat in plan.scene_choreography["beats"]]
+    assert any("isaac newton" in prompt for prompt in prompts)
+    assert all("apple" not in prompt for prompt in prompts)
+    assert all("tree" not in prompt for prompt in prompts)
+    assert all("apple" not in narration for narration in narrations)
+    assert all("tree" not in narration for narration in narrations)
+    assert plan.scene_choreography["topic_scene_templates"] is False
+    assert plan.diagnostics["scene_content_source"] == "verified_store_facts"
+    assert plan.diagnostics["renderer_may_infer_topic"] is False
+    assert plan.diagnostics["particle_text"] is False
 
 
 def test_visual_planner_does_not_scene_from_function_word_overlap(tmp_path: Path) -> None:

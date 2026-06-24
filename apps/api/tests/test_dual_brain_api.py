@@ -185,6 +185,13 @@ def test_chat_conversation_uses_readonly_verified_store_for_grounded_visual_scen
     assert "Isaac Newton" in payload["answer"]
     assert scene["stage_layout"] == "scene_focus"
     assert scene["topic_scene_templates"] is False
+    assert payload["splatra_scene_policy"]["scene_content_source"] == "verified_store_facts"
+    assert payload["splatra_scene_policy"]["topic_scene_templates"] is False
+    assert payload["splatra_scene_policy"]["renderer_may_infer_topic"] is False
+    assert payload["splatra_scene_policy"]["particle_text"] is False
+    assert payload["splatra_scene_policy"]["text_rendering"] == "dom_text_not_particles"
+    assert payload["splatra_scene_policy"]["verified_evidence_required_for_general_knowledge"] is True
+    assert payload["answer_engine"]["splatra_scene_policy"]["scene_content_source"] == "verified_store_facts"
     assert any("Isaac Newton" in beat["prompt"] for beat in scene["beats"])
     assert all("apple" not in beat["prompt"].casefold() for beat in scene["beats"])
     assert all("apple" not in item["text"].casefold() for item in scene["speech_timeline"])
@@ -239,6 +246,11 @@ def test_dashboard_conversation_returns_verified_speech_timeline_for_motion_scen
     assert scene["layout_intent"] == "wide_particle_stage"
     assert scene["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry"
     assert scene["dashboard_layout"]["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
+    assert payload["splatra_scene_policy"]["scene_content_source"] == "verified_store_facts"
+    assert payload["splatra_scene_policy"]["layout_decision_basis"] == "verified_scene_geometry_and_client_feedback"
+    assert payload["splatra_scene_policy"]["renderer_may_infer_topic"] is False
+    assert payload["splatra_scene_policy"]["particle_text"] is False
+    assert payload["splatra_scene_policy"]["text_rendering"] == "dom_text_not_particles"
     assert scene["dashboard_layout"]["orb"]["anchor"] == "lower_right"
     assert scene["layout_timeline"][0]["decision_basis"] == "verified_scene_geometry"
     assert scene["layout_timeline"][0]["text_rendering"] == "dom_text_not_particles"
