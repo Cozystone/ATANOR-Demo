@@ -388,6 +388,53 @@ function particleOperationForSceneBeat(beat: ScenePlanBeat | undefined) {
   return "none";
 }
 
+function sceneBeatParticleDensity(beat: ScenePlanBeat | null | undefined, active = false) {
+  if (!beat) return 1;
+  const operation = particleOperationForSceneBeat(beat);
+  const affordance = String(beat.visual_affordance ?? "");
+  const behavior = String(beat.particle_behavior ?? "");
+  const cohesion = physicsNumber(beat, "cohesion", 0.56);
+  const trail = physicsNumber(beat, "trail", 0.34);
+  let density = active ? 1.28 : 1;
+  if (operation === "animate_particle_motion_path") density += active ? 0.62 : 0.32;
+  if (operation === "focus_particle_cluster") density += active ? 0.34 : 0.18;
+  if (operation === "recompose_particle_cluster") density += active ? 0.42 : 0.24;
+  if (operation === "disperse_particle_cluster") density += 0.18;
+  if (affordance === "small_moving_object") density += 0.22;
+  if (affordance === "entity_figure" || affordance === "organic_structure") density += 0.12;
+  if (behavior === "gravity_arc") density += active ? 0.38 : 0.22;
+  if (behavior === "kinetic_flow" || behavior === "magnetic_field") density += active ? 0.26 : 0.16;
+  density += clamp((cohesion - 0.5) * 0.32 + trail * 0.18, -0.12, 0.36);
+  return clamp(density, 0.78, active ? 2.8 : 2.05);
+}
+
+function sceneParticleIntentForBeat(scenePlan: ScenePlan | null | undefined, beat: ScenePlanBeat | null | undefined, beatIndex = -1) {
+  if (!beat || !Array.isArray(scenePlan?.particle_operation_intents)) return null;
+  const trackId = sceneObjectTrackId(beat, Math.max(0, beatIndex));
+  const objectId = String(beat.object_id ?? "");
+  return (scenePlan?.particle_operation_intents ?? []).find((intent) => {
+    const intentBeatIndex = Number(intent?.beat_index);
+    const intentTrack = String(intent?.object_track_id ?? "");
+    const intentObject = String(intent?.object_id ?? "");
+    return (
+      (Number.isFinite(intentBeatIndex) && beatIndex >= 0 && intentBeatIndex === beatIndex)
+      || (trackId && intentTrack && intentTrack === trackId)
+      || (objectId && intentObject && intentObject === objectId)
+    );
+  }) ?? null;
+}
+
+function sceneParticleIntentDensity(intent: Record<string, unknown> | null | undefined, beat: ScenePlanBeat | null | undefined, active = false) {
+  const base = sceneBeatParticleDensity(beat, active);
+  const operation = String(intent?.operation ?? particleOperationForSceneBeat(beat ?? undefined));
+  const agentControl = String(intent?.agent_control ?? "");
+  const verifiedIntentBoost = agentControl === "airbend_recompose_particles_inside_safe_region" ? 0.18 : 0;
+  if (operation === "animate_particle_motion_path") return clamp(base + verifiedIntentBoost + (active ? 0.32 : 0.14), 0.8, active ? 3.05 : 2.2);
+  if (operation === "recompose_particle_cluster") return clamp(base + verifiedIntentBoost + 0.18, 0.8, active ? 2.9 : 2.05);
+  if (operation === "focus_particle_cluster") return clamp(base + verifiedIntentBoost + 0.12, 0.8, active ? 2.7 : 1.95);
+  return clamp(base + verifiedIntentBoost, 0.78, active ? 2.6 : 1.9);
+}
+
 function smoothstep(value: number) {
   const t = clamp(value, 0, 1);
   return t * t * (3 - 2 * t);
@@ -1071,7 +1118,7 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const seen = new Set<string>();
   const maxObjects = Math.min(16, Math.max(1, beats.length));
-  const perObjectBudget = clamp(Math.floor(Math.max(280, budget * 1.8) / maxObjects), 96, 260);
+  const perObjectBudget = clamp(Math.floor(Math.max(360, budget * 2.05) / maxObjects), 112, 360);
   return beats
     .slice(0, maxObjects)
     .map((beat, index) => {
@@ -1080,12 +1127,14 @@ function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget
       const seed = `${sceneObjectTrackId(beat, index)}:${beat.prompt ?? ""}`;
       const pose = scenePoseForBeat(beat);
       const isFigure = String(beat.visual_affordance ?? "") === "entity_figure";
+      const intent = sceneParticleIntentForBeat(scenePlan, beat, index);
+      const objectBudget = Math.round(perObjectBudget * sceneParticleIntentDensity(intent, beat, false));
       return {
         archetype,
         beat,
         id,
-        particles: sceneParticlesForBeat(beat, archetype, perObjectBudget),
-        poseBaseParticles: isFigure && pose !== "standing" ? figureParticles(perObjectBudget, seed, "standing") : undefined,
+        particles: sceneParticlesForBeat(beat, archetype, objectBudget),
+        poseBaseParticles: isFigure && pose !== "standing" ? figureParticles(objectBudget, seed, "standing") : undefined,
       };
     })
     .filter((object) => {
@@ -1598,6 +1647,7 @@ function drawSceneObjectCloud(
   const alphaMultiplier = sceneObjectAlpha(object.beat, sceneElapsed, active);
   if (alphaMultiplier <= 0.02) return;
   const roleStyle = sceneRoleStyle(object.beat, active);
+  const density = sceneBeatParticleDensity(object.beat, active);
   const position = sceneMotionPathPoint(object.beat, sceneElapsed);
   const beatProgress = sceneObjectProgress(object.beat, sceneElapsed);
   const sourceHold = sceneMotionSourceHold(object.beat, sceneElapsed);
@@ -1618,7 +1668,7 @@ function drawSceneObjectCloud(
   const cx = center.x;
   const cy = center.y;
   const transform = sceneTransform(object.beat, true, sceneElapsed);
-  const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale * (sourceHold > 0 ? 0.84 : 1);
+  const scaleBias = (active ? 1.12 : 0.78) * roleStyle.scale * (sourceHold > 0 ? 0.84 : 1) * clamp(0.92 + density * 0.08, 0.94, 1.16);
   const pressure = layoutCollisionPressure(controls);
   const scale = Math.min(width, height) * 0.11 * transform.zoom * centralScale * scaleBias * (1 - pressure * 0.08);
   const rotation = elapsed * (0.12 + controls.arousal * 0.11) + stableUnit(object.id, 5) * Math.PI * 2;
@@ -1661,10 +1711,10 @@ function drawSceneObjectCloud(
       Math.floor(point.g * 255),
       Math.floor(point.b * 255),
     ];
-    const size = clamp(point.scale * (0.66 + depth * 1.08) * scaleBias, 0.52, active ? 4.1 : 2.8);
-    const alpha = clamp(point.a * (0.16 + depth * 0.66) * alphaMultiplier * roleStyle.alpha * (1 - layoutFieldQuieting(controls) * 0.18), 0.025, active ? 0.82 : 0.5);
+    const size = clamp(point.scale * (0.54 + depth * 0.98) * scaleBias, 0.44, active ? 3.8 : 2.55);
+    const alpha = clamp(point.a * (0.14 + depth * 0.62) * alphaMultiplier * roleStyle.alpha * clamp(0.82 + density * 0.12, 0.84, 1.18) * (1 - layoutFieldQuieting(controls) * 0.18), 0.025, active ? 0.86 : 0.54);
     const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9 + stableUnit(object.id, 31));
-    drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6 + roleStyle.trail * 1.7), 1.6, 11), size, color, alpha);
+    drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6 + roleStyle.trail * 1.7 + density * 0.42), 1.6, 12.5), size, color, alpha);
   });
 }
 
@@ -1678,6 +1728,7 @@ function drawSceneMotionPathFlow(
   active: boolean,
   cameraView: SceneCameraView,
   centralScale = 1,
+  density = 1,
 ) {
   const from = Array.isArray(object.beat.motion_path?.from) ? object.beat.motion_path?.from ?? [] : [];
   const to = Array.isArray(object.beat.motion_path?.to) ? object.beat.motion_path?.to ?? [] : [];
@@ -1693,7 +1744,7 @@ function drawSceneMotionPathFlow(
   };
   const progress = sceneObjectProgress(object.beat, sceneElapsed);
   const unit = Math.min(width, height);
-  const steps = 18;
+  const steps = Math.round(clamp(18 * density, 18, 42));
   const points: Array<[number, number]> = [];
   for (let index = 0; index <= steps; index += 1) {
     const t = index / steps;
@@ -1705,12 +1756,12 @@ function drawSceneMotionPathFlow(
     const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
     points.push([canvasPoint.x, canvasPoint.y]);
   }
-  const baseAlpha = (active ? 0.052 : 0.022) * centralScale;
+  const baseAlpha = (active ? 0.052 : 0.022) * centralScale * clamp(0.86 + density * 0.16, 0.9, 1.34);
   drawParticlePolyline(ctx, points, [76, 230, 255], baseAlpha, unit, Math.floor(stableUnit(object.id, 73) * 1000), elapsed);
 
-  const streamCount = active ? 13 : 7;
+  const streamCount = Math.round(clamp((active ? 13 : 7) * density, active ? 13 : 7, active ? 32 : 18));
   for (let index = 0; index < streamCount; index += 1) {
-    const local = clamp(progress - index * 0.034 + Math.sin(elapsed * 0.9 + index) * 0.01, 0, 1);
+    const local = clamp(progress - index * (0.034 / clamp(density, 1, 2.8)) + Math.sin(elapsed * 0.9 + index) * 0.01, 0, 1);
     const arc = Math.sin(local * Math.PI) * 0.22;
     const modelPoint = {
       x: fromPoint.x * (1 - local) + toPoint.x * local,
@@ -1722,10 +1773,10 @@ function drawSceneMotionPathFlow(
       ctx,
       canvasPoint.x,
       canvasPoint.y,
-      unit * (0.0022 + fade * 0.0038) * centralScale,
-      index % 3 === 0 ? [255, 104, 177] : [76, 230, 255],
-      (active ? 0.38 : 0.18) * fade,
-    );
+        unit * (0.0017 + fade * 0.0032) * centralScale,
+        index % 3 === 0 ? [255, 104, 177] : [76, 230, 255],
+        (active ? 0.38 : 0.18) * fade * clamp(0.84 + density * 0.12, 0.9, 1.28),
+      );
   }
 }
 
@@ -1863,7 +1914,8 @@ function drawSceneFocusSwarm(
   const behavior = String(activeObject.beat.particle_behavior ?? "");
   const moving = activeObject.beat.op === "move" || Boolean(activeObject.beat.motion_path);
   const roleStyle = sceneRoleStyle(activeObject.beat, true);
-  const count = Math.round(clamp(unit * (moving ? 0.22 : 0.16) * centralScale * (1 - fieldQuieting * 0.22), 64, 180));
+  const density = sceneBeatParticleDensity(activeObject.beat, true);
+  const count = Math.round(clamp(unit * (moving ? 0.22 : 0.16) * density * centralScale * (1 - fieldQuieting * 0.22), 88, 360));
   const fieldRadius = unit * clamp(0.1 + roleStyle.focus * 0.045 + controls.curiosity * 0.025 + flowRecombine * 0.025, 0.1, 0.22) * centralScale;
   const salt = Math.floor(stableUnit(activeObject.id, 991) * 10000);
   const pulse = 0.55 + Math.sin(elapsed * 1.1 + salt) * 0.18 + controls.speaking_energy * 0.18;
@@ -1883,8 +1935,8 @@ function drawSceneFocusSwarm(
     const color: [number, number, number] = behavior === "gravity_arc"
       ? (index % 4 === 0 ? [255, 255, 255] : [76, 230, 255])
       : index % 5 === 0 ? [255, 104, 177] : [76, 230, 255];
-    const size = unit * (0.001 + seeded(index, salt + 13) * 0.0018) * centralScale;
-    const length = unit * (0.006 + controls.curiosity * 0.006 + (moving ? 0.005 : 0.002) + flowRecombine * 0.005) * centralScale;
+    const size = unit * (0.00078 + seeded(index, salt + 13) * 0.00145) * centralScale;
+    const length = unit * (0.006 + controls.curiosity * 0.006 + (moving ? 0.005 : 0.002) + flowRecombine * 0.005 + density * 0.002) * centralScale;
     const alpha = (0.026 + roleStyle.focus * 0.03 + controls.speaking_energy * 0.02)
       * (0.35 + seeded(index, salt + 17) * 0.65)
       * centralScale
@@ -1925,7 +1977,7 @@ function drawSceneFocusParticles(
   drawSceneFocusSwarm(ctx, activeObject, visibleObjects, width, height, elapsed, sceneElapsed, controls, cameraView, layoutAwareCentralScale);
   visibleObjects.forEach((object) => {
     const sameGroup = sameSceneGroup(object.beat, activeObject?.beat);
-    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, cameraView, layoutAwareCentralScale);
+    drawSceneMotionPathFlow(ctx, object, width, height, elapsed, sceneElapsed, object.id === activeObjectId || sameGroup, cameraView, layoutAwareCentralScale, sceneBeatParticleDensity(object.beat, object.id === activeObjectId || sameGroup));
   });
 
   visibleObjects.forEach((object) => {
@@ -2000,6 +2052,9 @@ export default function SplatraImaginationField({
   const activeSceneEvidenceHash = activeSceneBeat?.scene_evidence?.source_fact_hash ?? "none";
   const activeSceneEvidenceOwner = activeSceneBeat?.scene_evidence?.evidence_owner ?? "none";
   const activeSceneTrackId = activeSceneBeat ? sceneObjectTrackId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : "";
+  const activeParticleOperationIntent = sceneParticleIntentForBeat(scenePlan, activeSceneBeat, syncedBeatIndex);
+  const activeParticleOperation = String(activeParticleOperationIntent?.operation ?? particleOperationForSceneBeat(activeSceneBeat ?? undefined));
+  const activeParticleIntentDensity = sceneParticleIntentDensity(activeParticleOperationIntent, activeSceneBeat, true);
   const safeRegionStrategy = scenePlanSafeRegionStrategy(scenePlan);
   const particleStageStrategy = scenePlanParticleStageStrategy(scenePlan);
   const particleSpace = scenePlanParticleSpace(scenePlan);
@@ -2212,6 +2267,9 @@ export default function SplatraImaginationField({
       data-particle-operation-intents={particleOperationIntentCount}
       data-first-particle-operation-intent={firstParticleOperationIntent}
       data-particle-operation-intent-source={particleOperationIntentSource}
+      data-active-particle-operation={activeParticleOperation}
+      data-active-particle-intent-density={activeParticleIntentDensity.toFixed(2)}
+      data-scene-render-density-mode="operation_intent_weighted_particles"
       data-layout-autonomy={layoutAutonomy}
       data-orb-identity={orbIdentity}
       data-layout-collision-pressure={layoutCollisionPressure(controls)}

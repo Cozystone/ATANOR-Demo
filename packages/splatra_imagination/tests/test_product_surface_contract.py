@@ -322,6 +322,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-particle-operation-intents" in field
     assert "data-first-particle-operation-intent" in field
     assert "data-particle-operation-intent-source" in field
+    assert "sceneParticleIntentForBeat" in field
+    assert "sceneParticleIntentDensity" in field
+    assert "sceneBeatParticleDensity" in field
+    assert "data-active-particle-operation" in field
+    assert "data-active-particle-intent-density" in field
+    assert "data-scene-render-density-mode" in field
+    assert "operation_intent_weighted_particles" in field
     assert "derived_from_legacy_scene_beats" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
@@ -330,6 +337,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneMotionSourceHold" in field
     assert "start - 0.72" in field
     assert "drawSceneMotionPathFlow" in field
+    assert "streamCount = Math.round(clamp((active ? 13 : 7) * density" in field
     assert "cameraView" in field
     assert "scenePlanCentralScale" in field
     assert "centralSceneScale" in field
