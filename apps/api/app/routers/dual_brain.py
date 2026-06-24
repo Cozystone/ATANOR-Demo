@@ -27,7 +27,7 @@ from packages.cloud_brain.graph_exchange import run_local_cloud_exchange
 from packages.cloud_brain.semantic_store import SemanticCloudStore
 from packages.neural_emotion.event_bus import emit_runtime_event, infer_user_text_runtime_event
 from packages.neural_emotion.event_bus import EVENT_BUS
-from packages.neural_emotion.voice_bridge import attach_voice_plan_metadata
+from packages.neural_emotion.voice_bridge import attach_voice_plan_metadata, voice_controls
 from packages.inner_voice import emit_inner_voice_from_state
 
 
@@ -443,14 +443,28 @@ def _attach_voice_runtime_metadata(snapshot: dict[str, Any], text: str, language
     )
 
 
+def _sapi_prosody_from_voice_controls(controls: dict[str, Any]) -> dict[str, int]:
+    speed = float(controls.get("speed") or 1.0)
+    energy = float(controls.get("energy") or 0.45)
+    rate = max(-3, min(3, round((speed - 1.0) * 10)))
+    volume = max(72, min(100, round(78 + energy * 22)))
+    return {"rate": int(rate), "volume": int(volume)}
+
+
 def _voice_runtime_snapshot_with_local_audio(text: str, language: str) -> dict[str, Any]:
     """Add a local temp WAV fallback without claiming Fish synthesis is wired."""
 
     snapshot = _voice_runtime_snapshot(text, language)
     if snapshot.get("audio_available") and snapshot.get("audio_url"):
         return snapshot
+    preliminary_controls = voice_controls(
+        EVENT_BUS.engine.snapshot().vector,
+        selected_engine=str(snapshot.get("selected_engine") or "fallback"),
+        audio_available=False,
+    )
+    sapi_prosody = _sapi_prosody_from_voice_controls(preliminary_controls)
     try:
-        fallback = synthesize_windows_sapi(text, language=language)
+        fallback = synthesize_windows_sapi(text, language=language, **sapi_prosody)
     except LocalTTSUnavailable as exc:
         return {**snapshot, "fallback_error": str(exc)}
     return {
@@ -472,6 +486,10 @@ def _voice_runtime_snapshot_with_local_audio(text: str, language: str) -> dict[s
         ),
         "error_reason": None,
         "fallback_engine": fallback.engine,
+        "local_tts_rate": fallback.rate,
+        "local_tts_volume": fallback.volume,
+        "fallback_prosody_source": "neural_emotion_voice_controls",
+        "fallback_prosody_applied": True,
         "text_fallback": True,
         "external_service": False,
         "generated_audio_persisted": False,

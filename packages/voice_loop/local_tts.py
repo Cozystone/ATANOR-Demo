@@ -21,6 +21,8 @@ class LocalTTSResult:
     audio_url: str
     audio_mime: str = "audio/wav"
     duration_ms: int | None = None
+    rate: int = 0
+    volume: int = 100
 
 
 class LocalTTSUnavailable(RuntimeError):
@@ -57,7 +59,11 @@ def cleanup_old_voice_audio(max_age_seconds: int = 60 * 60) -> None:
             continue
 
 
-def synthesize_windows_sapi(text: str, *, language: str = "ko") -> LocalTTSResult:
+def _clamp_int(value: int | float, low: int, high: int) -> int:
+    return max(low, min(high, int(round(float(value)))))
+
+
+def synthesize_windows_sapi(text: str, *, language: str = "ko", rate: int = 0, volume: int = 100) -> LocalTTSResult:
     """Generate a browser-playable WAV with the local Windows speech engine.
 
     This is a local fallback for audible product feedback. It does not call an
@@ -78,6 +84,8 @@ def synthesize_windows_sapi(text: str, *, language: str = "ko") -> LocalTTSResul
     safe_text = re.sub(r"\s+", " ", text).strip()[:MAX_TTS_CHARS]
     if not safe_text:
         raise LocalTTSUnavailable("empty_tts_text")
+    safe_rate = _clamp_int(rate, -10, 10)
+    safe_volume = _clamp_int(volume, 0, 100)
 
     root = local_voice_audio_dir()
     root.mkdir(parents=True, exist_ok=True)
@@ -92,7 +100,9 @@ def synthesize_windows_sapi(text: str, *, language: str = "ko") -> LocalTTSResul
 param(
     [string]$TextPath,
     [string]$OutPath,
-    [string]$Language
+    [string]$Language,
+    [int]$Rate,
+    [int]$Volume
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Speech
@@ -108,8 +118,8 @@ try {
     if ($voices.Count -gt 0) {
         $speaker.SelectVoice($voices[0].VoiceInfo.Name)
     }
-    $speaker.Rate = 0
-    $speaker.Volume = 100
+    $speaker.Rate = $Rate
+    $speaker.Volume = $Volume
     $speaker.SetOutputToWaveFile($OutPath)
     $speaker.Speak($text)
 }
@@ -132,6 +142,8 @@ finally {
                 str(text_path),
                 str(audio_path),
                 "ko" if language == "ko" else "en",
+                str(safe_rate),
+                str(safe_volume),
             ],
             check=False,
             capture_output=True,
@@ -154,4 +166,6 @@ finally {
         engine="windows_sapi",
         audio_path=audio_path,
         audio_url=f"/api/voice-loop/audio/{audio_path.name}",
+        rate=safe_rate,
+        volume=safe_volume,
     )

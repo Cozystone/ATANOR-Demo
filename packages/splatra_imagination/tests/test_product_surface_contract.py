@@ -443,6 +443,8 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert "data-dashboard-particle-budget" in status_card
     assert "data-speech-sync-mode" in status_card
     assert "data-voice-emotion-hint" in status_card
+    assert "data-voice-prosody-applied" in status_card
+    assert "data-voice-local-tts-rate" in status_card
     assert "dashboardParticleBudget" in status_card
     assert "particleBudget={dashboardParticleBudget}" in status_card
     assert "microRequested" in status_card

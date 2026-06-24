@@ -22,6 +22,10 @@ type VoiceOutput = {
   audio_duration_ms?: number | null;
   estimated_duration_ms?: number | null;
   error_reason?: string | null;
+  fallback_prosody_applied?: boolean;
+  fallback_prosody_source?: string | null;
+  local_tts_rate?: number | null;
+  local_tts_volume?: number | null;
   neural_emotion_voice_controls?: {
     emotion_hint?: string | null;
     tts_tag?: string | null;
@@ -1181,6 +1185,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [speechSyncDurationMs, setSpeechSyncDurationMs] = useState(0);
   const [voiceEmotionHint, setVoiceEmotionHint] = useState("none");
   const [voiceTtsTag, setVoiceTtsTag] = useState("none");
+  const [voiceProsodyState, setVoiceProsodyState] = useState({
+    applied: false,
+    rate: 0,
+    source: "none",
+    volume: 0,
+  });
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
@@ -1528,6 +1538,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setSpeechSyncDurationMs(0);
     setVoiceEmotionHint("none");
     setVoiceTtsTag("none");
+    setVoiceProsodyState({ applied: false, rate: 0, source: "none", volume: 0 });
     primeVoiceAudioElement();
     try {
       const response = await fetch("/api/chat/atanor", {
@@ -1555,6 +1566,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setSpeechSyncDurationMs(nextSpeechDurationMs);
       setVoiceEmotionHint(String(nextVoiceControls?.emotion_hint ?? "none"));
       setVoiceTtsTag(String(nextVoiceControls?.tts_tag || "none"));
+      setVoiceProsodyState({
+        applied: voiceOutput?.fallback_prosody_applied === true,
+        rate: Number(voiceOutput?.local_tts_rate ?? 0) || 0,
+        source: String(voiceOutput?.fallback_prosody_source ?? "none"),
+        volume: Number(voiceOutput?.local_tts_volume ?? 0) || 0,
+      });
       const nextStageLayout = requestedStageLayout(payload);
       const nextSceneChoreography = requestedSceneChoreography(payload);
       const nextScenePolicy = requestedSplatraScenePolicy(payload);
@@ -1701,6 +1718,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-speech-typing-step-ms={Math.round(speechTypingStepMs)}
       data-voice-emotion-hint={voiceEmotionHint}
       data-voice-tts-tag={voiceTtsTag}
+      data-voice-prosody-applied={voiceProsodyState.applied ? "true" : "false"}
+      data-voice-prosody-source={voiceProsodyState.source}
+      data-voice-local-tts-rate={voiceProsodyState.rate}
+      data-voice-local-tts-volume={voiceProsodyState.volume}
       data-stage-layout={stageLayout}
       data-scene-speech-beat={sceneSpeechBeatIndex >= 0 ? String(sceneSpeechBeatIndex) : "none"}
       data-speech-placement={speechPlacement}

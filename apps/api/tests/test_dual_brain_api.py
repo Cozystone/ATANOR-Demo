@@ -9,12 +9,12 @@ from app.routers import dual_brain
 from packages.voice_loop.local_tts import LocalTTSResult, local_voice_audio_dir
 
 
-def _fake_voice_synthesis(text: str, *, language: str = "ko") -> LocalTTSResult:
+def _fake_voice_synthesis(text: str, *, language: str = "ko", rate: int = 0, volume: int = 100) -> LocalTTSResult:
     root = local_voice_audio_dir()
     root.mkdir(parents=True, exist_ok=True)
     path = root / "atanor_voice_22222222222222222222222222222222.wav"
     path.write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
-    return LocalTTSResult(engine="windows_sapi", audio_path=path, audio_url=f"/api/voice-loop/audio/{path.name}")
+    return LocalTTSResult(engine="windows_sapi", audio_path=path, audio_url=f"/api/voice-loop/audio/{path.name}", rate=rate, volume=volume)
 
 
 def test_dual_brain_ingest_links_semantic_and_surface(tmp_path, monkeypatch) -> None:

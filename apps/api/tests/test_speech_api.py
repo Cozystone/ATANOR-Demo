@@ -7,12 +7,12 @@ from app.routers import dual_brain
 from packages.voice_loop.local_tts import LocalTTSResult, local_voice_audio_dir
 
 
-def _fake_voice_synthesis(text: str, *, language: str = "ko") -> LocalTTSResult:
+def _fake_voice_synthesis(text: str, *, language: str = "ko", rate: int = 0, volume: int = 100) -> LocalTTSResult:
     root = local_voice_audio_dir()
     root.mkdir(parents=True, exist_ok=True)
     path = root / "atanor_voice_11111111111111111111111111111111.wav"
     path.write_bytes(b"RIFF$\x00\x00\x00WAVEfmt ")
-    return LocalTTSResult(engine="windows_sapi", audio_path=path, audio_url=f"/api/voice-loop/audio/{path.name}")
+    return LocalTTSResult(engine="windows_sapi", audio_path=path, audio_url=f"/api/voice-loop/audio/{path.name}", rate=rate, volume=volume)
 
 
 def test_chat_atanor_returns_clean_answer_and_compact_trace(tmp_path, monkeypatch) -> None:
@@ -61,6 +61,10 @@ def test_dashboard_conversation_voice_output_is_audio_truthful(tmp_path, monkeyp
     assert voice_output["generated_audio_persisted"] is False
     assert voice_output["estimated_duration_ms"] >= 900
     assert voice_output["speech_sync_source"] == "estimated_from_text_length"
+    assert voice_output["fallback_prosody_applied"] is True
+    assert voice_output["fallback_prosody_source"] == "neural_emotion_voice_controls"
+    assert -3 <= voice_output["local_tts_rate"] <= 3
+    assert 72 <= voice_output["local_tts_volume"] <= 100
     controls = voice_output["neural_emotion_voice_controls"]
     assert controls["audio_available"] is True
     assert controls["real_emotion_claim"] is False
