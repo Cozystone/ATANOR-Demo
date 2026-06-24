@@ -62,6 +62,15 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-particle-text" in status_card
     assert "data-scene-policy-text-rendering" in status_card
     assert "data-verified-evidence-required" in status_card
+    assert "type SplatraCommandSequencePayload" in status_card
+    assert "requestedSplatraCommandSequence" in status_card
+    assert "setSplatraCommandSequence(nextSplatraCommandSequence)" in status_card
+    assert "splatraCommandSequence={splatraCommandSequence}" in status_card
+    assert "data-splatra-command-sequence" in status_card
+    assert "data-splatra-command-actions" in status_card
+    assert "data-splatra-command-raw-buffers" in status_card
+    assert "data-splatra-command-topic-templates" in status_card
+    assert "data-splatra-command-renderer-inference" in status_card
     assert 'text_rendering: "dom_text_not_particles"' in status_card
     assert '"conversation_default"' in status_card
     assert "speech_timeline?: Array" in status_card
@@ -319,6 +328,21 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "agent_scene_commands_to_particle_cartridges" in field
     assert "data-flow-motion-reference" in field
     assert "data-splatra-command-contract" in field
+    assert "type SplatraCommandSequence" in field
+    assert "splatraCommandSequence?: SplatraCommandSequence | null" in field
+    assert "commandSequenceBeats" in field
+    assert "scenePlanWithCommandSequence" in field
+    assert "const renderScenePlan = useMemo" in field
+    assert "buildSceneRenderObjects(renderScenePlan, budget)" in field
+    assert "track_id" in field
+    assert "data-splatra-command-sequence" in field
+    assert "data-splatra-command-side-channel" in field
+    assert "data-splatra-command-agent-payload" in field
+    assert "data-splatra-command-raw-buffers" in field
+    assert "data-splatra-command-topic-templates" in field
+    assert "data-splatra-command-renderer-inference" in field
+    assert "data-splatra-command-motion-field" in field
+    assert "data-splatra-command-agent-control" in field
     assert "laneOffset" in field
     assert "curl" in field
     assert "drawParticleEllipse" in field

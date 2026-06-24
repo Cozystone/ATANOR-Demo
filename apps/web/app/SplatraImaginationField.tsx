@@ -110,6 +110,7 @@ type ScenePlanBeat = {
   camera?: Record<string, any>;
 };
 
+type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
 type SceneMotionRole = "subject" | "source" | "target" | "";
 type ScenePose = "standing" | "seated" | "reaching";
 
@@ -962,6 +963,52 @@ function sceneVisibleTrackObjects(objects: SceneRenderObject[], activeObjectId: 
   return Array.from(byTrack.values())
     .sort((left, right) => left.order - right.order)
     .map((entry) => entry.object);
+}
+
+function commandSequenceBeats(sequence: SplatraCommandSequence | null | undefined): ScenePlanBeat[] {
+  const actions = Array.isArray(sequence?.scene_actions) ? sequence?.scene_actions ?? [] : [];
+  return actions
+    .map((action, index) => {
+      const args = action?.args && typeof action.args === "object" ? action.args : {};
+      return {
+        ...(args as ScenePlanBeat),
+        op: coerceSceneBeatOp(action?.op),
+        object_id: String(args.id ?? `splatra_action_${index}`),
+        object_track_id: typeof args.track_id === "string" ? args.track_id : "",
+        object_track_basis: typeof args.track_basis === "string" ? args.track_basis : "",
+        prompt: typeof args.prompt === "string" ? args.prompt : "",
+        narration: typeof args.narration === "string" ? args.narration : "",
+        particle_behavior: typeof args.particle_behavior === "string" ? args.particle_behavior : "",
+        visual_affordance: typeof args.visual_affordance === "string" ? args.visual_affordance : "",
+        semantic_role: typeof args.semantic_role === "string" ? args.semantic_role : "",
+        spatial_relation: typeof args.spatial_relation === "string" ? args.spatial_relation : "",
+      };
+    })
+    .filter((beat) => Boolean(beat.prompt || beat.object_id));
+}
+
+function coerceSceneBeatOp(value: unknown): SceneBeatOp {
+  const candidate = String(value || "spawn_object");
+  if (
+    candidate === "spawn_object"
+    || candidate === "morph"
+    || candidate === "move"
+    || candidate === "focus_camera"
+    || candidate === "label"
+    || candidate === "despawn"
+  ) {
+    return candidate;
+  }
+  return "spawn_object";
+}
+
+function scenePlanWithCommandSequence(scenePlan: ScenePlan | null | undefined, sequence: SplatraCommandSequence | null | undefined): ScenePlan | null | undefined {
+  const commandBeats = commandSequenceBeats(sequence);
+  if (!commandBeats.length) return scenePlan;
+  return {
+    ...(scenePlan ?? {}),
+    beats: commandBeats,
+  };
 }
 
 function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
@@ -1879,7 +1926,11 @@ export default function SplatraImaginationField({
   const activeSceneBeat = (
     syncedBeatIndex >= 0 && Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.[syncedBeatIndex] : null
   ) ?? activeSpeechTimelineBeat ?? activeLayoutTimelineBeat ?? firstEvidenceBearingBeat(scenePlan);
-  const sceneObjects = useMemo(() => buildSceneRenderObjects(scenePlan, budget), [budget, scenePlan]);
+  const renderScenePlan = useMemo(
+    () => scenePlanWithCommandSequence(scenePlan, splatraCommandSequence),
+    [scenePlan, splatraCommandSequence],
+  );
+  const sceneObjects = useMemo(() => buildSceneRenderObjects(renderScenePlan, budget), [budget, renderScenePlan]);
   const activeSceneObjectId = activeSceneBeat ? sceneObjectId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : null;
   const activeSceneGroupId = activeSceneBeat?.scene_group_id ?? "";
   const activeSceneGroupSize = activeSceneGroupId ? sceneObjects.filter((object) => sameSceneGroup(object.beat, activeSceneBeat)).length : 0;
@@ -1901,7 +1952,6 @@ export default function SplatraImaginationField({
   const splatraContract = splatraCommandSequence?.splatra_contract ?? {};
   const splatraHotSwap = splatraCommandSequence?.hot_swap_policy ?? {};
   const splatraMotionPolicy = splatraCommandSequence?.particle_motion_policy ?? {};
-
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(media.matches);
