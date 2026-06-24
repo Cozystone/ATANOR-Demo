@@ -18,6 +18,34 @@ FILE_PRIORITIES = {
     "case_frames.jsonl": 0.72,
     "concepts.jsonl": 0.58,
 }
+CONTEXT_DEPENDENT_OPENERS = (
+    "첫 번째 항",
+    "두 번째 항",
+    "세 번째 항",
+    "맨 첫 번째 항",
+    "첫 번째 단계",
+    "두 번째 단계",
+    "세 번째 단계",
+    "맨 첫 번째 단계",
+    "그 중",
+    "그중",
+    "따라서",
+    "그러므로",
+    "이 오차",
+    "이 항",
+    "이 경우",
+    "이는",
+    "이것은",
+    "그것은",
+    "the first term",
+    "the second term",
+    "the third term",
+    "therefore",
+    "this term",
+    "this error",
+    "in this case",
+)
+
 ADJACENT_EVIDENCE_TOKENS = {
     "acceleration",
     "attraction",
@@ -29,13 +57,14 @@ ADJACENT_EVIDENCE_TOKENS = {
     "orbit",
     "가속도",
     "낙하",
+    "떨어지다",
     "떨어지는",
-    "떨어뜨린",
-    "떨어진",
+    "떨어졌다",
     "물체",
+    "이동",
     "운동",
     "자유낙하",
-    "힘",
+    "궤도",
 }
 CONCRETE_MOTION_TOKENS = {
     "fall",
@@ -43,9 +72,9 @@ CONCRETE_MOTION_TOKENS = {
     "freefall",
     "가속도",
     "낙하",
+    "떨어지다",
     "떨어지는",
-    "떨어뜨린",
-    "떨어진",
+    "떨어졌다",
     "물체",
     "자유낙하",
 }
@@ -58,7 +87,7 @@ ADJACENT_GENERIC_TOKENS = {
     "또는",
     "법칙",
     "설명",
-    "이것은",
+    "단계",
     "있다",
 }
 STOP_TOKENS = {
@@ -191,6 +220,13 @@ def _row_text(row: dict[str, Any]) -> str:
     return ""
 
 
+def _is_context_dependent_fragment(text: str) -> bool:
+    compact = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
+    if not compact:
+        return False
+    return compact.startswith(tuple(opener.casefold() for opener in CONTEXT_DEPENDENT_OPENERS))
+
+
 def _source_ref(row: dict[str, Any], fallback: str) -> str:
     provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
     for field in SOURCE_FIELDS:
@@ -271,7 +307,7 @@ def _adjacent_verified_candidates(
         if not _is_verified(row):
             continue
         text = _row_text(row)
-        if not text or has_mock_signal(text):
+        if not text or has_mock_signal(text) or _is_context_dependent_fragment(text):
             continue
         key = text.casefold()
         if key in seen_texts:
@@ -347,7 +383,7 @@ def retrieve_verified_facts(
         if not _is_verified(row):
             continue
         text = _row_text(row)
-        if not text or has_mock_signal(text):
+        if not text or has_mock_signal(text) or _is_context_dependent_fragment(text):
             continue
         row_tokens = _tokens(text)
         if not row_tokens:

@@ -20,7 +20,7 @@ def test_log_bounds_and_product_redaction() -> None:
                 blocked_actions=["Local Brain 직접 쓰기"],
                 uncertainty="낮음",
                 next_intent="safe next",
-                monologue_text="지금은 steady 상태다.",
+                monologue_text="지금은 steady 상태를 유지하고 있습니다.",
             )
         )
 

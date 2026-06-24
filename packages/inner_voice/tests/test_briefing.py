@@ -13,6 +13,6 @@ def test_lab_brief_contains_frames_product_hides_raw() -> None:
     product = build_inner_voice_brief(log, product=True)
 
     assert lab["frames"]
-    assert "지금은" in lab["brief"]
+    assert "응답" in lab["brief"] or "대화" in lab["brief"]
     assert product["raw_inner_voice_hidden"] is True
     assert "frames" not in product

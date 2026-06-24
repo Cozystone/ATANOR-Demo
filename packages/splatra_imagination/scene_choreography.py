@@ -67,6 +67,9 @@ class SceneChoreographyPlan:
     external_splatra_called: bool = False
     raw_buffer_in_agent_context: bool = False
     topic_scene_templates: bool = False
+    renderer_may_infer_topic: bool = False
+    particle_text: bool = False
+    text_rendering: str = "dom_text_not_particles"
     proof_only: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -300,40 +303,140 @@ def _scene_extent(beats: list[SceneBeat]) -> dict[str, Any]:
     }
 
 
-def _layout_decision_candidates(load: float, layout_intent: LayoutIntent, scene_extent: dict[str, Any]) -> list[dict[str, Any]]:
-    """Score orb/stage placement alternatives from geometry, not topic words."""
+def _scene_self_pressure_state(load: float, layout_intent: LayoutIntent, scene_extent: dict[str, Any]) -> dict[str, Any]:
+    """Summarize the agent's layout state from scene evidence and self-body constraints."""
+
+    motion_count = float(scene_extent.get("motion_count") or 0.0)
+    beat_count = float(scene_extent.get("beat_count") or 0.0)
+    spread_x = float(scene_extent.get("spread_x") or 0.0)
+    spread_y = float(scene_extent.get("spread_y") or 0.0)
+    particle_field_pressure = min(1.0, max(0.0, load + motion_count * 0.08 + max(spread_x, spread_y) * 0.08))
+    self_body_pressure = min(1.0, max(0.0, 0.28 + load * 0.48 + motion_count * 0.08))
+    text_clearance_pressure = min(1.0, max(0.0, 0.22 + load * 0.38 + beat_count * 0.025))
+    composer_clearance_pressure = min(1.0, max(0.0, 0.18 + (0.22 if layout_intent == "wide_particle_stage" else 0.0) + spread_y * 0.08))
+    return {
+        "state_owner": "cgsr_scene_choreography_agent",
+        "state_basis": "verified_scene_geometry_plus_self_body_constraints",
+        "self_body_identity": "atanor_orb_self_body",
+        "particle_field_pressure": round(particle_field_pressure, 3),
+        "self_body_pressure": round(self_body_pressure, 3),
+        "text_clearance_pressure": round(text_clearance_pressure, 3),
+        "composer_clearance_pressure": round(composer_clearance_pressure, 3),
+        "scene_complexity": {
+            "beat_count": int(beat_count),
+            "motion_count": int(motion_count),
+            "spread_x": round(spread_x, 3),
+            "spread_y": round(spread_y, 3),
+            "layout_intent": layout_intent,
+        },
+        "topic_scene_templates": False,
+        "renderer_may_infer_topic": False,
+    }
+
+
+def _layout_decision_candidates(load: float, layout_intent: LayoutIntent, scene_extent: dict[str, Any], self_state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Score orb/stage placement alternatives from scene/self pressure, not topic words."""
 
     motion_count = float(scene_extent.get("motion_count") or 0.0)
     beat_count = float(scene_extent.get("beat_count") or 0.0)
     spread_x = float(scene_extent.get("spread_x") or 0.0)
     spread_y = float(scene_extent.get("spread_y") or 0.0)
     wide_bonus = 0.18 if layout_intent == "wide_particle_stage" else 0.0
+    self_body_pressure = float(self_state.get("self_body_pressure") or 0.0)
+    particle_field_pressure = float(self_state.get("particle_field_pressure") or 0.0)
+    text_clearance_pressure = float(self_state.get("text_clearance_pressure") or 0.0)
+    composer_clearance_pressure = float(self_state.get("composer_clearance_pressure") or 0.0)
     candidates = [
         {
             "action": "keep_orb_primary",
-            "score": round(max(0.0, 1.0 - load - motion_count * 0.18 - wide_bonus), 3),
+            "score": round(max(0.0, 1.0 - particle_field_pressure - self_body_pressure * 0.22 - wide_bonus), 3),
             "orb_movement": "center",
             "reason": "conversation_space_has_priority_when_verified_particle_load_is_low",
+            "score_components": {
+                "particle_field_pressure": particle_field_pressure,
+                "self_body_pressure": self_body_pressure,
+                "text_clearance_pressure": text_clearance_pressure,
+            },
         },
         {
             "action": "share_center_with_particle_scene",
-            "score": round(max(0.0, 0.44 + beat_count * 0.035 + spread_x * 0.08 + spread_y * 0.06 - max(0.0, load - 0.72) * 0.38), 3),
+            "score": round(max(0.0, 0.38 + beat_count * 0.032 + spread_x * 0.06 + spread_y * 0.05 - max(0.0, particle_field_pressure - 0.7) * 0.42), 3),
             "orb_movement": "lower_right_scaled_down",
             "reason": "moderate_verified_scene_load_can_share_center_with_orb",
+            "score_components": {
+                "particle_field_pressure": particle_field_pressure,
+                "self_body_pressure": self_body_pressure,
+                "text_clearance_pressure": text_clearance_pressure,
+                "composer_clearance_pressure": composer_clearance_pressure,
+            },
         },
         {
             "action": "yield_center_to_particle_scene",
-            "score": round(max(0.0, 0.22 + load * 0.78 + motion_count * 0.18 + wide_bonus), 3),
+            "score": round(max(0.0, 0.2 + particle_field_pressure * 0.62 + self_body_pressure * 0.18 + motion_count * 0.12 + wide_bonus), 3),
             "orb_movement": "lower_right_micro_stage_guard" if load >= 0.82 else "lower_right_scaled_down",
             "reason": "verified_motion_or_wide_scene_needs_uncovered_center_particle_stage",
+            "score_components": {
+                "particle_field_pressure": particle_field_pressure,
+                "self_body_pressure": self_body_pressure,
+                "text_clearance_pressure": text_clearance_pressure,
+                "composer_clearance_pressure": composer_clearance_pressure,
+            },
         },
     ]
     return sorted(candidates, key=lambda item: float(item["score"]), reverse=True)
 
 
-def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anchor: TextAnchor, layout_intent: LayoutIntent, scene_extent: dict[str, Any]) -> dict[str, Any]:
+def _client_layout_feedback_state(value: Any) -> dict[str, Any]:
+    """Read client DOM collision telemetry without using it as scene content."""
+
+    if not isinstance(value, dict):
+        return {
+            "feedback_basis": "none",
+            "layout_feedback_used": False,
+            "collision_state": "none",
+            "pressure": 0.0,
+            "overlap_px": 0.0,
+            "offscreen_px": 0.0,
+            "orb_overlap_px": 0.0,
+            "orb_offscreen_px": 0.0,
+            "text_rendering": "dom_text_not_particles",
+            "particle_text": False,
+        }
+    overlap_px = _coerce_float(value.get("overlap_px"), 0.0, minimum=0.0, maximum=2000.0)
+    offscreen_px = _coerce_float(value.get("offscreen_px"), 0.0, minimum=0.0, maximum=2000.0)
+    orb_overlap_px = _coerce_float(value.get("orb_overlap_px"), 0.0, minimum=0.0, maximum=2000.0)
+    orb_offscreen_px = _coerce_float(value.get("orb_offscreen_px"), 0.0, minimum=0.0, maximum=2000.0)
+    pressure = min(1.0, overlap_px / 260.0 + offscreen_px / 340.0 + orb_overlap_px / 220.0 + orb_offscreen_px / 320.0)
+    collision_state = _clean_text(value.get("collision_state") or "none", limit=48)
+    feedback_basis = _clean_text(value.get("feedback_basis") or "client_dom_scene_collision_telemetry", limit=96)
+    return {
+        "feedback_basis": feedback_basis,
+        "layout_feedback_used": feedback_basis != "none",
+        "collision_state": collision_state,
+        "pressure": round(pressure, 3),
+        "overlap_px": round(overlap_px, 2),
+        "offscreen_px": round(offscreen_px, 2),
+        "orb_overlap_px": round(orb_overlap_px, 2),
+        "orb_offscreen_px": round(orb_offscreen_px, 2),
+        "speech_anchor": _clean_text(value.get("speech_anchor") or "", limit=32),
+        "self_narration_anchor": _clean_text(value.get("self_narration_anchor") or "", limit=32),
+        "text_rendering": "dom_text_not_particles",
+        "particle_text": False,
+        "content_used_for_scene_generation": False,
+    }
+
+
+def _dashboard_layout(
+    stage_layout: StageLayout,
+    orb_anchor: OrbAnchor,
+    text_anchor: TextAnchor,
+    layout_intent: LayoutIntent,
+    scene_extent: dict[str, Any],
+    client_layout_feedback: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Derive dashboard placement from scene geometry, not subject templates."""
 
+    client_feedback = _client_layout_feedback_state(client_layout_feedback)
     if stage_layout != "scene_focus":
         return {
             "planning_basis": "conversation_default",
@@ -350,6 +453,7 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
                 "agent_action": "keep_orb_primary",
                 "text_rendering": "dom_text_not_particles",
                 "content_source": "conversation_without_visual_scene",
+                "client_layout_feedback": client_feedback,
             },
         }
 
@@ -360,8 +464,10 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     load = min(1.0, max(0.0, 0.18 + beat_count * 0.08 + motion_count * 0.2 + spread_x * 0.22 + spread_y * 0.18))
     if layout_intent == "wide_particle_stage":
         load = max(load, 0.72)
+    load = min(1.0, load + float(client_feedback.get("pressure") or 0.0) * 0.18)
     orb_movement = "lower_right_micro_stage_guard" if load >= 0.82 else "lower_right_scaled_down"
-    decision_candidates = _layout_decision_candidates(load, layout_intent, scene_extent)
+    self_state = _scene_self_pressure_state(load, layout_intent, scene_extent)
+    decision_candidates = _layout_decision_candidates(load, layout_intent, scene_extent, self_state)
     selected_candidate = decision_candidates[0] if decision_candidates else {
         "action": "share_center_with_particle_scene",
         "score": 0.0,
@@ -369,6 +475,14 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
         "reason": "fallback_geometry_decision",
     }
     selected_action = str(selected_candidate.get("action") or ("yield_center_to_particle_scene" if load >= 0.72 else "share_center_with_particle_scene"))
+    if float(client_feedback.get("pressure") or 0.0) >= 0.35:
+        selected_candidate = {
+            **selected_candidate,
+            "orb_movement": "lower_right_micro_stage_guard",
+            "reason": f"{selected_candidate.get('reason', 'verified_scene_geometry')};client_dom_collision_feedback",
+        }
+        if selected_action == "keep_orb_primary":
+            selected_action = "share_center_with_particle_scene"
 
     orb_size_vmin = round(25.0 - load * 7.5, 2)
     orb_min_px = round(170.0 - load * 38.0)
@@ -391,16 +505,49 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     stage_min_y = max(-0.86, float(scene_extent.get("min_y") or -0.28) - footprint_padding)
     stage_max_y = min(0.86, float(scene_extent.get("max_y") or 0.28) + footprint_padding)
     if layout_intent == "wide_particle_stage":
-        stage_min_x = min(stage_min_x, -0.72)
-        stage_max_x = max(stage_max_x, 0.72)
-        stage_min_y = min(stage_min_y, -0.48)
-        stage_max_y = max(stage_max_y, 0.48)
+        # Keep the visual particle field wide, but reserve a smaller DOM-text
+        # blocking footprint. The renderer may still use the surrounding dark
+        # dashboard space for particles; speech, self narration, and the
+        # composer need stable lanes that are not treated as occupied.
+        stage_min_x = max(-0.88, min(stage_min_x, -0.72))
+        stage_max_x = min(0.88, max(stage_max_x, 0.72))
+        stage_min_y = max(-0.5, min(stage_min_y, -0.44))
+        stage_max_y = min(0.46, max(stage_max_y, 0.4))
+    text_safe_lanes = [
+        "upper_left",
+        "upper_right",
+        "lower_left",
+        "lower_center",
+    ]
+    if layout_intent == "wide_particle_stage":
+        # The center is owned by the verified particle scene; keep DOM text in
+        # perimeter lanes and let the client choose the least crowded lane from
+        # measured geometry.
+        text_safe_lanes = ["upper_left", "upper_right", "lower_left"]
+    avoidance_map = {
+        "map_owner": "cgsr_scene_choreography_agent",
+        "basis": "verified_scene_extent_motion_and_dom_clearance",
+        "scene_footprint": {
+            "min_x": round(stage_min_x, 3),
+            "max_x": round(stage_max_x, 3),
+            "min_y": round(stage_min_y, 3),
+            "max_y": round(stage_max_y, 3),
+        },
+        "orb_reserved_lane": "lower_right",
+        "composer_reserved_lane": "bottom_center",
+        "text_safe_lanes": text_safe_lanes,
+        "self_narration_preferred_lane": "upper_right" if load >= 0.72 else "upper_left",
+        "dom_text_only": True,
+        "particle_text": False,
+        "topic_scene_templates": False,
+    }
 
     return {
         "planning_basis": "scene_geometry_extent",
         "stage": stage_layout,
         "layout_intent": layout_intent,
         "stage_pressure": round(load, 3),
+        "scene_self_state": self_state,
         "orb": {
             "anchor": orb_anchor,
             "size_vmin": orb_size_vmin,
@@ -440,6 +587,7 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
                 "block_text": True,
             },
         },
+        "avoidance_map": avoidance_map,
         "scene": {
             "field_opacity": round(0.9 + load * 0.07, 3),
             "central_scale": round(1.0 + load * 0.14, 3),
@@ -449,12 +597,14 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
         },
         "agent_layout_decision": {
             "decision_owner": "cgsr_scene_choreography_agent",
-            "decision_basis": "verified_scene_geometry",
-            "decision_model": "geometry_pressure_argmax_no_topic_templates",
+            "decision_basis": "verified_scene_geometry_and_self_body_clearance_state",
+            "decision_model": "self_body_scene_pressure_scorer_no_topic_templates",
             "decision_candidates": decision_candidates,
+            "client_layout_feedback": client_feedback,
             "selected_action_score": selected_candidate.get("score", 0.0),
             "selection_reason": selected_candidate.get("reason", "verified_scene_geometry"),
             "scene_geometry_inputs": dict(scene_extent),
+            "scene_self_state": self_state,
             "topic_scene_templates": False,
             "agent_action": selected_action,
             "orb_movement": selected_candidate.get("orb_movement") or orb_movement,
@@ -473,6 +623,8 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
             "orb_yield_strength": round(load, 3),
             "particle_recomposition_mode": "agent_airbend_recompose_verified_beats",
             "avoid_regions": ["orb", "composer", "self_narration", "scene_motion_paths"],
+            "avoidance_map": avoidance_map,
+            "text_safe_lanes": text_safe_lanes,
             "content_source": "verified_beats_only",
             "renderer_may_infer_topic": False,
         },
@@ -539,8 +691,8 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
         "duration": 999.0,
         "action": decision.get("agent_action") or "share_center_with_particle_scene",
         "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
-        "decision_basis": decision.get("decision_basis") or "verified_scene_geometry",
-        "decision_model": decision.get("decision_model") or "geometry_pressure_argmax_no_topic_templates",
+        "decision_basis": decision.get("decision_basis") or "verified_scene_geometry_and_self_body_clearance_state",
+        "decision_model": decision.get("decision_model") or "self_body_scene_pressure_scorer_no_topic_templates",
         "selected_action_score": decision.get("selected_action_score", 0.0),
         "selection_reason": decision.get("selection_reason") or "verified_scene_geometry",
         "orb_anchor": dashboard_layout.get("orb", {}).get("anchor", "lower_right"),
@@ -560,18 +712,20 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
         "orb_self_body_yield": decision.get("orb_self_body_yield") or "orb_moves_and_scales_to_clear_verified_particle_scene",
         "particle_recomposition_mode": decision.get("particle_recomposition_mode") or "agent_airbend_recompose_verified_beats",
         "layout_autonomy": decision.get("layout_autonomy") or "agent_authored_from_verified_scene_geometry_and_client_feedback",
+        "scene_self_state": dict(decision.get("scene_self_state") or dashboard_layout.get("scene_self_state") or {}),
     }]
     for index, beat in enumerate(beats):
         if beat.speech_cue is False:
             continue
         active_layout_points = _active_beat_layout_points(beat)
+        active_layout_state = _active_beat_layout_state(beat)
         timeline.append({
             "t_start": beat.t_start,
             "duration": beat.duration,
             "action": "sync_orb_text_with_particle_beat",
             "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
             "decision_basis": "verified_speech_cue_beat",
-            "decision_model": decision.get("decision_model") or "geometry_pressure_argmax_no_topic_templates",
+            "decision_model": decision.get("decision_model") or "self_body_scene_pressure_scorer_no_topic_templates",
             "beat_index": index,
             "scene_group_id": beat.scene_group_id,
             "object_id": beat.object_id,
@@ -583,6 +737,11 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "text_anchor": _text_anchor_for_active_beat(beat, default_text_anchor),
             "text_anchor_basis": _text_anchor_basis_for_active_beat(beat, default_text_anchor),
             "text_anchor_points": len(active_layout_points),
+            "active_layout_pressure": active_layout_state["active_layout_pressure"],
+            "active_bbox": dict(active_layout_state["active_bbox"]),
+            "active_regions": list(active_layout_state["active_regions"]),
+            "orb_scale_hint": active_layout_state["orb_scale_hint"],
+            "text_safe_region": active_layout_state["text_safe_region"],
             "self_narration_anchor": default_self_anchor,
             "text_rendering": "dom_text_not_particles",
             "stage_region": "dashboard_center",
@@ -595,6 +754,7 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
             "orb_self_body_yield": decision.get("orb_self_body_yield") or "orb_moves_and_scales_to_clear_verified_particle_scene",
             "particle_recomposition_mode": decision.get("particle_recomposition_mode") or "agent_airbend_recompose_verified_beats",
             "layout_autonomy": decision.get("layout_autonomy") or "agent_authored_from_verified_scene_geometry_and_client_feedback",
+            "scene_self_state": dict(decision.get("scene_self_state") or dashboard_layout.get("scene_self_state") or {}),
             "particle_behavior": beat.particle_behavior,
             "scene_directive": dict(beat.scene_directive),
             "scene_evidence": dict(beat.scene_evidence),
@@ -628,7 +788,8 @@ def _agent_scene_decisions(
             "layout_intent": layout_intent,
             "selected_action": decision.get("agent_action") or ("share_center_with_particle_scene" if stage_layout == "scene_focus" else "keep_orb_primary"),
             "scene_geometry_inputs": dict(scene_extent),
-            "decision_model": decision.get("decision_model") or "geometry_pressure_argmax_no_topic_templates",
+            "scene_self_state": dict(decision.get("scene_self_state") or dashboard_layout.get("scene_self_state") or {}),
+            "decision_model": decision.get("decision_model") or "self_body_scene_pressure_scorer_no_topic_templates",
             "decision_candidates": list(decision.get("decision_candidates") or []),
             "selected_action_score": decision.get("selected_action_score", 0.0),
             "selection_reason": decision.get("selection_reason") or "verified_scene_geometry",
@@ -662,11 +823,13 @@ def _agent_scene_decisions(
     for index, beat in enumerate(beats):
         if beat.speech_cue is False:
             continue
+        active_layout_state = _active_beat_layout_state(beat)
         decisions.append(
             {
                 "decision_id": f"speech_beat_layout_{index}",
                 "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
                 "decision_basis": "verified_speech_cue_beat",
+                "scene_self_state": dict(decision.get("scene_self_state") or dashboard_layout.get("scene_self_state") or {}),
                 "beat_index": index,
                 "object_id": beat.object_id,
                 "object_track_id": beat.object_track_id,
@@ -676,6 +839,11 @@ def _agent_scene_decisions(
                 "text_anchor": _text_anchor_for_active_beat(beat, default_text_anchor),
                 "text_anchor_basis": _text_anchor_basis_for_active_beat(beat, default_text_anchor),
                 "orb_movement": _orb_movement_for_active_beat(beat, decision.get("orb_movement") or "lower_right_scaled_down"),
+                "active_layout_pressure": active_layout_state["active_layout_pressure"],
+                "active_bbox": dict(active_layout_state["active_bbox"]),
+                "active_regions": list(active_layout_state["active_regions"]),
+                "orb_scale_hint": active_layout_state["orb_scale_hint"],
+                "text_safe_region": active_layout_state["text_safe_region"],
                 "particle_behavior": beat.particle_behavior,
                 "scene_directive": dict(beat.scene_directive),
                 "scene_evidence": dict(beat.scene_evidence),
@@ -748,19 +916,18 @@ def _orb_movement_for_active_beat(beat: SceneBeat, fallback: Any) -> str:
     """Nudge the orb away from the active verified particle focus."""
 
     fallback_movement = str(fallback or "lower_right_scaled_down")
-    points: list[tuple[float, float]] = []
-    if beat.position and len(beat.position) >= 2:
-        points.append((float(beat.position[0]), float(beat.position[1])))
-    if beat.motion_path:
-        for key in ("from", "to"):
-            raw_point = beat.motion_path.get(key)
-            if isinstance(raw_point, tuple) and len(raw_point) >= 2:
-                points.append((float(raw_point[0]), float(raw_point[1])))
+    layout_state = _active_beat_layout_state(beat)
+    points = list(layout_state["points"])
     if not points:
         return fallback_movement
     max_x = max(point[0] for point in points)
     min_y = min(point[1] for point in points)
     max_y = max(point[1] for point in points)
+    pressure = float(layout_state["active_layout_pressure"])
+    if pressure >= 0.78:
+        return "lower_right_lifted_micro" if min_y <= -0.18 else "lower_right_micro_stage_guard"
+    if pressure >= 0.64 and (max_x >= 0.18 or min_y <= -0.24):
+        return "lower_right_micro_stage_guard"
     if max_x >= 0.32 and min_y <= -0.12:
         return "lower_right_lifted_compact"
     if max_x >= 0.32:
@@ -784,6 +951,84 @@ def _active_beat_layout_points(beat: SceneBeat) -> list[tuple[float, float]]:
             if isinstance(raw_point, tuple) and len(raw_point) >= 2:
                 points.append((float(raw_point[0]), float(raw_point[1])))
     return points
+
+
+def _active_beat_layout_state(beat: SceneBeat) -> dict[str, Any]:
+    """Summarize active beat occupancy for text/orb layout.
+
+    The state is derived only from authored scene geometry and verified motion
+    endpoints. It does not inspect the topic and it does not make text into
+    particles; it only gives the dashboard a local clearance map.
+    """
+
+    points = _active_beat_layout_points(beat)
+    if not points:
+        return {
+            "points": [],
+            "active_layout_pressure": 0.0,
+            "active_bbox": {
+                "basis": "no_active_verified_geometry",
+                "min_x": 0.0,
+                "max_x": 0.0,
+                "min_y": 0.0,
+                "max_y": 0.0,
+            },
+            "active_regions": [],
+            "orb_scale_hint": "fallback",
+            "text_safe_region": "fallback_anchor",
+            "particle_text": False,
+        }
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    min_x = min(xs)
+    max_x = max(xs)
+    min_y = min(ys)
+    max_y = max(ys)
+    spread_x = max_x - min_x
+    spread_y = max_y - min_y
+    center_crossing = min_x <= 0.16 and max_x >= -0.16 and min_y <= 0.16 and max_y >= -0.16
+    behavior = str(beat.particle_behavior or "")
+    visual_affordance = str(beat.visual_affordance or "")
+    motion_bonus = 0.24 if beat.motion_path or beat.op == "move" else 0.0
+    behavior_bonus = 0.18 if behavior in {"gravity_arc", "kinetic_flow"} else 0.1 if behavior else 0.0
+    affordance_bonus = 0.12 if visual_affordance in {"entity_figure", "organic_structure"} else 0.08 if visual_affordance else 0.0
+    pressure = min(1.0, max(0.0, 0.18 + spread_x * 0.42 + spread_y * 0.42 + motion_bonus + behavior_bonus + affordance_bonus + (0.1 if center_crossing else 0.0)))
+    regions: list[str] = []
+    if center_crossing:
+        regions.append("center_stage")
+    if max_x >= 0.26:
+        regions.append("right_stage")
+    if min_x <= -0.26:
+        regions.append("left_stage")
+    if max_y >= 0.26:
+        regions.append("upper_stage")
+    if min_y <= -0.26:
+        regions.append("lower_stage")
+    if not regions:
+        regions.append("local_cluster")
+    if pressure >= 0.72:
+        orb_scale_hint = "micro_self_body_yield"
+    elif pressure >= 0.54:
+        orb_scale_hint = "compact_self_body_yield"
+    else:
+        orb_scale_hint = "normal_self_body_clearance"
+    text_safe_region = _text_anchor_for_active_beat(beat, "lower_left")
+    padding = 0.12 + pressure * 0.08
+    return {
+        "points": points,
+        "active_layout_pressure": round(pressure, 3),
+        "active_bbox": {
+            "basis": "active_verified_beat_position_and_motion_path",
+            "min_x": round(max(-1.0, min_x - padding), 3),
+            "max_x": round(min(1.0, max_x + padding), 3),
+            "min_y": round(max(-0.92, min_y - padding), 3),
+            "max_y": round(min(0.92, max_y + padding), 3),
+        },
+        "active_regions": regions,
+        "orb_scale_hint": orb_scale_hint,
+        "text_safe_region": text_safe_region,
+        "particle_text": False,
+    }
 
 
 def _text_anchor_clearance_score(anchor: TextAnchor, points: list[tuple[float, float]], fallback: str) -> float:
@@ -871,7 +1116,15 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     text_anchor = _coerce_text_anchor(plan.get("text_anchor"), stage_layout)
     layout_intent = _coerce_layout_intent(plan.get("layout_intent"), stage_layout, beats)
     scene_extent = _scene_extent(beats)
-    dashboard_layout = _dashboard_layout(stage_layout, orb_anchor, text_anchor, layout_intent, scene_extent)
+    client_layout_feedback = plan.get("client_layout_feedback") if isinstance(plan.get("client_layout_feedback"), dict) else {}
+    dashboard_layout = _dashboard_layout(
+        stage_layout,
+        orb_anchor,
+        text_anchor,
+        layout_intent,
+        scene_extent,
+        client_layout_feedback,
+    )
     speech_timeline = _speech_timeline(beats)
     layout_timeline = _layout_timeline(stage_layout, dashboard_layout, beats)
     agent_scene_decisions = _agent_scene_decisions(stage_layout, layout_intent, dashboard_layout, scene_extent, beats)

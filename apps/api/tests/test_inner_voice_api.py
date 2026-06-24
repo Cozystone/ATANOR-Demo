@@ -22,6 +22,7 @@ def test_lab_emit_and_log() -> None:
 
     assert emitted["emitted"] is True
     assert emitted["frame"]["monologue_text"]
+    assert "습니다" in emitted["frame"]["monologue_text"] or "겠습니다" in emitted["frame"]["monologue_text"]
     assert log["frames"]
     assert emitted["local_brain_write"] is False
     assert emitted["production_store_mutated"] is False
@@ -96,13 +97,15 @@ def test_generate_frame_product_uses_current_splatra_scene_state() -> None:
         },
     ).json()
 
+    narration = payload["product_summary"]["visible_self_narration"]
     assert payload["generated"] is True
     assert payload["appended"] is True
     assert payload["raw_inner_voice_hidden"] is True
     assert payload["product_summary"]["act"] == "splatra_imagination"
-    assert payload["product_summary"]["visible_self_narration"]
-    assert "abstract_memory_cloud" not in payload["product_summary"]["visible_self_narration"]
-    assert "particle_scene" not in payload["product_summary"]["visible_self_narration"]
+    assert narration
+    assert "습니다" in narration or "겠습니다" in narration
+    assert "abstract_memory_cloud" not in narration
+    assert "particle_scene" not in narration
     assert payload["product_summary"]["generation_basis"] == "asm_cgsr_construction_conditioned_inner_voice_v1"
     assert payload["external_llm"] is False
     assert payload["external_sllm"] is False

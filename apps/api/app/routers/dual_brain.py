@@ -12,11 +12,23 @@ from pydantic import BaseModel, Field
 from app.services.alpha_services import alpha_service
 from packages.base_brain.zero_user_answer import answer_with_base_brain
 from packages.cgsr.cgsr.conversation_surface import generate_conversation_surface
-from packages.cgsr.cgsr.conversation_grounding import gather_grounded_context
-from packages.cgsr.cgsr.conversation_router import route_conversation_request
+from packages.cgsr.cgsr.conversation_context import ConversationContextPacket, build_conversation_context
+from packages.cgsr.cgsr.conversation_grounding import (
+    GroundedContext,
+    gather_grounded_context,
+    grounded_discourse_metadata,
+    realize_grounded_context,
+    semantic_safety_flags,
+)
+from packages.cgsr.cgsr.conversation_router import ConversationRoute, route_conversation_request
 from packages.cgsr.cgsr.visual_imagination_planner import plan_visual_imagination
 from packages.core_proof.three_core_answer_path import run_prompt_proof
-from packages.splatra_imagination import build_candidate_cartridge_queue, compile_scene_choreography_commands
+from packages.splatra_imagination import (
+    analyze_scene_choreography,
+    build_candidate_cartridge_queue,
+    compile_scene_choreography_commands,
+    dispatch_candidate_queue_to_sidecar,
+)
 from packages.voice_loop.local_tts import LocalTTSUnavailable, synthesize_windows_sapi, voice_audio_path
 from packages.voice_loop.runtime_availability import check_voice_runtime_availability
 from packages.surface_brain.monitor import monitor_answer, repair_answer_for_mode
@@ -72,6 +84,37 @@ def _verified_store_candidates() -> list[Path]:
     return deduped
 
 
+def _splatra_dispatch_budget(
+    queue: Any,
+    *,
+    visual_plan: Any,
+    direct_splatra_generation: bool,
+) -> dict[str, float | int]:
+    """Keep quick fallback checks fast, but wait for real SPLATRA generation.
+
+    SPLATRA's learned generators can take tens of seconds, especially when a
+    verified scene asks for multiple particle objects. The answer path still
+    receives only SGF summaries and side-channel URLs; raw buffers stay viewer-side.
+    """
+
+    if direct_splatra_generation:
+        return {"poll_ticks": 30, "timeout_sec": 180.0}
+
+    job_count = int(getattr(queue, "job_count", 0) or 0)
+    scene = getattr(visual_plan, "scene_choreography", None)
+    diagnostics = getattr(visual_plan, "diagnostics", {}) if visual_plan is not None else {}
+    scene_source = str(diagnostics.get("scene_content_source") or "")
+    layout_intent = ""
+    if isinstance(scene, dict):
+        layout_intent = str(scene.get("layout_intent") or "")
+
+    verified_or_wide_scene = scene_source == "verified_store_facts" or layout_intent == "wide_particle_stage"
+    if job_count >= 2 and verified_or_wide_scene:
+        return {"poll_ticks": 2, "timeout_sec": 180.0}
+
+    return {"poll_ticks": 2, "timeout_sec": 8.0}
+
+
 class DualBrainIngestRequest(BaseModel):
     text: str = Field(min_length=1, max_length=12000)
     source_id: str | None = None
@@ -93,6 +136,8 @@ class AtanorChatRequest(BaseModel):
     web_search: bool = False
     brain_mode: str = "unified"
     include_trace: bool = False
+    layout_feedback: dict[str, Any] = Field(default_factory=dict)
+    conversation_context: list[dict[str, Any]] = Field(default_factory=list)
 
     def question_text(self) -> str:
         text = self.question or self.query or self.message or ""
@@ -446,8 +491,11 @@ def _attach_voice_runtime_metadata(snapshot: dict[str, Any], text: str, language
 def _sapi_prosody_from_voice_controls(controls: dict[str, Any]) -> dict[str, int]:
     speed = float(controls.get("speed") or 1.0)
     energy = float(controls.get("energy") or 0.45)
-    rate = max(-3, min(3, round((speed - 1.0) * 10)))
-    volume = max(72, min(100, round(78 + energy * 22)))
+    # Windows SAPI is only a local fallback, so keep it slightly slower and
+    # softer than the abstract Fish-style controls. This avoids the brittle,
+    # announcer-like delivery users hear when neutral local voices run fast.
+    rate = max(-4, min(0, round((speed - 1.0) * 8 - 2)))
+    volume = max(58, min(88, round(66 + energy * 17)))
     return {"rate": int(rate), "volume": int(volume)}
 
 
@@ -464,7 +512,12 @@ def _voice_runtime_snapshot_with_local_audio(text: str, language: str) -> dict[s
     )
     sapi_prosody = _sapi_prosody_from_voice_controls(preliminary_controls)
     try:
-        fallback = synthesize_windows_sapi(text, language=language, **sapi_prosody)
+        fallback = synthesize_windows_sapi(
+            text,
+            language=language,
+            sentence_gap_ms=int(preliminary_controls.get("fallback_sentence_gap_ms") or 220),
+            **sapi_prosody,
+        )
     except LocalTTSUnavailable as exc:
         return {**snapshot, "fallback_error": str(exc)}
     return {
@@ -488,6 +541,7 @@ def _voice_runtime_snapshot_with_local_audio(text: str, language: str) -> dict[s
         "fallback_engine": fallback.engine,
         "local_tts_rate": fallback.rate,
         "local_tts_volume": fallback.volume,
+        "local_tts_sentence_gap_ms": int(preliminary_controls.get("fallback_sentence_gap_ms") or 220),
         "fallback_prosody_source": "neural_emotion_voice_controls",
         "fallback_prosody_applied": True,
         "text_fallback": True,
@@ -518,15 +572,22 @@ def _live_selfhood_payload(
     *,
     question: str,
     language: str,
+    conversation_context: ConversationContextPacket | None = None,
 ) -> dict[str, Any]:
-    route = route_conversation_request(question)
-    grounded_context = gather_grounded_context(question, route, runtime=_verified_store_runtime())
+    context_packet = conversation_context or build_conversation_context(question, request.conversation_context)
+    route = route_conversation_request(context_packet.contextual_query)
+    grounded_context = gather_grounded_context(context_packet.contextual_query, route, runtime=_verified_store_runtime())
     speech_act = _live_selfhood_speech_act(question, language)
     generated = generate_conversation_surface(
         question,
         language=language,
         route=route,
         grounded_context=grounded_context,
+        context={
+            "conversation_context": context_packet.to_dict(),
+            "contextual_query": context_packet.contextual_query,
+            "volatile_request_context_only": True,
+        },
     )
     inner_voice_frame = emit_inner_voice_from_state(
         source_event_id=f"conversation_router:{speech_act}",
@@ -554,6 +615,7 @@ def _live_selfhood_payload(
         grounded_context=grounded_context,
         diagnostics=diagnostics,
         answer_available=bool(generated.answer),
+        client_layout_feedback=request.layout_feedback,
     )
     splatra_command_sequence_obj = (
         compile_scene_choreography_commands(visual_plan.scene_choreography)
@@ -561,16 +623,55 @@ def _live_selfhood_payload(
         else None
     )
     splatra_command_sequence = splatra_command_sequence_obj.to_dict() if splatra_command_sequence_obj else None
-    splatra_cartridge_queue = (
-        build_candidate_cartridge_queue(splatra_command_sequence_obj).to_dict()
+    splatra_interactive_scene_analysis_obj = (
+        analyze_scene_choreography(visual_plan.scene_choreography)
+        if visual_plan.scene_choreography
+        else None
+    )
+    splatra_interactive_scene_analysis = (
+        splatra_interactive_scene_analysis_obj.to_dict()
+        if splatra_interactive_scene_analysis_obj
+        else None
+    )
+    splatra_cartridge_queue_obj = (
+        build_candidate_cartridge_queue(splatra_command_sequence_obj)
         if splatra_command_sequence_obj
         else None
     )
+    direct_splatra_generation = (
+        visual_plan.diagnostics.get("scene_authoring_basis") == "user_direct_splatra_generation_request"
+    )
+    splatra_dispatch_budget = (
+        _splatra_dispatch_budget(
+            splatra_cartridge_queue_obj,
+            visual_plan=visual_plan,
+            direct_splatra_generation=direct_splatra_generation,
+        )
+        if splatra_cartridge_queue_obj
+        else None
+    )
+    splatra_sidecar_dispatch = (
+        dispatch_candidate_queue_to_sidecar(
+            splatra_cartridge_queue_obj,
+            poll_ticks=int(splatra_dispatch_budget["poll_ticks"]),
+            timeout_sec=float(splatra_dispatch_budget["timeout_sec"]),
+        ).to_dict()
+        if splatra_cartridge_queue_obj and splatra_dispatch_budget
+        else None
+    )
+    splatra_cartridge_queue = splatra_cartridge_queue_obj.to_dict() if splatra_cartridge_queue_obj else None
+    if splatra_cartridge_queue and splatra_sidecar_dispatch:
+        splatra_cartridge_queue["sidecar_dispatch_budget"] = splatra_dispatch_budget
+        splatra_cartridge_queue["sidecar_dispatch"] = splatra_sidecar_dispatch
+        splatra_cartridge_queue["sidecar_status"] = splatra_sidecar_dispatch.get("status")
+        splatra_cartridge_queue["sidecar_configured"] = bool(splatra_sidecar_dispatch.get("configured"))
+        splatra_cartridge_queue["external_splatra_called"] = bool(splatra_sidecar_dispatch.get("external_splatra_called"))
     visual_policy = {
         "scene_content_source": visual_plan.diagnostics.get("scene_content_source", "none"),
         "scene_authoring_basis": visual_plan.diagnostics.get("scene_authoring_basis"),
         "visual_affordance_basis": visual_plan.diagnostics.get("visual_affordance_basis"),
         "layout_decision_basis": visual_plan.diagnostics.get("layout_decision_basis"),
+        "reason": visual_plan.diagnostics.get("reason") or visual_plan.reason,
         "topic_scene_templates": False,
         "renderer_may_infer_topic": False,
         "particle_text": False,
@@ -597,6 +698,18 @@ def _live_selfhood_payload(
             "grounding_source": grounded_context.grounding_source,
             "grounding_quality": grounded_context.grounding_quality,
         },
+        "conversation_context": {
+            "turn_count": len(context_packet.turns),
+            "used_for_routing": bool(context_packet.turns),
+            "followup_detected": context_packet.followup_detected,
+            "focus_terms": list(context_packet.focus_terms),
+            "focus_source": context_packet.focus_source,
+            "resolution_strategy": context_packet.resolution_strategy,
+            "used_for_learning": False,
+            "local_brain_write": False,
+            "production_store_mutated": False,
+            "basis": context_packet.basis,
+        },
         "surface_graph": {
             "construction_families": [],
             "discourse_moves": [],
@@ -614,11 +727,20 @@ def _live_selfhood_payload(
             "renderer_may_infer_topic": False,
             "text_rendering": "dom_text_not_particles",
         },
+        "splatra_interactive_scene_analysis": {
+            "available": bool(splatra_interactive_scene_analysis),
+            "object_count": int(splatra_interactive_scene_analysis.get("object_count", 0)) if splatra_interactive_scene_analysis else 0,
+            "raw_splat_inference": False,
+            "raw_buffers_in_agent_context": False,
+            "interactive_scene_metadata": bool(splatra_interactive_scene_analysis),
+        },
         "splatra_cartridge_queue": {
             "available": bool(splatra_cartridge_queue),
             "job_count": int(splatra_cartridge_queue.get("job_count", 0)) if splatra_cartridge_queue else 0,
             "execution_mode": splatra_cartridge_queue.get("execution_mode", "none") if splatra_cartridge_queue else "none",
-            "external_splatra_called": False,
+            "external_splatra_called": bool(splatra_sidecar_dispatch.get("external_splatra_called", False)) if splatra_sidecar_dispatch else False,
+            "sidecar_status": splatra_sidecar_dispatch.get("status", "none") if splatra_sidecar_dispatch else "none",
+            "sidecar_configured": bool(splatra_sidecar_dispatch.get("configured", False)) if splatra_sidecar_dispatch else False,
             "raw_buffer_in_agent_context": False,
             "mutation_performed": False,
         },
@@ -653,11 +775,19 @@ def _live_selfhood_payload(
         "semantic_grounding_used": grounding_used,
         "grounding_source": diagnostics.get("grounding_source", grounded_context.grounding_source),
         "grounding_quality": diagnostics.get("grounding_quality", grounded_context.grounding_quality),
+        "grounded_discourse_mode": diagnostics.get("grounded_discourse_mode"),
+        "grounded_discourse_basis": diagnostics.get("grounded_discourse_basis"),
+        "grounded_fact_roles": diagnostics.get("grounded_fact_roles") or [],
         "answer_mode": answer_mode,
         "route_type": route.route_type,
         "honesty_note": diagnostics.get("honesty_note"),
         "semantic_grounding_metadata_present": True,
         "honesty_metadata_present": True,
+        "conversation_context_used": bool(context_packet.turns),
+        "conversation_context_basis": context_packet.basis,
+        "conversation_followup_detected": context_packet.followup_detected,
+        "conversation_resolution_strategy": context_packet.resolution_strategy,
+        "eval_rows_used_for_learning": False,
         "generation_basis": diagnostics.get("generation_basis"),
         "template_free_surface": bool(diagnostics.get("template_free_surface", False)),
         "splatra_scene_policy": visual_policy,
@@ -690,6 +820,7 @@ def _live_selfhood_payload(
             "visual_scene_plan": None,
             "splatra_scene_plan": None,
             "splatra_command_sequence": None,
+            "splatra_interactive_scene_analysis": None,
             "splatra_cartridge_queue": None,
             "splatra_scene_policy": visual_policy,
             "answer_engine": engine,
@@ -729,7 +860,9 @@ def _live_selfhood_payload(
         "visual_scene_plan": visual_plan.scene_choreography,
         "splatra_scene_plan": visual_plan.scene_choreography,
         "splatra_command_sequence": splatra_command_sequence,
+        "splatra_interactive_scene_analysis": splatra_interactive_scene_analysis,
         "splatra_cartridge_queue": splatra_cartridge_queue,
+        "splatra_sidecar_dispatch": splatra_sidecar_dispatch,
         "splatra_scene_policy": visual_policy,
         "answer_engine": engine,
         **_flags(),
@@ -1016,6 +1149,65 @@ def _is_graph_count_question(question: str) -> bool:
     return any(term in lowered for term in count_terms) and any(term in lowered for term in graph_terms)
 
 
+def _is_splatra_visual_request(question: str) -> bool:
+    """Keep direct visual-generation intent out of legacy text-only fallback."""
+
+    return route_conversation_request(question).route_type == "splatra_request"
+
+
+def _should_use_web_grounded_conversation(question: str) -> bool:
+    route = route_conversation_request(question)
+    if route.route_type in {
+        "agentic_os_request",
+        "greeting_smalltalk",
+        "limitation_question",
+        "local_cloud_brain_explanation",
+        "memory_request",
+        "project_status",
+        "splatra_request",
+        "unsafe_or_private_request",
+        "voice_status",
+    }:
+        return False
+    if route.route_type in {"general_knowledge_question", "unknown"}:
+        return True
+    lowered = question.lower()
+    return any(
+        term in lowered or term in question
+        for term in (
+            "search",
+            "look up",
+            "latest",
+            "recent",
+            "today",
+            "news",
+            "current",
+            "what",
+            "why",
+            "how",
+            "explain",
+            "definition",
+            "검색",
+            "찾아",
+            "최신",
+            "최근",
+            "오늘",
+            "뉴스",
+            "현재",
+            "웹",
+            "인터넷",
+            "무엇",
+            "뭐야",
+            "왜",
+            "어떻게",
+            "설명",
+            "정의",
+            "법칙",
+            "원리",
+        )
+    )
+
+
 def _should_try_base_brain_first(question: str) -> bool:
     lowered = question.lower()
     return any(
@@ -1181,6 +1373,257 @@ def _semantic_context_from_rag(result: dict[str, Any]) -> dict[str, Any]:
         "local_coverage": "high" if result.get("memory_activation") else "low" if not concepts else "medium",
         "retrieval_trace": result.get("retrieval_trace", {}),
     }
+
+
+def _clean_rag_fact_text(value: Any, *, limit: int = 420) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    if not text:
+        return ""
+    if "payload-vault://" in text or re.search(r"\b[0-9a-f]{24,}\b", text, flags=re.IGNORECASE):
+        return ""
+    if UNSAFE_DEFAULT_ANSWER_RE.search(text):
+        return ""
+    original_sentence_matches = re.findall(r"[^.!?。]+[.!?。]", text)
+    sentence_matches = [
+        sentence.strip()
+        for sentence in original_sentence_matches
+        if not re.search(r"(으로|로|와|과|및|또는|그리고|처음)\.$", sentence.strip())
+    ]
+    if sentence_matches and len(sentence_matches) < len(original_sentence_matches):
+        text = " ".join(sentence_matches)
+        if len(text) <= limit:
+            return text
+    if len(text) <= limit:
+        return text
+    first_two_sentences = " ".join(sentence.strip() for sentence in sentence_matches[:2])
+    if limit >= 160 and first_two_sentences and len(first_two_sentences) <= limit + 80:
+        return first_two_sentences
+    first_sentence = sentence_matches[0].strip() if sentence_matches else ""
+    if first_sentence and len(first_sentence) <= limit + 80:
+        return first_sentence
+    clipped = text[:limit].rstrip()
+    boundary = max(
+        clipped.rfind(mark)
+        for mark in (
+            ".",
+            "?",
+            "!",
+            "다.",
+            "요.",
+            "이다.",
+            "였다.",
+            "었다.",
+            "하였다.",
+            "되었다.",
+        )
+    )
+    if boundary >= max(32, int(limit * 0.35)):
+        return clipped[: boundary + 1].rstrip()
+    return clipped.rstrip(" ,;:") + "..."
+
+
+def _clean_public_fact_bound_answer(value: Any) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    if not text:
+        return ""
+    text = re.sub(r"([.!?。])(?=\S)", r"\1 ", text)
+    sentences = [sentence.strip() for sentence in re.findall(r"[^.!?。]+[.!?。]", text)]
+    if not sentences:
+        return text
+    filtered = [
+        sentence
+        for sentence in sentences
+        if not re.search(r"(으로|로|와|과|및|또는|그리고|처음)\.$", sentence)
+    ]
+    if not filtered:
+        return text
+    return " ".join(filtered)
+
+
+CONTEXT_DEPENDENT_FACT_OPENERS = (
+    "첫 번째 항",
+    "두 번째 항",
+    "세 번째 항",
+    "맨 첫 번째 항",
+    "첫 번째 단계",
+    "두 번째 단계",
+    "세 번째 단계",
+    "맨 첫 번째 단계",
+    "그 중",
+    "그중",
+    "따라서",
+    "그러므로",
+    "이 오차",
+    "이 항",
+    "이 경우",
+    "이는",
+    "이것은",
+    "그것은",
+    "the first term",
+    "the second term",
+    "the third term",
+    "therefore",
+    "this term",
+    "this error",
+    "in this case",
+)
+
+
+def _is_context_dependent_fact_fragment(text: str) -> bool:
+    """Reject source fragments that need a missing previous paragraph.
+
+    This is a retrieval-quality gate, not an answer template. It prevents
+    verified but non-standalone snippets such as formula-term commentary from
+    becoming the user-facing explanation.
+    """
+
+    compact = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
+    if not compact:
+        return False
+    return compact.startswith(tuple(opener.casefold() for opener in CONTEXT_DEPENDENT_FACT_OPENERS))
+
+
+def _is_visual_event_evidence_doc(doc: dict[str, Any]) -> bool:
+    return bool(doc.get("visual_evidence_enrichment")) or str(doc.get("source_type") or "") == "encyclopedia_visual_event_extract"
+
+
+def _ordered_evidence_for_grounded_context(evidence: Any) -> list[dict[str, Any]]:
+    """Keep definition evidence first, but preserve source-local visual events.
+
+    Web search may attach visual/motion sentences from the same source page
+    after the generic definition hits. If the first six grounded facts are all
+    generic snippets, the visual planner never sees the evidence-local motion
+    sentence and has to abstain. This ordering does not invent topic props; it
+    only gives marked source-local visual-event evidence a stable slot.
+    """
+
+    docs = [doc for doc in evidence or [] if isinstance(doc, dict)]
+    visual_docs = [doc for doc in docs if _is_visual_event_evidence_doc(doc)]
+    if not visual_docs:
+        return docs
+    non_visual_docs = [doc for doc in docs if not _is_visual_event_evidence_doc(doc)]
+    return non_visual_docs[:2] + visual_docs[:2] + non_visual_docs[2:]
+
+
+def _grounded_context_from_semantic_context(
+    question: str,
+    *,
+    route: Any,
+    semantic_context: dict[str, Any],
+) -> GroundedContext:
+    """Convert RAG/web evidence into the visual planner's fact-bound context.
+
+    The planner must not infer props from a topic such as "gravity". It receives
+    only evidence-local snippets, claims, and relation labels already returned by
+    the retrieval layer.
+    """
+
+    facts: list[str] = []
+    source_refs: list[str] = []
+    for doc in _ordered_evidence_for_grounded_context(semantic_context.get("evidence")):
+        title = _clean_rag_fact_text(doc.get("title"), limit=96)
+        snippet = _clean_rag_fact_text(doc.get("snippet") or doc.get("text"), limit=360)
+        if title and snippet and title.casefold() not in snippet.casefold():
+            fact = f"{title}. {snippet}"
+        else:
+            fact = snippet or title
+        if fact and not _is_context_dependent_fact_fragment(snippet or fact):
+            facts.append(fact)
+        ref = _clean_rag_fact_text(doc.get("url") or doc.get("path") or doc.get("source_ref") or title, limit=180)
+        if ref:
+            source_refs.append(ref)
+
+    for claim in semantic_context.get("claims") or []:
+        if isinstance(claim, dict):
+            fact = _clean_rag_fact_text(claim.get("claim") or claim.get("text") or claim.get("summary"), limit=360)
+            ref = _clean_rag_fact_text(claim.get("source") or claim.get("source_ref") or claim.get("source_scope"), limit=180)
+        else:
+            fact = _clean_rag_fact_text(claim, limit=360)
+            ref = ""
+        if fact:
+            facts.append(fact)
+        if ref:
+            source_refs.append(ref)
+
+    if not facts:
+        for relation in semantic_context.get("relations") or []:
+            if not isinstance(relation, dict):
+                continue
+            source = _clean_rag_fact_text(relation.get("source"), limit=80)
+            predicate = _clean_rag_fact_text(relation.get("relation") or relation.get("predicate"), limit=80)
+            target = _clean_rag_fact_text(relation.get("target"), limit=120)
+            if source and predicate and target:
+                facts.append(f"{source} {predicate} {target}.")
+
+    deduped_facts: list[str] = []
+    seen_facts: set[str] = set()
+    for fact in facts:
+        key = fact.casefold()
+        if key in seen_facts:
+            continue
+        seen_facts.add(key)
+        deduped_facts.append(fact)
+        if len(deduped_facts) >= 6:
+            break
+
+    if not deduped_facts:
+        return GroundedContext(
+            route_type=route.route_type,
+            facts=(),
+            constraints=("Verified grounding is insufficient for a confident visual scene.",),
+            unknowns=("No evidence-local visual facts matched the question.",),
+            source_refs=(),
+            grounding_source="none",
+            grounding_quality="none",
+            safety_flags=semantic_safety_flags(),
+        )
+
+    refs: list[str] = []
+    seen_refs: set[str] = set()
+    for ref in source_refs:
+        key = ref.casefold()
+        if key in seen_refs:
+            continue
+        seen_refs.add(key)
+        refs.append(ref)
+        if len(refs) >= len(deduped_facts):
+            break
+
+    quality = "high" if len(refs) >= 2 else "medium"
+    return GroundedContext(
+        route_type=route.route_type,
+        facts=tuple(deduped_facts),
+        constraints=(
+            "Use only retrieved web/graph evidence facts.",
+            "Do not invent illustrative facts or scene entities beyond retrieved evidence.",
+            "Render narration as DOM text, never as particle text.",
+        ),
+        unknowns=(),
+        source_refs=tuple(refs),
+        grounding_source="semantic_cloud_graph_web_evidence_readonly",
+        grounding_quality=quality,
+        safety_flags=semantic_safety_flags(),
+    )
+
+
+def _web_fact_bound_surface(
+    question: str,
+    *,
+    route: Any,
+    grounded_context: GroundedContext,
+    language: str,
+) -> str | None:
+    """Prefer evidence-local facts over graph-token fragments for web answers.
+
+    This does not introduce a prompt answer table. It only serializes facts that
+    have already passed through the read-only web/graph evidence path.
+    """
+
+    if getattr(route, "route_type", "") != "general_knowledge_question":
+        return None
+    if grounded_context.grounding_quality == "none" or not grounded_context.facts:
+        return None
+    return realize_grounded_context(question, grounded_context, language=language)
 
 
 def _needs_base_brain_fallback(semantic_context: dict[str, Any]) -> bool:
@@ -1365,6 +1808,22 @@ def _answer_is_unsafe(answer: str) -> bool:
     return bool(set(monitor.get("issues") or []) & {"encoding_artifact", "internal_trace_leakage", "internal_identifier_leakage"})
 
 
+def _answer_is_abstention(answer: str) -> bool:
+    text = re.sub(r"\s+", " ", str(answer or "").strip().lower())
+    if not text:
+        return True
+    return any(
+        marker in text
+        for marker in (
+            "not have enough verified evidence",
+            "verified evidence to answer confidently",
+            "지금 확인된 근거가 부족",
+            "확인 가능한 근거가 부족",
+            "단정하기 어렵",
+        )
+    )
+
+
 def _public_evidence_docs(docs: list[dict[str, Any]], *, mode: str) -> list[dict[str, Any]]:
     if mode in {"trace", "research"}:
         return docs
@@ -1539,6 +1998,8 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     if not question:
         raise HTTPException(status_code=422, detail="question, query, or message is required")
     language = request.language or ("ko" if any("\uac00" <= char <= "\ud7a3" for char in question) else "en")
+    conversation_context = build_conversation_context(question, request.conversation_context)
+    routing_question = conversation_context.contextual_query
     emit_runtime_event(
         source="asm_v0",
         event_type=infer_user_text_runtime_event(question),
@@ -1546,9 +2007,23 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         intensity=0.6,
     )
     three_core_trace = _run_three_core_compact_trace(question)
-    if request.mode in {"conversation", "live_selfhood", "dashboard_conversation"} or _is_live_selfhood_conversation(question):
+    route = route_conversation_request(routing_question)
+    splatra_visual_request = _is_splatra_visual_request(routing_question)
+    web_grounded_conversation = bool(request.web_search and _should_use_web_grounded_conversation(routing_question))
+    if splatra_visual_request or (
+        (
+            request.mode in {"conversation", "live_selfhood", "dashboard_conversation"}
+            or _is_live_selfhood_conversation(question)
+        )
+        and not web_grounded_conversation
+    ):
         response = _attach_three_core_trace(
-            _live_selfhood_payload(request, question=question, language=language),
+            _live_selfhood_payload(
+                request,
+                question=question,
+                language=language,
+                conversation_context=conversation_context,
+            ),
             request=request,
             three_core_trace=three_core_trace,
         )
@@ -1569,7 +2044,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             _emit_conversation_result_events(response)
             return response
     rag_status = await alpha_service.query_graphrag(
-        question,
+        routing_question,
         request.web_search,
         None,
         brain_mode=request.brain_mode,
@@ -1578,7 +2053,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     )
     rag_result = rag_status.get("result") or {}
     semantic_context = _semantic_context_from_rag(rag_result)
-    if _is_recent_learning_question(question):
+    if _is_recent_learning_question(routing_question):
         semantic_context = _augment_recent_learning_context(semantic_context)
     if _needs_base_brain_fallback(semantic_context):
         exchange = run_local_cloud_exchange(
@@ -1606,7 +2081,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             )
             semantic_context = _augment_semantic_context_with_exchange(semantic_context, exchange)
     plan = plan_speech(
-        question,
+        routing_question,
         semantic_context,
         language=language,
         audience_level=request.audience_level,
@@ -1614,6 +2089,29 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         mode=request.mode,
     )
     realized = realize_answer(plan, semantic_context, query=question)
+    if request.mode not in {"trace", "research"} and (
+        _answer_is_unsafe(str(realized.get("answer") or ""))
+        or _answer_is_abstention(str(realized.get("answer") or ""))
+    ):
+        grounded_web_answer = str(rag_result.get("answer") or "").strip()
+        if (
+            request.web_search
+            and grounded_web_answer
+            and rag_result.get("web_search")
+            and (semantic_context.get("evidence") or semantic_context.get("relations") or semantic_context.get("claims"))
+        ):
+            realized["answer"] = grounded_web_answer
+            realized["confidence"] = max(
+                float(realized.get("confidence") or 0.0),
+                float(rag_result.get("confidence") or 0.0),
+                0.52,
+            )
+            realized["repair"] = {
+                **(realized.get("repair") or {}),
+                "safety_applied": True,
+                "source": "web_grounded_native_graph_token_answer",
+                "web_search_provider": (rag_result.get("web_search") or {}).get("provider"),
+            }
     if request.mode not in {"trace", "research"} and _answer_is_unsafe(str(realized.get("answer") or "")):
         fallback = _base_brain_payload(request, question=question, language=language, rag_result=rag_result)
         if fallback is not None:
@@ -1633,11 +2131,117 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             "applied_rules": repaired.get("applied_rules", []),
             "moved_to_trace_count": len(repaired.get("moved_to_trace", [])),
         }
+    visual_grounding = _grounded_context_from_semantic_context(
+        question,
+        route=route,
+        semantic_context=semantic_context,
+    )
+    visual_route = route
+    if route.route_type == "unknown" and visual_grounding.facts:
+        visual_route = ConversationRoute(
+            route_type="general_knowledge_question",
+            grounding_required=True,
+            grounding_sources=("semantic_cloud_graph_web_evidence_readonly",),
+            confidence=max(float(getattr(route, "confidence", 0.0) or 0.0), 0.62),
+            fallback_allowed=False,
+            rationale_summary="web/graph evidence is available for a fact-bound visual explanation",
+        )
+        visual_grounding = GroundedContext(
+            route_type=visual_route.route_type,
+            facts=visual_grounding.facts,
+            constraints=visual_grounding.constraints,
+            unknowns=visual_grounding.unknowns,
+            source_refs=visual_grounding.source_refs,
+            grounding_source=visual_grounding.grounding_source,
+            grounding_quality=visual_grounding.grounding_quality,
+            safety_flags=visual_grounding.safety_flags,
+        )
+    fact_bound_web_answer = (
+        _web_fact_bound_surface(
+            routing_question,
+            route=visual_route,
+            grounded_context=visual_grounding,
+            language=language,
+        )
+        if request.web_search and request.mode not in {"trace", "research"}
+        else None
+    )
+    if fact_bound_web_answer:
+        discourse_metadata = grounded_discourse_metadata(routing_question, visual_grounding)
+        realized["answer"] = fact_bound_web_answer
+        realized["confidence"] = max(
+            float(realized.get("confidence") or 0.0),
+            float(rag_result.get("confidence") or 0.0),
+            0.64 if visual_grounding.grounding_quality == "high" else 0.56,
+        )
+        realized["repair"] = {
+            **(realized.get("repair") or {}),
+            "safety_applied": True,
+            "source": "semantic_cloud_graph_fact_bound_surface",
+            "fact_bound_surface": True,
+            "web_search_provider": (rag_result.get("web_search") or {}).get("provider"),
+            "grounding_quality": visual_grounding.grounding_quality,
+            **discourse_metadata,
+        }
+    visual_plan = plan_visual_imagination(
+        question,
+        route=visual_route,
+        grounded_context=visual_grounding,
+        diagnostics={
+            "external_llm_used": False,
+            "external_sllm_used": False,
+            "rule_based_answer_used": False,
+            "generation_basis": "semantic_cloud_graph_surface_brain_v0",
+        },
+        answer_available=bool(str(realized.get("answer") or "").strip()),
+        client_layout_feedback=request.layout_feedback,
+    )
+    splatra_command_sequence_obj = (
+        compile_scene_choreography_commands(visual_plan.scene_choreography)
+        if visual_plan.scene_choreography
+        else None
+    )
+    splatra_command_sequence = splatra_command_sequence_obj.to_dict() if splatra_command_sequence_obj else None
+    splatra_interactive_scene_analysis_obj = (
+        analyze_scene_choreography(visual_plan.scene_choreography)
+        if visual_plan.scene_choreography
+        else None
+    )
+    splatra_interactive_scene_analysis = (
+        splatra_interactive_scene_analysis_obj.to_dict()
+        if splatra_interactive_scene_analysis_obj
+        else None
+    )
+    visual_policy = {
+        "scene_content_source": visual_plan.diagnostics.get("scene_content_source", "none"),
+        "scene_authoring_basis": visual_plan.diagnostics.get("scene_authoring_basis"),
+        "visual_affordance_basis": visual_plan.diagnostics.get("visual_affordance_basis"),
+        "layout_decision_basis": visual_plan.diagnostics.get("layout_decision_basis"),
+        "reason": visual_plan.diagnostics.get("reason") or visual_plan.reason,
+        "topic_scene_templates": False,
+        "renderer_may_infer_topic": False,
+        "particle_text": False,
+        "text_rendering": "dom_text_not_particles",
+        "orb_identity": "atanor_self_body_not_scene_object" if visual_plan.scene_choreography else "atanor_primary_self_body",
+        "verified_evidence_required_for_general_knowledge": visual_route.route_type == "general_knowledge_question",
+    }
     compact_trace = {
         "local_coverage": semantic_context.get("local_coverage"),
         "semantic_cloud_graph": {
             "attached_nodes": len(semantic_context.get("concepts") or []),
             "evidence_docs": len(semantic_context.get("evidence") or []),
+        },
+        "conversation_context": {
+            "turn_count": len(conversation_context.turns),
+            "used_for_routing": bool(conversation_context.turns),
+            "followup_detected": conversation_context.followup_detected,
+            "focus_terms": list(conversation_context.focus_terms),
+            "focus_source": conversation_context.focus_source,
+            "resolution_strategy": conversation_context.resolution_strategy,
+            "used_for_learning": False,
+            "local_brain_write": False,
+            "production_store_mutated": False,
+            "basis": conversation_context.basis,
         },
         "surface_graph": {
             "construction_families": realized["trace_summary"].get("selected_construction_families", []),
@@ -1653,8 +2257,37 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             "local_brain_write": False,
         },
         "local_cloud_exchange": _compact_exchange_trace(exchange),
+        "visual_imagination": visual_plan.diagnostics,
+        "splatra_scene_policy": visual_policy,
+        "splatra_command_sequence": {
+            "available": bool(splatra_command_sequence),
+            "action_count": len(splatra_command_sequence.get("scene_actions", [])) if splatra_command_sequence else 0,
+            "raw_buffers_in_agent_context": False,
+            "topic_scene_templates": False,
+            "renderer_may_infer_topic": False,
+            "text_rendering": "dom_text_not_particles",
+        },
+        "splatra_interactive_scene_analysis": {
+            "available": bool(splatra_interactive_scene_analysis),
+            "object_count": int(splatra_interactive_scene_analysis.get("object_count", 0)) if splatra_interactive_scene_analysis else 0,
+            "raw_splat_inference": False,
+            "raw_buffers_in_agent_context": False,
+            "interactive_scene_metadata": bool(splatra_interactive_scene_analysis),
+        },
+        "answer_surface": {
+            "source": (realized.get("repair") or {}).get("source") or "surface_brain_realizer",
+            "fact_bound_surface": bool((realized.get("repair") or {}).get("fact_bound_surface")),
+            "grounding_quality": (realized.get("repair") or {}).get("grounding_quality"),
+            "grounded_discourse_mode": (realized.get("repair") or {}).get("grounded_discourse_mode"),
+            "grounded_fact_roles": (realized.get("repair") or {}).get("grounded_fact_roles") or [],
+            "grounded_discourse_basis": (realized.get("repair") or {}).get("grounded_discourse_basis"),
+            "graph_token_fragment_promoted": (realized.get("repair") or {}).get("source")
+            == "web_grounded_native_graph_token_answer",
+        },
         "confidence": "high" if realized["confidence"] >= 0.75 else "medium" if realized["confidence"] >= 0.5 else "low",
     }
+    if compact_trace["answer_surface"]["fact_bound_surface"]:
+        realized["answer"] = _clean_public_fact_bound_answer(realized.get("answer"))
     payload = {
         "answer": realized["answer"],
         "language": realized["language"],
@@ -1676,16 +2309,42 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             "q_cortex_used": plan.get("q_cortex_used"),
             "q_cortex_run_id": plan.get("q_cortex_run_id"),
         },
+        "scene_choreography": visual_plan.scene_choreography,
+        "visual_scene_plan": visual_plan.scene_choreography,
+        "splatra_scene_plan": visual_plan.scene_choreography,
+        "splatra_command_sequence": splatra_command_sequence,
+        "splatra_interactive_scene_analysis": splatra_interactive_scene_analysis,
+        "splatra_cartridge_queue": None,
+        "splatra_sidecar_dispatch": None,
+        "splatra_scene_policy": visual_policy,
         "answer_engine": {
             "name": "ATANOR Surface Brain",
             "semantic_plane": "Semantic Cloud Graph",
             "surface_plane": "Surface Cloud Graph",
             "external_llm": False,
             "external_sllm": False,
+            "external_llm_used": False,
+            "external_sllm_used": False,
             "local_brain_write": False,
+            "production_store_mutated": False,
+            "candidate_promotion": False,
+            "internal_trace_exposed": False,
+            "rule_based_answer_used": False,
+            "generation_basis": "semantic_cloud_graph_surface_brain_v0",
             "trace_hidden_by_default": True,
             "q_cortex_optional": True,
             "network_barrier": "sealed_for_generation",
+            "splatra_scene_policy": visual_policy,
+            "conversation_context_used": bool(conversation_context.turns),
+            "conversation_context_basis": conversation_context.basis,
+            "conversation_followup_detected": conversation_context.followup_detected,
+            "conversation_resolution_strategy": conversation_context.resolution_strategy,
+            "answer_surface_source": compact_trace["answer_surface"]["source"],
+            "fact_bound_surface": compact_trace["answer_surface"]["fact_bound_surface"],
+            "grounded_discourse_mode": compact_trace["answer_surface"]["grounded_discourse_mode"],
+            "grounded_discourse_basis": compact_trace["answer_surface"]["grounded_discourse_basis"],
+            "graph_token_fragment_promoted": compact_trace["answer_surface"]["graph_token_fragment_promoted"],
+            "eval_rows_used_for_learning": False,
         },
         **_flags(),
     }

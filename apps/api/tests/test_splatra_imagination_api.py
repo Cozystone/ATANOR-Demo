@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import app.routers.agentic_micro_os as agentic_micro_os
 from app.routers.agentic_micro_os import router
+from packages.splatra_imagination import SplatraSidecarDispatchResult, SplatraSidecarJobResult
 
 
 def _client() -> TestClient:
@@ -132,6 +134,11 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert len(payload["splatra_command_sequence"]["scene_actions"]) == len(payload["scene_choreography"]["beats"])
     assert payload["splatra_command_sequence"]["hot_swap_policy"]["candidate_request_count"] == len(payload["scene_choreography"]["beats"])
     assert len(payload["splatra_command_sequence"]["candidate_cartridge_requests"]) == len(payload["scene_choreography"]["beats"])
+    assert payload["splatra_interactive_scene_analysis"]["interactive_scene"] is True
+    assert payload["splatra_interactive_scene_analysis"]["analyzer_contract"]["raw_splat_inference"] is False
+    assert payload["splatra_interactive_scene_analysis"]["analyzer_contract"]["persistent_3d_bounding_boxes"] is True
+    assert payload["splatra_interactive_scene_analysis"]["safety_flags"]["raw_buffer_in_agent_context"] is False
+    assert all("bounding_box" in item for item in payload["splatra_interactive_scene_analysis"]["objects"])
     assert payload["splatra_cartridge_queue"]["status"] == "ready_for_sidecar"
     assert payload["splatra_cartridge_queue"]["execution_mode"] == "candidate_only_dry_run"
     assert payload["splatra_cartridge_queue"]["side_channel"] == "GET /v1/cartridge"
@@ -191,3 +198,53 @@ def test_scene_cartridge_queue_endpoint_is_dry_run_only() -> None:
     assert payload["splatra_cartridge_queue"]["job_count"] == 1
     assert payload["splatra_cartridge_queue"]["jobs"][0]["execution"]["execute_now"] is False
     assert payload["splatra_cartridge_queue"]["jobs"][0]["motion_path"]["basis"] == "verified_motion_phrase"
+
+
+def test_scene_cartridge_queue_can_report_real_sidecar_dispatch_without_raw_buffers(monkeypatch) -> None:
+    def fake_dispatch(queue, poll_ticks=2):
+        return SplatraSidecarDispatchResult(
+            status="swap_ready",
+            configured=True,
+            sidecar_url="http://127.0.0.1:8000",
+            external_splatra_called=True,
+            raw_buffer_in_agent_context=False,
+            raw_cartridge_fetched=False,
+            mutation_performed=False,
+            jobs=[
+                SplatraSidecarJobResult(
+                    job_id="local_job",
+                    request_id="local_request",
+                    object_id="verified_motion",
+                    prompt="verified motion",
+                    endpoint="POST /v1/generate_3d_object",
+                    status="swap_ready",
+                    external_splatra_called=True,
+                    raw_buffer_in_agent_context=False,
+                    mutation_performed=False,
+                    sidecar_job_id="sidecar_1",
+                    viewer_cartridge_url="http://127.0.0.1:8000/v1/cartridge",
+                    sgf_summary={"num_gaussians": 170000},
+                )
+            ],
+        )
+
+    monkeypatch.setattr(agentic_micro_os, "dispatch_candidate_queue_to_sidecar", fake_dispatch)
+
+    payload = _client().post(
+        "/api/agentic-os/splatra/imagination/cartridge-queue",
+        json={
+            "stage_layout": "scene_focus",
+            "dispatch_sidecar": True,
+            "beats": [
+                {"op": "spawn_object", "object_id": "verified_motion", "prompt": "verified motion"},
+            ],
+        },
+    ).json()
+
+    assert payload["external_splatra_called"] is True
+    assert payload["raw_buffer_in_agent_context"] is False
+    assert payload["mutation_performed"] is False
+    assert payload["splatra_sidecar_dispatch"]["status"] == "swap_ready"
+    assert payload["splatra_sidecar_dispatch"]["raw_cartridge_fetched"] is False
+    assert payload["splatra_cartridge_queue"]["sidecar_status"] == "swap_ready"
+    assert payload["splatra_cartridge_queue"]["sidecar_configured"] is True

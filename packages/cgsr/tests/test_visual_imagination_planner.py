@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -11,7 +11,7 @@ from packages.cgsr.cgsr.visual_imagination_planner import plan_visual_imaginatio
 TEXT_ANCHORS = {"upper_left", "lower_left", "upper_right", "lower_center"}
 
 
-def _plan(question: str, store_path: Path | None = None):
+def _plan(question: str, store_path: Path | None = None, layout_feedback: dict[str, object] | None = None):
     route = route_conversation_request(question)
     runtime = {"verified_store_path": str(store_path)} if store_path else None
     context = gather_grounded_context(question, route, runtime=runtime)
@@ -25,6 +25,7 @@ def _plan(question: str, store_path: Path | None = None):
             "rule_based_answer_used": False,
         },
         answer_available=True,
+        client_layout_feedback=layout_feedback,
     )
 
 
@@ -51,10 +52,83 @@ def test_visual_planner_uses_grounded_phrases_without_topic_templates() -> None:
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.scene_choreography["beats"]
     assert plan.scene_choreography["beats"][0]["prompt"] == question
-    assert any(beat["op"] == "focus_camera" for beat in plan.scene_choreography["beats"])
-    assert any(beat.get("camera") for beat in plan.scene_choreography["beats"])
+    assert len(plan.scene_choreography["beats"]) == 1
+    assert plan.scene_choreography["beats"][0]["semantic_role"] == "user_visual_intent"
     assert all("Newton" not in beat["prompt"] for beat in plan.scene_choreography["beats"])
     assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])
+
+
+def test_visual_planner_uses_client_layout_feedback_only_for_dom_collision() -> None:
+    question = "Use SPLATRA to visualize gravity as moving particles"
+    plan = _plan(
+        question,
+        layout_feedback={
+            "feedback_basis": "client_dom_scene_collision_telemetry",
+            "collision_state": "orb_overlap_risk",
+            "overlap_px": 120,
+            "offscreen_px": 0,
+            "orb_overlap_px": 260,
+            "orb_offscreen_px": 24,
+            "speech_anchor": "lower_left",
+            "self_narration_anchor": "upper_right",
+            "text_rendering": "dom_text_not_particles",
+            "particle_text": False,
+        },
+    )
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    decision = plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]
+    feedback = decision["client_layout_feedback"]
+    assert feedback["feedback_basis"] == "client_dom_scene_collision_telemetry"
+    assert feedback["layout_feedback_used"] is True
+    assert feedback["content_used_for_scene_generation"] is False
+    assert feedback["text_rendering"] == "dom_text_not_particles"
+    assert feedback["particle_text"] is False
+    assert decision["orb_movement"] == "lower_right_micro_stage_guard"
+    assert "client_dom_collision_feedback" in decision["selection_reason"]
+    assert plan.diagnostics["client_layout_feedback_used"] is True
+    assert all(beat["prompt"] == question for beat in plan.scene_choreography["beats"] if beat["semantic_role"] == "user_visual_intent")
+
+
+def test_visual_planner_keeps_direct_splatra_generation_as_single_user_intent() -> None:
+    question = "SPLATRA 파티클로 사실적인 빨간 사과 3D 모델을 직접 생성해서 보여줘"
+    plan = _plan(question)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    beats = plan.scene_choreography["beats"]
+    assert len(beats) == 1
+    assert beats[0]["prompt"] == "red apple"
+    assert beats[0]["narration"] == question
+    assert beats[0]["semantic_role"] == "user_visual_intent"
+    assert tuple(beats[0]["position"][:2]) == (0.0, 0.0)
+    assert beats[0]["scene_directive"]["particle_text"] is False
+    assert beats[0]["scene_directive"]["text_rendering"] == "dom_text_not_particles"
+    assert plan.scene_choreography["layout_intent"] == "wide_particle_stage"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["agent_action"] == "yield_center_to_particle_scene"
+    assert plan.scene_choreography["dashboard_layout"]["stage_safe_region"]["footprint"]["block_text"] is True
+    assert plan.scene_choreography["dashboard_layout"]["stage_safe_region"]["footprint"]["min_x"] <= -0.72
+    assert plan.scene_choreography["dashboard_layout"]["stage_safe_region"]["footprint"]["max_x"] >= 0.72
+    assert plan.diagnostics["scene_content_source"] == "user_visual_intent_only"
+    assert plan.diagnostics["particle_text"] is False
+    assert plan.diagnostics["text_rendering"] == "dom_text_not_particles"
+
+
+def test_visual_planner_accepts_clean_korean_direct_generation_without_splatra_word() -> None:
+    question = "사실적인 유리 구슬을 직접 생성해서 보여줘"
+    plan = _plan(question)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    assert plan.diagnostics["scene_authoring_basis"] == "user_direct_splatra_generation_request"
+    assert plan.scene_choreography["beats"][0]["prompt"] == "translucent glass marble sphere with visible rim"
+    assert plan.scene_choreography["beats"][0]["narration"] == question
+    assert plan.scene_choreography["beats"][0]["semantic_role"] == "user_visual_intent"
+    assert plan.scene_choreography["layout_intent"] == "wide_particle_stage"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["agent_action"] == "yield_center_to_particle_scene"
+    assert plan.diagnostics["particle_text"] is False
+    assert plan.diagnostics["text_rendering"] == "dom_text_not_particles"
 
 
 def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path: Path) -> None:
@@ -72,29 +146,15 @@ def test_visual_planner_uses_verified_store_facts_for_general_knowledge(tmp_path
     )
     plan = _plan("What is the law of gravity?", tmp_path)
 
-    assert plan.enabled is True
-    assert plan.scene_choreography is not None
-    prompts = [beat["prompt"] for beat in plan.scene_choreography["beats"]]
-    assert any("Isaac Newton" in prompt for prompt in prompts)
-    assert any("Isaac Newton" in beat["narration"] for beat in plan.scene_choreography["beats"])
-    assert len({beat["object_id"] for beat in plan.scene_choreography["beats"]}) >= 2
-    assert all(beat["semantic_role"] for beat in plan.scene_choreography["beats"])
-    assert all(beat["scene_evidence"]["source_type"] == "verified_evidence_unit" for beat in plan.scene_choreography["beats"])
-    assert all(beat["scene_evidence"]["topic_scene_templates"] is False for beat in plan.scene_choreography["beats"])
-    assert all(beat["scene_evidence"]["renderer_may_infer_topic"] is False for beat in plan.scene_choreography["beats"])
-    assert any("Gravity is a force" in beat["source_fact"] for beat in plan.scene_choreography["beats"])
-    assert all("apple" not in beat["prompt"].casefold() for beat in plan.scene_choreography["beats"])
-    assert plan.scene_choreography["stage_layout"] == "scene_focus"
-    assert plan.scene_choreography["text_anchor"] in TEXT_ANCHORS
-    assert plan.scene_choreography["layout_intent"] in {"balanced_scene", "wide_particle_stage"}
-    assert plan.scene_choreography["topic_scene_templates"] is False
-    assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
-    assert plan.diagnostics["scene_content_source"] == "verified_store_facts"
+    assert plan.enabled is False
+    assert plan.reason == "insufficient_concrete_visual_evidence"
+    assert plan.scene_choreography is None
+    assert plan.diagnostics["scene_authoring_basis"] == "abstained_abstract_or_nonvisual_evidence"
+    assert plan.diagnostics["scene_content_source"] == "none"
     assert plan.diagnostics["renderer_may_infer_topic"] is False
     assert plan.diagnostics["particle_text"] is False
     assert plan.diagnostics["text_rendering"] == "dom_text_not_particles"
     assert plan.diagnostics["visual_affordance_basis"] == "source_phrase_affordance_extraction_no_topic_template"
-    assert plan.diagnostics["layout_decision_basis"] == "verified_scene_geometry_and_client_feedback"
 
 
 def test_visual_planner_ignores_prompted_newton_apple_scene_without_verified_evidence(tmp_path: Path) -> None:
@@ -152,11 +212,11 @@ def test_visual_planner_does_not_scene_from_function_word_overlap(tmp_path: Path
     assert plan.diagnostics["topic_scene_templates"] is False
 
 
-def test_visual_planner_uses_contentful_korean_scene_anchors(tmp_path: Path) -> None:
+def test_visual_planner_abstains_for_abstract_korean_physics_fact(tmp_path: Path) -> None:
     (tmp_path / "evidence.jsonl").write_text(
         json.dumps(
             {
-                "text": "첫 번째 항은 뉴턴 중력의 힘을 나타내며, 역제곱 법칙으로 기술된다. 따라서 일반 상대론은 뉴턴의 중력 법칙과 비교된다.",
+                "text": "뉴턴의 중력 법칙은 질량을 가진 물체 사이의 끌림을 설명하며, 힘의 크기는 거리의 제곱에 반비례한다.",
                 "verification": {"status": "verified"},
                 "provenance": {"source_name": "licensed_fixture", "title": "중력"},
             },
@@ -167,11 +227,12 @@ def test_visual_planner_uses_contentful_korean_scene_anchors(tmp_path: Path) -> 
     )
     plan = _plan("중력의 법칙에 대해 설명해줘", tmp_path)
 
-    assert plan.enabled is True
-    assert plan.scene_choreography is not None
-    prompts = [beat["prompt"] for beat in plan.scene_choreography["beats"]]
-    assert all(prompt not in {"따라서", "단계", "첫 번째"} for prompt in prompts)
-    assert any("뉴턴" in prompt or "중력" in prompt for prompt in prompts)
+    assert plan.enabled is False
+    assert plan.reason == "insufficient_concrete_visual_evidence"
+    assert plan.scene_choreography is None
+    assert plan.diagnostics["scene_authoring_basis"] == "abstained_abstract_or_nonvisual_evidence"
+    assert plan.diagnostics["particle_text"] is False
+    assert plan.diagnostics["text_rendering"] == "dom_text_not_particles"
 
 
 def test_visual_planner_only_adds_motion_when_verified_fact_contains_motion(tmp_path: Path) -> None:
@@ -194,7 +255,7 @@ def test_visual_planner_only_adds_motion_when_verified_fact_contains_motion(tmp_
     beats = plan.scene_choreography["beats"]
     assert any(beat["op"] == "move" for beat in beats)
     assert any("사과" in beat["narration"] for beat in beats)
-    assert any("떨어지는" in beat["narration"] for beat in beats)
+    assert any("떨어" in beat["narration"] for beat in beats)
     assert all(beat["source_fact"] for beat in beats)
 
 
@@ -204,7 +265,7 @@ def test_visual_planner_extracts_korean_figure_tree_apple_motion_without_topic_s
             {
                 "text": (
                     "아이작 뉴턴은 중력 법칙과 관련해 사과가 나무에서 떨어지는 장면을 관찰했다. "
-                    "어느 날 뉴턴이 사과나무 밑에 앉아 있었고 사과가 뉴턴의 머리 위로 떨어졌다."
+                    "그는 사과나무 밑에 앉아 있었고 사과가 뉴턴의 머리 위로 떨어졌다."
                 ),
                 "verification": {"status": "verified"},
                 "provenance": {"source_name": "licensed_fixture", "title": "뉴턴 사과나무"},
@@ -222,11 +283,97 @@ def test_visual_planner_extracts_korean_figure_tree_apple_motion_without_topic_s
     assert any("뉴턴" in beat["prompt"] and beat["visual_affordance"] == "entity_figure" for beat in beats)
     assert any("나무" in beat["prompt"] and beat["visual_affordance"] == "organic_structure" for beat in beats)
     assert any(beat["prompt"] == "사과" and beat["visual_affordance"] == "small_moving_object" for beat in beats)
+    assert any(beat["prompt"] == "사과" and beat["speech_cue"] is True and beat["semantic_role"] == "verified_motion_event" for beat in beats)
+    assert any(beat["prompt"] == "사과나무" and beat["speech_cue"] is False and beat["semantic_role"] == "verified_motion_source" for beat in beats)
+    assert any("뉴턴" in beat["prompt"] and beat["speech_cue"] is False and beat["semantic_role"] == "verified_motion_target" for beat in beats)
     assert any("뉴턴" in beat["prompt"] and beat["spatial_relation"] == "under_target" for beat in beats)
     apple_motion = next(beat for beat in beats if beat["prompt"] == "사과" and beat.get("motion_path"))
     assert "나무" in apple_motion["motion_path"]["source_prompt"]
     assert "뉴턴" in apple_motion["motion_path"]["target_prompt"]
     assert apple_motion["motion_path"]["from"][1] > apple_motion["motion_path"]["to"][1]
+    assert plan.scene_choreography["topic_scene_templates"] is False
+    assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
+
+
+def test_visual_planner_handles_korean_motion_with_short_particles_without_topic_script(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": (
+                    "중력 법칙 설명에서 아이작 뉴턴은 사과나무 밑에 앉아 있었다. "
+                    "사과 떨어짐은 뉴턴의 머리 쪽으로 내려가는 물체 이동으로 관찰되었다."
+                ),
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "뉴턴 사과 이동"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("중력의 법칙에 대해 설명해줘", tmp_path)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    beats = plan.scene_choreography["beats"]
+    motion_beats = [beat for beat in beats if beat["op"] == "move" and beat.get("motion_path")]
+    assert motion_beats
+    assert any(beat["prompt"] == "사과" for beat in motion_beats)
+    apple_motion = next(beat for beat in motion_beats if beat["prompt"] == "사과")
+    assert apple_motion["motion_path"]["basis"] == "verified_motion_phrase"
+    assert "나무" in apple_motion["motion_path"]["source_prompt"]
+    assert "뉴턴" in apple_motion["motion_path"]["target_prompt"]
+    assert apple_motion["particle_behavior"] == "gravity_arc"
+    assert apple_motion["scene_directive"]["topic_scene_templates"] is False
+    assert apple_motion["scene_evidence"]["particle_text"] is False
+    assert plan.scene_choreography["topic_scene_templates"] is False
+
+
+def test_visual_planner_extracts_utf8_korean_motion_without_moving_scene_anchors(tmp_path: Path) -> None:
+    (tmp_path / "evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "text": (
+                    "아이작 뉴턴은 중력 법칙과 관련해 사과가 사과나무에서 떨어지는 장면을 관찰했다. "
+                    "그는 사과나무 밑에 앉아 있었고 사과가 뉴턴의 머리 위로 떨어졌다."
+                ),
+                "verification": {"status": "verified"},
+                "provenance": {"source_name": "licensed_fixture", "title": "뉴턴 사과나무"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan = _plan("중력의 법칙에 대해 설명해줘", tmp_path)
+
+    assert plan.enabled is True
+    assert plan.scene_choreography is not None
+    beats = plan.scene_choreography["beats"]
+    apple_moves = [beat for beat in beats if beat["prompt"] == "사과" and beat["op"] == "move" and beat.get("motion_path")]
+    assert apple_moves
+    apple_motion = apple_moves[0]
+    assert "사과나무" in apple_motion["motion_path"]["source_prompt"]
+    assert "뉴턴" in apple_motion["motion_path"]["target_prompt"]
+    assert apple_motion["particle_behavior"] == "gravity_arc"
+    assert apple_motion["scene_directive"]["topic_scene_templates"] is False
+    assert apple_motion["scene_evidence"]["renderer_may_infer_topic"] is False
+    anchor_beats = [
+        beat
+        for beat in beats
+        if beat["semantic_role"] in {
+            "verified_motion_source",
+            "verified_motion_target",
+            "verified_motion_anchor",
+            "verified_motion_context",
+            "verified_entity_anchor",
+        }
+    ]
+    assert any(beat["prompt"] == "사과나무" and beat["visual_affordance"] == "organic_structure" for beat in anchor_beats)
+    assert any("뉴턴" in beat["prompt"] and beat["visual_affordance"] == "entity_figure" for beat in anchor_beats)
+    assert all(beat["op"] != "move" for beat in anchor_beats)
+    assert all(not beat.get("motion_path") for beat in anchor_beats)
+    assert all(beat["speech_cue"] is False for beat in anchor_beats)
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"
 
@@ -363,8 +510,10 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["scene_extent"]["motion_count"] >= 1
     assert plan.scene_choreography["dashboard_layout"]["planning_basis"] == "scene_geometry_extent"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_owner"] == "cgsr_scene_choreography_agent"
-    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry"
-    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_model"] == "geometry_pressure_argmax_no_topic_templates"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_basis"] == "verified_scene_geometry_and_self_body_clearance_state"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_model"] == "self_body_scene_pressure_scorer_no_topic_templates"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["scene_self_state"]["self_body_identity"] == "atanor_orb_self_body"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["scene_self_state"]["particle_field_pressure"] >= 0.72
     decision_candidates = plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["decision_candidates"]
     assert decision_candidates
     assert decision_candidates[0]["action"] == plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["agent_action"]
@@ -385,6 +534,14 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["orb_yield_strength"] >= 0.82
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["particle_recomposition_mode"] == "agent_airbend_recompose_verified_beats"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["scene_geometry_inputs"]["motion_count"] >= 1
+    avoidance_map = plan.scene_choreography["dashboard_layout"]["avoidance_map"]
+    assert avoidance_map["basis"] == "verified_scene_extent_motion_and_dom_clearance"
+    assert avoidance_map["dom_text_only"] is True
+    assert avoidance_map["particle_text"] is False
+    assert "lower_right" == avoidance_map["orb_reserved_lane"]
+    assert "upper_right" in avoidance_map["text_safe_lanes"]
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["avoidance_map"]["basis"] == avoidance_map["basis"]
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["text_safe_lanes"] == avoidance_map["text_safe_lanes"]
     assert plan.scene_choreography["dashboard_layout"]["orb"]["anchor"] == "lower_right"
     assert plan.scene_choreography["dashboard_layout"]["orb"]["size_vmin"] < 24
     assert plan.scene_choreography["dashboard_layout"]["speech"]["max_vw"] < 50
@@ -400,7 +557,8 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     decisions = plan.scene_choreography["agent_scene_decisions"]
     assert decisions[0]["decision_id"] == "scene_space_allocation"
     assert decisions[0]["selected_action"] == "yield_center_to_particle_scene"
-    assert decisions[0]["decision_model"] == "geometry_pressure_argmax_no_topic_templates"
+    assert decisions[0]["decision_model"] == "self_body_scene_pressure_scorer_no_topic_templates"
+    assert decisions[0]["scene_self_state"]["self_body_pressure"] > 0
     assert decisions[0]["decision_candidates"][0]["action"] == "yield_center_to_particle_scene"
     assert decisions[0]["selection_reason"] == "verified_motion_or_wide_scene_needs_uncovered_center_particle_stage"
     assert decisions[0]["orb_movement"] == "lower_right_micro_stage_guard"

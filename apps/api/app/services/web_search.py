@@ -69,7 +69,7 @@ FRESH_SEARCH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 KNOWLEDGE_LOOKUP_PATTERN = re.compile(
-    "(\uB204\uAD6C|\uB204\uAD6C\uC57C|\uBB50\uC57C|\uBB34\uC5C7|\uC815\uC758|\uC54C\uB824\uC918|\uC124\uBA85|who is|what is|tell me about|define|explain)",
+    "(\uB204\uAD6C|\uB204\uAD6C\uC57C|\uBB50\uC57C|\uBB34\uC5C7|\uC815\uC758|\uC54C\uB824\uC918|\uC124\uBA85|\uC65C|\uC774\uC720|\uC6D0\uB9AC|\uC5B4\uB5BB\uAC8C|who is|what is|tell me about|define|explain|why|how)",
     re.IGNORECASE,
 )
 
@@ -142,28 +142,148 @@ def _strip_html(value: str) -> str:
 def _normalize_lookup_query(query: str) -> str:
     cleaned = re.sub(r"[?!.,]", " ", query)
     cleaned = re.sub(
-        "(\uB204\uAD6C\uC57C|\uB204\uAD6C\uB2C8|\uB204\uAD6C|\uBB50\uC57C|\uBB34\uC5C7\uC774\uC57C|\uBB34\uC5C7|\uC54C\uB824\uC918|\uC124\uBA85\uD574\uC918|\uC18C\uAC1C\uD574\uC918|\uC815\uC758|who is|what is|tell me about|define|explain)",
+        "(\uC5D0\\s*\uB300\uD574|\uC5D0\\s*\uB300\uD55C|\uC5D0\\s*\uAD00\uD574|\uC5D0\\s*\uAD00\uD55C|\uAD00\uB828\uD574|\uB204\uAD6C\uC57C|\uB204\uAD6C\uB2C8|\uB204\uAD6C|\uBB50\uC57C|\uBB34\uC5C7\uC774\uC57C|\uBB34\uC5C7|\uC54C\uB824\uC918|\uC124\uBA85\uD574\uC918|\uC124\uBA85|\uC18C\uAC1C\uD574\uC918|\uC815\uC758|who is|what is|tell me about|define|explain)",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"(그건|그게|그거|그것|이건|이게|이거|이것|왜\s*그런가요|왜\s*그래|왜|이유|원리|어떻게|how|why)",
         " ",
         cleaned,
         flags=re.IGNORECASE,
     )
     tokens = [token for token in re.split(r"\s+", cleaned.strip()) if token]
-    trimmed = [re.sub("[\uC740\uB294\uC774\uAC00\uC744\uB97C]$", "", token) for token in tokens]
+    trimmed = [_strip_korean_lookup_particle(token) for token in tokens]
     return " ".join(token for token in trimmed if token).strip() or query.strip()
+
+
+def _strip_korean_lookup_particle(token: str) -> str:
+    token = token.strip()
+    if len(token) <= 1:
+        return token
+    # Strip only common lookup particles from Korean noun tokens. This turns
+    # "중력의 법칙에 대해" into "중력 법칙" without using a generative model.
+    return re.sub(r"(\uC740|\uB294|\uC774|\uAC00|\uC744|\uB97C|\uC758|\uC5D0|\uC5D0\uC11C|\uC73C\uB85C|\uB85C|\uACFC|\uC640|\uB3C4|\uB9CC)$", "", token)
+
+
+def _lookup_terms(lookup: str) -> list[str]:
+    terms: list[str] = []
+    for token in re.split(r"\s+", lookup.lower()):
+        token = re.sub(r"[^0-9a-zA-Z\uAC00-\uD7A3]+", "", token)
+        if len(token) >= 2:
+            terms.append(token)
+    return terms
+
+
+VISUAL_EVENT_CUE_RE = re.compile(
+    r"(떨어|낙하|앉|나무|사과|머리|발견|관찰|움직|이동|회전|충돌|흐르|"
+    r"fall|fell|falling|drop|dropped|tree|apple|sat|sitting|head|discover|observ|move|motion|orbit)",
+    re.IGNORECASE,
+)
+
+
+def _split_source_sentences(text: str, *, max_len: int = 420) -> list[str]:
+    cleaned = _strip_html(text)
+    if not cleaned:
+        return []
+    # Keep sentence boundaries simple and deterministic; this is evidence
+    # extraction for visual affordances, not generative summarization.
+    rough = re.split(r"(?<=[.!?。])\s+|(?<=다\.)\s+|[\n\r]+", cleaned)
+    sentences: list[str] = []
+    for item in rough:
+        sentence = re.sub(r"\s+", " ", item).strip()
+        if len(sentence) < 18:
+            continue
+        if len(sentence) > max_len:
+            sentence = sentence[:max_len].rstrip(" ,;:") + "..."
+        sentences.append(sentence)
+    return sentences
+
+
+def extract_visual_event_sentences(text: str, *, limit: int = 3) -> list[str]:
+    """Return source-local visual/motion sentences without topic templates."""
+
+    results: list[str] = []
+    seen: set[str] = set()
+    for sentence in _split_source_sentences(text):
+        if not VISUAL_EVENT_CUE_RE.search(sentence):
+            continue
+        key = sentence.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(sentence)
+        if len(results) >= max(1, limit):
+            break
+    return results
+
+
+def _wikipedia_extract_for_page(title: str) -> str:
+    page_slug = quote(title.replace(" ", "_"), safe="")
+    page_url = (
+        "https://ko.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=0"
+        f"&format=json&titles={page_slug}"
+    )
+    request = urllib.request.Request(page_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
+    with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public API endpoint
+        body = json.loads(response.read().decode("utf-8"))
+    pages = (body.get("query", {}) or {}).get("pages", {}) or {}
+    for page in pages.values():
+        extract = str(page.get("extract") or "").strip()
+        if extract:
+            return extract
+    return ""
+
+
+def _wikipedia_visual_event_results(base_results: list[dict[str, Any]], *, limit: int = 2) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for result in base_results[:2]:
+        title = str(result.get("title") or "").strip()
+        if not title:
+            continue
+        try:
+            extract = _wikipedia_extract_for_page(title)
+        except Exception:
+            continue
+        for sentence_index, sentence in enumerate(extract_visual_event_sentences(extract, limit=2), start=1):
+            enriched.append(
+                {
+                    "id": f"{result.get('id') or 'wikipedia'}-visual-{sentence_index}",
+                    "title": f"{title} visual event evidence",
+                    "url": result.get("url", ""),
+                    "snippet": sentence,
+                    "provider": "wikipedia",
+                    "source_type": "encyclopedia_visual_event_extract",
+                    "license_status": "reference_only",
+                    "search_score": int(result.get("search_score") or 0) - sentence_index,
+                    "query_terms_matched": int(result.get("query_terms_matched") or 0),
+                    "normalized_query": result.get("normalized_query"),
+                    "visual_evidence_enrichment": True,
+                    "enrichment_basis": "source_page_sentence_visual_motion_cues",
+                    "topic_scene_templates": False,
+                    "renderer_may_infer_topic": False,
+                    "particle_text": False,
+                }
+            )
+            if len(enriched) >= max(0, limit):
+                return enriched
+    return enriched
 
 
 def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     lookup = _normalize_lookup_query(query)
+    lookup_terms = _lookup_terms(lookup)
     bounded_count = max(1, min(count, 10))
     api_url = (
         "https://ko.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1"
-        f"&srlimit={bounded_count}&srsearch={quote_plus(lookup)}"
+        f"&srlimit={max(bounded_count, 8)}&srsearch={quote_plus(lookup)}"
     )
     request = urllib.request.Request(api_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
     with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public API endpoint
         body = json.loads(response.read().decode("utf-8"))
     results: list[dict[str, Any]] = []
-    for index, item in enumerate((body.get("query", {}).get("search", []) or [])[:bounded_count], start=1):
+    for index, item in enumerate((body.get("query", {}).get("search", []) or [])[: max(bounded_count, 8)], start=1):
         title = _strip_html(item.get("title") or lookup)
         page_slug = quote(title.replace(" ", "_"), safe="")
         page_url = f"https://ko.wikipedia.org/wiki/{page_slug}"
@@ -179,6 +299,8 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
             except Exception:
                 pass
         if title and snippet:
+            haystack = f"{title} {snippet}".lower()
+            term_hits = sum(1 for term in lookup_terms if term in haystack)
             results.append(
                 {
                     "id": f"wikipedia-{index}",
@@ -188,10 +310,26 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
                     "provider": "wikipedia",
                     "source_type": "encyclopedia_search",
                     "license_status": "reference_only",
-                    "search_score": bounded_count - index + 1,
+                    "search_score": (term_hits * 100) + (bounded_count - min(index, bounded_count) + 1),
+                    "query_terms_matched": term_hits,
+                    "normalized_query": lookup,
                 }
             )
-    return results
+    results.sort(key=lambda result: (-int(result.get("query_terms_matched") or 0), -int(result.get("search_score") or 0), str(result.get("title") or "")))
+    primary_limit = bounded_count - 1 if bounded_count >= 3 else bounded_count
+    bounded_results = results[:primary_limit]
+    enrichment_budget = 1 if bounded_count >= 3 else 0
+    if enrichment_budget:
+        for enriched in _wikipedia_visual_event_results(bounded_results, limit=enrichment_budget):
+            if len(bounded_results) >= bounded_count:
+                break
+            bounded_results.append(enriched)
+    if len(bounded_results) < bounded_count:
+        for result in results[primary_limit:bounded_count]:
+            if len(bounded_results) >= bounded_count:
+                break
+            bounded_results.append(result)
+    return bounded_results
 
 
 def news_rss_search(query: str, count: int = 5) -> list[dict[str, Any]]:
@@ -296,6 +434,12 @@ def web_results_to_evidence(results: list[dict[str, Any]]) -> list[dict[str, Any
                 "snippet": result.get("snippet", ""),
                 "title": result.get("title", "Web result"),
                 "retrieval_signals": {"web_search": 1, "provider": result.get("provider", "static")},
+                "source_type": result.get("source_type", "web_search"),
+                "visual_evidence_enrichment": bool(result.get("visual_evidence_enrichment")),
+                "enrichment_basis": result.get("enrichment_basis"),
+                "topic_scene_templates": bool(result.get("topic_scene_templates", False)),
+                "renderer_may_infer_topic": bool(result.get("renderer_may_infer_topic", False)),
+                "particle_text": bool(result.get("particle_text", False)),
             }
         )
     return evidence

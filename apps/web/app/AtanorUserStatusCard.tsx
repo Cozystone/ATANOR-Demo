@@ -15,6 +15,11 @@ type AtanorUserStatusCardProps = {
   onMessageSubmit?: (message: string) => boolean;
 };
 
+type ConversationContextTurn = {
+  role: "user" | "assistant";
+  text: string;
+};
+
 type VoiceOutput = {
   audio_available?: boolean;
   audio_url?: string | null;
@@ -31,6 +36,8 @@ type VoiceOutput = {
     tts_tag?: string | null;
     speed?: number | null;
     energy?: number | null;
+    fallback_delivery?: string | null;
+    fallback_sentence_gap_ms?: number | null;
   } | null;
   speech_sync_source?: string | null;
   user_message?: string | null;
@@ -80,6 +87,20 @@ type LayoutTelemetry = {
   overlap: number;
 };
 
+type TextPlacementDecision = {
+  basis: string;
+  blockerCount: number;
+  cartridgeFootprintAvoided: boolean;
+  interactiveBboxFootprintAvoided: boolean;
+  model: string;
+  particleText: boolean;
+  score: number;
+  sceneFootprintAvoided: boolean;
+  selfNarrationAnchor: TextAnchor;
+  speechAnchor: TextAnchor;
+  textRendering: string;
+};
+
 type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
 
 type SceneDirective = {
@@ -113,6 +134,36 @@ type SceneEvidence = {
   renderer_may_infer_topic?: boolean;
 };
 
+type SceneSelfState = {
+  state_owner?: string;
+  state_basis?: string;
+  self_body_identity?: string;
+  particle_field_pressure?: number;
+  self_body_pressure?: number;
+  text_clearance_pressure?: number;
+  composer_clearance_pressure?: number;
+  topic_scene_templates?: boolean;
+  renderer_may_infer_topic?: boolean;
+};
+
+type SceneAvoidanceMap = {
+  basis?: string;
+  map_owner?: string;
+  orb_reserved_lane?: string;
+  composer_reserved_lane?: string;
+  text_safe_lanes?: string[];
+  self_narration_preferred_lane?: string;
+  dom_text_only?: boolean;
+  particle_text?: boolean;
+  topic_scene_templates?: boolean;
+  scene_footprint?: {
+    min_x?: number;
+    max_x?: number;
+    min_y?: number;
+    max_y?: number;
+  };
+};
+
 type SceneChoreographyPayload = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
@@ -128,6 +179,7 @@ type SceneChoreographyPayload = {
     min_y?: number;
     max_y?: number;
   };
+  scene_self_state?: SceneSelfState;
   dashboard_layout?: {
     planning_basis?: string;
     stage_pressure?: number;
@@ -174,6 +226,7 @@ type SceneChoreographyPayload = {
         block_text?: boolean;
       };
     };
+    avoidance_map?: SceneAvoidanceMap;
     agent_layout_decision?: {
       decision_owner?: string;
       decision_basis?: string;
@@ -198,6 +251,9 @@ type SceneChoreographyPayload = {
       avoid_regions?: string[];
       content_source?: string;
       renderer_may_infer_topic?: boolean;
+      scene_self_state?: SceneSelfState;
+      avoidance_map?: SceneAvoidanceMap;
+      text_safe_lanes?: string[];
     };
   };
   primary_surface?: string;
@@ -216,6 +272,17 @@ type SceneChoreographyPayload = {
     text_anchor?: TextAnchor;
     text_anchor_basis?: string;
     text_anchor_points?: number;
+    active_layout_pressure?: number;
+    active_bbox?: {
+      basis?: string;
+      min_x?: number;
+      max_x?: number;
+      min_y?: number;
+      max_y?: number;
+    };
+    active_regions?: string[];
+    orb_scale_hint?: string;
+    text_safe_region?: TextAnchor;
     self_narration_anchor?: TextAnchor;
     text_rendering?: string;
     text_strategy?: string;
@@ -283,6 +350,13 @@ type SceneChoreographyPayload = {
   }>;
 } | null;
 
+type SceneNarrationBeat = {
+  beatIndex: number;
+  duration: number;
+  tStart: number;
+  text: string;
+};
+
 type SplatraCommandSequencePayload = {
   scene_actions?: Array<{ op?: string; args?: Record<string, unknown> }>;
   candidate_cartridge_requests?: Array<{
@@ -311,11 +385,56 @@ type SplatraCommandSequencePayload = {
   };
 } | null;
 
+type SplatraInteractiveSceneAnalysisPayload = {
+  interactive_scene?: boolean;
+  object_count?: number;
+  analyzer_contract?: {
+    raw_splat_inference?: boolean;
+    object_detection_claim?: string;
+    interactive_scene_metadata?: boolean;
+    persistent_3d_bounding_boxes?: boolean;
+    topic_scene_templates?: boolean;
+    renderer_may_infer_topic?: boolean;
+    particle_text?: boolean;
+    text_rendering?: string;
+  };
+  objects?: Array<{
+    object_id?: string;
+    object_track_id?: string;
+    label?: string;
+    semantic_role?: string;
+    visual_affordance?: string;
+    raw_splat_inference?: boolean;
+    bounding_box?: {
+      min?: number[];
+      max?: number[];
+      center?: number[];
+      extent?: number[];
+      basis?: string;
+    };
+    interactions?: Array<Record<string, unknown>>;
+    evidence_refs?: Array<Record<string, unknown>>;
+  }>;
+  spatial_index?: Array<Record<string, unknown>>;
+  safety_flags?: Record<string, boolean>;
+} | null;
+
 type SplatraCartridgeQueuePayload = {
   status?: string;
   execution_mode?: string;
   job_count?: number;
   side_channel?: string;
+  sidecar_status?: string;
+  sidecar_configured?: boolean;
+  sidecar_dispatch?: {
+    status?: string;
+    configured?: boolean;
+    job_count?: number;
+    external_splatra_called?: boolean;
+    raw_buffer_in_agent_context?: boolean;
+    raw_cartridge_fetched?: boolean;
+    mutation_performed?: boolean;
+  };
   external_splatra_called?: boolean;
   raw_buffer_in_agent_context?: boolean;
   mutation_performed?: boolean;
@@ -353,15 +472,24 @@ function firstSpeechBeat(text: string) {
 
 function estimatedSpeechDurationMs(text: string, voiceOutput?: VoiceOutput) {
   const fromPayload = Number(voiceOutput?.audio_duration_ms ?? voiceOutput?.estimated_duration_ms ?? 0);
-  if (Number.isFinite(fromPayload) && fromPayload > 0) return clampNumber(fromPayload, 900, 18000);
+  if (Number.isFinite(fromPayload) && fromPayload > 0) return clampNumber(fromPayload, 900, 48000);
   const compact = stripEmotionTag(text).replace(/\s+/g, "");
-  return clampNumber(compact.length * 112 + 520, 900, 18000);
+  return clampNumber(compact.length * 112 + 520, 900, 48000);
 }
 
 function typingStepForSpeech(text: string, durationMs: number) {
   const clean = stripEmotionTag(text);
   const target = durationMs / Math.max(1, clean.length);
-  return clampNumber(target, 16, 48);
+  return clampNumber(target, 22, 220);
+}
+
+function withAudioTimeout<T>(promise: Promise<T>, timeoutMs = 700): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error("audio_context_timeout")), timeoutMs);
+    }),
+  ]);
 }
 
 function useTypewriterText(text: string, stepMs = 22) {
@@ -393,7 +521,8 @@ function isAsmConversationPayload(payload: Record<string, any>) {
   const generationBasis = String(engine.generation_basis ?? "");
   const isAllowedLocalConversation =
     generationBasis === "local_corpus_construction_transition_model"
-    || generationBasis === "semantic_grounded_conversation_router_v0";
+    || generationBasis === "semantic_grounded_conversation_router_v0"
+    || generationBasis === "semantic_cloud_graph_surface_brain_v0";
   return (
     isAllowedLocalConversation
     && engine.external_llm === false
@@ -406,6 +535,19 @@ function isAsmConversationPayload(payload: Record<string, any>) {
     && engine.production_store_mutated === false
     && engine.candidate_promotion === false
   );
+}
+
+function shouldRequestWebGrounding(input: string) {
+  const q = input.trim().toLowerCase();
+  const compact = q.replace(/[\s!?.,~]+/g, "");
+  if (!compact) return false;
+  if (["안녕", "안녕하세요", "하이", "hi", "hello", "hey", "thanks", "thankyou"].includes(compact)) {
+    return false;
+  }
+  if (/(splatra|스플라트라|구슬|홀로그램|음성|목소리|fish|selfhood|자기 모델|내적 언어)/i.test(input)) {
+    return false;
+  }
+  return /검색|찾아|최신|최근|오늘|뉴스|현재|인터넷|웹|누구|무엇|뭐야|왜|어떻게|설명|법칙|원리|정의|근거|확인|search|look up|latest|recent|today|news|current|who|what|why|how|explain|law|principle|definition/i.test(input);
 }
 
 function cleanSafeStatusLine(language: Language) {
@@ -482,6 +624,13 @@ function requestedSplatraCommandSequence(payload: Record<string, any>): SplatraC
   const sequence = result?.splatra_command_sequence;
   if (!sequence || typeof sequence !== "object") return null;
   return sequence as SplatraCommandSequencePayload;
+}
+
+function requestedSplatraInteractiveSceneAnalysis(payload: Record<string, any>): SplatraInteractiveSceneAnalysisPayload {
+  const result = payload?.result ?? {};
+  const analysis = result?.splatra_interactive_scene_analysis;
+  if (!analysis || typeof analysis !== "object") return null;
+  return analysis as SplatraInteractiveSceneAnalysisPayload;
 }
 
 function requestedSplatraCartridgeQueue(payload: Record<string, any>): SplatraCartridgeQueuePayload {
@@ -568,8 +717,26 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
     textAnchor: coerceTextAnchor(item.text_anchor, requestedTextAnchor(scenePlan)),
     textAnchorBasis: String(item.text_anchor_basis ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_strategy ?? (stageLayout === "scene_focus" ? "verified_scene_geometry" : "conversation_default")),
     textAnchorPoints: Number.isFinite(Number(item.text_anchor_points)) ? Number(item.text_anchor_points) : 0,
+    activeLayoutPressure: clampNumber(finiteNumber(item.active_layout_pressure, 0), 0, 1),
+    activeBboxBasis: String(item.active_bbox?.basis ?? "none"),
+    activeBboxMinX: finiteNumber(item.active_bbox?.min_x, 0),
+    activeBboxMaxX: finiteNumber(item.active_bbox?.max_x, 0),
+    activeBboxMinY: finiteNumber(item.active_bbox?.min_y, 0),
+    activeBboxMaxY: finiteNumber(item.active_bbox?.max_y, 0),
+    activeRegions: Array.isArray(item.active_regions) ? item.active_regions.join(",") : "none",
+    orbScaleHint: String(item.orb_scale_hint ?? "none"),
+    textSafeRegion: coerceTextAnchor(item.text_safe_region, item.text_anchor ?? requestedTextAnchor(scenePlan)),
     selfNarrationAnchor: coerceTextAnchor(item.self_narration_anchor, scenePlan?.dashboard_layout?.self_narration?.anchor ?? "upper_right"),
     textRendering: String(item.text_rendering ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_rendering ?? "dom_text_not_particles"),
+    avoidanceMapBasis: String(scenePlan?.dashboard_layout?.avoidance_map?.basis ?? scenePlan?.dashboard_layout?.agent_layout_decision?.avoidance_map?.basis ?? "none"),
+    avoidanceTextSafeLanes: Array.isArray(scenePlan?.dashboard_layout?.avoidance_map?.text_safe_lanes)
+      ? scenePlan?.dashboard_layout?.avoidance_map?.text_safe_lanes.join(",")
+      : Array.isArray(scenePlan?.dashboard_layout?.agent_layout_decision?.text_safe_lanes)
+        ? scenePlan?.dashboard_layout?.agent_layout_decision?.text_safe_lanes.join(",")
+        : "none",
+    avoidanceSceneFootprint: scenePlan?.dashboard_layout?.avoidance_map?.scene_footprint
+      ?? scenePlan?.dashboard_layout?.agent_layout_decision?.avoidance_map?.scene_footprint
+      ?? null,
   };
 }
 
@@ -581,35 +748,55 @@ function coerceTextAnchor(value: unknown, fallback: unknown): TextAnchor {
   return "lower_left";
 }
 
-function sceneNarrationBeats(scenePlan: SceneChoreographyPayload) {
+function scaleSceneNarrationBeats(beats: SceneNarrationBeat[], targetDurationMs = 0): SceneNarrationBeat[] {
+  if (beats.length <= 1 || targetDurationMs <= 0) return beats;
+  const rawEnd = beats.reduce((maxEnd, beat) => Math.max(maxEnd, beat.tStart + beat.duration), 0);
+  if (rawEnd <= 0) return beats;
+  const targetSeconds = targetDurationMs / 1000;
+  const scale = clampNumber(targetSeconds / rawEnd, 0.82, 3.4);
+  return beats.map((beat, index) => {
+    const scaledStart = beat.tStart * scale;
+    const nextStart = index < beats.length - 1 ? beats[index + 1].tStart * scale : targetSeconds;
+    const visibleWindow = Math.max(beat.duration * scale, nextStart - scaledStart - 0.08);
+    return {
+      ...beat,
+      duration: Math.max(0.55, visibleWindow),
+      tStart: scaledStart,
+    };
+  });
+}
+
+function sceneNarrationBeats(scenePlan: SceneChoreographyPayload, targetDurationMs = 0): SceneNarrationBeat[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const timeline = Array.isArray(scenePlan?.speech_timeline) ? scenePlan?.speech_timeline ?? [] : [];
   const timelineBeats = timeline
     .map((item, index) => ({
       beatIndex: Number.isFinite(Number(item.beat_index)) ? Number(item.beat_index) : index,
+      duration: Number.isFinite(Number(item.duration)) ? Math.max(0.45, Number(item.duration)) : 1.35,
       tStart: Number.isFinite(Number(item.t_start)) ? Number(item.t_start) : index * 1.35,
       text: stripEmotionTag(String(item.text || "").trim()),
     }))
     .filter((beat) => beat.text.length > 0)
     .filter((beat, index, array) => index === 0 || beat.text !== array[index - 1].text)
     .sort((left, right) => left.tStart - right.tStart);
-  if (timelineBeats.length) return timelineBeats;
+  if (timelineBeats.length) return scaleSceneNarrationBeats(timelineBeats, targetDurationMs);
 
   const speechCueBeats = beats.filter((beat) => beat.speech_cue !== false);
   const sourceBeats = speechCueBeats.length ? speechCueBeats : beats;
-  return sourceBeats
+  return scaleSceneNarrationBeats(sourceBeats
     .map((beat) => {
       const beatIndex = beats.indexOf(beat);
       const index = beatIndex >= 0 ? beatIndex : 0;
       return {
         beatIndex: index,
+        duration: Number.isFinite(Number(beat.duration)) ? Math.max(0.45, Number(beat.duration)) : 1.35,
         tStart: Number.isFinite(Number(beat.t_start)) ? Number(beat.t_start) : index * 1.35,
         text: stripEmotionTag(String(beat.narration || beat.prompt || "").trim()),
       };
     })
     .filter((beat) => beat.text.length > 0)
     .filter((beat, index, array) => index === 0 || beat.text !== array[index - 1].text)
-    .sort((left, right) => left.tStart - right.tStart);
+    .sort((left, right) => left.tStart - right.tStart), targetDurationMs);
 }
 
 function firstSceneNarration(scenePlan: SceneChoreographyPayload) {
@@ -944,6 +1131,34 @@ function dashboardLayoutVars(scenePlan: SceneChoreographyPayload, stageLayout: S
   };
 }
 
+function dashboardRuntimeLayoutVars(
+  scenePlan: SceneChoreographyPayload,
+  stageLayout: StageLayout,
+  telemetry: LayoutTelemetry,
+): CSSProperties {
+  const base = dashboardLayoutVars(scenePlan, stageLayout);
+  if (stageLayout !== "scene_focus") return base;
+  const pressure = layoutCollisionPressureFromTelemetry(telemetry);
+  if (pressure <= 0.02) return base;
+  const metrics = dashboardLayoutMetrics(scenePlan, stageLayout);
+  const wideScene = requestedLayoutIntent(scenePlan) === "wide_particle_stage";
+  const severe = telemetry.collisionState === "dom_text_clipped"
+    || telemetry.collisionState === "orb_clipped"
+    || telemetry.collisionState === "orb_overlap_risk";
+  const speechMax = clampNumber(metrics.speechMaxVw - pressure * (wideScene ? 9 : 7), wideScene ? 21 : 24, metrics.speechMaxVw);
+  const selfMax = clampNumber(metrics.selfNarrationMaxVw - pressure * 4.5, 17, metrics.selfNarrationMaxVw);
+  const baseOrbSize = String((base as Record<string, string | number | undefined>)["--atanor-scene-orb-size"] ?? "clamp(132px, 19vmin, 218px)");
+  return {
+    ...base,
+    ["--atanor-scene-speech-max" as string]: `${speechMax.toFixed(2)}vw`,
+    ["--atanor-scene-self-max" as string]: `${selfMax.toFixed(2)}vw`,
+    ["--atanor-scene-field-opacity" as string]: String(clampNumber(metrics.fieldOpacity + pressure * 0.04, metrics.fieldOpacity, 1)),
+    ["--atanor-scene-orb-size" as string]: severe
+      ? "clamp(96px, 13vmin, 156px)"
+      : pressure > 0.42 ? "clamp(112px, 15vmin, 182px)" : baseOrbSize,
+  };
+}
+
 function overlapArea(left: RectLike, right: RectLike, padding = 0) {
   const x = Math.max(0, Math.min(left.right + padding, right.right) - Math.max(left.left - padding, right.left));
   const y = Math.max(0, Math.min(left.bottom + padding, right.bottom) - Math.max(left.top - padding, right.top));
@@ -1045,9 +1260,47 @@ function sceneFootprintToDashboardRect(scenePlan: SceneChoreographyPayload, dash
   };
 }
 
+function sceneAnalysisObjectBlockers(analysis: SplatraInteractiveSceneAnalysisPayload, dashboard: RectLike): RectLike[] {
+  if (!analysis?.interactive_scene || analysis?.analyzer_contract?.raw_splat_inference === true) return [];
+  const objects = Array.isArray(analysis.objects) ? analysis.objects : [];
+  return objects
+    .slice(0, 24)
+    .map((object) => {
+      const bbox = object.bounding_box;
+      const min = bbox?.min;
+      const max = bbox?.max;
+      if (!Array.isArray(min) || !Array.isArray(max) || min.length < 2 || max.length < 2) return null;
+      const topLeft = scenePointToDashboardRect([Number(min[0]), Number(max[1]), Number(max[2] ?? 0)], dashboard, 0);
+      const bottomRight = scenePointToDashboardRect([Number(max[0]), Number(min[1]), Number(min[2] ?? 0)], dashboard, 0);
+      if (!topLeft || !bottomRight) return null;
+      const extent = Array.isArray(bbox?.extent) ? bbox?.extent : [];
+      const extentX = Math.abs(Number(extent[0] ?? 0));
+      const extentY = Math.abs(Number(extent[1] ?? 0));
+      const affordance = String(object.visual_affordance ?? "");
+      const interactiveBoost = Array.isArray(object.interactions) && object.interactions.length > 3 ? 1.16 : 1;
+      const structureBoost = affordance.includes("structure") || affordance.includes("field") ? 1.18 : 1;
+      const horizontalPad = clampNumber((dashboard.width * Math.max(0.018, extentX * 0.032)) * interactiveBoost * structureBoost, 18, 96);
+      const verticalPad = clampNumber((dashboard.height * Math.max(0.018, extentY * 0.038)) * interactiveBoost * structureBoost, 16, 86);
+      const left = Math.min(topLeft.left, bottomRight.left) - horizontalPad;
+      const right = Math.max(topLeft.left, bottomRight.left) + horizontalPad;
+      const top = Math.min(topLeft.top, bottomRight.top) - verticalPad;
+      const bottom = Math.max(topLeft.top, bottomRight.top) + verticalPad;
+      return {
+        bottom: Math.min(dashboard.bottom, bottom),
+        height: Math.max(0, bottom - top),
+        left: Math.max(dashboard.left, left),
+        right: Math.min(dashboard.right, right),
+        top: Math.max(dashboard.top, top),
+        width: Math.max(0, right - left),
+      };
+    })
+    .filter((rect): rect is RectLike => Boolean(rect && rect.width > 0 && rect.height > 0));
+}
+
 function scenePlanBlockers(scenePlan: SceneChoreographyPayload, dashboard: RectLike): RectLike[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const footprint = sceneFootprintToDashboardRect(scenePlan, dashboard);
+  const wideStage = requestedLayoutIntent(scenePlan) === "wide_particle_stage";
   const beatBlockers = beats
     .flatMap((beat) => {
       const points: number[][] = [];
@@ -1058,7 +1311,38 @@ function scenePlanBlockers(scenePlan: SceneChoreographyPayload, dashboard: RectL
       return points.map((point) => scenePointToDashboardRect(point, dashboard, size));
     })
     .filter((rect): rect is RectLike => Boolean(rect));
+  if (wideStage) {
+    // The center particle stage is not DOM text and never becomes particle
+    // text, but it still reserves visual space. Text/orb placement should
+    // avoid the generated scene instead of crossing through it.
+    return footprint ? [footprint, ...beatBlockers] : beatBlockers;
+  }
   return footprint ? [footprint, ...beatBlockers] : beatBlockers;
+}
+
+function splatraCartridgeFootprintToDashboardRect(dashboardElement: HTMLElement, dashboard: RectLike): RectLike | null {
+  const field = dashboardElement.querySelector(".atanor-dashboard-imagination-field") as HTMLElement | null;
+  if (!field) return null;
+  const loadedParticles = Number(field.dataset.splatraCartridgeLoadedParticles ?? 0) || 0;
+  const sourceParticles = Number(field.dataset.splatraCartridgeSourceParticles ?? 0) || 0;
+  const realGenerator = field.dataset.splatraCartridgeRealGenerator === "true";
+  const hasCartridge = loadedParticles > 0 || sourceParticles > 0;
+  if (!hasCartridge) return null;
+  const fieldRect = rectFromDom(field.getBoundingClientRect());
+  const centerX = (fieldRect.left + fieldRect.right) / 2;
+  const centerY = (fieldRect.top + fieldRect.bottom) / 2;
+  const loadRatio = clampNumber(loadedParticles / Math.max(1, sourceParticles || loadedParticles), 0.18, 1);
+  const denseScale = realGenerator ? 1.0 : 0.82;
+  const width = Math.min(fieldRect.width * (0.68 + loadRatio * 0.13) * denseScale, dashboard.width * 0.78);
+  const height = Math.min(fieldRect.height * (0.58 + loadRatio * 0.16) * denseScale, dashboard.height * 0.72);
+  return {
+    bottom: Math.min(dashboard.bottom, centerY + height / 2),
+    height,
+    left: Math.max(dashboard.left, centerX - width / 2),
+    right: Math.min(dashboard.right, centerX + width / 2),
+    top: Math.max(dashboard.top, centerY - height / 2),
+    width,
+  };
 }
 
 function scoreSpeechAnchor(
@@ -1072,9 +1356,38 @@ function scoreSpeechAnchor(
   const rect = candidateSpeechRect(anchor, speechSize, dashboard, metrics);
   const offscreen = offscreenAmount(rect);
   const blockerPenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 18), 0);
-  const stagePenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 0) * 0.08, 0);
+  const stagePenalty = blockers.reduce((total, blocker) => total + overlapArea(rect, blocker, 0) * 0.22, 0);
+  const centerStagePenalty = blockers.reduce((total, blocker) => {
+    const largeVisualStage = blocker.width > dashboard.width * 0.42 && blocker.height > dashboard.height * 0.34;
+    return total + (largeVisualStage ? overlapArea(rect, blocker, 42) * 0.18 : 0);
+  }, 0);
   const preferencePenalty = anchor === preferred ? 0 : anchor === "lower_left" ? 42 : 84;
-  return offscreen * 1000 + blockerPenalty * 6 + stagePenalty + preferencePenalty;
+  return offscreen * 1000 + blockerPenalty * 9 + stagePenalty + centerStagePenalty + preferencePenalty;
+}
+
+function scoreTextPlacementPair(
+  speechAnchor: TextAnchor,
+  selfAnchor: TextAnchor,
+  speechSize: RectLike,
+  selfSize: RectLike,
+  dashboard: RectLike,
+  blockers: RectLike[],
+  preferredSpeech: TextAnchor,
+  preferredSelf: TextAnchor,
+  metrics: DashboardLayoutMetrics,
+) {
+  const speechRect = candidateSpeechRect(speechAnchor, speechSize, dashboard, metrics);
+  const selfRect = candidateSpeechRect(selfAnchor, selfSize, dashboard, metrics);
+  const speechBlockerScore = scoreSpeechAnchor(speechAnchor, speechSize, dashboard, blockers, preferredSpeech, metrics);
+  const selfBlockerScore = scoreSpeechAnchor(selfAnchor, selfSize, dashboard, blockers, preferredSelf, metrics);
+  const textOverlapPenalty = overlapArea(speechRect, selfRect, 24) * 9;
+  const sameCornerPenalty = speechAnchor === selfAnchor ? 420 : 0;
+  const lowerCenterCrowdingPenalty = speechAnchor === "lower_center" || selfAnchor === "lower_center" ? 36 : 0;
+  return {
+    score: speechBlockerScore + selfBlockerScore + textOverlapPenalty + sameCornerPenalty + lowerCenterCrowdingPenalty,
+    selfRect,
+    speechRect,
+  };
 }
 
 function layoutTelemetryForRect(rect: RectLike | null, blockers: RectLike[]): LayoutTelemetry {
@@ -1187,16 +1500,24 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [voiceTtsTag, setVoiceTtsTag] = useState("none");
   const [voiceProsodyState, setVoiceProsodyState] = useState({
     applied: false,
+    delivery: "none",
+    gapMs: 0,
     rate: 0,
     source: "none",
     volume: 0,
+  });
+  const [voicePlaybackState, setVoicePlaybackState] = useState({
+    error: "none",
+    unlocked: false,
   });
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
   const [splatraCommandSequence, setSplatraCommandSequence] = useState<SplatraCommandSequencePayload>(null);
+  const [splatraInteractiveSceneAnalysis, setSplatraInteractiveSceneAnalysis] = useState<SplatraInteractiveSceneAnalysisPayload>(null);
   const [splatraCartridgeQueue, setSplatraCartridgeQueue] = useState<SplatraCartridgeQueuePayload>(null);
   const [scenePolicy, setScenePolicy] = useState<SplatraScenePolicy>(() => defaultSplatraScenePolicy());
+  const [conversationContext, setConversationContext] = useState<ConversationContextTurn[]>([]);
   const [sceneSpeechStartedAt, setSceneSpeechStartedAt] = useState(0);
   const [sceneSpeechBeatIndex, setSceneSpeechBeatIndex] = useState(-1);
   const [speechPlacement, setSpeechPlacement] = useState<TextAnchor>("lower_center");
@@ -1209,11 +1530,26 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     orbOverlap: 0,
     overlap: 0,
   });
+  const [textPlacementDecision, setTextPlacementDecision] = useState<TextPlacementDecision>({
+    basis: "conversation_default",
+    blockerCount: 0,
+    cartridgeFootprintAvoided: false,
+    interactiveBboxFootprintAvoided: false,
+    model: "client_dom_scene_and_cartridge_geometry_scorer_no_topic_templates",
+    particleText: false,
+    score: 0,
+    sceneFootprintAvoided: false,
+    selfNarrationAnchor: "upper_right",
+    speechAnchor: "lower_center",
+    textRendering: "dom_text_not_particles",
+  });
   const dashboardRef = useRef<HTMLElement | null>(null);
   const speechRef = useRef<HTMLParagraphElement | null>(null);
   const selfNarrationRef = useRef<HTMLParagraphElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const selfNarrationHoldUntilRef = useRef(0);
   const speakingVisual = orbState === "speaking" || audioPlaying;
   const cleanPlaceholder = voiceMode
@@ -1256,7 +1592,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
 
   useEffect(() => {
     if (stageLayout !== "scene_focus") return undefined;
-    const beats = sceneNarrationBeats(sceneChoreography);
+    const beats = sceneNarrationBeats(sceneChoreography, speechSyncDurationMs);
     if (!beats.length || !sceneSpeechStartedAt) {
       setSceneSpeechBeatIndex(-1);
       return undefined;
@@ -1272,18 +1608,39 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         activeIndex = nextIndex;
         const nextSpeechBeat = beats[nextIndex];
         setSceneSpeechBeatIndex(nextSpeechBeat.beatIndex);
-        setSpeechLine(beats[nextIndex].text);
+        setSpeechTypingStepMs(typingStepForSpeech(nextSpeechBeat.text, nextSpeechBeat.duration * 1000));
+        setSpeechLine(nextSpeechBeat.text);
       }
     };
     update();
     const timer = window.setInterval(update, 180);
     return () => window.clearInterval(timer);
-  }, [sceneChoreography, sceneSpeechStartedAt, stageLayout]);
+  }, [sceneChoreography, sceneSpeechStartedAt, speechSyncDurationMs, stageLayout]);
 
   useEffect(() => {
     if (stageLayout !== "scene_focus") {
       setSpeechPlacement("lower_center");
       setSelfNarrationPlacement("upper_right");
+      setTextPlacementDecision((current) => (
+        current.basis === "conversation_default"
+          && current.speechAnchor === "lower_center"
+          && current.selfNarrationAnchor === "upper_right"
+          && current.score === 0
+          ? current
+          : {
+            basis: "conversation_default",
+            blockerCount: 0,
+            cartridgeFootprintAvoided: false,
+            interactiveBboxFootprintAvoided: false,
+            model: "client_dom_scene_and_cartridge_geometry_scorer_no_topic_templates",
+            particleText: false,
+            score: 0,
+            sceneFootprintAvoided: false,
+            selfNarrationAnchor: "upper_right",
+            speechAnchor: "lower_center",
+            textRendering: "dom_text_not_particles",
+          }
+      ));
       setLayoutTelemetry((current) => (
         current.collisionState === "conversation_default" && current.blockers === 0 && current.overlap === 0 && current.offscreen === 0
           && current.orbOffscreen === 0 && current.orbOverlap === 0
@@ -1320,44 +1677,119 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         .map(rectFromDom);
       const candidates: TextAnchor[] = ["lower_left", "upper_left", "upper_right", "lower_center"];
       const sceneBlockers = scenePlanBlockers(sceneChoreography, dashboardBox);
-      const blockers = [...baseBlockers, ...sceneBlockers];
+      const interactiveObjectBlockers = sceneAnalysisObjectBlockers(splatraInteractiveSceneAnalysis, dashboardBox);
+      const cartridgeBlocker = splatraCartridgeFootprintToDashboardRect(dashboard, dashboardBox);
+      const cartridgeBlockers = cartridgeBlocker ? [cartridgeBlocker] : [];
+      const blockers = [...baseBlockers, ...sceneBlockers, ...interactiveObjectBlockers, ...cartridgeBlockers];
+      const sceneFootprintAvoided = [...sceneBlockers, ...interactiveObjectBlockers].some((blocker) => blocker.width > dashboardBox.width * 0.42 && blocker.height > dashboardBox.height * 0.34);
+      const interactiveBboxFootprintAvoided = interactiveObjectBlockers.some((blocker) => blocker.width > dashboardBox.width * 0.2 && blocker.height > dashboardBox.height * 0.16);
+      const cartridgeFootprintAvoided = cartridgeBlockers.some((blocker) => blocker.width > dashboardBox.width * 0.42 && blocker.height > dashboardBox.height * 0.34);
       let nextSpeechRect: RectLike | null = null;
+      let nextSelfRect: RectLike | null = null;
       let nextSpeechBlockers = blockers;
 
-      if (speech) {
+      if (speech && selfNarrationElement) {
+        const speechMaxWidth = Math.min(540, window.innerWidth * (layoutMetrics.speechMaxVw / 100));
+        const selfMaxWidth = Math.min(360, window.innerWidth * (layoutMetrics.selfNarrationMaxVw / 100));
+        const speechBox = estimatedTextRectFromDom(speech, stableLayoutMeasurementText(speechLine, typedSpeechLine), speechMaxWidth);
+        const selfBox = estimatedTextRectFromDom(selfNarrationElement, stableLayoutMeasurementText(selfNarration, typedSelfNarration), selfMaxWidth);
+        const selfCandidates: TextAnchor[] = ["upper_right", "upper_left", "lower_left"];
+        const bestPair = candidates
+          .flatMap((speechAnchor) => selfCandidates.map((selfAnchor) => ({
+            speechAnchor,
+            selfAnchor,
+            ...scoreTextPlacementPair(
+              speechAnchor,
+              selfAnchor,
+              speechBox,
+              selfBox,
+              dashboardBox,
+              blockers,
+              preferred,
+              preferredSelfNarration,
+              layoutMetrics,
+            ),
+          })))
+          .sort((left, right) => left.score - right.score)[0];
+        const nextSpeech = bestPair?.speechAnchor ?? preferred;
+        const nextSelf = bestPair?.selfAnchor ?? preferredSelfNarration;
+        nextSpeechRect = bestPair?.speechRect ?? candidateSpeechRect(nextSpeech, speechBox, dashboardBox, layoutMetrics);
+        nextSelfRect = bestPair?.selfRect ?? candidateSpeechRect(nextSelf, selfBox, dashboardBox, layoutMetrics);
+        nextSpeechBlockers = [...blockers, nextSelfRect];
+        setSpeechPlacement((current) => (current === nextSpeech ? current : nextSpeech));
+        setSelfNarrationPlacement((current) => (current === nextSelf ? current : nextSelf));
+        setTextPlacementDecision({
+          basis: TEXT_LAYOUT_BASIS,
+          blockerCount: blockers.length,
+          cartridgeFootprintAvoided,
+          interactiveBboxFootprintAvoided,
+          model: "client_dom_scene_and_cartridge_geometry_scorer_no_topic_templates",
+          particleText: false,
+          score: Math.round(bestPair?.score ?? 0),
+          sceneFootprintAvoided,
+          selfNarrationAnchor: nextSelf,
+          speechAnchor: nextSpeech,
+          textRendering: "dom_text_not_particles",
+        });
+      } else if (speech) {
         const speechMaxWidth = Math.min(540, window.innerWidth * (layoutMetrics.speechMaxVw / 100));
         const speechBox = estimatedTextRectFromDom(speech, stableLayoutMeasurementText(speechLine, typedSpeechLine), speechMaxWidth);
-        const speechBlockers = selfNarrationElement
-          ? [...blockers, rectFromDom(selfNarrationElement.getBoundingClientRect())]
-          : blockers;
-        nextSpeechBlockers = speechBlockers;
-        const next = candidates
+        const best = candidates
           .map((anchor) => ({
             anchor,
-            score: scoreSpeechAnchor(anchor, speechBox, dashboardBox, speechBlockers, preferred, layoutMetrics),
+            score: scoreSpeechAnchor(anchor, speechBox, dashboardBox, blockers, preferred, layoutMetrics),
           }))
-          .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferred;
+          .sort((left, right) => left.score - right.score)[0];
+        const next = best?.anchor ?? preferred;
         nextSpeechRect = candidateSpeechRect(next, speechBox, dashboardBox, layoutMetrics);
         setSpeechPlacement((current) => (current === next ? current : next));
-      }
-
-      if (selfNarrationElement) {
+        setTextPlacementDecision({
+          basis: TEXT_LAYOUT_BASIS,
+          blockerCount: blockers.length,
+          cartridgeFootprintAvoided,
+          interactiveBboxFootprintAvoided,
+          model: "client_dom_scene_and_cartridge_geometry_scorer_no_topic_templates",
+          particleText: false,
+          score: Math.round(best?.score ?? 0),
+          sceneFootprintAvoided,
+          selfNarrationAnchor: selfNarrationPlacement,
+          speechAnchor: next,
+          textRendering: "dom_text_not_particles",
+        });
+      } else if (selfNarrationElement) {
         const selfMaxWidth = Math.min(360, window.innerWidth * (layoutMetrics.selfNarrationMaxVw / 100));
         const selfBox = estimatedTextRectFromDom(selfNarrationElement, stableLayoutMeasurementText(selfNarration, typedSelfNarration), selfMaxWidth);
         const selfCandidates: TextAnchor[] = ["upper_right", "upper_left", "lower_left"];
-        const selfBlockers = nextSpeechRect ? [...blockers, nextSpeechRect] : blockers;
-        const nextSelf = selfCandidates
+        const bestSelf = selfCandidates
           .map((anchor) => ({
             anchor,
-            score: scoreSpeechAnchor(anchor, selfBox, dashboardBox, selfBlockers, preferredSelfNarration, layoutMetrics),
+            score: scoreSpeechAnchor(anchor, selfBox, dashboardBox, blockers, preferredSelfNarration, layoutMetrics),
           }))
-          .sort((left, right) => left.score - right.score)[0]?.anchor ?? preferredSelfNarration;
+          .sort((left, right) => left.score - right.score)[0];
+        const nextSelf = bestSelf?.anchor ?? preferredSelfNarration;
+        nextSelfRect = candidateSpeechRect(nextSelf, selfBox, dashboardBox, layoutMetrics);
         setSelfNarrationPlacement((current) => (current === nextSelf ? current : nextSelf));
+        setTextPlacementDecision({
+          basis: TEXT_LAYOUT_BASIS,
+          blockerCount: blockers.length,
+          cartridgeFootprintAvoided,
+          interactiveBboxFootprintAvoided,
+          model: "client_dom_scene_and_cartridge_geometry_scorer_no_topic_templates",
+          particleText: false,
+          score: Math.round(bestSelf?.score ?? 0),
+          sceneFootprintAvoided,
+          selfNarrationAnchor: nextSelf,
+          speechAnchor: speechPlacement,
+          textRendering: "dom_text_not_particles",
+        });
       }
       const orbBlockers = [
         composerRect ? rectFromDom(composerRect) : null,
         nextSpeechRect,
-        selfNarrationElement ? rectFromDom(selfNarrationElement.getBoundingClientRect()) : null,
+        nextSelfRect,
+        ...sceneBlockers,
+        ...interactiveObjectBlockers,
+        ...cartridgeBlockers,
       ].filter((rect): rect is RectLike => Boolean(rect));
       const telemetry = layoutTelemetryForScene(
         nextSpeechRect,
@@ -1385,7 +1817,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       window.clearInterval(timer);
       window.removeEventListener("resize", updatePlacement);
     };
-  }, [sceneChoreography, sceneSpeechBeatIndex, stageLayout, typedSelfNarration, typedSpeechLine]);
+  }, [sceneChoreography, sceneSpeechBeatIndex, splatraInteractiveSceneAnalysis, stageLayout, typedSelfNarration, typedSpeechLine]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1430,6 +1862,16 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   }, []);
 
   function stopAudio() {
+    const source = audioSourceRef.current;
+    if (source) {
+      try {
+        source.stop();
+      } catch {
+        // Source may already be stopped; ignore so UI state can still reset.
+      }
+      source.disconnect();
+    }
+    audioSourceRef.current = null;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -1437,6 +1879,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     }
     audioRef.current = null;
     setAudioPlaying(false);
+    setVoicePlaybackState((current) => ({ ...current, error: "none" }));
   }
 
   function startVoiceMode() {
@@ -1456,19 +1899,84 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
 
   function primeVoiceAudioElement() {
     try {
+      const AudioContextCtor = window.AudioContext
+        ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioContextCtor) {
+        const context = audioContextRef.current ?? new AudioContextCtor();
+        audioContextRef.current = context;
+        void withAudioTimeout(context.resume(), 700).then(() => {
+          if (context.state === "running") {
+            setVoicePlaybackState({ error: "none", unlocked: true });
+          }
+        }).catch((error) => {
+          setVoicePlaybackState({
+            error: error instanceof Error ? `context_${error.name || "failed"}` : "context_failed",
+            unlocked: false,
+          });
+        });
+      }
       const audio = audioRef.current ?? new Audio();
-      audio.muted = true;
+      audio.muted = false;
+      audio.loop = true;
       audio.preload = "auto";
+      audio.volume = 0;
       audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQAAAAAAA==";
       audioRef.current = audio;
       void audio.play().then(() => {
-        audio.pause();
         audio.currentTime = 0;
-        audio.muted = false;
-      }).catch(() => undefined);
+        setVoicePlaybackState({ error: "none", unlocked: true });
+      }).catch((error) => {
+        setVoicePlaybackState({
+          error: error instanceof Error ? `prime_${error.name || "failed"}` : "prime_failed",
+          unlocked: false,
+        });
+      });
     } catch {
       audioRef.current = null;
+      setVoicePlaybackState({ error: "prime_failed", unlocked: false });
     }
+  }
+
+  async function playVoiceOutputWithAudioContext(
+    voiceOutput: VoiceOutput,
+    onPlaybackStart?: () => void,
+  ): Promise<boolean> {
+    const AudioContextCtor = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor || !voiceOutput.audio_url) return false;
+    const context = audioContextRef.current ?? new AudioContextCtor();
+    audioContextRef.current = context;
+    if (context.state !== "running") {
+      await withAudioTimeout(context.resume(), 700);
+    }
+    if (context.state !== "running") return false;
+    const response = await fetch(voiceOutput.audio_url, { cache: "no-store" });
+    if (!response.ok) return false;
+    const bytes = await response.arrayBuffer();
+    const buffer = await context.decodeAudioData(bytes.slice(0));
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    gain.gain.value = 1;
+    source.buffer = buffer;
+    source.connect(gain);
+    gain.connect(context.destination);
+    audioSourceRef.current?.disconnect();
+    audioSourceRef.current = source;
+    source.onended = () => {
+      if (audioSourceRef.current === source) {
+        audioSourceRef.current = null;
+      }
+      setAudioPlaying(false);
+      setOrbState(voiceMode ? "listening" : "resting");
+      emitNeuralEmotionEvent("speaking_end", "web audio playback ended");
+    };
+    onPlaybackStart?.();
+    setAudioPlaying(true);
+    setOrbState("speaking");
+    setVoicePlaybackState({ error: "none", unlocked: true });
+    emitNeuralEmotionEvent("speaking_start", "web audio playback started");
+    source.start(0);
+    return true;
   }
 
   async function playVoiceOutput(voiceOutput: VoiceOutput | undefined, onPlaybackStart?: () => void): Promise<boolean> {
@@ -1478,12 +1986,21 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       return false;
     }
     try {
+      if (await playVoiceOutputWithAudioContext(voiceOutput, onPlaybackStart)) {
+        return true;
+      }
+    } catch {
+      audioSourceRef.current = null;
+    }
+    try {
       const audio = audioRef.current ?? new Audio();
       let playbackStarted = false;
-      audio.pause();
       audio.muted = false;
+      audio.loop = false;
+      audio.volume = 1;
       audio.src = voiceOutput.audio_url;
       audio.preload = "auto";
+      audio.crossOrigin = "anonymous";
       audio.onplaying = () => {
         if (!playbackStarted) {
           playbackStarted = true;
@@ -1502,16 +2019,23 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         setAudioPlaying(false);
         setVoiceNotice(cleanVoiceFailedLine(language));
         setOrbState(voiceMode ? "listening" : "resting");
+        setVoicePlaybackState({ error: "audio_element_error", unlocked: voicePlaybackState.unlocked });
         emitNeuralEmotionEvent("voice_unavailable", "audio playback error");
       };
       audioRef.current = audio;
       audio.load();
       await audio.play();
+      setVoicePlaybackState({ error: "none", unlocked: true });
       return true;
-    } catch {
+    } catch (error) {
       setAudioPlaying(false);
-      setVoiceNotice(cleanVoiceFailedLine(language));
+      const errorName = error instanceof Error ? error.name || "play_failed" : "play_failed";
+      setVoiceNotice(errorName === "NotAllowedError" ? "" : cleanVoiceFailedLine(language));
       setOrbState(voiceMode ? "listening" : "resting");
+      setVoicePlaybackState({
+        error: errorName,
+        unlocked: voicePlaybackState.unlocked,
+      });
       emitNeuralEmotionEvent("voice_unavailable", "audio playback unavailable");
       return false;
     }
@@ -1538,8 +2062,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setSpeechSyncDurationMs(0);
     setVoiceEmotionHint("none");
     setVoiceTtsTag("none");
-    setVoiceProsodyState({ applied: false, rate: 0, source: "none", volume: 0 });
+    setVoiceProsodyState({ applied: false, delivery: "none", gapMs: 0, rate: 0, source: "none", volume: 0 });
+    setVoicePlaybackState({ error: "none", unlocked: false });
     primeVoiceAudioElement();
+    let visualStateCommitted = false;
     try {
       const response = await fetch("/api/chat/atanor", {
         method: "POST",
@@ -1549,7 +2075,30 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           language,
           mode: "conversation",
           brain_mode: "conversation",
+          web_search: shouldRequestWebGrounding(trimmed),
           include_trace: false,
+          conversation_context: conversationContext.slice(-6),
+          layout_feedback: {
+            feedback_basis: "client_dom_scene_collision_telemetry",
+            collision_state: layoutTelemetry.collisionState,
+            blockers: layoutTelemetry.blockers,
+            overlap_px: layoutTelemetry.overlap,
+            offscreen_px: layoutTelemetry.offscreen,
+            orb_overlap_px: layoutTelemetry.orbOverlap,
+            orb_offscreen_px: layoutTelemetry.orbOffscreen,
+            interactive_scene_object_count: Number(splatraInteractiveSceneAnalysis?.object_count ?? splatraInteractiveSceneAnalysis?.objects?.length ?? 0) || 0,
+            interactive_scene_bbox_count: Array.isArray(splatraInteractiveSceneAnalysis?.objects)
+              ? splatraInteractiveSceneAnalysis.objects.filter((object) => Boolean(object?.bounding_box)).length
+              : 0,
+            interactive_scene_analysis_basis: String(
+              splatraInteractiveSceneAnalysis?.analyzer_contract?.object_detection_claim ?? "none",
+            ),
+            speech_anchor: speechPlacement,
+            self_narration_anchor: selfNarrationPlacement,
+            stage_layout: stageLayout,
+            text_rendering: "dom_text_not_particles",
+            particle_text: false,
+          },
         }),
       });
       if (!response.ok) throw new Error(`conversation surface failed: ${response.status}`);
@@ -1568,6 +2117,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setVoiceTtsTag(String(nextVoiceControls?.tts_tag || "none"));
       setVoiceProsodyState({
         applied: voiceOutput?.fallback_prosody_applied === true,
+        delivery: String(nextVoiceControls?.fallback_delivery ?? "none"),
+        gapMs: Number(nextVoiceControls?.fallback_sentence_gap_ms ?? 0) || 0,
         rate: Number(voiceOutput?.local_tts_rate ?? 0) || 0,
         source: String(voiceOutput?.fallback_prosody_source ?? "none"),
         volume: Number(voiceOutput?.local_tts_volume ?? 0) || 0,
@@ -1576,20 +2127,33 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       const nextSceneChoreography = requestedSceneChoreography(payload);
       const nextScenePolicy = requestedSplatraScenePolicy(payload);
       const nextSplatraCommandSequence = requestedSplatraCommandSequence(payload);
+      const nextSplatraInteractiveSceneAnalysis = requestedSplatraInteractiveSceneAnalysis(payload);
       const nextSplatraCartridgeQueue = requestedSplatraCartridgeQueue(payload);
-      const nextInitialSceneBeatIndex = sceneNarrationBeats(nextSceneChoreography)[0]?.beatIndex ?? -1;
+      const nextInitialSceneBeatIndex = sceneNarrationBeats(nextSceneChoreography, nextSpeechDurationMs)[0]?.beatIndex ?? -1;
       const startVisibleSpeech = (syncMode: "audio_onplaying" | "estimated_text_clock") => {
+        const firstNarration = sceneNarrationBeats(nextSceneChoreography, nextSpeechDurationMs)[0]?.text ?? firstSceneNarration(nextSceneChoreography);
+        const visibleLine = firstNarration || firstSpeechBeat(answer);
+        const firstBeat = sceneNarrationBeats(nextSceneChoreography, nextSpeechDurationMs)[0];
+        const visibleDuration = firstBeat?.duration ? firstBeat.duration * 1000 : nextSpeechDurationMs;
+        setSpeechTypingStepMs(typingStepForSpeech(visibleLine, visibleDuration));
         if (nextSceneChoreography) setSceneSpeechStartedAt(performance.now());
         setSpeechSyncMode(syncMode);
-        setSpeechLine(firstSceneNarration(nextSceneChoreography) || firstSpeechBeat(answer));
+        setSpeechLine(visibleLine);
       };
       const nextOrbLayoutFeedback = splatraOrbLayoutFeedback(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex);
       setStageLayout(nextStageLayout);
       setSceneChoreography(nextSceneChoreography);
       setSplatraCommandSequence(nextSplatraCommandSequence);
+      setSplatraInteractiveSceneAnalysis(nextSplatraInteractiveSceneAnalysis);
       setSplatraCartridgeQueue(nextSplatraCartridgeQueue);
       setScenePolicy(nextScenePolicy);
       setSceneSpeechStartedAt(0);
+      const nextConversationTurns: ConversationContextTurn[] = [
+        { role: "user", text: trimmed },
+        { role: "assistant", text: answer },
+      ];
+      setConversationContext((previous) => [...previous, ...nextConversationTurns].slice(-8));
+      visualStateCommitted = true;
       setOrbState("speaking");
       void fetch("/api/inner-voice/generate-frame", {
         method: "POST",
@@ -1642,19 +2206,22 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         window.setTimeout(() => {
           setOrbState("listening");
           emitNeuralEmotionEvent("speaking_end", "text fallback speech ended");
-        }, Math.min(4200, Math.max(1800, nextSpeechDurationMs)));
+        }, clampNumber(nextSpeechDurationMs + 360, 1800, 48000));
       }
     } catch {
       setOrbState("blocked");
-      setStageLayout("conversation");
-      setSceneChoreography(null);
-      setSplatraCommandSequence(null);
-      setSplatraCartridgeQueue(null);
-      setScenePolicy(defaultSplatraScenePolicy());
-      setSceneSpeechStartedAt(0);
-      setSceneSpeechBeatIndex(-1);
+      if (!visualStateCommitted) {
+        setStageLayout("conversation");
+        setSceneChoreography(null);
+        setSplatraCommandSequence(null);
+        setSplatraInteractiveSceneAnalysis(null);
+        setSplatraCartridgeQueue(null);
+        setScenePolicy(defaultSplatraScenePolicy());
+        setSceneSpeechStartedAt(0);
+        setSceneSpeechBeatIndex(-1);
+      }
       setSpeechSyncMode("idle");
-      setSpeechLine(cleanSafeStatusLine(language));
+      setSpeechLine(visualStateCommitted ? speechLine || cleanSafeStatusLine(language) : cleanSafeStatusLine(language));
       setVoiceNotice(cleanVoiceFailedLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);
     }
@@ -1671,8 +2238,26 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const splatraCartridgeQueueStatus = String(splatraCartridgeQueue?.status ?? "none");
   const splatraCartridgeQueueMode = String(splatraCartridgeQueue?.execution_mode ?? "none");
   const splatraCartridgeQueueJobs = Number(splatraCartridgeQueue?.job_count ?? 0) || 0;
+  const splatraSidecarStatus = String(splatraCartridgeQueue?.sidecar_dispatch?.status ?? splatraCartridgeQueue?.sidecar_status ?? "none");
+  const splatraSidecarConfigured = splatraCartridgeQueue?.sidecar_dispatch?.configured === true || splatraCartridgeQueue?.sidecar_configured === true;
+  const splatraSidecarJobs = Number(splatraCartridgeQueue?.sidecar_dispatch?.job_count ?? 0) || 0;
+  const splatraSidecarRawCartridgeFetched = splatraCartridgeQueue?.sidecar_dispatch?.raw_cartridge_fetched === true;
+  const splatraInteractiveObjectCount = Number(splatraInteractiveSceneAnalysis?.object_count ?? splatraInteractiveSceneAnalysis?.objects?.length ?? 0) || 0;
+  const splatraInteractiveBboxCount = Array.isArray(splatraInteractiveSceneAnalysis?.objects)
+    ? splatraInteractiveSceneAnalysis.objects.filter((object) => Boolean(object?.bounding_box)).length
+    : 0;
+  const splatraInteractiveAnalysisBasis = String(splatraInteractiveSceneAnalysis?.analyzer_contract?.object_detection_claim ?? "none");
+  const splatraInteractiveRawInference = splatraInteractiveSceneAnalysis?.analyzer_contract?.raw_splat_inference === true
+    || splatraInteractiveSceneAnalysis?.safety_flags?.raw_buffer_in_agent_context === true;
   const stagePressure = Number(sceneChoreography?.dashboard_layout?.stage_pressure ?? 0) || 0;
   const orbYieldStrength = Number(sceneChoreography?.dashboard_layout?.agent_layout_decision?.orb_yield_strength ?? stagePressure) || 0;
+  const sceneSelfState = sceneChoreography?.scene_self_state
+    ?? sceneChoreography?.dashboard_layout?.agent_layout_decision?.scene_self_state
+    ?? {};
+  const sceneSelfParticlePressure = finiteNumber(sceneSelfState.particle_field_pressure, 0);
+  const sceneSelfBodyPressure = finiteNumber(sceneSelfState.self_body_pressure, 0);
+  const sceneSelfTextPressure = finiteNumber(sceneSelfState.text_clearance_pressure, 0);
+  const sceneSelfComposerPressure = finiteNumber(sceneSelfState.composer_clearance_pressure, 0);
   const explicitAgentSceneDecisionCount = Array.isArray(sceneChoreography?.agent_scene_decisions)
     ? sceneChoreography?.agent_scene_decisions?.length ?? 0
     : 0;
@@ -1685,6 +2270,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const legacyBeatCount = Array.isArray(sceneChoreography?.beats) ? sceneChoreography?.beats?.length ?? 0 : 0;
   const agentSceneDecisionCount = explicitAgentSceneDecisionCount || (stageLayout === "scene_focus" ? legacyLayoutDecisionCount : 0);
   const particleOperationIntentCount = explicitParticleOperationIntentCount || (stageLayout === "scene_focus" ? legacyBeatCount : 0);
+  const avoidanceFootprint = currentLayoutState.avoidanceSceneFootprint && typeof currentLayoutState.avoidanceSceneFootprint === "object"
+    ? currentLayoutState.avoidanceSceneFootprint as Record<string, unknown>
+    : null;
+  const avoidanceFootprintLabel = avoidanceFootprint
+    ? `${finiteNumber(avoidanceFootprint.min_x, 0).toFixed(3)},${finiteNumber(avoidanceFootprint.max_x, 0).toFixed(3)},${finiteNumber(avoidanceFootprint.min_y, 0).toFixed(3)},${finiteNumber(avoidanceFootprint.max_y, 0).toFixed(3)}`
+    : "none";
   const firstParticleOperationIntent = String(
     sceneChoreography?.particle_operation_intents?.[0]?.operation
       ?? particleOperationForSceneBeat(sceneChoreography?.beats?.[0])
@@ -1702,9 +2293,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const orbMovementFeedback = effectiveOrbMovement === currentLayoutState.orbMovement
     ? "server_scene_geometry"
     : pressureAdjustedOrbMovement !== currentLayoutState.orbMovement ? "client_stage_pressure_feedback" : "client_dom_collision_feedback";
+  const runtimeLayoutAdjustment = stageLayout === "scene_focus" && layoutCollisionPressureFromTelemetry(layoutTelemetry) > 0.02
+    ? "client_geometry_css_var_adjustment_no_particle_text"
+    : "none";
   const dashboardParticleBudget = stageLayout === "scene_focus"
-    ? requestedLayoutIntent(sceneChoreography) === "wide_particle_stage" ? 2600 : 1900
-    : 1280;
+    ? requestedLayoutIntent(sceneChoreography) === "wide_particle_stage" ? 24000 : 9800
+    : 3600;
 
   return (
     <section
@@ -1720,8 +2314,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-voice-tts-tag={voiceTtsTag}
       data-voice-prosody-applied={voiceProsodyState.applied ? "true" : "false"}
       data-voice-prosody-source={voiceProsodyState.source}
+      data-voice-prosody-delivery={voiceProsodyState.delivery}
+      data-voice-prosody-gap-ms={voiceProsodyState.gapMs}
       data-voice-local-tts-rate={voiceProsodyState.rate}
       data-voice-local-tts-volume={voiceProsodyState.volume}
+      data-voice-playback-error={voicePlaybackState.error}
+      data-voice-playback-unlocked={voicePlaybackState.unlocked ? "true" : "false"}
       data-stage-layout={stageLayout}
       data-scene-speech-beat={sceneSpeechBeatIndex >= 0 ? String(sceneSpeechBeatIndex) : "none"}
       data-speech-placement={speechPlacement}
@@ -1738,8 +2336,18 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-pressure-adjusted-orb-movement={pressureAdjustedOrbMovement}
       data-layout-orb-identity={currentLayoutState.orbIdentity}
       data-layout-orb-feedback={orbMovementFeedback}
+      data-runtime-layout-adjustment={runtimeLayoutAdjustment}
       data-layout-stage-pressure={stagePressure.toFixed(3)}
       data-layout-orb-yield-strength={orbYieldStrength.toFixed(3)}
+      data-scene-self-owner={sceneSelfState.state_owner ?? "none"}
+      data-scene-self-basis={sceneSelfState.state_basis ?? "none"}
+      data-scene-self-body={sceneSelfState.self_body_identity ?? "none"}
+      data-scene-self-particle-pressure={sceneSelfParticlePressure.toFixed(3)}
+      data-scene-self-body-pressure={sceneSelfBodyPressure.toFixed(3)}
+      data-scene-self-text-pressure={sceneSelfTextPressure.toFixed(3)}
+      data-scene-self-composer-pressure={sceneSelfComposerPressure.toFixed(3)}
+      data-scene-self-topic-templates={sceneSelfState.topic_scene_templates === true ? "true" : "false"}
+      data-scene-self-renderer-inference={sceneSelfState.renderer_may_infer_topic === true ? "true" : "false"}
       data-layout-stage-region={currentLayoutState.stageRegion}
       data-layout-autonomy={currentLayoutState.layoutAutonomy}
       data-particle-stage-strategy={currentLayoutState.particleStageStrategy}
@@ -1758,6 +2366,26 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}
       data-layout-text-anchor-points={currentLayoutState.textAnchorPoints}
+      data-layout-active-pressure={currentLayoutState.activeLayoutPressure.toFixed(3)}
+      data-layout-active-bbox-basis={currentLayoutState.activeBboxBasis}
+      data-layout-active-bbox={`${currentLayoutState.activeBboxMinX.toFixed(3)},${currentLayoutState.activeBboxMaxX.toFixed(3)},${currentLayoutState.activeBboxMinY.toFixed(3)},${currentLayoutState.activeBboxMaxY.toFixed(3)}`}
+      data-layout-active-regions={currentLayoutState.activeRegions}
+      data-layout-orb-scale-hint={currentLayoutState.orbScaleHint}
+      data-layout-text-safe-region={currentLayoutState.textSafeRegion}
+      data-layout-avoidance-map-basis={currentLayoutState.avoidanceMapBasis}
+      data-layout-avoidance-text-safe-lanes={currentLayoutState.avoidanceTextSafeLanes}
+      data-layout-avoidance-scene-footprint={avoidanceFootprintLabel}
+      data-layout-text-decision-model={textPlacementDecision.model}
+      data-layout-text-decision-basis={textPlacementDecision.basis}
+      data-layout-text-decision-score={textPlacementDecision.score}
+      data-layout-text-decision-blockers={textPlacementDecision.blockerCount}
+      data-layout-text-decision-speech-anchor={textPlacementDecision.speechAnchor}
+      data-layout-text-decision-self-anchor={textPlacementDecision.selfNarrationAnchor}
+      data-layout-text-decision-scene-footprint-avoided={textPlacementDecision.sceneFootprintAvoided ? "true" : "false"}
+      data-layout-text-decision-interactive-bbox-avoided={textPlacementDecision.interactiveBboxFootprintAvoided ? "true" : "false"}
+      data-layout-text-decision-cartridge-footprint-avoided={textPlacementDecision.cartridgeFootprintAvoided ? "true" : "false"}
+      data-layout-text-decision-rendering={textPlacementDecision.textRendering}
+      data-layout-text-decision-particle-text={textPlacementDecision.particleText ? "true" : "false"}
       data-layout-collision-state={layoutTelemetry.collisionState}
       data-layout-measured-blockers={layoutTelemetry.blockers}
       data-layout-overlap-px={layoutTelemetry.overlap}
@@ -1780,6 +2408,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-splatra-command-actions={splatraCommandActionCount}
       data-splatra-candidate-cartridges={splatraCandidateCartridgeCount}
       data-splatra-candidate-cartridge-format={splatraCandidateCartridgeFormat}
+      data-splatra-interactive-scene={splatraInteractiveObjectCount > 0 ? "available" : "none"}
+      data-splatra-interactive-objects={splatraInteractiveObjectCount}
+      data-splatra-interactive-bboxes={splatraInteractiveBboxCount}
+      data-splatra-interactive-analysis-basis={splatraInteractiveAnalysisBasis}
+      data-splatra-interactive-raw-inference={splatraInteractiveRawInference ? "true" : "false"}
       data-splatra-cartridge-queue={splatraCartridgeQueueStatus}
       data-splatra-cartridge-jobs={splatraCartridgeQueueJobs}
       data-splatra-cartridge-execution-mode={splatraCartridgeQueueMode}
@@ -1787,12 +2420,16 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-splatra-cartridge-external-called={splatraCartridgeQueue?.external_splatra_called === true ? "true" : "false"}
       data-splatra-cartridge-raw-buffer={splatraCartridgeQueue?.raw_buffer_in_agent_context === true ? "true" : "false"}
       data-splatra-cartridge-mutation={splatraCartridgeQueue?.mutation_performed === true ? "true" : "false"}
+      data-splatra-sidecar-status={splatraSidecarStatus}
+      data-splatra-sidecar-configured={splatraSidecarConfigured ? "true" : "false"}
+      data-splatra-sidecar-jobs={splatraSidecarJobs}
+      data-splatra-sidecar-raw-cartridge-fetched={splatraSidecarRawCartridgeFetched ? "true" : "false"}
       data-splatra-command-raw-buffers={splatraCommandSequence?.splatra_contract?.raw_buffers_in_agent_context === true ? "true" : "false"}
       data-splatra-command-topic-templates={splatraCommandSequence?.splatra_contract?.topic_scene_templates === true ? "true" : "false"}
       data-splatra-command-renderer-inference={splatraCommandSequence?.splatra_contract?.renderer_may_infer_topic === true ? "true" : "false"}
       data-text-layout-basis={TEXT_LAYOUT_BASIS}
       data-text-layout-reference={TEXT_LAYOUT_REFERENCE}
-      style={dashboardLayoutVars(sceneChoreography, stageLayout)}
+      style={dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry)}
     >
       <SplatraImaginationField
         state={orbState}
@@ -1803,6 +2440,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         sceneFocus={stageLayout === "scene_focus"}
         scenePlan={sceneChoreography}
         splatraCommandSequence={splatraCommandSequence}
+        splatraCartridgeQueue={splatraCartridgeQueue}
         activeSpeechBeatIndex={sceneSpeechBeatIndex}
         className="atanor-dashboard-imagination-field"
       />

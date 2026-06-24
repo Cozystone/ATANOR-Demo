@@ -44,11 +44,14 @@ from packages.splatra_imagination import (
     ARCHETYPES,
     ImaginationGenerator,
     ImaginationSeed,
+    analyze_scene_choreography,
     build_candidate_cartridge_queue,
     compile_scene_choreography,
     compile_scene_choreography_commands,
     compile_splatra_command,
     default_safety_flags,
+    dispatch_candidate_queue_to_sidecar,
+    SplatraSidecarDispatchResult,
     run_imagination_proof,
 )
 
@@ -214,6 +217,8 @@ class SplatraSceneChoreographyApiRequest(BaseModel):
     orb_anchor: str = "center"
     primary_surface: str = "conversation"
     beats: list[dict[str, Any]] = Field(default_factory=list)
+    dispatch_sidecar: bool = False
+    sidecar_poll_ticks: int = 2
 
 
 class WebExplorerPageApiInput(BaseModel):
@@ -914,7 +919,13 @@ def splatra_imagination_command(request: SplatraImaginationCommandApiRequest) ->
 def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> dict[str, Any]:
     plan = compile_scene_choreography(request.model_dump())
     command_sequence = compile_scene_choreography_commands(plan)
+    interactive_scene_analysis = analyze_scene_choreography(plan)
     cartridge_queue = build_candidate_cartridge_queue(command_sequence)
+    sidecar_dispatch = (
+        dispatch_candidate_queue_to_sidecar(cartridge_queue, poll_ticks=request.sidecar_poll_ticks)
+        if request.dispatch_sidecar
+        else SplatraSidecarDispatchResult(status="dispatch_not_requested", configured=False, sidecar_url=None, jobs=[])
+    )
     emit_runtime_event(
         source="splatra_imagination",
         event_type="splatra_generation_success",
@@ -932,7 +943,9 @@ def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> d
         "topic_scene_templates": False,
         "scene_choreography": plan.to_dict(),
         "splatra_command_sequence": command_sequence.to_dict(),
+        "splatra_interactive_scene_analysis": interactive_scene_analysis.to_dict(),
         "splatra_cartridge_queue": cartridge_queue.to_dict(),
+        "splatra_sidecar_dispatch": sidecar_dispatch.to_dict(),
     }
 
 
@@ -940,20 +953,33 @@ def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> d
 def splatra_scene_cartridge_queue(request: SplatraSceneChoreographyApiRequest) -> dict[str, Any]:
     plan = compile_scene_choreography(request.model_dump())
     command_sequence = compile_scene_choreography_commands(plan)
+    interactive_scene_analysis = analyze_scene_choreography(plan)
     cartridge_queue = build_candidate_cartridge_queue(command_sequence)
+    sidecar_dispatch = (
+        dispatch_candidate_queue_to_sidecar(cartridge_queue, poll_ticks=request.sidecar_poll_ticks)
+        if request.dispatch_sidecar
+        else SplatraSidecarDispatchResult(status="dispatch_not_requested", configured=False, sidecar_url=None, jobs=[])
+    )
+    queue_payload = cartridge_queue.to_dict()
+    queue_payload["sidecar_dispatch"] = sidecar_dispatch.to_dict()
+    queue_payload["sidecar_status"] = sidecar_dispatch.status
+    queue_payload["sidecar_configured"] = sidecar_dispatch.configured
+    queue_payload["external_splatra_called"] = sidecar_dispatch.external_splatra_called
     return {
         **SAFETY_FLAGS,
         **default_safety_flags(),
         "allowed": True,
         "agent_can_use": True,
         "splatra_cartridge_queue_adapter": True,
-        "external_splatra_called": False,
+        "external_splatra_called": sidecar_dispatch.external_splatra_called,
         "raw_buffer_in_agent_context": False,
         "mutation_performed": False,
         "topic_scene_templates": False,
         "scene_choreography": plan.to_dict(),
         "splatra_command_sequence": command_sequence.to_dict(),
-        "splatra_cartridge_queue": cartridge_queue.to_dict(),
+        "splatra_interactive_scene_analysis": interactive_scene_analysis.to_dict(),
+        "splatra_cartridge_queue": queue_payload,
+        "splatra_sidecar_dispatch": sidecar_dispatch.to_dict(),
     }
 
 

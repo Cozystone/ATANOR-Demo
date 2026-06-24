@@ -34,7 +34,7 @@ def test_review_pressure_changes_monologue_intent() -> None:
     )
 
     assert "검토" in frame.goal
-    assert "탐색을 줄이고" in frame.chosen_action
+    assert "리뷰 대기열" in frame.chosen_action
 
 
 def test_inner_voice_v1_is_construction_conditioned_by_state_not_prompt_only() -> None:
@@ -67,6 +67,7 @@ def test_korean_greeting_avoids_old_log_like_phrase() -> None:
     assert "chain-of-thought" not in frame.monologue_text.lower()
     assert frame.act_scores
     assert frame.construction_stance == "warm_minimal"
+    assert "습니다" in frame.monologue_text or "겠습니다" in frame.monologue_text
 
 
 def test_non_greeting_korean_question_does_not_tie_break_to_greeting() -> None:
@@ -75,4 +76,4 @@ def test_non_greeting_korean_question_does_not_tie_break_to_greeting() -> None:
     )
 
     assert frame.act != "greeting_response_planning"
-    assert "인사는" not in frame.monologue_text
+    assert "인사를" not in frame.monologue_text

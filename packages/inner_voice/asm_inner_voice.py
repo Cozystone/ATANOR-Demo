@@ -108,23 +108,23 @@ def select_inner_voice_construction(input_data: Any) -> tuple[InnerVoiceConstruc
 
 def _goal_for(construction: InnerVoiceConstruction, has_user_input: bool) -> str:
     goals = {
-        "greeting_response_planning": "인사를 짧게 받아들이고 대화 리듬을 연다.",
-        "goal_selection": "사용자의 말을 현재 상태와 맞춰 다음 응답 목표를 고른다.",
-        "action_selection": "가능한 행동 중 안전한 다음 한 걸음을 고른다.",
-        "blocked_action_reflection": "막힌 행동을 승인 가능한 경로로 돌린다.",
-        "uncertainty_check": "확신이 낮은 부분을 줄이고 확인 가능한 말만 남긴다.",
-        "review_pressure": "검토 대기와 리뷰 압력을 먼저 정리해 자동 실행으로 넘기지 않는다.",
-        "permission_caution": "권한 경계를 읽고 쓰기나 승격을 멈춰 둔다.",
-        "exploration_drive": "탐색 충동을 작은 후보로 접어 검토 가능하게 둔다.",
-        "fatigue_rest": "활동 강도를 낮추고 다음 주기를 남긴다.",
-        "splatra_imagination": "구슬과 입자의 움직임을 상태 표현으로 맞춘다.",
-        "host_executor_caution": "호스트 실행 경계를 확인하고 검토 전 실행하지 않는다.",
-        "voice_fallback": "음성 대신 텍스트와 구슬 반응으로 대화를 이어간다.",
-        "summary_brief": "현재 상태를 짧게 압축해 보여준다.",
+        "greeting_response_planning": "인사를 짧고 따뜻하게 받아들이고 대화를 이어갈 준비를 합니다.",
+        "goal_selection": "사용자의 말을 현재 상태와 맞춰 다음 응답 목표를 고릅니다.",
+        "action_selection": "가능한 행동 중 안전하고 작은 다음 단계를 고릅니다.",
+        "blocked_action_reflection": "막힌 행동을 승인 가능한 경로로 돌릴 방법을 찾습니다.",
+        "uncertainty_check": "확실하지 않은 부분을 줄이고 확인 가능한 말만 남깁니다.",
+        "review_pressure": "검토 대기열을 먼저 정리하고 자동 실행으로 넘기지 않습니다.",
+        "permission_caution": "권한 경계를 읽고 쓰기나 변경은 멈춘 채 설명합니다.",
+        "exploration_drive": "탐색 충동을 작은 후보로 낮추고 검토 가능하게 둡니다.",
+        "fatigue_rest": "활동 강도를 낮추고 다음 주기를 준비합니다.",
+        "splatra_imagination": "구슬과 입자의 움직임을 현재 말의 흐름에 맞춥니다.",
+        "host_executor_caution": "호스트 실행 경계를 확인하고 검토 없는 실행을 피합니다.",
+        "voice_fallback": "음성 출력이 비어 있으면 텍스트와 구슬 반응으로 이어갑니다.",
+        "summary_brief": "현재 상태를 짧게 압축해 보여줄 준비를 합니다.",
     }
     if not has_user_input and construction.act == "goal_selection":
-        return "현재 상태를 조용히 살피고 먼저 말하지 않는다."
-    return goals.get(construction.act, "다음 응답의 경계를 정한다.")
+        return "현재 상태를 조용히 살피고 먼저 말하지 않습니다."
+    return goals.get(construction.act, "다음 응답의 경계를 정합니다.")
 
 
 def _surface_for_act(construction: InnerVoiceConstruction, input_data: Any, label: str) -> str:
@@ -135,43 +135,43 @@ def _surface_for_act(construction: InnerVoiceConstruction, input_data: Any, labe
     splatra_state = dict(getattr(input_data, "splatra_state", {}) or {})
 
     if construction.act == "greeting_response_planning":
-        return "인사는 가볍게 받으면 된다. 지금은 곁에 있다는 느낌만 짧게 건네자."
+        return "인사를 가볍게 받아들이고 있습니다. 지금은 짧게 응답하면서 대화를 이어가겠습니다."
     if construction.act == "review_pressure":
-        return f"리뷰 대기가 {review_pressure:.2f}까지 올라와 있다. 새 탐색보다 먼저 검토 대기열을 줄이는 쪽이 안전하다."
+        return f"리뷰 대기 압력이 {review_pressure:.2f}까지 올라와 있습니다. 탐색보다 검토 대기열을 먼저 줄이는 편이 안전합니다."
     if construction.act == "permission_caution":
-        return f"{permission_tier} 경계 안에 있다. 쓰기나 승격은 멈춰 두고 확인 가능한 말만 꺼낸다."
+        return f"{permission_tier} 경계 안에서 머물고 있습니다. 쓰기나 변경은 멈추고 확인 가능한 말만 드리겠습니다."
     if construction.act == "host_executor_caution":
-        return "호스트에 닿는 행동은 아직 검토가 먼저다. 실행보다 허가와 기록을 앞에 둔다."
+        return "호스트에 닿는 행동은 아직 검토가 먼저입니다. 실행보다 근거와 기록을 앞에 두겠습니다."
     if construction.act == "voice_fallback":
-        return "음성 출력이 비어 있으면 텍스트와 구슬 반응으로 이어가면 된다. 말소리는 준비되면 붙인다."
+        return "음성 출력이 아직 비어 있습니다. 텍스트와 구슬 반응을 맞추며 대화를 이어가겠습니다."
     if construction.act == "splatra_imagination":
         scene_focus = splatra_state.get("stage_layout") == "scene_focus"
         motion_count = int(float(splatra_state.get("motion_count") or 0))
         if scene_focus and motion_count > 0:
-            return "중앙 장면을 비워 두고 입자 흐름을 따라 말하면 된다. 말은 짧게 끊고 움직임과 맞춘다."
+            return "중앙 무대를 비우고 입자의 흐름을 말의 순서에 맞추고 있습니다."
         if scene_focus:
-            return "중앙 장면을 비워 두고 입자들이 모이는 리듬에 맞춰 설명하면 된다."
-        return "구슬의 움직임이 지금 상태를 대신 말해 준다. 입자는 크게 흔들지 말고 호흡처럼 모은다."
+            return "중앙 무대를 비우고 입자들이 설명의 형태를 잡도록 정렬하고 있습니다."
+        return "구슬의 움직임을 지금 상태에 맞추고 있습니다. 입자를 크게 흔들기보다 호흡처럼 모으겠습니다."
     if construction.act == "fatigue_rest":
-        return "활동을 낮출 신호가 있다. 더 밀기보다 다음 주기에 이어갈 것을 남긴다."
+        return "활동을 조금 낮춰야 할 신호가 있습니다. 급히 밀어붙이지 않고 다음 주기를 준비하겠습니다."
     if construction.act == "uncertainty_check":
-        return "확실하지 않은 부분은 작게 말해야 한다. 근거가 있는 것과 모르는 것을 분리한다."
+        return "확실하지 않은 부분은 작게 말하겠습니다. 근거가 있는 것과 모르는 것을 분리하겠습니다."
     if construction.act == "exploration_drive":
-        return "더 보고 싶은 방향이 있다. 바로 바꾸지 말고 검토 가능한 후보로 접어 둔다."
+        return "더 보고 싶은 방향이 있습니다. 바로 바꾸지 않고 검토 가능한 후보로 작게 남기겠습니다."
     if construction.act == "blocked_action_reflection":
         reason = str(latest_action_result.get("stopped_reason") or "권한 경계")
-        return f"{reason} 때문에 바로 넘길 수 없다. 대신 보류 사유를 남기고 안전한 경로를 고른다."
+        return f"{reason} 때문에 바로 넘기지 않겠습니다. 보류 사유를 남기고 안전한 경로를 고르겠습니다."
     if construction.act == "summary_brief":
-        return "지금 필요한 것은 긴 설명보다 짧은 요약이다. 상태와 다음 한 걸음만 남긴다."
+        return "지금 필요한 것은 긴 설명보다 짧은 요약입니다. 상태와 다음 한 걸음만 보여드리겠습니다."
     if latest_user_input:
-        return f"{label} 상태에서 사용자의 말을 받았다. 답은 넓히기보다 지금 필요한 지점으로 좁힌다."
-    return f"{label} 상태를 유지한다. 먼저 움직이지 않고 다음 신호를 기다린다."
+        return f"{label} 상태에서 사용자의 말을 받았습니다. 질문의 초점을 먼저 붙잡고 필요한 지점부터 답하겠습니다."
+    return f"{label} 상태를 유지하고 있습니다. 먼저 움직이지 않고 다음 신호를 기다리겠습니다."
 
 
 def _sanitize_surface(text: str, forbidden_phrases: tuple[str, ...]) -> str:
     surface = re.sub(r"\s+", " ", str(text or "").strip())
     for phrase in (*FORBIDDEN_INNER_VOICE_PHRASES, *forbidden_phrases):
-        surface = surface.replace(phrase, "명시적 자기-서술 채널")
+        surface = surface.replace(phrase, "표시 가능한 자기-서술 채널")
     surface = surface.replace("chain-of-thought", "self-narration")
     surface = surface.replace("Chain-of-thought", "self-narration")
     if surface and not surface.endswith((".", "?", "!")):
@@ -188,7 +188,7 @@ def _surface_score(text: str, construction: InnerVoiceConstruction) -> float:
         score += 0.08
     if not any(phrase in text for phrase in FORBIDDEN_INNER_VOICE_PHRASES):
         score += 0.08
-    if "했습니다" in text or "내부적으로" in text:
+    if "했습니다" in text and "먼저 의도와 경계" in text:
         score -= 0.1
     return round(max(0.0, min(1.0, score)), 4)
 
@@ -214,15 +214,15 @@ def generate_construction_conditioned_surface(input_data: Any) -> InnerVoiceSurf
     if construction.act in {"review_pressure", "permission_caution", "host_executor_caution"}:
         candidate_actions.append("자동 실행 보류")
 
-    chosen_action = "공개 응답은 짧게 만들고, 쓰기나 승격은 보류한다."
+    chosen_action = "공개 응답은 짧게 만들고, 쓰기나 변경은 보류하겠습니다."
     if construction.act == "review_pressure":
-        chosen_action = "탐색을 줄이고 리뷰 대기열을 먼저 보여준다."
+        chosen_action = "탐색을 줄이고 리뷰 대기열을 먼저 보여드리겠습니다."
     elif construction.act == "greeting_response_planning":
-        chosen_action = "인사에 짧은 응답을 자연스럽게 건넨다."
+        chosen_action = "인사에 짧게 응답하고 자연스럽게 이어가겠습니다."
     elif construction.act == "voice_fallback":
-        chosen_action = "텍스트와 구슬 반응으로 대화를 이어간다."
+        chosen_action = "텍스트와 구슬 반응으로 대화를 이어가겠습니다."
     elif construction.act == "fatigue_rest" or agent_loop.get("should_rest"):
-        chosen_action = "활동 강도를 낮추고 다음 주기로 넘긴다."
+        chosen_action = "활동 강도를 낮추고 다음 주기로 넘기겠습니다."
 
     tension = "표현하고 싶은 것과 안전 경계 사이의 균형"
     if construction.act in {"permission_caution", "host_executor_caution", "blocked_action_reflection"}:
@@ -238,13 +238,13 @@ def generate_construction_conditioned_surface(input_data: Any) -> InnerVoiceSurf
     elif construction.act in {"greeting_response_planning", "splatra_imagination"}:
         uncertainty = "낮음"
 
-    next_intent = "사용자에게 필요한 만큼만 말하고, 변경이 필요한 일은 승인 대기로 남긴다."
+    next_intent = "사용자에게 필요한 만큼만 말하고, 변경이 필요하면 승인 대기로 남기겠습니다."
     if construction.act == "greeting_response_planning":
-        next_intent = "짧게 응답하고 대화를 이어갈 여지를 둔다."
+        next_intent = "짧게 응답하고 대화를 이어갈 자세를 잡겠습니다."
     elif construction.act == "review_pressure":
-        next_intent = "검토할 항목을 먼저 보여줄 준비를 한다."
+        next_intent = "검토할 항목을 먼저 보여드릴 준비를 하겠습니다."
     elif construction.act == "splatra_imagination":
-        next_intent = "구슬의 움직임과 말의 호흡을 맞춘다."
+        next_intent = "구슬의 움직임과 말의 호흡을 맞추겠습니다."
 
     monologue = _sanitize_surface(_surface_for_act(construction, input_data, label), construction.forbidden_phrases)
     return InnerVoiceSurface(

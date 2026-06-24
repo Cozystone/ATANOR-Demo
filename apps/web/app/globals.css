@@ -8565,6 +8565,15 @@ p {
   top: calc(100% - clamp(244px, 30vh, 340px));
 }
 
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-scale-hint="compact_self_body_yield"] .hologram-voice-orb {
+  filter: saturate(0.98) brightness(0.96);
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-scale-hint="micro_self_body_yield"] .hologram-voice-orb {
+  filter: saturate(0.94) brightness(0.92);
+  opacity: 0.92;
+}
+
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-dashboard-imagination-field {
   opacity: var(--atanor-scene-field-opacity, 0.9);
 }
@@ -8658,6 +8667,26 @@ p {
   transform: translateX(-50%);
 }
 
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-collision-state="dom_text_overlap_risk"] .atanor-hologram-speech,
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-collision-state="dom_text_clipped"] .atanor-hologram-speech {
+  bottom: auto;
+  left: clamp(28px, 5.5vw, 86px);
+  max-width: min(390px, 31vw);
+  right: auto;
+  text-align: left;
+  top: clamp(92px, 13vh, 156px);
+  transform: none;
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-collision-state="dom_text_overlap_risk"] .atanor-hologram-self-narration,
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-collision-state="dom_text_clipped"] .atanor-hologram-self-narration {
+  bottom: auto;
+  left: auto;
+  max-width: min(300px, 23vw);
+  right: clamp(36px, 6vw, 96px);
+  top: clamp(88px, 12vh, 148px);
+}
+
 .hologram-voice-orb:hover {
   transform: translate(-50%, -52%) scale(1.012);
 }
@@ -8742,6 +8771,15 @@ p {
   width: 100%;
 }
 
+.splatra-imagination-field[data-splatra-cartridge-draggable="true"] .splatra-imagination-canvas-button {
+  cursor: grab;
+  touch-action: none;
+}
+
+.splatra-imagination-field[data-splatra-cartridge-dragging="true"] .splatra-imagination-canvas-button {
+  cursor: grabbing;
+}
+
 .splatra-imagination-canvas-button::before {
   background:
     radial-gradient(circle at 46% 42%, rgba(255, 255, 255, 0.12), transparent 10%),
@@ -8769,8 +8807,18 @@ p {
 }
 
 .splatra-imagination-canvas-button canvas {
+  inset: 0;
   height: 100%;
+  position: absolute;
   width: 100%;
+}
+
+.splatra-imagination-canvas-button canvas[data-render-layer="canvas-2d"] {
+  z-index: 0;
+}
+
+.splatra-imagination-canvas-button canvas[data-render-layer="webgl-cartridge"] {
+  z-index: 1;
 }
 
 .splatra-imagination-product-label {

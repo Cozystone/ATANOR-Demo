@@ -7,7 +7,14 @@ from app.routers import dual_brain
 from packages.voice_loop.local_tts import LocalTTSResult, local_voice_audio_dir
 
 
-def _fake_voice_synthesis(text: str, *, language: str = "ko", rate: int = 0, volume: int = 100) -> LocalTTSResult:
+def _fake_voice_synthesis(
+    text: str,
+    *,
+    language: str = "ko",
+    rate: int = 0,
+    volume: int = 100,
+    sentence_gap_ms: int = 220,
+) -> LocalTTSResult:
     root = local_voice_audio_dir()
     root.mkdir(parents=True, exist_ok=True)
     path = root / "atanor_voice_11111111111111111111111111111111.wav"
@@ -63,11 +70,14 @@ def test_dashboard_conversation_voice_output_is_audio_truthful(tmp_path, monkeyp
     assert voice_output["speech_sync_source"] == "estimated_from_text_length"
     assert voice_output["fallback_prosody_applied"] is True
     assert voice_output["fallback_prosody_source"] == "neural_emotion_voice_controls"
-    assert -3 <= voice_output["local_tts_rate"] <= 3
-    assert 72 <= voice_output["local_tts_volume"] <= 100
+    assert -4 <= voice_output["local_tts_rate"] <= 0
+    assert 58 <= voice_output["local_tts_volume"] <= 88
+    assert 160 <= voice_output["local_tts_sentence_gap_ms"] <= 340
     controls = voice_output["neural_emotion_voice_controls"]
     assert controls["audio_available"] is True
     assert controls["real_emotion_claim"] is False
+    assert controls["fallback_voice_style"] == "soft_warm_local_speech_with_breathing_pauses"
+    assert controls["fallback_delivery"] == "short_phrase_breathing_ssml"
     assert controls["emotion_hint"] in {"calm", "warm", "curious", "cautious"}
     assert result["local_brain_write"] is False
 

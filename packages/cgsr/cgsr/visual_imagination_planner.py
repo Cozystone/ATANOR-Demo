@@ -31,124 +31,33 @@ VISUAL_ROUTE_TYPES = {
 }
 
 ANCHOR_STOPWORDS = {
-    "therefore",
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "associated",
-    "however",
-    "because",
-    "event",
-    "explain",
-    "first",
-    "for",
-    "from",
-    "helped",
-    "is",
-    "of",
-    "on",
-    "sat",
-    "the",
-    "second",
-    "third",
-    "to",
-    "toward",
-    "under",
-    "with",
-    "따라서",
-    "그러나",
-    "그리고",
-    "하지만",
-    "또한",
-    "첫",
-    "번째",
-    "단계",
-    "기존",
-    "대한",
-    "대해",
-    "것",
-    "이는",
-    "그",
-    "중",
+    "therefore", "a", "an", "and", "are", "as", "associated", "however", "because",
+    "event", "explain", "first", "for", "from", "helped", "is", "of", "on", "sat",
+    "the", "second", "third", "to", "toward", "under", "with",
+    "따라서", "그러나", "그리고", "하지만", "또한", "첫", "번째", "관계", "기존",
+    "대한", "대해", "것", "이는", "그", "즉",
 }
 
 KOREAN_SUFFIXES = (
-    "으로는",
-    "로는",
-    "으로",
-    "에서",
-    "에게",
-    "에는",
-    "이다",
-    "입니다",
-    "하고",
-    "까지",
-    "부터",
-    "처럼",
-    "보다",
-    "이며",
-    "이나",
-    "거나",
-    "은",
-    "는",
-    "이",
-    "가",
-    "을",
-    "를",
-    "의",
-    "에",
-    "로",
+    "으로는", "로는", "으로", "에서", "에게", "에는", "이다", "입니다", "하고", "까지",
+    "부터", "처럼", "보다", "이며", "이나", "거나", "은", "는", "이", "가", "을",
+    "를", "에", "의", "로",
 )
 
 MOTION_CUES = {
-    "fall",
-    "falls",
-    "falling",
-    "move",
-    "moves",
-    "moving",
-    "orbit",
-    "orbits",
-    "rotate",
-    "rotates",
-    "attract",
-    "attracts",
-    "pull",
-    "pulls",
-    "drop",
-    "drops",
-    "떨어",
-    "낙하",
-    "움직",
-    "이동",
-    "회전",
-    "공전",
-    "끌",
-    "당기",
-    "작용",
+    "fall", "falls", "falling", "fell", "move", "moves", "moving", "orbit", "orbits",
+    "rotate", "rotates", "attract", "attracts", "pull", "pulls", "drop", "drops",
+    "떨어", "낙하", "이동", "움직", "회전", "공전", "끌리", "당기", "작용",
+    "향하", "내려", "올라",
 }
 
 KOREAN_ORGANIC_TERMS = ("사과나무", "나무", "숲", "가지", "잎", "식물")
 KOREAN_SMALL_OBJECT_TERMS = ("사과", "과일", "돌", "공", "물체", "질량")
-KOREAN_FIGURE_CONTEXT_TERMS = ("앉", "머리", "사람", "인물", "학자", "관찰")
+KOREAN_FIGURE_CONTEXT_TERMS = ("머리", "사람", "인물", "학자", "관찰", "뉴턴")
 
 RELATION_CUES = {
-    "formulated",
-    "discovered",
-    "defined",
-    "called",
-    "known",
-    "means",
-    "is",
-    "are",
-    "발견",
-    "정의",
-    "기술",
-    "나타내",
-    "의미",
-    "불리",
+    "formulated", "discovered", "defined", "called", "known", "means", "is", "are",
+    "발견", "정의", "기술", "나타내", "불리", "정식화", "비교", "관찰", "설명",
 }
 
 
@@ -232,7 +141,7 @@ def _fact_units(fact: str) -> list[str]:
     clean = _clean_phrase(fact, limit=420)
     if not clean:
         return []
-    parts = re.split(r"(?<=[.!?。！？])\s+|[;；]\s*", clean)
+    parts = re.split(r"(?<=[.!?。])\s+|[;；]\s*", clean)
     units = [_clean_phrase(part, limit=180) for part in parts if _clean_phrase(part, limit=180)]
     return units[:4] or [clean[:180]]
 
@@ -241,28 +150,20 @@ def _entity_spans(text: str) -> list[str]:
     """Extract text-local visual anchors; never map topics to invented props."""
 
     spans: list[str] = []
-    for match in re.finditer(r"([가-힣A-Za-z]{2,}(?:\s+[가-힣A-Za-z]{2,}){0,1})(?=[은는])", text):
-        candidate = _clean_phrase(match.group(1), limit=72)
-        if candidate:
-            spans.append(candidate)
     for term in (*KOREAN_ORGANIC_TERMS, *KOREAN_SMALL_OBJECT_TERMS):
         if term in text:
             spans.append(term)
-    for match in re.finditer(r"([가-힣A-Za-z]{2,})(?=[이가을를의])", text):
-        candidate = _clean_phrase(match.group(1), limit=72)
-        if candidate:
-            spans.append(candidate)
-    for match in re.finditer(r"([가-힣A-Za-z]{0,8}나무)(?=에서|에게|밑|아래|위|\s|$)", text):
-        candidate = _clean_phrase(match.group(1), limit=72)
-        if candidate:
-            spans.append(candidate)
-    for match in re.finditer(r"([가-힣A-Za-z]{2,})(?:의\s*)?머리", text):
+    if "아이작 뉴턴" in text:
+        spans.append("아이작 뉴턴")
+    elif "뉴턴" in text:
+        spans.append("뉴턴")
+    for match in re.finditer(r"([가-힣A-Za-z]{2,}(?:\s+[가-힣A-Za-z]{2,}){0,2})(?=(?:은|는|이|가|을|를|에서|에게|으로|로|의|과|와|에|,|\.|\s|$))", text):
         candidate = _clean_phrase(match.group(1), limit=72)
         if candidate:
             spans.append(candidate)
     for match in re.finditer(r"\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,})){0,3}\b", text):
         spans.append(match.group(0))
-    for match in re.finditer(r"[0-9A-Za-z가-힣][0-9A-Za-z가-힣·\-]{1,}(?:\s+[0-9A-Za-z가-힣][0-9A-Za-z가-힣·\-]{1,}){0,2}", text):
+    for match in re.finditer(r"[0-9A-Za-z가-힣][0-9A-Za-z가-힣_-]{1,}(?:\s+[0-9A-Za-z가-힣][0-9A-Za-z가-힣_-]{1,}){0,2}", text):
         candidate = match.group(0).strip()
         if len(candidate) >= 2:
             spans.append(candidate)
@@ -291,7 +192,15 @@ def _entity_spans(text: str) -> list[str]:
 
 def _has_any_cue(text: str, cues: set[str]) -> bool:
     folded = text.casefold()
-    return any(cue in folded for cue in cues)
+    for cue in cues:
+        cue_folded = cue.casefold()
+        if re.fullmatch(r"[a-z]+", cue_folded):
+            if re.search(rf"\b{re.escape(cue_folded)}\b", folded):
+                return True
+            continue
+        if cue_folded in folded:
+            return True
+    return False
 
 
 def _motion_participants(narration: str) -> dict[str, str]:
@@ -307,19 +216,49 @@ def _motion_participants(narration: str) -> dict[str, str]:
     if not _has_any_cue(clean, MOTION_CUES):
         return participants
 
+    weak_motion_nominals = {"떨어짐", "운동", "현상", "장면", "사건"}
+    for clause in reversed([part.strip() for part in re.split(r"(?:었고|했고|였고|\s+고\s+|,|;|[.。])", clean) if part.strip()]):
+        if not _has_any_cue(clause, MOTION_CUES):
+            continue
+        matches = list(re.finditer(
+            r"([가-힣A-Za-z]{1,20})(?:이|가|은|는)\s+(?=[^.。]{0,42}?(?:떨어|낙하|내려|움직|이동|향하|끌리))",
+            clause,
+            re.IGNORECASE,
+        ))
+        for match in reversed(matches):
+            candidate = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
+            if candidate and candidate not in weak_motion_nominals:
+                participants["subject"] = candidate
+                break
+        if participants["subject"]:
+            break
+
+    korean_subject_patterns = [
+        r"([가-힣A-Za-z]{1,20})(?:이|가)\s+(?:[가-힣A-Za-z]{1,20}(?:에서|로부터|부터|밑에)\s+)?(?:떨어|낙하|내려|움직|이동|향하|끌리)",
+        r"([가-힣A-Za-z]{1,20})\s*떨어짐",
+        r"([가-힣A-Za-z]{1,20})(?:이|가|은|는)\s+(?:[가-힣A-Za-z]{1,20}\s+)?(?:쪽으로|향해|에게|으로|로)\s*(?:끌리|내려|향하|이동|움직)",
+    ]
+    if not participants["subject"]:
+        for pattern in korean_subject_patterns:
+            match = re.search(pattern, clean, re.IGNORECASE)
+            if match:
+                participants["subject"] = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
+                break
+
     subject_patterns = [
         r"\b(?:an?|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)\s+(?:fell|falls|falling|dropped|drops|moving|moved|moves|shifted|shifts|travels|traveled)\b",
-        r"([가-힣A-Za-z]{1,16})(?:이|가|은|는)\s*(?:[가-힣\s]{0,12})?(?:떨어|낙하|움직|이동|끌|당기)",
+        r"([가-힣A-Za-z]{1,16})(?:이|가|은|는)?\s*[^.]{0,24}?(?:떨어|낙하|이동|움직|끌리|향하|내려|올라)",
     ]
-    for pattern in subject_patterns:
-        match = re.search(pattern, clean, re.IGNORECASE)
-        if match:
-            participants["subject"] = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
-            break
+    if not participants["subject"]:
+        for pattern in subject_patterns:
+            match = re.search(pattern, clean, re.IGNORECASE)
+            if match:
+                participants["subject"] = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
+                break
 
     source_patterns = [
         r"\bfrom\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=\s+(?:toward|towards|to|into|onto)\b|[,.;]|$)",
-        r"([가-힣A-Za-z]{0,8}나무)(?:에서|로부터|부터)",
+        r"([가-힣A-Za-z]{0,12}?나무)\s*(?:에서|로부터|부터|밑에)",
     ]
     for pattern in source_patterns:
         match = re.search(pattern, clean, re.IGNORECASE)
@@ -329,7 +268,8 @@ def _motion_participants(narration: str) -> dict[str, str]:
 
     target_patterns = [
         r"\b(?:toward|towards|to|into|onto)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=[,.;]|$)",
-        r"([가-힣A-Za-z]{2,})(?:의\s*)?머리",
+        r"([가-힣A-Za-z]{2,}?)(?:의)?\s*머리",
+        r"(?:쪽으로|향해|에게|으로|로)\s*([가-힣A-Za-z]{2,})",
         r"([가-힣A-Za-z]{2,})(?:\s*)쪽으로",
     ]
     for pattern in target_patterns:
@@ -353,6 +293,31 @@ def _scene_op_for_unit(unit: str, *, index: int, is_last: bool) -> str:
     if _has_any_cue(unit, RELATION_CUES):
         return "morph"
     return "morph"
+
+
+def _scene_op_for_scene_unit(unit: dict[str, Any], *, index: int, is_last: bool) -> str:
+    """Choose beat operation from the extracted evidence role.
+
+    A motion sentence can mention several anchors: source, target, context, and
+    subject. Only the moving subject/event should inherit the motion operation.
+    Source/target anchors are assembled as objects so the renderer does not
+    make the entire explanatory scene drift just because the narration contains
+    a motion verb.
+    """
+
+    role = str(unit.get("semantic_role") or "")
+    narration = str(unit.get("narration") or "")
+    if role in {
+        "verified_motion_source",
+        "verified_motion_target",
+        "verified_motion_anchor",
+        "verified_motion_context",
+        "verified_entity_anchor",
+    }:
+        return "focus_camera" if is_last else "spawn_object"
+    if role in {"verified_motion_subject", "verified_motion_event"} and _has_any_cue(narration, MOTION_CUES):
+        return "move" if index > 0 else "spawn_object"
+    return _scene_op_for_unit(narration, index=index, is_last=is_last)
 
 
 def _beat_duration_for_unit(unit: dict[str, str], op: str) -> float:
@@ -465,7 +430,10 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
     spatial_relation = _spatial_relation_for_phrase(phrase, unit["narration"], visual_affordance, op)
     pose_hint = _pose_hint_for_scene_unit(visual_affordance, spatial_relation, unit["semantic_role"])
     surface_features = _surface_features_for_scene_unit(phrase, unit["narration"], unit["source_fact"], visual_affordance)
-    position = _position_for_unit(phrase, index, visual_affordance, spatial_relation)
+    if unit["semantic_role"] == "user_visual_intent":
+        position = [0.0, 0.0]
+    else:
+        position = _position_for_unit(phrase, index, visual_affordance, spatial_relation)
     beat = {
         "op": op,
         "prompt": phrase,
@@ -481,6 +449,7 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
         "source_fact": unit["source_fact"],
         "speech_cue": bool(unit.get("speech_cue", True)),
         "speech_cue_basis": unit.get("speech_cue_basis", "verified_evidence_unit"),
+        "generation_prompt_basis": unit.get("generation_prompt_basis"),
         "scene_group_id": unit.get("scene_group_id") or _scene_group_id(unit["narration"], unit["source_fact"]),
         "scene_group_role": unit.get("scene_group_role", "speech_unit" if unit.get("speech_cue", True) else "visual_anchor"),
         "archetype": _archetype_for_phrase(phrase, unit["semantic_role"], index, visual_affordance),
@@ -489,7 +458,11 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
         "position": position,
         "camera": _camera_for_unit(position, visual_affordance, op, spatial_relation, index) if op in {"focus_camera", "move"} else {},
     }
-    motion_path = _motion_path_for_unit(unit, index=index) if op == "move" or unit["semantic_role"].startswith("verified_motion") else {}
+    motion_path = (
+        _motion_path_for_unit(unit, index=index)
+        if op == "move" or unit["semantic_role"] in {"verified_motion_event", "verified_motion_subject"}
+        else {}
+    )
     particle_behavior, physics_hint = _particle_behavior_for_unit(unit, visual_affordance, op, motion_path)
     if pose_hint:
         physics_hint["pose_hint"] = pose_hint
@@ -519,7 +492,25 @@ def _make_scene_beat(unit: dict[str, Any], *, index: int, op: str, t_start: floa
 
 def _scene_units(question: str, *, route_type: str, grounded_context: GroundedContext) -> list[dict[str, Any]]:
     units: list[dict[str, Any]] = []
-    if route_type == "splatra_request":
+    if route_type == "splatra_request" and _is_direct_model_generation_request(question):
+        clean_question = _clean_phrase(question)
+        generation_prompt = _direct_generation_prompt(question) or clean_question
+        if clean_question:
+            group_id = _scene_group_id(clean_question, "")
+            return [
+                {
+                    "prompt": generation_prompt,
+                    "narration": clean_question,
+                    "source_fact": "",
+                    "semantic_role": "user_visual_intent",
+                    "speech_cue": True,
+                    "speech_cue_basis": "user_visual_intent",
+                    "generation_prompt_basis": "direct_generation_prompt_normalized_for_sidecar",
+                    "scene_group_id": group_id,
+                    "scene_group_role": "speech_unit",
+                }
+            ]
+    elif route_type == "splatra_request":
         clean_question = _clean_phrase(question)
         if clean_question:
             group_id = _scene_group_id(clean_question, "")
@@ -528,9 +519,9 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
                     "prompt": clean_question,
                     "narration": clean_question,
                     "source_fact": "",
-                    "semantic_role": "user_visual_intent",
+                    "semantic_role": "surface_phrase",
                     "speech_cue": True,
-                    "speech_cue_basis": "user_visual_intent",
+                    "speech_cue_basis": "surface_phrase",
                     "scene_group_id": group_id,
                     "scene_group_role": "speech_unit",
                 }
@@ -660,6 +651,102 @@ def _scene_units(question: str, *, route_type: str, grounded_context: GroundedCo
     return selected
 
 
+def _scene_units_have_concrete_visual_grounding(scene_units: list[dict[str, Any]]) -> bool:
+    """Require source-local visual evidence before opening the large particle stage.
+
+    A verified explanatory sentence is not automatically a visual scene. Abstract
+    relation facts such as "gravity is attraction between masses" should remain
+    DOM text plus ambient particles; otherwise the renderer turns formulas and
+    nouns into repeated pseudo-objects. We only allow verified-store scenes when
+    the evidence itself contains concrete visual participants tied by motion or
+    spatial language. Direct user SPLATRA generation requests are handled before
+    this gate and remain allowed.
+    """
+
+    concrete_affordances = {"entity_figure", "organic_structure", "small_object", "small_moving_object"}
+    concrete_motion_terms = {
+        "river", "water", "valley", "channel", "basin", "stream", "stone", "ball",
+        "강", "물", "계곡", "수로", "분지", "하천", "돌", "공", "사과", "나무",
+    }
+    spatial_cues = {
+        " under ", " beneath ", " below ", " above ", " over ", " from ", " toward ", " towards ", " into ", " onto ",
+        "떨어", "내려", "위로", "아래", "쪽으로", "에서", "밑에", "위에",
+    }
+    for unit in scene_units:
+        role = str(unit.get("semantic_role") or "")
+        if not role.startswith("verified_"):
+            continue
+        narration = str(unit.get("narration") or "")
+        prompt = str(unit.get("prompt") or "")
+        op = "move" if "motion" in role and _has_any_cue(narration, MOTION_CUES) else "morph"
+        visual_affordance = _visual_affordance_for_phrase(prompt, narration, role, op)
+        folded_visual_text = f" {prompt} {narration} ".casefold()
+        if visual_affordance not in concrete_affordances and not (
+            visual_affordance == "motion_event"
+            and any(term in folded_visual_text or term in f"{prompt} {narration}" for term in concrete_motion_terms)
+        ):
+            continue
+        if _motion_path_for_unit(unit, index=0):
+            return True
+        folded = f" {narration.casefold()} "
+        if any(cue in folded or cue in narration for cue in spatial_cues):
+            return True
+    return False
+
+
+def _direct_generation_prompt(question: str) -> str:
+    folded = str(question or "").casefold()
+    if (
+        ("\uc720\ub9ac" in folded and ("\uad6c\uc2ac" in folded or "\uad6c\uccb4" in folded or "\uacf5" in folded))
+        or (("glass" in folded or "transparent" in folded or "translucent" in folded) and ("orb" in folded or "sphere" in folded or "marble" in folded))
+    ):
+        return "translucent glass marble sphere with visible rim"
+    if "\ube68\uac04 \uc0ac\uacfc" in folded or "red apple" in folded:
+        return "red apple"
+    if "\uc0ac\uacfc" in folded or "apple" in folded:
+        return "red apple"
+    if "\ub85c\ubd07" in folded or "robot" in folded:
+        return "robot"
+    if "\uc5f4\ub9b0 \ucc45" in folded or "open book" in folded:
+        return "open book"
+    if "\ucc45" in folded or "book" in folded:
+        return "book"
+    return ""
+
+
+def _is_direct_model_generation_request(question: str) -> bool:
+    folded = question.casefold()
+    clean_direct_cues = (
+        "\uc0dd\uc131", "\ub9cc\ub4e4", "\ubcf4\uc5ec", "\ub80c\ub354", "\uadf8\ub824", "\uc9c1\uc811",
+        "generate", "create", "make", "spawn", "render", "show", "visualize",
+    )
+    clean_visual_cues = (
+        "splatra", "\uc2a4\ud50c\ub77c\ud2b8\ub77c", "\ud30c\ud2f0\ud074", "\uc785\uc790", "3d", "\ubaa8\ub378",
+        "\ubb3c\uccb4", "\uc624\ube0c\uc81d\ud2b8", "\uad6c\uc2ac", "\uc720\ub9ac", "\uc0ac\uacfc", "\ub85c\ubd07",
+        "\ub098\ubb34", "\ucc45", "\uacf5", "object", "model", "particle",
+    )
+    if any(cue in folded for cue in clean_direct_cues) and any(cue in folded for cue in clean_visual_cues):
+        return True
+    if _direct_generation_prompt(question):
+        return True
+    clean_direct_cues = (
+        "생성", "만들", "보여", "렌더", "그려", "직접",
+        "generate", "create", "make", "spawn", "render", "show",
+    )
+    clean_visual_cues = (
+        "splatra", "스플라트라", "파티클", "입자", "3d", "모델", "물체", "오브젝트",
+        "구슬", "유리", "사과", "로봇", "나무", "책", "공", "object", "model", "particle",
+    )
+    if any(cue in folded for cue in clean_direct_cues) and any(cue in folded for cue in clean_visual_cues):
+        return True
+    direct_cues = (
+        "generate", "create", "make", "spawn", "render", "model", "object", "3d",
+        "생성", "만들", "모델", "사물", "오브젝트", "물체", "직접", "사실적",
+    )
+    splatra_cues = ("splatra", "스플라트라", "스플래트라", "파티클", "입자", "홀로그램")
+    return any(cue in folded for cue in direct_cues) and any(cue in folded for cue in splatra_cues)
+
+
 def _looks_like_named_figure(phrase: str) -> bool:
     tokens = re.findall(r"\b[A-Z][a-z]{2,}\b", phrase)
     return len(tokens) >= 2
@@ -722,7 +809,7 @@ def _spatial_relation_for_phrase(phrase: str, narration: str, visual_affordance:
             return "upper_attachment"
     if has_upper_cue and visual_affordance in {"small_object", "small_moving_object"}:
         return "upper_attachment"
-    if op == "move" or " toward " in folded or " towards " in folded or "쪽으로" in narration or "위로" in narration:
+    if op == "move" or " toward " in folded or " towards " in folded or "쪽으로" in narration or "향해" in narration:
         if visual_affordance in {"small_object", "small_moving_object"}:
             return "path_object"
         if visual_affordance == "entity_figure":
@@ -812,12 +899,15 @@ def _motion_path_for_unit(unit: dict[str, Any], *, index: int) -> dict[str, Any]
     participants = _motion_participants(narration)
     source_prompt = participants["source"]
     target_prompt = participants["target"]
-    korean_source = re.search(r"([가-힣A-Za-z]{0,8}나무)(?:에서|로부터|부터)", narration)
+    korean_source = re.search(r"([가-힣A-Za-z]{0,12}?나무)\s*(?:에서|로부터|부터|밑에)", narration)
     if korean_source:
         source_prompt = _clean_phrase(korean_source.group(1), limit=72)
-    korean_target = re.search(r"([가-힣A-Za-z]{2,})(?:의\s*)?머리", narration)
+    korean_target = re.search(r"([가-힣A-Za-z]{2,}?)(?:의)?\s*머리", narration)
     if korean_target:
         target_prompt = _clean_phrase(korean_target.group(1), limit=72)
+    korean_direction_target = re.search(r"(?:쪽으로|향해|에게|으로|로)\s*([가-힣A-Za-z]{2,})", narration)
+    if korean_direction_target and not target_prompt:
+        target_prompt = _clean_phrase(korean_direction_target.group(1), limit=72)
     from_match = re.search(
         r"\bfrom\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=\s+(?:toward|towards|to|into|onto)\b|[,.;]|$)",
         narration,
@@ -837,6 +927,15 @@ def _motion_path_for_unit(unit: dict[str, Any], *, index: int) -> dict[str, Any]
     known_anchors = unit.get("known_anchors") if isinstance(unit.get("known_anchors"), list) else _entity_spans(unit.get("source_fact", ""))
     if not source_prompt and any(term in narration for term in KOREAN_ORGANIC_TERMS):
         source_prompt = next((term for term in KOREAN_ORGANIC_TERMS if term in narration), "")
+    if not source_prompt:
+        source_prompt = next(
+            (
+                anchor
+                for anchor in known_anchors
+                if _visual_affordance_for_phrase(anchor, narration, "verified_motion_context", "morph") == "organic_structure"
+            ),
+            "",
+        )
     if not target_prompt:
         target_prompt = next((anchor for anchor in anchors if _visual_affordance_for_phrase(anchor, narration, "verified_motion_context", "morph") == "entity_figure"), "")
     if not source_prompt and len(anchors) >= 2:
@@ -881,7 +980,11 @@ def _particle_behavior_for_unit(unit: dict[str, Any], visual_affordance: str, op
     narration = unit.get("narration", "")
     folded = narration.casefold()
     has_motion = bool(motion_path) or op == "move" or "motion" in str(unit.get("semantic_role", ""))
-    if has_motion and any(cue in folded for cue in ("fall", "falling", "fell", "drop", "dropped", "toward", "towards", "떨어", "낙하", "끌리", "쪽으로")):
+    gravity_cues = (
+        "fall", "falling", "fell", "drop", "dropped", "toward", "towards",
+        "떨어", "낙하", "끌리", "쪽으로", "향해", "향하", "내려",
+    )
+    if has_motion and any(cue in folded for cue in gravity_cues):
         return "gravity_arc", {
             "basis": "verified_motion_phrase",
             "field": "downward_attraction",
@@ -983,6 +1086,8 @@ def _scene_layout_intent_for_beats(beats: list[dict[str, Any]]) -> str:
 
     if not beats:
         return "balanced_scene"
+    if any(beat.get("semantic_role") == "user_visual_intent" for beat in beats):
+        return "wide_particle_stage"
     points: list[tuple[float, float]] = []
     motion_count = 0
     for index, beat in enumerate(beats):
@@ -1010,6 +1115,292 @@ def _scene_layout_intent_for_beats(beats: list[dict[str, Any]]) -> str:
     return "balanced_scene"
 
 
+# UTF-8 Korean extraction layer.
+#
+# Earlier planner stages are deliberately conservative: the renderer may not
+# infer "gravity means apple tree" from a topic.  These overrides keep that
+# contract while repairing Korean evidence extraction so only nouns and motion
+# cues that are already present in the verified sentence become visual beats.
+ANCHOR_STOPWORDS = {
+    "therefore", "a", "an", "and", "are", "as", "associated", "however", "because",
+    "event", "explain", "first", "for", "from", "helped", "is", "of", "on", "sat",
+    "the", "second", "third", "to", "toward", "under", "with",
+    "그리고", "그러나", "하지만", "또한", "이는", "그", "그것", "이것", "저것",
+    "것", "수", "때", "중", "관련", "현상", "사건", "단서", "설명",
+}
+KOREAN_SUFFIXES = (
+    "으로는", "로는", "으로", "에서", "에게", "에는", "이다", "입니다", "하고", "까지",
+    "부터", "처럼", "보다", "이나", "거나", "은", "는", "이", "가", "을", "를", "에", "의", "로",
+)
+MOTION_CUES = {
+    "fall", "falls", "falling", "fell", "move", "moves", "moving", "orbit", "orbits",
+    "rotate", "rotates", "attract", "attracts", "pull", "pulls", "drop", "drops",
+    "떨어", "떨어지", "낙하", "이동", "끌리", "당기", "작용", "향하", "내려", "움직",
+}
+KOREAN_ORGANIC_TERMS = ("사과나무", "나무", "숲", "가지", "잎", "식물")
+KOREAN_SMALL_OBJECT_TERMS = ("사과", "과일", "돌", "공", "물체", "질량")
+KOREAN_FIGURE_CONTEXT_TERMS = ("머리", "사람", "인물", "학자", "관찰", "뉴턴")
+RELATION_CUES = {
+    "formulated", "discovered", "defined", "called", "known", "means", "is", "are",
+    "발견", "정의", "기술", "설명", "불리", "관찰", "관련", "의미",
+}
+
+
+def _canonical_track_phrase(value: str) -> str:
+    clean = _clean_phrase(value, limit=96).casefold()
+    clean = re.sub(r"\b(?:a|an|the)\s+", "", clean)
+    clean = re.sub(r"[^0-9a-z가-힣\s-]+", " ", clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean or "scene-object"
+
+
+def _fact_units(fact: str) -> list[str]:
+    """Split verified evidence into scene-sized units without topic templates."""
+
+    clean = _clean_phrase(fact, limit=420)
+    if not clean:
+        return []
+    parts = re.split(r"(?<=[.!?。！？])\s+|[;；]\s*", clean)
+    units = [_clean_phrase(part, limit=180) for part in parts if _clean_phrase(part, limit=180)]
+    return units[:4] or [clean[:180]]
+
+
+def _entity_spans(text: str) -> list[str]:
+    """Extract only text-local anchors from Korean/English verified evidence."""
+
+    spans: list[str] = []
+    for term in (*KOREAN_ORGANIC_TERMS, *KOREAN_SMALL_OBJECT_TERMS):
+        if term in text:
+            spans.append(term)
+    if "아이작 뉴턴" in text:
+        spans.append("아이작 뉴턴")
+    elif "뉴턴" in text:
+        spans.append("뉴턴")
+    for match in re.finditer(r"([가-힣A-Za-z]{2,}(?:\s+[가-힣A-Za-z]{2,}){0,2})(?=(?:은|는|이|가|을|를|에서|에게|으로|로|와|과|,|\.|\s|$))", text):
+        candidate = _clean_phrase(match.group(1), limit=72)
+        if candidate:
+            spans.append(candidate)
+    for match in re.finditer(r"\b(?:[A-Z][a-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z]+|[A-Z]{2,})){0,3}\b", text):
+        spans.append(match.group(0))
+
+    cleaned: list[str] = []
+    for span in spans:
+        tokens = [_normalize_anchor_token(token) for token in span.split()]
+        tokens = [
+            token
+            for token in tokens
+            if token and token.casefold() not in ANCHOR_STOPWORDS and len(token) >= 2
+        ]
+        if tokens:
+            cleaned.append(_clean_phrase(" ".join(tokens[:3]), limit=72))
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for span in cleaned:
+        key = span.casefold()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(span)
+    return deduped[:4]
+
+
+def _motion_participants(narration: str) -> dict[str, str]:
+    """Extract motion subject/source/target from verified wording only."""
+
+    participants = {"subject": "", "source": "", "target": ""}
+    clean = _clean_phrase(narration, limit=240)
+    if not _has_any_cue(clean, MOTION_CUES):
+        return participants
+
+    source_match = re.search(r"([가-힣A-Za-z]{1,20}나무|[가-힣A-Za-z]{1,20}숲|[가-힣A-Za-z]{1,20}가지)\s*(?:에서|로부터|부터|밑에)", clean)
+    if source_match:
+        participants["source"] = _clean_phrase(_normalize_anchor_token(source_match.group(1)), limit=72)
+    english_source_match = re.search(
+        r"\bfrom\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=\s+(?:toward|towards|to|into|onto)\b|[,.;]|$)",
+        clean,
+        re.IGNORECASE,
+    )
+    if english_source_match and not participants["source"]:
+        participants["source"] = _clean_phrase(_normalize_anchor_token(english_source_match.group(1)), limit=72)
+
+    target_match = re.search(r"([가-힣A-Za-z]{1,20})(?:의\s*)?머리(?:\s*(?:위|쪽|로|에|에게))?", clean)
+    if target_match:
+        participants["target"] = _clean_phrase(_normalize_anchor_token(target_match.group(1)), limit=72)
+    direction_match = re.search(r"(?:쪽으로|향해|에게|으로|로)\s*([가-힣A-Za-z]{2,})", clean)
+    if direction_match and not participants["target"]:
+        participants["target"] = _clean_phrase(_normalize_anchor_token(direction_match.group(1)), limit=72)
+    english_target_match = re.search(
+        r"\b(?:toward|towards|to|into|onto)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)(?=[,.;]|$)",
+        clean,
+        re.IGNORECASE,
+    )
+    if english_target_match and not participants["target"]:
+        participants["target"] = _clean_phrase(_normalize_anchor_token(english_target_match.group(1)), limit=72)
+
+    subject_patterns = [
+        r"([가-힣A-Za-z]{1,20})(?:이|가|은|는)\s+(?:[가-힣A-Za-z]{1,20}(?:에서|로부터|부터|밑에)\s+)?(?:떨어|떨어지|낙하|이동|끌리|내려|움직)",
+        r"([가-힣A-Za-z]{1,20})\s*떨어지",
+        r"\b(?:an?|the)?\s*([A-Za-z][A-Za-z -]{1,44}?)\s+(?:fell|falls|falling|dropped|drops|moving|moved|moves)\b",
+    ]
+    for pattern in subject_patterns:
+        match = re.search(pattern, clean, re.IGNORECASE)
+        if match:
+            candidate = _clean_phrase(_normalize_anchor_token(match.group(1)), limit=72)
+            if candidate not in {"현상", "장면", "사건"}:
+                participants["subject"] = candidate
+                break
+
+    if not participants["source"]:
+        participants["source"] = next((term for term in KOREAN_ORGANIC_TERMS if term in clean), "")
+    if not participants["subject"]:
+        participants["subject"] = next((term for term in KOREAN_SMALL_OBJECT_TERMS if term in clean), "")
+    if not participants["target"]:
+        anchors = _entity_spans(clean)
+        participants["target"] = next((anchor for anchor in anchors if _looks_like_korean_figure(anchor, clean) or _looks_like_english_figure(anchor, clean)), "")
+    return participants
+
+
+def _looks_like_korean_figure(phrase: str, narration: str) -> bool:
+    if not re.search(r"[가-힣]", phrase):
+        return False
+    folded_phrase = phrase.casefold()
+    if any(term in folded_phrase for term in (*KOREAN_ORGANIC_TERMS, *KOREAN_SMALL_OBJECT_TERMS)):
+        return False
+    if any(term in narration for term in KOREAN_FIGURE_CONTEXT_TERMS):
+        return True
+    tokens = re.findall(r"[가-힣]{2,}", phrase)
+    return len(tokens) >= 2 and len(phrase) <= 18
+
+
+def _spatial_relation_for_phrase(phrase: str, narration: str, visual_affordance: str, op: str) -> str:
+    folded = f" {narration.casefold()} "
+    has_under_cue = " under " in folded or " beneath " in folded or " below " in folded or "밑" in narration or "아래" in narration
+    has_upper_cue = "위" in narration or "위로" in narration or "머리" in narration
+    if has_under_cue:
+        if visual_affordance == "entity_figure":
+            return "under_target"
+        if visual_affordance == "organic_structure":
+            return "over_anchor"
+        if visual_affordance in {"small_object", "small_moving_object"}:
+            return "upper_attachment"
+    if has_upper_cue and visual_affordance in {"small_object", "small_moving_object"}:
+        return "upper_attachment"
+    if op == "move" or " toward " in folded or " towards " in folded or "쪽으로" in narration or "향해" in narration:
+        if visual_affordance in {"small_object", "small_moving_object"}:
+            return "path_object"
+        if visual_affordance == "entity_figure":
+            return "motion_target"
+        if visual_affordance == "organic_structure":
+            return "motion_source"
+    return ""
+
+
+def _motion_path_for_unit(unit: dict[str, Any], *, index: int) -> dict[str, Any]:
+    narration = unit["narration"]
+    if not _has_any_cue(narration, MOTION_CUES):
+        return {}
+    participants = _motion_participants(narration)
+    source_prompt = participants["source"]
+    target_prompt = participants["target"]
+    anchors = _entity_spans(narration)
+    known_anchors = unit.get("known_anchors") if isinstance(unit.get("known_anchors"), list) else _entity_spans(unit.get("source_fact", ""))
+    if not source_prompt:
+        source_prompt = next(
+            (
+                anchor
+                for anchor in known_anchors
+                if _visual_affordance_for_phrase(anchor, narration, "verified_motion_context", "morph") == "organic_structure"
+            ),
+            "",
+        )
+    if not target_prompt:
+        target_prompt = next((anchor for anchor in anchors if _visual_affordance_for_phrase(anchor, narration, "verified_motion_context", "morph") == "entity_figure"), "")
+    if not source_prompt and len(anchors) >= 2:
+        source_prompt = anchors[-2]
+    if not target_prompt and anchors:
+        target_prompt = anchors[-1]
+    source_prompt = _expand_known_anchor(source_prompt, known_anchors)
+    target_prompt = _expand_known_anchor(target_prompt, known_anchors)
+    if not source_prompt or not target_prompt or source_prompt.casefold() == target_prompt.casefold():
+        return {}
+    source_affordance = _visual_affordance_for_phrase(source_prompt, narration, "verified_motion_context", "morph")
+    target_affordance = _visual_affordance_for_phrase(target_prompt, narration, "verified_motion_context", "morph")
+    source_relation = _spatial_relation_for_phrase(source_prompt, narration, source_affordance, "morph")
+    target_relation = _spatial_relation_for_phrase(target_prompt, narration, target_affordance, "morph")
+    return {
+        "from": _position_for_unit(source_prompt, index + 37, source_affordance, source_relation or "motion_source"),
+        "to": _position_for_unit(target_prompt, index + 73, target_affordance, target_relation or "motion_target"),
+        "basis": "verified_motion_phrase",
+        "source_prompt": source_prompt,
+        "target_prompt": target_prompt,
+    }
+
+
+def _particle_behavior_for_unit(unit: dict[str, Any], visual_affordance: str, op: str, motion_path: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Attach renderer-facing physics hints from verified wording only."""
+
+    narration = unit.get("narration", "")
+    folded = narration.casefold()
+    has_motion = bool(motion_path) or op == "move" or "motion" in str(unit.get("semantic_role", ""))
+    gravity_cues = (
+        "fall", "falling", "fell", "drop", "dropped", "toward", "towards",
+        "떨어", "낙하", "끌리", "쪽으로", "향해", "당기", "내려",
+    )
+    if has_motion and any(cue in folded for cue in gravity_cues):
+        return "gravity_arc", {
+            "basis": "verified_motion_phrase",
+            "field": "downward_attraction",
+            "material": "dense_moving_splat",
+            "gravity_bias": 0.72,
+            "cohesion": 0.64,
+            "trail": 0.86,
+        }
+    if has_motion:
+        return "kinetic_flow", {
+            "basis": "verified_motion_phrase",
+            "field": "directed_flow",
+            "material": "energized_splat",
+            "gravity_bias": 0.28,
+            "cohesion": 0.58,
+            "trail": 0.72,
+        }
+    if visual_affordance == "organic_structure":
+        return "rooted_growth", {
+            "basis": "verified_visual_affordance",
+            "field": "branching_cohesion",
+            "material": "organic_splat",
+            "gravity_bias": 0.18,
+            "cohesion": 0.82,
+            "trail": 0.22,
+        }
+    if visual_affordance == "entity_figure":
+        return "articulated_cluster", {
+            "basis": "verified_visual_affordance",
+            "field": "pose_cohesion",
+            "material": "figure_splat",
+            "gravity_bias": 0.24,
+            "cohesion": 0.76,
+            "trail": 0.28,
+        }
+    if visual_affordance in {"relation_field", "concept_cloud"}:
+        return "magnetic_field", {
+            "basis": "verified_relation_or_concept",
+            "field": "swarm_relation",
+            "material": "field_splat",
+            "gravity_bias": 0.0,
+            "cohesion": 0.42,
+            "trail": 0.54,
+        }
+    return "bounded_swarm", {
+        "basis": "verified_scene_unit",
+        "field": "bounded_swarm",
+        "material": "neutral_splat",
+        "gravity_bias": 0.12,
+        "cohesion": 0.56,
+        "trail": 0.34,
+    }
+
+
 def plan_visual_imagination(
     question: str,
     *,
@@ -1017,6 +1408,7 @@ def plan_visual_imagination(
     grounded_context: GroundedContext,
     diagnostics: dict[str, Any],
     answer_available: bool,
+    client_layout_feedback: dict[str, Any] | None = None,
 ) -> VisualImaginationPlan:
     """Plan whether the response may use SPLATRA without inventing scene content.
 
@@ -1056,7 +1448,29 @@ def plan_visual_imagination(
         )
 
     scene_units = _scene_units(question, route_type=route_type, grounded_context=grounded_context)
-    if len(scene_units) == 1:
+    direct_user_visual_intent = bool(scene_units) and all(
+        unit.get("semantic_role") == "user_visual_intent" for unit in scene_units
+    )
+    if not direct_user_visual_intent and not _scene_units_have_concrete_visual_grounding(scene_units):
+        return VisualImaginationPlan(
+            enabled=False,
+            reason="insufficient_concrete_visual_evidence",
+            scene_choreography=None,
+            diagnostics={
+                "visual_imagination_planner": "cgsr_visual_imagination_v1",
+                "route_type": route_type,
+                "grounding_quality": grounding_quality,
+                "topic_scene_templates": False,
+                "renderer_may_infer_topic": False,
+                "particle_text": False,
+                "text_rendering": "dom_text_not_particles",
+                "scene_content_source": "none",
+                "scene_authoring_basis": "abstained_abstract_or_nonvisual_evidence",
+                "visual_affordance_basis": "source_phrase_affordance_extraction_no_topic_template",
+                "reason": "insufficient_concrete_visual_evidence",
+            },
+        )
+    if len(scene_units) == 1 and scene_units[0].get("semantic_role") != "user_visual_intent":
         scene_units = [
             scene_units[0],
             {
@@ -1070,10 +1484,11 @@ def plan_visual_imagination(
     beats: list[dict[str, Any]] = []
     t_start = 0.0
     for index, unit in enumerate(scene_units):
-        op = _scene_op_for_unit(unit["narration"], index=index, is_last=index == len(scene_units) - 1 and index > 0)
+        op = _scene_op_for_scene_unit(unit, index=index, is_last=index == len(scene_units) - 1 and index > 0)
         duration = _beat_duration_for_unit(unit, op)
         beats.append(_make_scene_beat(unit, index=index, op=op, t_start=t_start, duration=duration))
-        if op != "move" and _has_any_cue(unit["narration"], MOTION_CUES):
+        role = str(unit.get("semantic_role") or "")
+        if op != "move" and role in {"verified_motion_event", "verified_motion_subject"} and _has_any_cue(unit["narration"], MOTION_CUES):
             move_duration = _beat_duration_for_unit(unit, "move")
             beats.append(_make_scene_beat(unit, index=index, op="move", t_start=t_start + duration * 0.42, duration=move_duration))
             t_start += max(duration, duration * 0.42 + move_duration) + 0.16
@@ -1106,6 +1521,7 @@ def plan_visual_imagination(
             "layout_intent": _scene_layout_intent_for_beats(beats),
             "primary_surface": "splatra_stage",
             "beats": beats,
+            "client_layout_feedback": client_layout_feedback or {},
         }
     ).to_dict()
     return VisualImaginationPlan(
@@ -1120,10 +1536,11 @@ def plan_visual_imagination(
             "renderer_may_infer_topic": False,
             "particle_text": False,
             "text_rendering": "dom_text_not_particles",
-            "scene_content_source": "verified_store_facts" if grounded_context.facts else "user_visual_intent_only",
-            "scene_authoring_basis": "verified_fact_entity_action_extraction",
+            "scene_content_source": "user_visual_intent_only" if direct_user_visual_intent else "verified_store_facts" if grounded_context.facts else "user_visual_intent_only",
+            "scene_authoring_basis": "user_direct_splatra_generation_request" if direct_user_visual_intent else "verified_fact_entity_action_extraction",
             "visual_affordance_basis": "source_phrase_affordance_extraction_no_topic_template",
             "layout_decision_basis": "verified_scene_geometry_and_client_feedback",
+            "client_layout_feedback_used": bool(client_layout_feedback),
             "beats": len(beats),
             "source": "grounded_context_or_user_surface",
         },

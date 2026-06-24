@@ -12,6 +12,7 @@ from packages.cgsr.cgsr.conversation_grounding import (
     GroundedContext,
     HONESTY_NOTE,
     answer_mode_for_route,
+    grounded_discourse_metadata,
     honesty_metadata,
     realize_grounded_context,
 )
@@ -123,9 +124,11 @@ def generate_conversation_surface(
             semantic_grounding_used=grounded,
             answer_mode=answer_mode,
         )
+        discourse_metadata = grounded_discourse_metadata(query, grounded_context) if grounded else {}
         diagnostics = {
             "generation_basis": "semantic_grounded_conversation_router_v0",
-            "template_free_surface": False,
+            "template_free_surface": True,
+            "fact_bound_surface": True,
             "external_llm_used": False,
             "external_sllm_used": False,
             "rule_based_answer_engine": False,
@@ -133,6 +136,7 @@ def generate_conversation_surface(
             "internal_trace_exposed": False,
             "semantic_grounding": grounded_context.to_dict(),
             "route": route.to_dict(),
+            **discourse_metadata,
             **metadata,
         }
         if not grounded_answer:

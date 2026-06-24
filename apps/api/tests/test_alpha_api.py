@@ -7,7 +7,71 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services import web_search as web_search_module
-from app.services.web_search import is_fresh_search_query, is_knowledge_lookup_query
+from app.services.web_search import _normalize_lookup_query, is_fresh_search_query, is_knowledge_lookup_query
+
+
+def test_korean_lookup_query_normalization_keeps_core_terms() -> None:
+    assert _normalize_lookup_query("\uC911\uB825\uC758 \uBC95\uCE59\uC5D0 \uB300\uD574 \uC124\uBA85\uD574\uC918") == "\uC911\uB825 \uBC95\uCE59"
+
+
+def test_korean_followup_why_query_still_uses_knowledge_lookup() -> None:
+    assert is_knowledge_lookup_query("중력의 법칙 왜 그런가요")
+    assert is_knowledge_lookup_query("중력은 어떻게 작동하나요")
+    assert _normalize_lookup_query("중력의 법칙 그건 왜 그런가요") == "중력 법칙"
+
+
+def test_visual_event_extraction_uses_source_sentences_only() -> None:
+    source_text = (
+        "Universal gravitation is a physical law. "
+        "Isaac Newton sat under an apple tree. "
+        "An apple fell from the tree toward Newton."
+    )
+
+    sentences = web_search_module.extract_visual_event_sentences(source_text)
+
+    assert any("apple tree" in sentence for sentence in sentences)
+    assert any("fell from the tree" in sentence for sentence in sentences)
+
+
+def test_visual_event_extraction_does_not_invent_topic_scene() -> None:
+    source_text = "Universal gravitation describes attraction between masses and is proportional to mass."
+
+    assert web_search_module.extract_visual_event_sentences(source_text) == []
+
+
+def test_wikipedia_visual_event_enrichment_marks_source_local_particle_metadata(monkeypatch) -> None:
+    base_results = [
+        {
+            "id": "wikipedia-1",
+            "title": "Universal gravitation",
+            "url": "https://ko.wikipedia.org/wiki/Universal_gravitation",
+            "snippet": "Universal gravitation describes attraction between masses.",
+            "provider": "wikipedia",
+            "source_type": "encyclopedia_search",
+            "search_score": 103,
+            "query_terms_matched": 2,
+            "normalized_query": "gravity law",
+        }
+    ]
+    monkeypatch.setattr(
+        web_search_module,
+        "_wikipedia_extract_for_page",
+        lambda title: "Isaac Newton sat under an apple tree. An apple fell from the tree toward Newton.",
+    )
+
+    enriched = web_search_module._wikipedia_visual_event_results(base_results, limit=1)
+    evidence = web_search_module.web_results_to_evidence(enriched)
+
+    assert len(enriched) == 1
+    assert enriched[0]["visual_evidence_enrichment"] is True
+    assert enriched[0]["topic_scene_templates"] is False
+    assert enriched[0]["renderer_may_infer_topic"] is False
+    assert enriched[0]["particle_text"] is False
+    assert "apple tree" in enriched[0]["snippet"]
+    assert evidence[0]["source_type"] == "encyclopedia_visual_event_extract"
+    assert evidence[0]["visual_evidence_enrichment"] is True
+    assert evidence[0]["topic_scene_templates"] is False
+    assert evidence[0]["particle_text"] is False
 
 
 def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
@@ -193,4 +257,3 @@ def test_alpha_endpoints_smoke(tmp_path: Path, monkeypatch) -> None:
     pipeline = client.get("/api/pipeline/status")
     assert pipeline.status_code == 200
     assert len(pipeline.json()["stages"]) == 8
-

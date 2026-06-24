@@ -7,8 +7,10 @@ def test_voice_controls_are_plans_when_audio_unavailable() -> None:
 
     assert controls["planned_only"] is True
     assert controls["audio_available"] is False
-    assert 0.75 <= controls["speed"] <= 1.18
-    assert -0.18 <= controls["pitch_shift"] <= 0.18
+    assert 0.68 <= controls["speed"] <= 0.96
+    assert -0.24 <= controls["pitch_shift"] <= 0.12
+    assert controls["fallback_voice_style"] == "soft_warm_local_speech_with_breathing_pauses"
+    assert controls["fallback_delivery"] == "short_phrase_breathing_ssml"
     assert controls["real_emotion_claim"] is False
 
 

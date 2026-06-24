@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
 type Archetype =
   | "orb"
@@ -117,6 +117,7 @@ type ScenePose = "standing" | "seated" | "reaching";
 type ScenePlan = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
+  layout_intent?: "conversation" | "balanced_scene" | "wide_particle_stage";
   primary_surface?: string;
   dashboard_layout?: {
     scene?: {
@@ -154,6 +155,13 @@ type SceneTransform = {
   offsetX: number;
   offsetY: number;
   zoom: number;
+};
+
+type CartridgeViewState = {
+  yaw: number;
+  pitch: number;
+  dragging: boolean;
+  returning: boolean;
 };
 
 type SceneCameraView = {
@@ -219,6 +227,98 @@ type SplatraCommandSequence = {
   };
 };
 
+type SplatraCartridgeQueuePayload = {
+  status?: string;
+  execution_mode?: string;
+  job_count?: number;
+  side_channel?: string;
+  sidecar_status?: string;
+  sidecar_configured?: boolean;
+  sidecar_dispatch?: {
+    status?: string;
+    configured?: boolean;
+    job_count?: number;
+    external_splatra_called?: boolean;
+    raw_buffer_in_agent_context?: boolean;
+    raw_cartridge_fetched?: boolean;
+    mutation_performed?: boolean;
+    jobs?: Array<{
+      status?: string;
+      viewer_cartridge_url?: string;
+      prompt?: string;
+      generation_engine?: string | null;
+      real_generator_used?: boolean;
+      sgf_summary?: {
+        num_gaussians?: number;
+        raw_bytes?: number;
+      };
+    }>;
+  };
+  external_splatra_called?: boolean;
+  raw_buffer_in_agent_context?: boolean;
+  mutation_performed?: boolean;
+};
+
+type SplatraLoadedCartridge = {
+  url: string;
+  particleCount: number;
+  sourceCount: number;
+  bbox: {
+    minX: number;
+    minY: number;
+    minZ: number;
+    maxX: number;
+    maxY: number;
+    maxZ: number;
+  };
+  selectionMode: string;
+  materialHint: string;
+  reconstructionQualityPath: string;
+  realGeneratorUsed: boolean;
+  particles: Particle[];
+  webgl: {
+    positions: Float32Array;
+    colors: Float32Array;
+    sizes: Float32Array;
+  };
+};
+
+type WebglCartridgeResources = {
+  gl: WebGLRenderingContext | WebGL2RenderingContext;
+  program: WebGLProgram;
+  positionBuffer: WebGLBuffer;
+  colorBuffer: WebGLBuffer;
+  sizeBuffer: WebGLBuffer;
+  positionLocation: number;
+  colorLocation: number;
+  sizeLocation: number;
+  resolutionLocation: WebGLUniformLocation | null;
+  elapsedLocation: WebGLUniformLocation | null;
+  zoomLocation: WebGLUniformLocation | null;
+  offsetLocation: WebGLUniformLocation | null;
+  materialModeLocation: WebGLUniformLocation | null;
+  deviceScaleLocation: WebGLUniformLocation | null;
+  userYawLocation: WebGLUniformLocation | null;
+  userPitchLocation: WebGLUniformLocation | null;
+  sourceKey: string;
+};
+
+type WebglCartridgeRenderResult = {
+  ok: boolean;
+  reason: string;
+};
+
+const webglCartridgeResources = new WeakMap<HTMLCanvasElement, WebglCartridgeResources>();
+
+type SplatraReadyCartridge = {
+  url: string;
+  sourceCount: number;
+  jobIndex: number;
+  generationEngine: string;
+  realGeneratorUsed: boolean;
+  prompt: string;
+};
+
 type Props = {
   mode?: ImaginationMode;
   state?: VisualState;
@@ -228,6 +328,7 @@ type Props = {
   sceneFocus?: boolean;
   scenePlan?: ScenePlan | null;
   splatraCommandSequence?: SplatraCommandSequence | null;
+  splatraCartridgeQueue?: SplatraCartridgeQueuePayload | null;
   activeSpeechBeatIndex?: number;
   controlOverride?: Partial<ParticleControls>;
   onActivate?: () => void;
@@ -396,16 +497,16 @@ function sceneBeatParticleDensity(beat: ScenePlanBeat | null | undefined, active
   const cohesion = physicsNumber(beat, "cohesion", 0.56);
   const trail = physicsNumber(beat, "trail", 0.34);
   let density = active ? 1.28 : 1;
-  if (operation === "animate_particle_motion_path") density += active ? 0.62 : 0.32;
-  if (operation === "focus_particle_cluster") density += active ? 0.34 : 0.18;
-  if (operation === "recompose_particle_cluster") density += active ? 0.42 : 0.24;
+  if (operation === "animate_particle_motion_path") density += active ? 0.76 : 0.4;
+  if (operation === "focus_particle_cluster") density += active ? 0.44 : 0.24;
+  if (operation === "recompose_particle_cluster") density += active ? 0.52 : 0.3;
   if (operation === "disperse_particle_cluster") density += 0.18;
   if (affordance === "small_moving_object") density += 0.22;
   if (affordance === "entity_figure" || affordance === "organic_structure") density += 0.12;
-  if (behavior === "gravity_arc") density += active ? 0.38 : 0.22;
-  if (behavior === "kinetic_flow" || behavior === "magnetic_field") density += active ? 0.26 : 0.16;
+  if (behavior === "gravity_arc") density += active ? 0.52 : 0.3;
+  if (behavior === "kinetic_flow" || behavior === "magnetic_field") density += active ? 0.34 : 0.2;
   density += clamp((cohesion - 0.5) * 0.32 + trail * 0.18, -0.12, 0.36);
-  return clamp(density, 0.78, active ? 2.8 : 2.05);
+  return clamp(density, 0.9, active ? 5.05 : 3.55);
 }
 
 function sceneParticleIntentForBeat(scenePlan: ScenePlan | null | undefined, beat: ScenePlanBeat | null | undefined, beatIndex = -1) {
@@ -429,10 +530,10 @@ function sceneParticleIntentDensity(intent: Record<string, unknown> | null | und
   const operation = String(intent?.operation ?? particleOperationForSceneBeat(beat ?? undefined));
   const agentControl = String(intent?.agent_control ?? "");
   const verifiedIntentBoost = agentControl === "airbend_recompose_particles_inside_safe_region" ? 0.18 : 0;
-  if (operation === "animate_particle_motion_path") return clamp(base + verifiedIntentBoost + (active ? 0.32 : 0.14), 0.8, active ? 3.05 : 2.2);
-  if (operation === "recompose_particle_cluster") return clamp(base + verifiedIntentBoost + 0.18, 0.8, active ? 2.9 : 2.05);
-  if (operation === "focus_particle_cluster") return clamp(base + verifiedIntentBoost + 0.12, 0.8, active ? 2.7 : 1.95);
-  return clamp(base + verifiedIntentBoost, 0.78, active ? 2.6 : 1.9);
+  if (operation === "animate_particle_motion_path") return clamp(base + verifiedIntentBoost + (active ? 0.9 : 0.46), 0.9, active ? 5.25 : 3.65);
+  if (operation === "recompose_particle_cluster") return clamp(base + verifiedIntentBoost + 0.24, 0.8, active ? 3.35 : 2.35);
+  if (operation === "focus_particle_cluster") return clamp(base + verifiedIntentBoost + 0.18, 0.8, active ? 3.1 : 2.2);
+  return clamp(base + verifiedIntentBoost, 0.78, active ? 3.0 : 2.15);
 }
 
 function smoothstep(value: number) {
@@ -534,17 +635,17 @@ function drawParticleSegment(
   const dx = to[0] - from[0];
   const dy = to[1] - from[1];
   const distance = Math.hypot(dx, dy);
-  const steps = Math.max(7, Math.ceil(distance / Math.max(18, unit * 0.046)));
+  const steps = Math.max(11, Math.ceil(distance / Math.max(12, unit * 0.033)));
   const normalX = distance > 0 ? -dy / distance : 0;
   const normalY = distance > 0 ? dx / distance : 0;
   const tangentX = distance > 0 ? dx / distance : 1;
   const tangentY = distance > 0 ? dy / distance : 0;
-  const streamCount = distance > unit * 0.42 ? 3 : 2;
+  const streamCount = distance > unit * 0.42 ? 5 : 3;
   for (let lane = 0; lane < streamCount; lane += 1) {
     for (let index = 0; index <= steps; index += 1) {
       const rawT = index / steps;
       const t = (rawT + elapsed * (0.018 + lane * 0.011) + seeded(index, salt + lane * 101) * 0.055) % 1;
-      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.68) continue;
+      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.48) continue;
       const phase = t * Math.PI * 6 + salt * 0.037 + elapsed * (1.15 + lane * 0.21);
       const laneCenter = (streamCount - 1) / 2;
       const laneOffset = (lane - laneCenter) * unit * 0.032;
@@ -558,9 +659,9 @@ function drawParticleSegment(
         ctx,
         baseX + flow.x,
         baseY + flow.y,
-        unit * (0.00062 + seeded(index, salt + lane * 53 + 7) * 0.00108) * (0.72 + pulse * 0.3),
+        unit * (0.00046 + seeded(index, salt + lane * 53 + 7) * 0.00082) * (0.72 + pulse * 0.3),
         color,
-        alpha * (0.024 + pulse * 0.095) * (lane === Math.round(laneCenter) ? 0.72 : 0.42),
+        alpha * (0.018 + pulse * 0.07) * (lane === Math.round(laneCenter) ? 0.62 : 0.36),
       );
     }
   }
@@ -1114,11 +1215,318 @@ function scenePlanWithCommandSequence(scenePlan: ScenePlan | null | undefined, s
   };
 }
 
+function splatraReadyCartridge(queue: SplatraCartridgeQueuePayload | null | undefined): SplatraReadyCartridge | null {
+  const jobs = Array.isArray(queue?.sidecar_dispatch?.jobs) ? queue?.sidecar_dispatch?.jobs ?? [] : [];
+  const ready = jobs
+    .map((job, index) => ({
+      job,
+      index,
+      sourceCount: Number(job?.sgf_summary?.num_gaussians ?? 0) || 0,
+      generationEngine: String(job?.generation_engine ?? "unknown"),
+      realGeneratorUsed: job?.real_generator_used === true,
+      prompt: String(job?.prompt ?? ""),
+    }))
+    .filter((item) => item.job?.status === "swap_ready" && typeof item.job?.viewer_cartridge_url === "string")
+    .sort((left, right) => {
+      if (right.sourceCount !== left.sourceCount) return right.sourceCount - left.sourceCount;
+      return left.index - right.index;
+    })[0];
+  if (!ready?.job?.viewer_cartridge_url) return null;
+  return {
+    url: ready.job.viewer_cartridge_url,
+    sourceCount: ready.sourceCount,
+    jobIndex: ready.index,
+    generationEngine: ready.generationEngine,
+    realGeneratorUsed: ready.realGeneratorUsed,
+    prompt: ready.prompt,
+  };
+}
+
+function splatraReadyCartridgeUrl(queue: SplatraCartridgeQueuePayload | null | undefined): string {
+  return splatraReadyCartridge(queue)?.url ?? "";
+}
+
+function splatraMaterialHint(prompt: string, realGeneratorUsed: boolean): string {
+  const lowered = prompt.toLowerCase();
+  if (lowered.includes("glass") || lowered.includes("transparent") || lowered.includes("translucent") || lowered.includes("유리")) return "glass";
+  if (lowered.includes("metal") || lowered.includes("금속")) return "metal";
+  if (lowered.includes("water") || lowered.includes("물")) return "water";
+  return realGeneratorUsed ? "learned_surface" : "procedural";
+}
+
+function splatraCartridgeFetchUrl(url: string, budget: number): string {
+  const next = new URL(url, window.location.href);
+  next.searchParams.set("format", "spl3");
+  next.searchParams.set("budget", String(Math.max(1, Math.floor(budget))));
+  next.searchParams.set("_", String(Date.now()));
+  return next.toString();
+}
+
+function halfToFloat(value: number): number {
+  const sign = value & 0x8000 ? -1 : 1;
+  const exponent = (value >> 10) & 0x1f;
+  const fraction = value & 0x03ff;
+  if (exponent === 0) return sign * Math.pow(2, -14) * (fraction / 1024);
+  if (exponent === 31) return fraction ? Number.NaN : sign * Number.POSITIVE_INFINITY;
+  return sign * Math.pow(2, exponent - 15) * (1 + fraction / 1024);
+}
+
+type SplatraSampleReader = {
+  sourceCount: number;
+  format: "spl2" | "spl3";
+  readPosition: (index: number) => [number, number, number];
+  readColor: (index: number) => [number, number, number];
+  readScaleSignal: (index: number) => number;
+  readOpacity: (index: number) => number;
+  bbox?: {
+    minX: number;
+    minY: number;
+    minZ: number;
+    maxX: number;
+    maxY: number;
+    maxZ: number;
+  };
+};
+
+function buildLoadedSplatraCartridge(
+  reader: SplatraSampleReader,
+  budget: number,
+  url: string,
+  prompt = "",
+  realGeneratorUsed = false,
+  generationEngine = "",
+): SplatraLoadedCartridge {
+  const sourceCount = reader.sourceCount;
+  const densityMultiplier = realGeneratorUsed ? 20 : 10.75;
+  // Keep the rendered model high-density, but avoid expanding every generated
+  // Gaussian into a JS object on the browser main thread. The original source
+  // count remains exposed as telemetry; the visible cartridge uses an adaptive
+  // sample that is dense enough for the product surface and stable enough for
+  // lower-end machines or browser automation.
+  const adaptiveRealGeneratorCap = generationEngine.toLowerCase().includes("glass_orb") ? 150000 : 120000;
+  const maxParticles = realGeneratorUsed
+    ? clamp(Math.floor(budget * densityMultiplier), 48000, adaptiveRealGeneratorCap)
+    : clamp(Math.floor(budget * densityMultiplier), 22000, 180000);
+  const outputCount = Math.min(sourceCount, maxParticles);
+  const salt = Math.floor(stableUnit(url, 909) * 10000);
+  const particles: Particle[] = [];
+  let minX = reader.bbox?.minX ?? Number.POSITIVE_INFINITY;
+  let minY = reader.bbox?.minY ?? Number.POSITIVE_INFINITY;
+  let minZ = reader.bbox?.minZ ?? Number.POSITIVE_INFINITY;
+  let maxX = reader.bbox?.maxX ?? Number.NEGATIVE_INFINITY;
+  let maxY = reader.bbox?.maxY ?? Number.NEGATIVE_INFINITY;
+  let maxZ = reader.bbox?.maxZ ?? Number.NEGATIVE_INFINITY;
+  if (!reader.bbox) {
+    const stride = Math.max(1, Math.floor(sourceCount / 180000));
+    for (let index = 0; index < sourceCount; index += stride) {
+      const [x, y, z] = reader.readPosition(index);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      minZ = Math.min(minZ, z);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      maxZ = Math.max(maxZ, z);
+    }
+  }
+  if (!Number.isFinite(minX)) {
+    minX = minY = minZ = -1;
+    maxX = maxY = maxZ = 1;
+  }
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  const spanX = Math.max(1e-6, maxX - minX);
+  const spanY = Math.max(1e-6, maxY - minY);
+  const spanZ = Math.max(1e-6, maxZ - minZ);
+  const fitScale = Math.max(spanX, spanY, spanZ) / 1.9;
+  const candidates: Array<{ index: number; score: number }> = [];
+  const candidateStride = Math.max(1, Math.floor(sourceCount / Math.max(outputCount * 2, 1)));
+  for (let index = 0; index < sourceCount; index += candidateStride) {
+    const jittered = (index + Math.floor(seeded(index, salt) * candidateStride)) % sourceCount;
+    const scaleSignal = reader.readScaleSignal(jittered);
+    const opacity = Math.max(0, reader.readOpacity(jittered));
+    const surfaceJitter = seeded(jittered, salt + 31) * 0.08;
+    candidates.push({ index: jittered, score: opacity * (0.58 + scaleSignal * 5.2) + surfaceJitter });
+  }
+  candidates.sort((left, right) => right.score - left.score);
+  const selected = new Set<number>();
+  const salienceCount = Math.min(outputCount, Math.floor(outputCount * 0.62));
+  for (const item of candidates) {
+    if (selected.size >= salienceCount) break;
+    selected.add(item.index);
+  }
+  const uniformStep = Math.max(1, Math.floor(sourceCount / Math.max(outputCount - selected.size, 1)));
+  for (let index = 0; index < sourceCount && selected.size < outputCount; index += uniformStep) {
+    selected.add((index + Math.floor(seeded(index, salt + 53) * uniformStep)) % sourceCount);
+  }
+  if (selected.size < outputCount) {
+    for (let index = 0; index < sourceCount && selected.size < outputCount; index += 1) {
+      selected.add((index + Math.floor(seeded(index, salt + 79) * sourceCount)) % sourceCount);
+    }
+  }
+  if (selected.size < outputCount) {
+    for (let index = 0; index < sourceCount && selected.size < outputCount; index += 1) {
+      selected.add(index);
+    }
+  }
+  for (const jittered of selected) {
+    if (particles.length >= outputCount) break;
+    const [rawX, rawY, rawZ] = reader.readPosition(jittered);
+    if (!Number.isFinite(rawX) || !Number.isFinite(rawY) || !Number.isFinite(rawZ)) continue;
+    const [rawR, rawG, rawB] = reader.readColor(jittered);
+    const x = (rawX - centerX) / fitScale;
+    const y = (rawY - centerY) / fitScale;
+    const z = (rawZ - centerZ) / fitScale;
+    const r = clamp(rawR, 0.04, 1);
+    const g = clamp(rawG, 0.04, 1);
+    const b = clamp(rawB, 0.04, 1);
+    const scaleSignal = clamp(reader.readScaleSignal(jittered), 0.004, 0.18);
+    const opacity = clamp(reader.readOpacity(jittered), 0.08, 3.8);
+    particles.push({
+      x,
+      y: -y,
+      z,
+      r,
+      g,
+      b,
+      a: clamp(0.2 + opacity * 0.28, 0.16, 0.92),
+      scale: clamp(0.58 + scaleSignal * 14 + seeded(jittered, salt + 17) * 0.44, 0.58, 2.7),
+    });
+  }
+  const webglPositions = new Float32Array(particles.length * 3);
+  const webglColors = new Float32Array(particles.length * 4);
+  const webglSizes = new Float32Array(particles.length);
+  particles.forEach((particle, index) => {
+    const p3 = index * 3;
+    const p4 = index * 4;
+    webglPositions[p3] = particle.x;
+    webglPositions[p3 + 1] = particle.y;
+    webglPositions[p3 + 2] = particle.z;
+    webglColors[p4] = particle.r;
+    webglColors[p4 + 1] = particle.g;
+    webglColors[p4 + 2] = particle.b;
+    webglColors[p4 + 3] = particle.a;
+    webglSizes[index] = particle.scale;
+  });
+  return {
+    url,
+    particleCount: particles.length,
+    sourceCount,
+    bbox: { minX, minY, minZ, maxX, maxY, maxZ },
+    selectionMode: `bbox_fit_high_density_perspective_material_${reader.format}`,
+    materialHint: splatraMaterialHint(prompt, realGeneratorUsed),
+    reconstructionQualityPath: generationEngine.toLowerCase().includes("glass_orb")
+      ? "particle_material_generator_glass_orb"
+      : realGeneratorUsed
+        ? "real_text_to_image_single_view_2_5d_lift"
+        : "procedural_particle_fallback",
+    realGeneratorUsed,
+    particles,
+    webgl: {
+      positions: webglPositions,
+      colors: webglColors,
+      sizes: webglSizes,
+    },
+  };
+}
+
+function parseSpl2Cartridge(buffer: ArrayBuffer, budget: number, url: string, prompt = "", realGeneratorUsed = false, generationEngine = ""): SplatraLoadedCartridge {
+  const view = new DataView(buffer);
+  if (buffer.byteLength < 8) throw new Error("SPL2 cartridge too small");
+  const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+  if (magic === "SPL3") {
+    const sourceCount = view.getUint32(4, true);
+    const headerBytes = 32;
+    const posOffset = headerBytes;
+    const colorOffset = posOffset + sourceCount * 6;
+    const scaleOffset = colorOffset + sourceCount * 3;
+    const quatOffset = scaleOffset + sourceCount * 6;
+    const opacityOffset = quatOffset + sourceCount * 4;
+    const expectedBytes = opacityOffset + sourceCount;
+    if (buffer.byteLength < expectedBytes) throw new Error("SPL3 cartridge truncated");
+    const minX = view.getFloat32(8, true);
+    const minY = view.getFloat32(12, true);
+    const minZ = view.getFloat32(16, true);
+    const maxX = view.getFloat32(20, true);
+    const maxY = view.getFloat32(24, true);
+    const maxZ = view.getFloat32(28, true);
+    const spanX = Math.max(1e-8, maxX - minX);
+    const spanY = Math.max(1e-8, maxY - minY);
+    const spanZ = Math.max(1e-8, maxZ - minZ);
+    return buildLoadedSplatraCartridge({
+      sourceCount,
+      format: "spl3",
+      bbox: { minX, minY, minZ, maxX, maxY, maxZ },
+      readPosition: (index) => {
+        const offset = posOffset + index * 6;
+        const xq = view.getInt16(offset, true);
+        const yq = view.getInt16(offset + 2, true);
+        const zq = view.getInt16(offset + 4, true);
+        return [
+          minX + ((xq + 32768) / 65535) * spanX,
+          minY + ((yq + 32768) / 65535) * spanY,
+          minZ + ((zq + 32768) / 65535) * spanZ,
+        ];
+      },
+      readColor: (index) => {
+        const offset = colorOffset + index * 3;
+        return [
+          view.getUint8(offset) / 255,
+          view.getUint8(offset + 1) / 255,
+          view.getUint8(offset + 2) / 255,
+        ];
+      },
+      readScaleSignal: (index) => {
+        const offset = scaleOffset + index * 6;
+        const sx = Math.abs(halfToFloat(view.getUint16(offset, true)) || 0);
+        const sy = Math.abs(halfToFloat(view.getUint16(offset + 2, true)) || 0);
+        const sz = Math.abs(halfToFloat(view.getUint16(offset + 4, true)) || 0);
+        return (sx + sy + sz) / 3;
+      },
+      readOpacity: (index) => view.getUint8(opacityOffset + index) / 255,
+    }, budget, url, prompt, realGeneratorUsed, generationEngine);
+  }
+  if (magic !== "SPL2") throw new Error(`unsupported cartridge ${magic}`);
+  const sourceCount = view.getUint32(4, true);
+  const strideFloats = 14;
+  const expectedBytes = 8 + sourceCount * strideFloats * 4;
+  if (buffer.byteLength < expectedBytes) throw new Error("SPL2 cartridge truncated");
+  const floats = new Float32Array(buffer, 8);
+  const posOffset = 0;
+  const colorOffset = sourceCount * 3;
+  const scaleOffset = sourceCount * 6;
+  const opacityOffset = sourceCount * 13;
+  return buildLoadedSplatraCartridge({
+    sourceCount,
+    format: "spl2",
+    readPosition: (index) => [
+      floats[posOffset + index * 3],
+      floats[posOffset + index * 3 + 1],
+      floats[posOffset + index * 3 + 2],
+    ],
+    readColor: (index) => [
+      floats[colorOffset + index * 3],
+      floats[colorOffset + index * 3 + 1],
+      floats[colorOffset + index * 3 + 2],
+    ],
+    readScaleSignal: (index) => {
+      const sx = Math.abs(floats[scaleOffset + index * 3] || 0);
+      const sy = Math.abs(floats[scaleOffset + index * 3 + 1] || 0);
+      const sz = Math.abs(floats[scaleOffset + index * 3 + 2] || 0);
+      return (sx + sy + sz) / 3;
+    },
+    readOpacity: (index) => floats[opacityOffset + index],
+  }, budget, url, prompt, realGeneratorUsed, generationEngine);
+}
+
 function buildSceneRenderObjects(scenePlan: ScenePlan | null | undefined, budget: number): SceneRenderObject[] {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const seen = new Set<string>();
-  const maxObjects = Math.min(16, Math.max(1, beats.length));
-  const perObjectBudget = clamp(Math.floor(Math.max(360, budget * 2.05) / maxObjects), 112, 360);
+  const maxObjects = Math.min(18, Math.max(1, beats.length));
+  const sceneWide = scenePlan?.layout_intent === "wide_particle_stage";
+  const densityBudget = budget * (sceneWide ? 8.4 : 5.8);
+  const perObjectBudget = clamp(Math.floor(Math.max(1400, densityBudget) / maxObjects), 520, sceneWide ? 3000 : 1860);
   return beats
     .slice(0, maxObjects)
     .map((beat, index) => {
@@ -1632,6 +2040,326 @@ function drawParticles(
   drawParticleEllipse(ctx, cx, cy, shellRadius, shellRadius, 0, [128, 226, 255], 0.22, Math.min(width, height), 901, elapsed);
 }
 
+function drawSplatraCartridgeParticles(
+  ctx: CanvasRenderingContext2D,
+  cartridge: SplatraLoadedCartridge,
+  width: number,
+  height: number,
+  elapsed: number,
+  controls: ParticleControls,
+  transform: SceneTransform,
+  view: CartridgeViewState,
+) {
+  ctx.clearRect(0, 0, width, height);
+  const pressure = layoutCollisionPressure(controls);
+  const fieldQuieting = layoutFieldQuieting(controls);
+  const cx = width / 2 + transform.offsetX * width;
+  const cy = height / 2 + transform.offsetY * height;
+  const unit = Math.min(width, height);
+  const scale = unit * 0.37 * transform.zoom * (1 - pressure * 0.1);
+  const rotation = elapsed * (0.16 + controls.curiosity * 0.06) + view.yaw;
+  const tilt = Math.sin(elapsed * 0.18) * 0.14 + view.pitch;
+  const cosY = Math.cos(rotation);
+  const sinY = Math.sin(rotation);
+  const cosX = Math.cos(tilt);
+  const sinX = Math.sin(tilt);
+
+  ctx.globalCompositeOperation = "lighter";
+  const fieldGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, unit * 0.44);
+  fieldGlow.addColorStop(0, `rgba(255,255,255,${0.038 * (1 - fieldQuieting * 0.28)})`);
+  fieldGlow.addColorStop(0.48, `rgba(54,228,255,${0.028 * (1 - fieldQuieting * 0.28)})`);
+  fieldGlow.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = fieldGlow;
+  ctx.fillRect(0, 0, width, height);
+
+  for (const point of cartridge.particles) {
+    let x = point.x;
+    let y = point.y;
+    let z = point.z;
+    const rx = x * cosY - z * sinY;
+    const rz = x * sinY + z * cosY;
+    x = rx;
+    z = rz;
+    const ry = y * cosX - z * sinX;
+    z = y * sinX + z * cosX;
+    y = ry;
+    const viewDepth = clamp(2.55 - z, 0.85, 4.65);
+    const perspective = clamp(2.35 / viewDepth, 0.62, 1.95);
+    const depth = clamp((z + 1.65) / 3.3, 0.06, 1);
+    const radius = Math.sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
+    const surfaceRim = clamp((radius - 0.56) / 0.72, 0, 1);
+    const glassLike = cartridge.materialHint === "glass" || cartridge.materialHint === "water";
+    const realSurfaceBoost = cartridge.realGeneratorUsed ? 1.12 : 1;
+    const flow = flowFieldDisplacement(
+      cx + x * scale * perspective,
+      cy + y * scale * perspective,
+      elapsed,
+      unit * (0.0013 + controls.speaking_energy * 0.0011),
+      point.x * 1.37 + point.z * 0.73,
+    );
+    const px = cx + x * scale * perspective + flow.x;
+    const py = cy + y * scale * perspective + flow.y;
+    const gloss = glassLike ? clamp(surfaceRim * 0.42 + depth * 0.16, 0, 0.58) : 0;
+    const colorLift = cartridge.realGeneratorUsed ? 0.045 : 0;
+    const color: [number, number, number] = [
+      Math.floor(clamp(point.r + gloss + colorLift, 0, 1) * 255),
+      Math.floor(clamp(point.g + gloss * 0.82 + colorLift, 0, 1) * 255),
+      Math.floor(clamp(point.b + gloss * 1.05 + colorLift, 0, 1) * 255),
+    ];
+    const size = clamp(point.scale * (0.18 + depth * 0.42) * perspective * transform.zoom * realSurfaceBoost, 0.14, glassLike ? 1.82 : 2.18);
+    const alpha = clamp(
+      point.a * (0.16 + depth * 0.42 + surfaceRim * (glassLike ? 0.18 : 0.07)) * (1 - fieldQuieting * 0.22) * realSurfaceBoost,
+      0.018,
+      glassLike ? 0.62 : 0.58,
+    );
+    ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(px, py, size, 0, Math.PI * 2);
+    ctx.fill();
+    if (glassLike && surfaceRim > 0.7 && seeded(point.x * 911, point.z * 613 + elapsed) > 0.82) {
+      ctx.fillStyle = `rgba(210, 248, 255, ${alpha * 0.32})`;
+      ctx.beginPath();
+      ctx.arc(px, py, clamp(size * 1.65, 0.42, 3.8), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (controls.speaking_energy > 0.2 && seeded(px, py + elapsed) > 0.86) {
+      drawParticleStroke(ctx, px, py, flow.angle, size * (2.4 + controls.speaking_energy * 2.2), size * 0.78, color, alpha * 0.28);
+    }
+  }
+  ctx.globalCompositeOperation = "source-over";
+}
+
+const WEBGL_CARTRIDGE_VERTEX_SHADER = `
+precision highp float;
+precision mediump int;
+attribute vec3 aPosition;
+attribute vec4 aColor;
+attribute float aSize;
+uniform vec2 uResolution;
+uniform float uElapsed;
+uniform float uZoom;
+uniform vec2 uOffset;
+uniform int uMaterialMode;
+uniform float uDeviceScale;
+uniform float uUserYaw;
+uniform float uUserPitch;
+varying vec4 vColor;
+varying float vRim;
+varying float vFront;
+
+vec3 rotateY(vec3 p, float angle) {
+  float c = cos(angle);
+  float s = sin(angle);
+  return vec3(p.x * c - p.z * s, p.y, p.x * s + p.z * c);
+}
+
+vec3 rotateX(vec3 p, float angle) {
+  float c = cos(angle);
+  float s = sin(angle);
+  return vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
+}
+
+void main() {
+  vec3 p = rotateY(aPosition, uElapsed * 0.24 + uUserYaw);
+  p = rotateX(p, sin(uElapsed * 0.17) * 0.13 + uUserPitch);
+  float radius = length(aPosition);
+  float perspective = clamp(1.0 / (1.0 + p.z * 0.28), 0.62, 1.92);
+  vec2 projected = (p.xy + uOffset) * uZoom * perspective;
+  projected.x *= 0.74;
+  projected.y *= 0.74 * (uResolution.x / max(uResolution.y, 1.0));
+  gl_Position = vec4(projected, 0.0, 1.0);
+  float materialScale = uMaterialMode == 1 ? 1.28 : 1.0;
+  gl_PointSize = clamp(aSize * uDeviceScale * perspective * materialScale, 1.0, 7.0);
+  vRim = smoothstep(0.52, 1.18, radius);
+  vFront = 1.0 - smoothstep(-0.16, 0.92, p.z);
+  vColor = aColor;
+}
+`;
+
+const WEBGL_CARTRIDGE_FRAGMENT_SHADER = `
+precision highp float;
+precision mediump int;
+varying vec4 vColor;
+varying float vRim;
+varying float vFront;
+uniform int uMaterialMode;
+
+void main() {
+  vec2 uv = gl_PointCoord - vec2(0.5);
+  float d = dot(uv, uv);
+  if (d > 0.25) {
+    discard;
+  }
+  float core = smoothstep(0.25, 0.0, d);
+  float edge = smoothstep(0.05, 0.24, d);
+  vec3 color = vColor.rgb;
+  float alpha = vColor.a * (0.18 + core * 0.66);
+  alpha *= mix(0.18, 1.0, vFront);
+  if (uMaterialMode == 1) {
+    color = mix(color, vec3(0.78, 0.97, 1.0), edge * (0.18 + vRim * 0.42));
+    alpha *= 0.82 + vRim * 0.58;
+  } else if (uMaterialMode == 2) {
+    color = mix(color, vec3(1.0, 0.88, 0.64), edge * 0.22);
+  } else if (uMaterialMode == 3) {
+    color = mix(color, vec3(0.43, 0.92, 1.0), edge * 0.3);
+  }
+  gl_FragColor = vec4(color, alpha);
+}
+`;
+
+function createWebglShader(gl: WebGLRenderingContext | WebGL2RenderingContext, type: number, source: string) {
+  const shader = gl.createShader(type);
+  if (!shader) return null;
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
+}
+
+function createWebglCartridgeResources(canvas: HTMLCanvasElement): { resources: WebglCartridgeResources | null; reason: string } {
+  const gl = canvas.getContext("webgl", {
+    alpha: true,
+    antialias: false,
+    depth: false,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: false,
+  }) ?? canvas.getContext("webgl2", {
+    alpha: true,
+    antialias: false,
+    depth: false,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: false,
+  });
+  if (!gl) return { resources: null, reason: "no_webgl_context" };
+  const vertex = createWebglShader(gl, gl.VERTEX_SHADER, WEBGL_CARTRIDGE_VERTEX_SHADER);
+  const fragment = createWebglShader(gl, gl.FRAGMENT_SHADER, WEBGL_CARTRIDGE_FRAGMENT_SHADER);
+  if (!vertex || !fragment) return { resources: null, reason: "shader_compile_failed" };
+  const program = gl.createProgram();
+  if (!program) return { resources: null, reason: "program_create_failed" };
+  gl.attachShader(program, vertex);
+  gl.attachShader(program, fragment);
+  gl.linkProgram(program);
+  gl.deleteShader(vertex);
+  gl.deleteShader(fragment);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const linkLog = String(gl.getProgramInfoLog(program) || "unknown").replace(/[^0-9A-Za-z가-힣_.:-]+/g, "_").slice(0, 120);
+    gl.deleteProgram(program);
+    return { resources: null, reason: `program_link_failed:${linkLog}` };
+  }
+  const positionBuffer = gl.createBuffer();
+  const colorBuffer = gl.createBuffer();
+  const sizeBuffer = gl.createBuffer();
+  if (!positionBuffer || !colorBuffer || !sizeBuffer) return { resources: null, reason: "buffer_create_failed" };
+  const resources: WebglCartridgeResources = {
+    gl,
+    program,
+    positionBuffer,
+    colorBuffer,
+    sizeBuffer,
+    positionLocation: gl.getAttribLocation(program, "aPosition"),
+    colorLocation: gl.getAttribLocation(program, "aColor"),
+    sizeLocation: gl.getAttribLocation(program, "aSize"),
+    resolutionLocation: gl.getUniformLocation(program, "uResolution"),
+    elapsedLocation: gl.getUniformLocation(program, "uElapsed"),
+    zoomLocation: gl.getUniformLocation(program, "uZoom"),
+    offsetLocation: gl.getUniformLocation(program, "uOffset"),
+    materialModeLocation: gl.getUniformLocation(program, "uMaterialMode"),
+    deviceScaleLocation: gl.getUniformLocation(program, "uDeviceScale"),
+    userYawLocation: gl.getUniformLocation(program, "uUserYaw"),
+    userPitchLocation: gl.getUniformLocation(program, "uUserPitch"),
+    sourceKey: "",
+  };
+  if (resources.positionLocation < 0 || resources.colorLocation < 0 || resources.sizeLocation < 0) {
+    return { resources: null, reason: "attribute_location_missing" };
+  }
+  webglCartridgeResources.set(canvas, resources);
+  return { resources, reason: "ready" };
+}
+
+function splatraMaterialMode(materialHint: string) {
+  if (materialHint === "glass") return 1;
+  if (materialHint === "metal") return 2;
+  if (materialHint === "water") return 3;
+  return 0;
+}
+
+function drawSplatraCartridgeWebGL(
+  canvas: HTMLCanvasElement,
+  cartridge: SplatraLoadedCartridge,
+  width: number,
+  height: number,
+  elapsed: number,
+  controls: ParticleControls,
+  transform: SceneTransform,
+  view: CartridgeViewState,
+): WebglCartridgeRenderResult {
+  let resources = webglCartridgeResources.get(canvas) ?? null;
+  if (!resources) {
+    const created = createWebglCartridgeResources(canvas);
+    resources = created.resources;
+    if (!resources) return { ok: false, reason: created.reason };
+  }
+  const { gl } = resources;
+  try {
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    gl.viewport(0, 0, width, height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(resources.program);
+    const sourceKey = `${cartridge.url}:${cartridge.particleCount}:${cartridge.materialHint}`;
+    if (resources.sourceKey !== sourceKey) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, resources.positionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, cartridge.webgl.positions, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER, resources.colorBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, cartridge.webgl.colors, gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER, resources.sizeBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, cartridge.webgl.sizes, gl.STATIC_DRAW);
+      resources.sourceKey = sourceKey;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, resources.positionBuffer);
+    gl.enableVertexAttribArray(resources.positionLocation);
+    gl.vertexAttribPointer(resources.positionLocation, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, resources.colorBuffer);
+    gl.enableVertexAttribArray(resources.colorLocation);
+    gl.vertexAttribPointer(resources.colorLocation, 4, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, resources.sizeBuffer);
+    gl.enableVertexAttribArray(resources.sizeLocation);
+    gl.vertexAttribPointer(resources.sizeLocation, 1, gl.FLOAT, false, 0, 0);
+    const pressure = layoutCollisionPressure(controls);
+    const materialBoost = cartridge.realGeneratorUsed ? 0.62 : 1;
+    const zoom = transform.zoom * (1 - pressure * 0.08) * materialBoost;
+    if (resources.resolutionLocation) gl.uniform2f(resources.resolutionLocation, width, height);
+    if (resources.elapsedLocation) gl.uniform1f(resources.elapsedLocation, elapsed);
+    if (resources.zoomLocation) gl.uniform1f(resources.zoomLocation, zoom);
+    if (resources.offsetLocation) gl.uniform2f(resources.offsetLocation, transform.offsetX, -transform.offsetY);
+    if (resources.materialModeLocation) gl.uniform1i(resources.materialModeLocation, splatraMaterialMode(cartridge.materialHint));
+    if (resources.userYawLocation) gl.uniform1f(resources.userYawLocation, view.yaw);
+    if (resources.userPitchLocation) gl.uniform1f(resources.userPitchLocation, view.pitch);
+    if (resources.deviceScaleLocation) {
+      gl.uniform1f(resources.deviceScaleLocation, Math.max(1.4, Math.min(window.devicePixelRatio || 1, 2.2)) * (cartridge.realGeneratorUsed ? 1.9 : 1.2));
+    }
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    if (cartridge.realGeneratorUsed) {
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    } else {
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    }
+    gl.drawArrays(gl.POINTS, 0, cartridge.particleCount);
+    const error = gl.getError();
+    if (error !== gl.NO_ERROR) return { ok: false, reason: `webgl_error_${error}` };
+    return { ok: true, reason: "webgl_points_active" };
+  } catch {
+    return { ok: false, reason: "draw_exception" };
+  }
+}
+
 function drawSceneObjectCloud(
   ctx: CanvasRenderingContext2D,
   object: SceneRenderObject,
@@ -1711,10 +2439,10 @@ function drawSceneObjectCloud(
       Math.floor(point.g * 255),
       Math.floor(point.b * 255),
     ];
-    const size = clamp(point.scale * (0.54 + depth * 0.98) * scaleBias, 0.44, active ? 3.8 : 2.55);
-    const alpha = clamp(point.a * (0.14 + depth * 0.62) * alphaMultiplier * roleStyle.alpha * clamp(0.82 + density * 0.12, 0.84, 1.18) * (1 - layoutFieldQuieting(controls) * 0.18), 0.025, active ? 0.86 : 0.54);
+    const size = clamp(point.scale * (0.42 + depth * 0.72) * scaleBias, 0.32, active ? 2.75 : 1.95);
+    const alpha = clamp(point.a * (0.13 + depth * 0.56) * alphaMultiplier * roleStyle.alpha * clamp(0.82 + density * 0.11, 0.84, 1.2) * (1 - layoutFieldQuieting(controls) * 0.18), 0.02, active ? 0.78 : 0.5);
     const angle = flowFieldAngle(px, py, elapsed, point.x * 1.7 + point.z * 0.9 + stableUnit(object.id, 31));
-    drawParticleStroke(ctx, px, py, angle, clamp(size * (2.4 + controls.curiosity * 2.6 + roleStyle.trail * 1.7 + density * 0.42), 1.6, 12.5), size, color, alpha);
+    drawParticleStroke(ctx, px, py, angle, clamp(size * (2.15 + controls.curiosity * 2.1 + roleStyle.trail * 1.55 + density * 0.34), 1.2, 9.8), size, color, alpha);
   });
 }
 
@@ -1744,7 +2472,7 @@ function drawSceneMotionPathFlow(
   };
   const progress = sceneObjectProgress(object.beat, sceneElapsed);
   const unit = Math.min(width, height);
-  const steps = Math.round(clamp(18 * density, 18, 42));
+  const steps = Math.round(clamp(24 * density, 24, 62));
   const points: Array<[number, number]> = [];
   for (let index = 0; index <= steps; index += 1) {
     const t = index / steps;
@@ -1756,10 +2484,10 @@ function drawSceneMotionPathFlow(
     const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
     points.push([canvasPoint.x, canvasPoint.y]);
   }
-  const baseAlpha = (active ? 0.052 : 0.022) * centralScale * clamp(0.86 + density * 0.16, 0.9, 1.34);
+  const baseAlpha = (active ? 0.036 : 0.016) * centralScale * clamp(0.86 + density * 0.14, 0.88, 1.26);
   drawParticlePolyline(ctx, points, [76, 230, 255], baseAlpha, unit, Math.floor(stableUnit(object.id, 73) * 1000), elapsed);
 
-  const streamCount = Math.round(clamp((active ? 13 : 7) * density, active ? 13 : 7, active ? 32 : 18));
+  const streamCount = Math.round(clamp((active ? 18 : 10) * density, active ? 18 : 10, active ? 46 : 28));
   for (let index = 0; index < streamCount; index += 1) {
     const local = clamp(progress - index * (0.034 / clamp(density, 1, 2.8)) + Math.sin(elapsed * 0.9 + index) * 0.01, 0, 1);
     const arc = Math.sin(local * Math.PI) * 0.22;
@@ -1773,9 +2501,9 @@ function drawSceneMotionPathFlow(
       ctx,
       canvasPoint.x,
       canvasPoint.y,
-        unit * (0.0017 + fade * 0.0032) * centralScale,
+        unit * (0.0012 + fade * 0.0024) * centralScale,
         index % 3 === 0 ? [255, 104, 177] : [76, 230, 255],
-        (active ? 0.38 : 0.18) * fade * clamp(0.84 + density * 0.12, 0.9, 1.28),
+        (active ? 0.3 : 0.14) * fade * clamp(0.82 + density * 0.1, 0.88, 1.18),
       );
   }
 }
@@ -1807,9 +2535,9 @@ function drawSceneMotionParticipantFlow(
     [target.x, target.y],
   ];
 
-  drawParticlePolyline(ctx, sourceSubjectTarget, [76, 230, 255], 0.038 * centralScale, unit, groupSalt + 401, elapsed);
+  drawParticlePolyline(ctx, sourceSubjectTarget, [76, 230, 255], 0.026 * centralScale, unit, groupSalt + 401, elapsed);
 
-  for (let index = 0; index < 22; index += 1) {
+  for (let index = 0; index < 34; index += 1) {
     const leg = index < 10 ? 0 : 1;
     const localIndex = leg === 0 ? index : index - 10;
     const steps = leg === 0 ? 10 : 12;
@@ -1825,9 +2553,9 @@ function drawSceneMotionParticipantFlow(
       ctx,
       x,
       y,
-      unit * (0.002 + fade * 0.0028) * centralScale,
+      unit * (0.0014 + fade * 0.0021) * centralScale,
       leg === 0 ? [76, 230, 255] : [255, 104, 177],
-      0.24 * fade * centralScale,
+      0.18 * fade * centralScale,
     );
   }
 
@@ -1915,7 +2643,7 @@ function drawSceneFocusSwarm(
   const moving = activeObject.beat.op === "move" || Boolean(activeObject.beat.motion_path);
   const roleStyle = sceneRoleStyle(activeObject.beat, true);
   const density = sceneBeatParticleDensity(activeObject.beat, true);
-  const count = Math.round(clamp(unit * (moving ? 0.22 : 0.16) * density * centralScale * (1 - fieldQuieting * 0.22), 88, 360));
+  const count = Math.round(clamp(unit * (moving ? 0.36 : 0.26) * density * centralScale * (1 - fieldQuieting * 0.22), 160, 780));
   const fieldRadius = unit * clamp(0.1 + roleStyle.focus * 0.045 + controls.curiosity * 0.025 + flowRecombine * 0.025, 0.1, 0.22) * centralScale;
   const salt = Math.floor(stableUnit(activeObject.id, 991) * 10000);
   const pulse = 0.55 + Math.sin(elapsed * 1.1 + salt) * 0.18 + controls.speaking_energy * 0.18;
@@ -1998,9 +2726,15 @@ export default function SplatraImaginationField({
   sceneFocus = false,
   scenePlan = null,
   splatraCommandSequence = null,
+  splatraCartridgeQueue = null,
   activeSpeechBeatIndex = -1,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const webglCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const webglCartridgeActiveRef = useRef(false);
+  const webglCartridgeStatusRef = useRef("not_requested");
+  const cartridgeViewRef = useRef<CartridgeViewState>({ yaw: 0, pitch: 0, dragging: false, returning: false });
+  const cartridgeDragRef = useRef({ active: false, pointerId: -1, lastX: 0, lastY: 0 });
   const [archetype, setArchetype] = useState<Archetype>(() => (mode === "product" ? "constellation" : "orb"));
   const [seedNonce, setSeedNonce] = useState(0);
   const [frame, setFrame] = useState<ImaginationFrame | null>(null);
@@ -2009,6 +2743,10 @@ export default function SplatraImaginationField({
   const [reducedMotion, setReducedMotion] = useState(false);
   const [sceneStartedAt, setSceneStartedAt] = useState(0);
   const [activeSceneBeatIndex, setActiveSceneBeatIndex] = useState(-1);
+  const [loadedCartridge, setLoadedCartridge] = useState<SplatraLoadedCartridge | null>(null);
+  const [webglCartridgeActive, setWebglCartridgeActive] = useState(false);
+  const [webglCartridgeStatus, setWebglCartridgeStatus] = useState("not_requested");
+  const [cartridgeViewState, setCartridgeViewState] = useState<CartridgeViewState>(() => cartridgeViewRef.current);
   const budget = particleBudget ?? (mode === "lab" ? 1400 : 520);
   const controls = useMemo<ParticleControls>(() => {
     const base = STATE_CONTROLS[state] ?? STATE_CONTROLS.idle;
@@ -2084,6 +2822,28 @@ export default function SplatraImaginationField({
   const splatraContract = splatraCommandSequence?.splatra_contract ?? {};
   const splatraHotSwap = splatraCommandSequence?.hot_swap_policy ?? {};
   const splatraMotionPolicy = splatraCommandSequence?.particle_motion_policy ?? {};
+  const readyCartridge = splatraReadyCartridge(splatraCartridgeQueue);
+  const readyCartridgeUrl = readyCartridge?.url ?? "";
+  const cartridgeRenderMode = loadedCartridge?.particles.length
+    ? webglCartridgeActive
+      ? "splatra_sidecar_webgl_points"
+      : "splatra_sidecar_cartridge_particles"
+    : "procedural_fallback_particles";
+  const cartridgeFillRatio = loadedCartridge?.sourceCount
+    ? loadedCartridge.particleCount / Math.max(1, loadedCartridge.sourceCount)
+    : 0;
+  const shouldReturnCartridgeView = stageMode || state === "speaking" || activeSpeechBeatIndex >= 0;
+  const publishCartridgeView = (next: CartridgeViewState) => {
+    cartridgeViewRef.current = next;
+    setCartridgeViewState((current) => (
+      Math.abs(current.yaw - next.yaw) > 0.001
+      || Math.abs(current.pitch - next.pitch) > 0.001
+      || current.dragging !== next.dragging
+      || current.returning !== next.returning
+        ? next
+        : current
+    ));
+  };
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(media.matches);
@@ -2131,6 +2891,47 @@ export default function SplatraImaginationField({
       cancelled = true;
     };
   }, [archetype, budget, controls, reducedMotion, seedNonce, state]);
+
+  useEffect(() => {
+    if (!readyCartridgeUrl) {
+      setLoadedCartridge(null);
+      return undefined;
+    }
+    let cancelled = false;
+    async function loadCartridge() {
+      try {
+        const cartridgeBudget = Math.min(
+          260000,
+          Math.max(budget, readyCartridge?.realGeneratorUsed === true ? 180000 : 90000),
+        );
+        const cartridgeUrl = splatraCartridgeFetchUrl(readyCartridgeUrl, cartridgeBudget);
+        const response = await fetch(cartridgeUrl, { cache: "no-store" });
+        if (!response.ok) throw new Error(`cartridge HTTP ${response.status}`);
+        const buffer = await response.arrayBuffer();
+        const parsed = parseSpl2Cartridge(
+          buffer,
+          cartridgeBudget,
+          cartridgeUrl,
+          readyCartridge?.prompt ?? "",
+          readyCartridge?.realGeneratorUsed === true,
+          readyCartridge?.generationEngine ?? "",
+        );
+        if (!cancelled) {
+          setLoadedCartridge(parsed);
+          setError("");
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setLoadedCartridge(null);
+          setError(String(loadError));
+        }
+      }
+    }
+    loadCartridge();
+    return () => {
+      cancelled = true;
+    };
+  }, [budget, readyCartridge?.generationEngine, readyCartridge?.prompt, readyCartridge?.realGeneratorUsed, readyCartridgeUrl]);
 
   useEffect(() => {
     const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
@@ -2187,14 +2988,25 @@ export default function SplatraImaginationField({
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    const webglCanvas = webglCanvasRef.current;
     if (!canvas) return undefined;
     const ctx = canvas.getContext("2d");
     if (!ctx) return undefined;
     let animationId = 0;
     const startedAt = performance.now();
+    const setWebglActive = (active: boolean) => {
+      if (webglCartridgeActiveRef.current === active) return;
+      webglCartridgeActiveRef.current = active;
+      setWebglCartridgeActive(active);
+    };
+    const setWebglStatus = (status: string) => {
+      if (webglCartridgeStatusRef.current === status) return;
+      webglCartridgeStatusRef.current = status;
+      setWebglCartridgeStatus(status);
+    };
     const render = () => {
       const rect = canvas.getBoundingClientRect();
-      const ratio = Math.min(window.devicePixelRatio || 1, mode === "lab" ? 1.6 : 1.25);
+      const ratio = Math.min(window.devicePixelRatio || 1, mode === "lab" ? 1.6 : 1.45);
       const width = Math.max(280, Math.floor(rect.width * ratio));
       const height = Math.max(260, Math.floor(rect.height * ratio));
       if (canvas.width !== width || canvas.height !== height) {
@@ -2204,9 +3016,52 @@ export default function SplatraImaginationField({
       const elapsed = reducedMotion ? 0.5 : (performance.now() - startedAt) / 1000;
       const sceneElapsed = sceneStartedAt ? Math.max(0, (performance.now() - sceneStartedAt) / 1000) : elapsed;
       const activeTransform = sceneTransform(activeSceneBeat, stageMode, sceneElapsed);
-      if (stageMode && sceneObjects.length) {
+      const currentView = cartridgeViewRef.current;
+      if (currentView.returning && !currentView.dragging) {
+        const nextYaw = currentView.yaw * 0.86;
+        const nextPitch = currentView.pitch * 0.86;
+        publishCartridgeView({
+          yaw: Math.abs(nextYaw) < 0.002 ? 0 : nextYaw,
+          pitch: Math.abs(nextPitch) < 0.002 ? 0 : nextPitch,
+          dragging: false,
+          returning: Math.abs(nextYaw) >= 0.002 || Math.abs(nextPitch) >= 0.002,
+        });
+      }
+      const cartridgeView = cartridgeViewRef.current;
+      if (loadedCartridge?.particles.length) {
+        const cartridgeTransform = stageMode
+          ? { offsetX: -0.04, offsetY: -0.02, zoom: Math.max(1.12, centralSceneScale * 1.18) }
+          : activeTransform;
+        const webglResult = webglCanvas
+          ? drawSplatraCartridgeWebGL(webglCanvas, loadedCartridge, width, height, elapsed, controls, cartridgeTransform, cartridgeView)
+          : { ok: false, reason: "missing_webgl_canvas" };
+        setWebglActive(webglResult.ok);
+        setWebglStatus(webglResult.reason);
+        if (webglResult.ok) {
+          ctx.clearRect(0, 0, width, height);
+        } else {
+          if (webglCanvas) {
+            const gl = webglCartridgeResources.get(webglCanvas)?.gl ?? null;
+            gl?.clear(gl.COLOR_BUFFER_BIT);
+          }
+          drawSplatraCartridgeParticles(
+            ctx,
+            loadedCartridge,
+            width,
+            height,
+            elapsed,
+            controls,
+            cartridgeTransform,
+            cartridgeView,
+          );
+        }
+      } else if (stageMode && sceneObjects.length) {
+        setWebglActive(false);
+        setWebglStatus("no_cartridge_scene_focus");
         drawSceneFocusParticles(ctx, sceneObjects, activeSceneObjectId, width, height, elapsed, sceneElapsed, controls, centralSceneScale);
       } else {
+        setWebglActive(false);
+        setWebglStatus("no_cartridge_procedural");
         drawParticles(
           ctx,
           particles,
@@ -2224,7 +3079,51 @@ export default function SplatraImaginationField({
     };
     render();
     return () => window.cancelAnimationFrame(animationId);
-  }, [activeArchetype, activeSceneBeat, activeSceneObjectId, centralSceneScale, controls, interactive, mode, particles, reducedMotion, sceneObjects, sceneStartedAt, stageMode]);
+  }, [activeArchetype, activeSceneBeat, activeSceneObjectId, activeSpeechBeatIndex, centralSceneScale, controls, interactive, loadedCartridge, mode, particles, reducedMotion, sceneObjects, sceneStartedAt, stageMode, state]);
+
+  function handleCartridgePointerDown(event: PointerEvent<HTMLElement>) {
+    if (!loadedCartridge?.particles.length) return;
+    cartridgeDragRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY,
+    };
+    publishCartridgeView({ ...cartridgeViewRef.current, dragging: true, returning: false });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleCartridgePointerMove(event: PointerEvent<HTMLElement>) {
+    const drag = cartridgeDragRef.current;
+    if (!drag.active || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.lastX;
+    const dy = event.clientY - drag.lastY;
+    drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
+    const current = cartridgeViewRef.current;
+    publishCartridgeView({
+      yaw: current.yaw + dx * 0.008,
+      pitch: clamp(current.pitch + dy * 0.006, -0.72, 0.72),
+      dragging: true,
+      returning: false,
+    });
+    event.preventDefault();
+  }
+
+  function handleCartridgePointerUp(event: PointerEvent<HTMLElement>) {
+    const drag = cartridgeDragRef.current;
+    if (drag.pointerId === event.pointerId) {
+      cartridgeDragRef.current = { active: false, pointerId: -1, lastX: 0, lastY: 0 };
+      publishCartridgeView({
+        ...cartridgeViewRef.current,
+        dragging: false,
+        returning: shouldReturnCartridgeView,
+      });
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      event.preventDefault();
+    }
+  }
 
   function handleClick() {
     if (state === "listening") {
@@ -2234,13 +3133,19 @@ export default function SplatraImaginationField({
     }
   }
 
-  const canvas = <canvas ref={canvasRef} />;
+  const canvas = (
+    <>
+      <canvas ref={canvasRef} data-render-layer="canvas-2d" />
+      <canvas ref={webglCanvasRef} data-render-layer="webgl-cartridge" aria-hidden="true" />
+    </>
+  );
 
   return (
     <section
       className={`splatra-imagination-field ${className ?? ""}`}
       data-mode={mode}
       data-state={state}
+      data-particle-budget={budget}
       data-scene-objects={sceneObjects.length}
       data-active-speech-beat={activeSpeechBeatIndex >= 0 ? activeSpeechBeatIndex : "none"}
       data-active-scene-object={activeSceneObjectId || "none"}
@@ -2291,6 +3196,26 @@ export default function SplatraImaginationField({
       data-splatra-command-renderer-inference={splatraContract.renderer_may_infer_topic === true ? "true" : "false"}
       data-splatra-command-motion-field={String(splatraMotionPolicy.field_model ?? "none")}
       data-splatra-command-agent-control={String(splatraMotionPolicy.agent_control ?? "none")}
+      data-splatra-cartridge-render-mode={cartridgeRenderMode}
+      data-splatra-cartridge-url={readyCartridgeUrl ? "available" : "none"}
+      data-splatra-cartridge-selected-job={readyCartridge?.jobIndex ?? "none"}
+      data-splatra-cartridge-selected-source-particles={readyCartridge?.sourceCount ?? 0}
+      data-splatra-cartridge-generation-engine={readyCartridge?.generationEngine ?? "none"}
+      data-splatra-cartridge-real-generator={readyCartridge?.realGeneratorUsed === true ? "true" : "false"}
+      data-splatra-cartridge-loaded-particles={loadedCartridge?.particleCount ?? 0}
+      data-splatra-cartridge-source-particles={loadedCartridge?.sourceCount ?? 0}
+      data-splatra-cartridge-fill-ratio={cartridgeFillRatio.toFixed(4)}
+      data-splatra-cartridge-selection-mode={loadedCartridge?.selectionMode ?? "none"}
+      data-splatra-cartridge-reconstruction-path={loadedCartridge?.reconstructionQualityPath ?? "none"}
+      data-splatra-cartridge-material={loadedCartridge?.materialHint ?? "none"}
+      data-splatra-cartridge-webgl={webglCartridgeActive ? "true" : "false"}
+      data-splatra-cartridge-webgl-status={webglCartridgeStatus}
+      data-splatra-cartridge-draggable={loadedCartridge?.particles.length ? "true" : "false"}
+      data-splatra-cartridge-view-yaw={cartridgeViewState.yaw.toFixed(3)}
+      data-splatra-cartridge-view-pitch={cartridgeViewState.pitch.toFixed(3)}
+      data-splatra-cartridge-dragging={cartridgeViewState.dragging ? "true" : "false"}
+      data-splatra-cartridge-returning={cartridgeViewState.returning ? "true" : "false"}
+      data-splatra-cartridge-return-policy={shouldReturnCartridgeView ? "release_returns_to_narration_view" : "free_orbit_hold"}
       data-renderer-content-inference="explicit_scene_plan_hints_only"
       data-active-scene-group={activeSceneGroupId || "none"}
       data-active-scene-group-size={activeSceneGroupSize}
@@ -2301,11 +3226,22 @@ export default function SplatraImaginationField({
           className="splatra-imagination-canvas-button"
           aria-label="SPLATRA procedural imagination field"
           onClick={handleClick}
+          onPointerDown={handleCartridgePointerDown}
+          onPointerMove={handleCartridgePointerMove}
+          onPointerUp={handleCartridgePointerUp}
+          onPointerCancel={handleCartridgePointerUp}
         >
           {canvas}
         </button>
       ) : (
-        <div className="splatra-imagination-canvas-button" aria-hidden="true">
+        <div
+          className="splatra-imagination-canvas-button"
+          aria-hidden="true"
+          onPointerDown={handleCartridgePointerDown}
+          onPointerMove={handleCartridgePointerMove}
+          onPointerUp={handleCartridgePointerUp}
+          onPointerCancel={handleCartridgePointerUp}
+        >
           {canvas}
         </div>
       )}

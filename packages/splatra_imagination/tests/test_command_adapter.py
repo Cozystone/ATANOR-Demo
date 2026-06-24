@@ -182,7 +182,7 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert plan.dashboard_layout["stage_safe_region"]["footprint"]["basis"] == "verified_scene_geometry_extent"
     assert plan.dashboard_layout["stage_safe_region"]["footprint"]["block_text"] is True
     assert plan.layout_timeline[0]["action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
-    assert plan.layout_timeline[0]["decision_basis"] == "verified_scene_geometry"
+    assert plan.layout_timeline[0]["decision_basis"] == "verified_scene_geometry_and_self_body_clearance_state"
     assert plan.layout_timeline[0]["decision_owner"] == "cgsr_scene_choreography_agent"
     assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
     assert plan.layout_timeline[0]["particle_space"] == "uncovered_dashboard_field_minus_sidebar_composer_and_text"
@@ -198,15 +198,21 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert active_layout["scene_evidence"]["motion_basis"] == "verified_motion_phrase"
     assert active_layout["scene_evidence"]["renderer_may_infer_topic"] is False
     assert "object_track_id" in active_layout
-    assert active_layout["orb_movement"] == "lower_right_lifted"
+    assert active_layout["orb_movement"] == "lower_right_lifted_micro"
+    assert active_layout["active_layout_pressure"] >= 0.78
+    assert active_layout["active_bbox"]["basis"] == "active_verified_beat_position_and_motion_path"
+    assert active_layout["orb_scale_hint"] == "micro_self_body_yield"
+    assert active_layout["text_safe_region"] == active_layout["text_anchor"]
     assert active_layout["text_anchor"] == "lower_left"
     assert active_layout["text_anchor_basis"] == "verified_vertical_motion_path_conversational_clearance"
     assert active_layout["text_anchor_points"] == 3
     assert active_layout["self_narration_anchor"] in {"upper_left", "upper_right"}
     assert plan.agent_scene_decisions[0]["decision_id"] == "scene_space_allocation"
     assert plan.agent_scene_decisions[0]["selected_action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
-    assert plan.agent_scene_decisions[0]["decision_model"] == "geometry_pressure_argmax_no_topic_templates"
+    assert plan.agent_scene_decisions[0]["decision_model"] == "self_body_scene_pressure_scorer_no_topic_templates"
     assert plan.agent_scene_decisions[0]["decision_candidates"]
+    assert plan.agent_scene_decisions[0]["scene_self_state"]["self_body_identity"] == "atanor_orb_self_body"
+    assert plan.agent_scene_decisions[0]["scene_self_state"]["topic_scene_templates"] is False
     assert plan.agent_scene_decisions[0]["decision_candidates"][0]["action"] == plan.agent_scene_decisions[0]["selected_action"]
     assert plan.agent_scene_decisions[0]["selected_action_score"] == plan.agent_scene_decisions[0]["decision_candidates"][0]["score"]
     assert plan.agent_scene_decisions[0]["selection_reason"]
@@ -270,6 +276,41 @@ def test_layout_timeline_places_speech_away_from_active_scene_focus() -> None:
     assert footprint["min_x"] < 0 < footprint["max_x"]
 
 
+def test_wide_particle_stage_reserves_dom_text_lanes_outside_central_footprint() -> None:
+    plan = compile_scene_choreography({
+        "stage_layout": "scene_focus",
+        "layout_intent": "wide_particle_stage",
+        "beats": [
+            {
+                "op": "spawn_object",
+                "prompt": "verified left particle anchor",
+                "narration": "The verified anchor starts on the left.",
+                "position": [-0.88, -0.48, 0.0],
+                "speech_cue": True,
+            },
+            {
+                "op": "move",
+                "prompt": "verified right particle motion",
+                "narration": "The verified object moves through the field.",
+                "position": [0.88, 0.48, 0.0],
+                "motion_path": {"from": [-0.72, 0.45, 0.0], "to": [0.72, -0.45, 0.0], "basis": "verified_motion_phrase"},
+                "speech_cue": True,
+            },
+        ],
+    })
+
+    footprint = plan.dashboard_layout["stage_safe_region"]["footprint"]
+    assert footprint["block_text"] is True
+    assert footprint["basis"] == "verified_scene_geometry_extent"
+    assert footprint["min_x"] >= -0.88
+    assert footprint["max_x"] <= 0.88
+    assert footprint["min_y"] >= -0.5
+    assert footprint["max_y"] <= 0.46
+    assert plan.dashboard_layout["scene"]["generated_visual_elements"] == "particle_points_only"
+    assert plan.dashboard_layout["scene"]["text_exception"] == "dom_text_not_particle_geometry"
+    assert plan.dashboard_layout["agent_layout_decision"]["particle_space"] == "uncovered_dashboard_field_minus_sidebar_composer_and_text"
+
+
 def test_layout_timeline_nudges_orb_from_active_lower_right_focus() -> None:
     plan = compile_scene_choreography({
         "stage_layout": "scene_focus",
@@ -289,7 +330,11 @@ def test_layout_timeline_nudges_orb_from_active_lower_right_focus() -> None:
 
     active = next(item for item in plan.layout_timeline if item.get("beat_index") == 0)
     assert active["decision_basis"] == "verified_speech_cue_beat"
-    assert active["orb_movement"] == "lower_right_lifted_compact"
+    assert active["orb_movement"] == "lower_right_micro_stage_guard"
+    assert active["active_layout_pressure"] >= 0.64
+    assert active["active_bbox"]["basis"] == "active_verified_beat_position_and_motion_path"
+    assert "right_stage" in active["active_regions"]
+    assert active["orb_scale_hint"] in {"compact_self_body_yield", "micro_self_body_yield"}
     assert active["text_rendering"] == "dom_text_not_particles"
 
 

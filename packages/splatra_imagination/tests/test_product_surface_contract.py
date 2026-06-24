@@ -14,6 +14,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert 'interactive={false}' in status_card
     assert 'className="atanor-dashboard-imagination-field"' in status_card
     assert "atanor-hologram-composer" in status_card
+    assert "function shouldRequestWebGrounding" in status_card
+    assert "web_search: shouldRequestWebGrounding(trimmed)" in status_card
     assert "useTypewriterText" in status_card
     assert "data-stage-layout" in status_card
     assert "requestedSceneChoreography" in status_card
@@ -32,10 +34,32 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-orb-feedback" in status_card
     assert "data-layout-stage-pressure" in status_card
     assert "data-layout-orb-yield-strength" in status_card
+    assert "data-scene-self-owner" in status_card
+    assert "data-scene-self-basis" in status_card
+    assert "data-scene-self-body" in status_card
+    assert "data-scene-self-particle-pressure" in status_card
+    assert "data-scene-self-body-pressure" in status_card
+    assert "data-scene-self-text-pressure" in status_card
+    assert "data-scene-self-composer-pressure" in status_card
     assert "data-layout-pressure-adjusted-orb-movement" in status_card
     assert "data-layout-text-anchor" in status_card
     assert "data-layout-text-anchor-basis" in status_card
     assert "data-layout-text-anchor-points" in status_card
+    assert "data-layout-avoidance-map-basis" in status_card
+    assert "data-layout-avoidance-text-safe-lanes" in status_card
+    assert "data-layout-avoidance-scene-footprint" in status_card
+    assert "type TextPlacementDecision" in status_card
+    assert "client_dom_scene_and_cartridge_geometry_scorer_no_topic_templates" in status_card
+    assert "data-layout-text-decision-model" in status_card
+    assert "data-layout-text-decision-basis" in status_card
+    assert "data-layout-text-decision-score" in status_card
+    assert "data-layout-text-decision-blockers" in status_card
+    assert "data-layout-text-decision-speech-anchor" in status_card
+    assert "data-layout-text-decision-self-anchor" in status_card
+    assert "data-layout-text-decision-scene-footprint-avoided" in status_card
+    assert "data-layout-text-decision-cartridge-footprint-avoided" in status_card
+    assert "data-layout-text-decision-rendering" in status_card
+    assert "data-layout-text-decision-particle-text" in status_card
     assert "data-layout-collision-state" in status_card
     assert "data-layout-measured-blockers" in status_card
     assert "data-layout-overlap-px" in status_card
@@ -43,6 +67,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "layoutCollisionPressureFromTelemetry" in status_card
     assert "splatraControlsForLayout" in status_card
     assert "data-layout-collision-pressure" in status_card
+    assert "dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry)" in status_card
+    assert "client_geometry_css_var_adjustment_no_particle_text" in status_card
+    assert "data-runtime-layout-adjustment" in status_card
     assert "data-layout-self-narration-anchor" in status_card
     assert "activeLayout.textAnchor" in status_card
     assert "activeLayout.selfNarrationAnchor" in status_card
@@ -82,14 +109,29 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-splatra-candidate-cartridges" in status_card
     assert "data-splatra-candidate-cartridge-format" in status_card
     assert "type SplatraCartridgeQueuePayload" in status_card
+    assert "type SplatraInteractiveSceneAnalysisPayload" in status_card
+    assert "requestedSplatraInteractiveSceneAnalysis" in status_card
+    assert "sceneAnalysisObjectBlockers" in status_card
+    assert "splatraInteractiveSceneAnalysis" in status_card
+    assert "interactive_scene_object_count" in status_card
+    assert "data-splatra-interactive-scene" in status_card
+    assert "data-splatra-interactive-objects" in status_card
+    assert "data-splatra-interactive-bboxes" in status_card
+    assert "data-splatra-interactive-analysis-basis" in status_card
+    assert "data-splatra-interactive-raw-inference" in status_card
+    assert "data-layout-text-decision-interactive-bbox-avoided" in status_card
     assert "requestedSplatraCartridgeQueue" in status_card
     assert "setSplatraCartridgeQueue(nextSplatraCartridgeQueue)" in status_card
+    assert "visualStateCommitted = true" in status_card
+    assert "if (!visualStateCommitted)" in status_card
     assert "data-splatra-cartridge-queue" in status_card
     assert "data-splatra-cartridge-jobs" in status_card
     assert "data-splatra-cartridge-execution-mode" in status_card
     assert "data-splatra-cartridge-external-called" in status_card
     assert "data-splatra-cartridge-raw-buffer" in status_card
     assert "data-splatra-cartridge-mutation" in status_card
+    assert "data-splatra-sidecar-status" in status_card
+    assert "splatraCartridgeQueue={splatraCartridgeQueue}" in status_card
     assert "data-splatra-command-raw-buffers" in status_card
     assert "data-splatra-command-topic-templates" in status_card
     assert "data-splatra-command-renderer-inference" in status_card
@@ -126,7 +168,12 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "agent_airbend_recompose_verified_beats" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "orb_moves_and_scales_to_clear_verified_particle_scene" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "agent_authored_from_verified_scene_geometry_and_client_feedback" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
-    assert "geometry_pressure_argmax_no_topic_templates" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "_client_layout_feedback_state" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "\"feedback_basis\": feedback_basis" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "\"content_used_for_scene_generation\": False" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "\"client_layout_feedback\": client_feedback" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "self_body_scene_pressure_scorer_no_topic_templates" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "scene_self_state" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "decision_candidates" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "selected_action_score" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "15.2 - load * 3.7" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
@@ -156,6 +203,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "nextInitialSceneBeatIndex" in status_card
     assert "splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex, nextScenePolicy)" in status_card
     assert "layout_feedback" in status_card
+    assert "feedback_basis: \"client_dom_scene_collision_telemetry\"" in status_card
+    assert "collision_state: layoutTelemetry.collisionState" in status_card
+    assert "orb_overlap_px: layoutTelemetry.orbOverlap" in status_card
+    assert "text_rendering: \"dom_text_not_particles\"" in status_card
+    assert "particle_text: false" in status_card
+    assert "const sceneBlockers = scenePlanBlockers(sceneChoreography, dashboardBox)" in status_card
+    assert "nextSpeechRect," in status_card
     assert "splatraOrbLayoutFeedback" in status_card
     assert "nextOrbLayoutFeedback" in status_card
     assert "orb_layout_feedback" in status_card
@@ -199,6 +253,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "estimatedTextRectFromDom" in status_card
     assert "stableLayoutMeasurementText" in status_card
     assert "dom_text_canvas_metrics_preallocated_no_particle_text" in status_card
+    assert "centerStagePenalty" in status_card
     assert "speechUpperLeftTopVh" in status_card
     assert "selfNarrationMaxVw" in status_card
     assert "wideScene ? 11.5 : 16" in status_card
@@ -258,7 +313,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneObjectTrackId" in field
     assert "sceneVisibleTrackObjects" in field
     assert "visibleCandidates" in field
-    assert "const maxObjects = Math.min(16" in field
+    assert "const maxObjects = Math.min(18" in field
+    assert "sceneWide ? 3000 : 1860" in field
     assert "data-active-scene-track" in field
     assert "verified_motion_subject" in field
     assert "verified_motion_source" in field
@@ -329,6 +385,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-active-particle-intent-density" in field
     assert "data-scene-render-density-mode" in field
     assert "operation_intent_weighted_particles" in field
+    assert "data-particle-budget" in field
     assert "derived_from_legacy_scene_beats" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
@@ -337,7 +394,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneMotionSourceHold" in field
     assert "start - 0.72" in field
     assert "drawSceneMotionPathFlow" in field
-    assert "streamCount = Math.round(clamp((active ? 13 : 7) * density" in field
+    assert "streamCount = Math.round(clamp((active ? 18 : 10) * density" in field
+    assert "active ? 5.25 : 3.65" in field
     assert "cameraView" in field
     assert "scenePlanCentralScale" in field
     assert "centralSceneScale" in field
@@ -375,13 +433,57 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "drawParticleStroke" in field
     assert "const keep = step === 0 || step === steps" in field
     assert "drawParticleSegment" in field
-    assert "streamCount = distance > unit * 0.42 ? 3 : 2" in field
+    assert "streamCount = distance > unit * 0.42 ? 5 : 3" in field
     assert "codepen_magnetic_swarm_noise_decay_reference" in field
     assert "agent_scene_commands_to_particle_cartridges" in field
     assert "data-flow-motion-reference" in field
     assert "data-splatra-command-contract" in field
     assert "type SplatraCommandSequence" in field
     assert "splatraCommandSequence?: SplatraCommandSequence | null" in field
+    assert "type SplatraCartridgeQueuePayload" in field
+    assert "splatraCartridgeQueue?: SplatraCartridgeQueuePayload | null" in field
+    assert "splatraReadyCartridgeUrl" in field
+    assert "parseSpl2Cartridge" in field
+    assert "splatraCartridgeFetchUrl" in field
+    assert "format\", \"spl3\"" in field
+    assert "halfToFloat" in field
+    assert "SPL3 cartridge truncated" in field
+    assert "bbox_fit_high_density_perspective_material_${reader.format}" in field
+    assert "splatraMaterialHint" in field
+    assert "const densityMultiplier = realGeneratorUsed ? 20 : 10.75" in field
+    assert "adaptiveRealGeneratorCap" in field
+    assert "generationEngine.toLowerCase().includes(\"glass_orb\") ? 150000 : 120000" in field
+    assert "clamp(Math.floor(budget * densityMultiplier), 22000, 180000)" in field
+    assert "const centerX = (minX + maxX) / 2" in field
+    assert "candidates.sort((left, right) => right.score - left.score)" in field
+    assert "selected.size < outputCount" in field
+    assert "data-splatra-cartridge-render-mode" in field
+    assert "data-splatra-cartridge-loaded-particles" in field
+    assert "data-splatra-cartridge-fill-ratio" in field
+    assert "data-splatra-cartridge-selection-mode" in field
+    assert "data-splatra-cartridge-reconstruction-path" in field
+    assert "real_text_to_image_single_view_2_5d_lift" in field
+    assert "procedural_particle_fallback" in field
+    assert "data-splatra-cartridge-material" in field
+    assert "data-splatra-cartridge-webgl" in field
+    assert "data-splatra-cartridge-webgl-status" in field
+    assert "data-splatra-cartridge-draggable" in field
+    assert "data-splatra-cartridge-view-yaw" in field
+    assert "data-splatra-cartridge-view-pitch" in field
+    assert "data-splatra-cartridge-dragging" in field
+    assert "data-splatra-cartridge-returning" in field
+    assert "data-splatra-cartridge-return-policy" in field
+    assert "release_returns_to_narration_view" in field
+    assert "free_orbit_hold" in field
+    assert "webgl_points_active" in field
+    assert "data-splatra-cartridge-generation-engine" in field
+    assert "data-splatra-cartridge-real-generator" in field
+    assert "splatra_sidecar_cartridge_particles" in field
+    assert "splatra_sidecar_webgl_points" in field
+    assert "drawSplatraCartridgeWebGL" in field
+    assert "uUserYaw" in field
+    assert "uUserPitch" in field
+    assert 'data-render-layer="webgl-cartridge"' in field
     assert "candidate_cartridge_requests?: Array" in field
     assert "data-splatra-candidate-cartridges" in field
     assert "data-splatra-candidate-cartridge-format" in field
@@ -434,6 +536,9 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert '[data-speech-placement="lower_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_right"] .atanor-hologram-speech' in css
+    assert '[data-layout-collision-state="dom_text_overlap_risk"] .atanor-hologram-speech' in css
+    assert '[data-layout-collision-state="dom_text_clipped"] .atanor-hologram-speech' in css
+    assert '[data-layout-collision-state="dom_text_overlap_risk"] .atanor-hologram-self-narration' in css
     assert '[data-self-narration-placement="upper_left"] .atanor-hologram-self-narration' in css
     assert '[data-self-narration-placement="lower_left"] .atanor-hologram-self-narration' in css
     assert '[data-self-narration-placement="upper_right"] .atanor-hologram-self-narration' in css
@@ -457,11 +562,28 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert "data-voice-prosody-applied" in status_card
     assert "data-voice-local-tts-rate" in status_card
     assert "dashboardParticleBudget" in status_card
+    assert "data-voice-playback-error" in status_card
+    assert "data-voice-playback-unlocked" in status_card
     assert "particleBudget={dashboardParticleBudget}" in status_card
+    assert "? 24000 : 9800" in status_card
     assert "microRequested" in status_card
+    assert 'requestedLayoutIntent(scenePlan) === "wide_particle_stage"' in status_card
+    assert "it still reserves visual space" in status_card
+    assert "avoid the generated scene" in status_card
     assert "lower_right_lifted_micro" in status_card
     assert "pressureAdjustedOrbMovement" in status_card
     assert "client_stage_pressure_feedback" in status_card
+    field = (ROOT / "apps" / "web" / "app" / "SplatraImaginationField.tsx").read_text(encoding="utf-8")
+    assert "densityBudget = budget * (sceneWide ? 8.4 : 5.8)" in field
+    assert "drawSplatraCartridgeParticles" in field
+    assert "handleCartridgePointerDown" in field
+    assert "handleCartridgePointerMove" in field
+    assert "handleCartridgePointerUp" in field
+    assert "splatraReadyCartridge(queue)" in field
+    assert "sort((left, right)" in field
+    assert "data-splatra-cartridge-selected-job" in field
+    assert "data-splatra-cartridge-real-generator" in field
+    assert "data-splatra-cartridge-webgl" in field
 
 
 def test_product_archetype_cycle_excludes_central_orb_body() -> None:
