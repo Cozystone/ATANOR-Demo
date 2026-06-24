@@ -121,6 +121,16 @@ type ScenePlan = {
     scene?: {
       central_scale?: number;
     };
+    stage_safe_region?: {
+      scale_strategy?: string;
+      primary?: string;
+      orb_exclusion?: string;
+    };
+    agent_layout_decision?: {
+      particle_stage_strategy?: string;
+      layout_autonomy?: string;
+      orb_identity?: string;
+    };
   };
   beats?: ScenePlanBeat[];
   speech_timeline?: ScenePlanBeat[];
@@ -280,6 +290,22 @@ function layoutFlowRecombine(controls: ParticleControls) {
 function scenePlanCentralScale(scenePlan: ScenePlan | null | undefined) {
   const value = Number(scenePlan?.dashboard_layout?.scene?.central_scale ?? 1);
   return Number.isFinite(value) ? clamp(value, 0.86, 1.22) : 1;
+}
+
+function scenePlanSafeRegionStrategy(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.stage_safe_region?.scale_strategy ?? "ambient_dashboard_fit");
+}
+
+function scenePlanParticleStageStrategy(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.particle_stage_strategy ?? "ambient_self_body");
+}
+
+function scenePlanLayoutAutonomy(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.layout_autonomy ?? "conversation_default");
+}
+
+function scenePlanOrbIdentity(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.orb_identity ?? "atanor_primary_self_body");
 }
 
 function smoothstep(value: number) {
@@ -1840,6 +1866,10 @@ export default function SplatraImaginationField({
   const activeSceneEvidenceHash = activeSceneBeat?.scene_evidence?.source_fact_hash ?? "none";
   const activeSceneEvidenceOwner = activeSceneBeat?.scene_evidence?.evidence_owner ?? "none";
   const activeSceneTrackId = activeSceneBeat ? sceneObjectTrackId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : "";
+  const safeRegionStrategy = scenePlanSafeRegionStrategy(scenePlan);
+  const particleStageStrategy = scenePlanParticleStageStrategy(scenePlan);
+  const layoutAutonomy = scenePlanLayoutAutonomy(scenePlan);
+  const orbIdentity = scenePlanOrbIdentity(scenePlan);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -2011,6 +2041,10 @@ export default function SplatraImaginationField({
       data-active-scene-evidence-owner={activeSceneEvidenceOwner}
       data-active-scene-track={activeSceneTrackId || "none"}
       data-active-scene-focus-basis={activeSceneFocusBasis}
+      data-safe-region-strategy={safeRegionStrategy}
+      data-particle-stage-strategy={particleStageStrategy}
+      data-layout-autonomy={layoutAutonomy}
+      data-orb-identity={orbIdentity}
       data-layout-collision-pressure={layoutCollisionPressure(controls)}
       data-layout-text-avoidance={String(controls.layout_text_avoidance ?? "clear")}
       data-particle-rendering-contract={PARTICLE_RENDERING_CONTRACT}

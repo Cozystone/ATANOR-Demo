@@ -28,6 +28,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-orb-anchor" in status_card
     assert "data-layout-orb-movement" in status_card
     assert "data-layout-requested-orb-movement" in status_card
+    assert "data-layout-orb-identity" in status_card
     assert "data-layout-orb-feedback" in status_card
     assert "data-layout-text-anchor" in status_card
     assert "data-layout-text-anchor-basis" in status_card
@@ -43,6 +44,8 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "activeLayout.textAnchor" in status_card
     assert "activeLayout.selfNarrationAnchor" in status_card
     assert "data-layout-stage-region" in status_card
+    assert "data-layout-autonomy" in status_card
+    assert "data-particle-stage-strategy" in status_card
     assert "data-layout-text-rendering" in status_card
     assert '"conversation_default"' in status_card
     assert "speech_timeline?: Array" in status_card
@@ -68,6 +71,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "scene_group_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "object_track_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"object_track_id\": beat.object_track_id" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "fit_verified_particle_stage_inside_uncovered_dashboard" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "atanor_self_body_not_scene_object" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "airbend_recompose_particles_inside_safe_region" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "agent_authored_from_verified_scene_geometry_and_client_feedback" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
     assert "type SceneDirective" in status_card
     assert "type SceneEvidence" in status_card
@@ -161,6 +168,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneMotionPathPoint(beat, elapsedSeconds)" in field
     assert "type SceneCameraView" in field
     assert "SceneRenderObject" in field
+    assert "data-safe-region-strategy" in field
+    assert "data-particle-stage-strategy" in field
+    assert "data-layout-autonomy" in field
+    assert "data-orb-identity" in field
     assert "buildSceneRenderObjects" in field
     assert "sceneParticlesForBeat" in field
     assert "scenePoseForBeat" in field

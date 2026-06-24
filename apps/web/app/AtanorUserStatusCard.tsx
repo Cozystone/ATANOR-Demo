@@ -149,6 +149,7 @@ type SceneChoreographyPayload = {
       orb_exclusion?: string;
       text_exclusion?: string;
       composer_exclusion?: string;
+      scale_strategy?: string;
       footprint?: {
         basis?: string;
         min_x?: number;
@@ -165,9 +166,12 @@ type SceneChoreographyPayload = {
       topic_scene_templates?: boolean;
       agent_action?: string;
       orb_movement?: string;
+      orb_identity?: string;
+      layout_autonomy?: string;
       text_strategy?: string;
       text_rendering?: string;
       scene_region?: string;
+      particle_stage_strategy?: string;
       avoid_regions?: string[];
       content_source?: string;
       renderer_may_infer_topic?: boolean;
@@ -185,6 +189,7 @@ type SceneChoreographyPayload = {
     object_id?: string;
     orb_anchor?: string;
     orb_movement?: string;
+    orb_identity?: string;
     text_anchor?: TextAnchor;
     text_anchor_basis?: string;
     text_anchor_points?: number;
@@ -192,6 +197,8 @@ type SceneChoreographyPayload = {
     text_rendering?: string;
     text_strategy?: string;
     stage_region?: string;
+    particle_stage_strategy?: string;
+    layout_autonomy?: string;
     particle_behavior?: string;
   }>;
   speech_timeline?: Array<{
@@ -391,7 +398,10 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
     basis: String(item.decision_basis ?? (stageLayout === "scene_focus" ? layoutBasis : "conversation_default")),
     orbAnchor: String(item.orb_anchor ?? scenePlan?.dashboard_layout?.orb?.anchor ?? (stageLayout === "scene_focus" ? "lower_right" : "center")),
     orbMovement: String(item.orb_movement ?? scenePlan?.dashboard_layout?.agent_layout_decision?.orb_movement ?? (stageLayout === "scene_focus" ? "lower_right_scaled_down" : "center")),
+    orbIdentity: String(item.orb_identity ?? scenePlan?.dashboard_layout?.agent_layout_decision?.orb_identity ?? (stageLayout === "scene_focus" ? "atanor_self_body_not_scene_object" : "atanor_primary_self_body")),
     stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
+    particleStageStrategy: String(item.particle_stage_strategy ?? scenePlan?.dashboard_layout?.agent_layout_decision?.particle_stage_strategy ?? (stageLayout === "scene_focus" ? "airbend_recompose_particles_inside_safe_region" : "ambient_self_body")),
+    layoutAutonomy: String(item.layout_autonomy ?? scenePlan?.dashboard_layout?.agent_layout_decision?.layout_autonomy ?? (stageLayout === "scene_focus" ? "agent_authored_from_verified_scene_geometry_and_client_feedback" : "conversation_default")),
     textAnchor: coerceTextAnchor(item.text_anchor, requestedTextAnchor(scenePlan)),
     textAnchorBasis: String(item.text_anchor_basis ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_strategy ?? (stageLayout === "scene_focus" ? "verified_scene_geometry" : "conversation_default")),
     textAnchorPoints: Number.isFinite(Number(item.text_anchor_points)) ? Number(item.text_anchor_points) : 0,
@@ -1392,8 +1402,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-orb-anchor={currentLayoutState.orbAnchor}
       data-layout-orb-movement={effectiveOrbMovement}
       data-layout-requested-orb-movement={currentLayoutState.orbMovement}
+      data-layout-orb-identity={currentLayoutState.orbIdentity}
       data-layout-orb-feedback={orbMovementFeedback}
       data-layout-stage-region={currentLayoutState.stageRegion}
+      data-layout-autonomy={currentLayoutState.layoutAutonomy}
+      data-particle-stage-strategy={currentLayoutState.particleStageStrategy}
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}
       data-layout-text-anchor-points={currentLayoutState.textAnchorPoints}
