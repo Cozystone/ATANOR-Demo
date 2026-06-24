@@ -375,6 +375,8 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["flow_motion_reference"] == "codepen_magnetic_swarm_noise_decay_reference"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["text_exception"] == "dom_text_measured_layout_only"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["orb_self_body_yield"] == "orb_moves_and_scales_to_clear_verified_particle_scene"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["orb_movement"] == "lower_right_micro_stage_guard"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["orb_yield_strength"] >= 0.82
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["particle_recomposition_mode"] == "agent_airbend_recompose_verified_beats"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["scene_geometry_inputs"]["motion_count"] >= 1
     assert plan.scene_choreography["dashboard_layout"]["orb"]["anchor"] == "lower_right"
@@ -392,6 +394,8 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     decisions = plan.scene_choreography["agent_scene_decisions"]
     assert decisions[0]["decision_id"] == "scene_space_allocation"
     assert decisions[0]["selected_action"] == "yield_center_to_particle_scene"
+    assert decisions[0]["orb_movement"] == "lower_right_micro_stage_guard"
+    assert decisions[0]["orb_yield_strength"] >= 0.82
     assert decisions[0]["topic_scene_templates"] is False
     assert decisions[0]["renderer_may_infer_topic"] is False
     assert decisions[0]["particle_text"] is False

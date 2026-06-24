@@ -180,6 +180,7 @@ type SceneChoreographyPayload = {
       flow_motion_reference?: string;
       text_exception?: string;
       orb_self_body_yield?: string;
+      orb_yield_strength?: number;
       particle_recomposition_mode?: string;
       avoid_regions?: string[];
       content_source?: string;
@@ -1095,9 +1096,13 @@ function layoutTelemetryForScene(
 
 function effectiveOrbMovementForTelemetry(stageLayout: StageLayout, requestedMovement: string, telemetry: LayoutTelemetry) {
   if (stageLayout !== "scene_focus") return requestedMovement;
-  if (telemetry.collisionState === "orb_clipped" || telemetry.collisionState === "orb_overlap_risk") return "lower_right_lifted_compact";
-  if (telemetry.collisionState === "dom_text_clipped") return "lower_right_lifted_compact";
+  const microRequested = requestedMovement === "lower_right_micro_stage_guard" || requestedMovement === "lower_right_lifted_micro";
+  if (telemetry.collisionState === "orb_clipped" || telemetry.collisionState === "orb_overlap_risk") {
+    return microRequested ? "lower_right_lifted_micro" : "lower_right_lifted_compact";
+  }
+  if (telemetry.collisionState === "dom_text_clipped") return microRequested ? "lower_right_lifted_micro" : "lower_right_lifted_compact";
   if (telemetry.collisionState === "dom_text_overlap_risk") {
+    if (microRequested) return "lower_right_lifted_micro";
     return requestedMovement === "lower_right_lifted" || requestedMovement === "lower_right_lifted_compact"
       ? "lower_right_tucked_compact"
       : "lower_right_lifted_compact";
@@ -1607,6 +1612,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const splatraCartridgeQueueStatus = String(splatraCartridgeQueue?.status ?? "none");
   const splatraCartridgeQueueMode = String(splatraCartridgeQueue?.execution_mode ?? "none");
   const splatraCartridgeQueueJobs = Number(splatraCartridgeQueue?.job_count ?? 0) || 0;
+  const stagePressure = Number(sceneChoreography?.dashboard_layout?.stage_pressure ?? 0) || 0;
+  const orbYieldStrength = Number(sceneChoreography?.dashboard_layout?.agent_layout_decision?.orb_yield_strength ?? stagePressure) || 0;
   const explicitAgentSceneDecisionCount = Array.isArray(sceneChoreography?.agent_scene_decisions)
     ? sceneChoreography?.agent_scene_decisions?.length ?? 0
     : 0;
@@ -1627,10 +1634,15 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const particleOperationIntentSource = explicitParticleOperationIntentCount > 0
     ? "explicit_particle_operation_intents"
     : particleOperationIntentCount > 0 ? "derived_from_legacy_scene_beats" : "none";
-  const effectiveOrbMovement = effectiveOrbMovementForTelemetry(stageLayout, currentLayoutState.orbMovement, layoutTelemetry);
+  const pressureAdjustedOrbMovement = stageLayout === "scene_focus"
+    && stagePressure >= 0.82
+    && currentLayoutState.orbMovement === "lower_right_scaled_down"
+    ? "lower_right_micro_stage_guard"
+    : currentLayoutState.orbMovement;
+  const effectiveOrbMovement = effectiveOrbMovementForTelemetry(stageLayout, pressureAdjustedOrbMovement, layoutTelemetry);
   const orbMovementFeedback = effectiveOrbMovement === currentLayoutState.orbMovement
     ? "server_scene_geometry"
-    : "client_dom_collision_feedback";
+    : pressureAdjustedOrbMovement !== currentLayoutState.orbMovement ? "client_stage_pressure_feedback" : "client_dom_collision_feedback";
 
   return (
     <section
@@ -1652,8 +1664,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-orb-anchor={currentLayoutState.orbAnchor}
       data-layout-orb-movement={effectiveOrbMovement}
       data-layout-requested-orb-movement={currentLayoutState.orbMovement}
+      data-layout-pressure-adjusted-orb-movement={pressureAdjustedOrbMovement}
       data-layout-orb-identity={currentLayoutState.orbIdentity}
       data-layout-orb-feedback={orbMovementFeedback}
+      data-layout-stage-pressure={stagePressure.toFixed(3)}
+      data-layout-orb-yield-strength={orbYieldStrength.toFixed(3)}
       data-layout-stage-region={currentLayoutState.stageRegion}
       data-layout-autonomy={currentLayoutState.layoutAutonomy}
       data-particle-stage-strategy={currentLayoutState.particleStageStrategy}

@@ -8551,6 +8551,20 @@ p {
   width: clamp(118px, 16vmin, 190px);
 }
 
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-movement="lower_right_micro_stage_guard"] .hologram-voice-orb,
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-movement="lower_right_lifted_micro"] .hologram-voice-orb {
+  height: clamp(96px, 13vmin, 156px);
+  left: calc(100% - clamp(66px, 7vw, 108px));
+  min-height: clamp(96px, 13vmin, 156px);
+  min-width: clamp(96px, 13vmin, 156px);
+  top: calc(100% - clamp(204px, 22vh, 276px));
+  width: clamp(96px, 13vmin, 156px);
+}
+
+.atanor-ai-dashboard[data-stage-layout="scene_focus"][data-layout-orb-movement="lower_right_lifted_micro"] .hologram-voice-orb {
+  top: calc(100% - clamp(244px, 30vh, 340px));
+}
+
 .atanor-ai-dashboard[data-stage-layout="scene_focus"] .atanor-dashboard-imagination-field {
   opacity: var(--atanor-scene-field-opacity, 0.9);
 }

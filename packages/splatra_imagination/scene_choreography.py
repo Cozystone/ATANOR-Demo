@@ -329,6 +329,7 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
     load = min(1.0, max(0.0, 0.18 + beat_count * 0.08 + motion_count * 0.2 + spread_x * 0.22 + spread_y * 0.18))
     if layout_intent == "wide_particle_stage":
         load = max(load, 0.72)
+    orb_movement = "lower_right_micro_stage_guard" if load >= 0.82 else "lower_right_scaled_down"
 
     orb_size_vmin = round(25.0 - load * 7.5, 2)
     orb_min_px = round(170.0 - load * 38.0)
@@ -413,7 +414,7 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
             "scene_geometry_inputs": dict(scene_extent),
             "topic_scene_templates": False,
             "agent_action": "yield_center_to_particle_scene" if load >= 0.72 else "share_center_with_particle_scene",
-            "orb_movement": "lower_right_scaled_down",
+            "orb_movement": orb_movement,
             "orb_identity": "atanor_self_body_not_scene_object",
             "layout_autonomy": "agent_authored_from_verified_scene_geometry_and_client_feedback",
             "text_strategy": "dom_text_collision_avoidance",
@@ -426,6 +427,7 @@ def _dashboard_layout(stage_layout: StageLayout, orb_anchor: OrbAnchor, text_anc
             "flow_motion_reference": "codepen_magnetic_swarm_noise_decay_reference",
             "text_exception": "dom_text_measured_layout_only",
             "orb_self_body_yield": "orb_moves_and_scales_to_clear_verified_particle_scene",
+            "orb_yield_strength": round(load, 3),
             "particle_recomposition_mode": "agent_airbend_recompose_verified_beats",
             "avoid_regions": ["orb", "composer", "self_narration", "scene_motion_paths"],
             "content_source": "verified_beats_only",
@@ -581,6 +583,8 @@ def _agent_scene_decisions(
             "scene_geometry_inputs": dict(scene_extent),
             "particle_space": decision.get("particle_space") or ("uncovered_dashboard_field_minus_sidebar_composer_and_text" if stage_layout == "scene_focus" else "orb_local_field"),
             "orb_self_body_yield": decision.get("orb_self_body_yield") or ("orb_moves_and_scales_to_clear_verified_particle_scene" if stage_layout == "scene_focus" else "none"),
+            "orb_movement": decision.get("orb_movement") or ("lower_right_scaled_down" if stage_layout == "scene_focus" else "center"),
+            "orb_yield_strength": decision.get("orb_yield_strength") or dashboard_layout.get("stage_pressure") or 0,
             "text_policy": decision.get("text_exception") or "dom_text_measured_layout_only",
             "generated_visual_elements": decision.get("generated_visual_elements") or "particle_points_only",
             "line_rendering": decision.get("line_rendering") or "particle_segments_not_canvas_strokes",

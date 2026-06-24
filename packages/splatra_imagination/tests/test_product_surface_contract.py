@@ -30,6 +30,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-requested-orb-movement" in status_card
     assert "data-layout-orb-identity" in status_card
     assert "data-layout-orb-feedback" in status_card
+    assert "data-layout-stage-pressure" in status_card
+    assert "data-layout-orb-yield-strength" in status_card
+    assert "data-layout-pressure-adjusted-orb-movement" in status_card
     assert "data-layout-text-anchor" in status_card
     assert "data-layout-text-anchor-basis" in status_card
     assert "data-layout-text-anchor-points" in status_card
@@ -414,6 +417,8 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert '[data-layout-action="sync_orb_text_with_particle_beat"][data-layout-orb-anchor="lower_right"] .hologram-voice-orb' in css
     assert '[data-layout-orb-movement="lower_right_lifted_compact"] .hologram-voice-orb' in css
     assert '[data-layout-orb-movement="lower_right_tucked_compact"] .hologram-voice-orb' in css
+    assert '[data-layout-orb-movement="lower_right_micro_stage_guard"] .hologram-voice-orb' in css
+    assert '[data-layout-orb-movement="lower_right_lifted_micro"] .hologram-voice-orb' in css
     assert '[data-stage-layout="scene_focus"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="lower_left"] .atanor-hologram-speech' in css
     assert '[data-speech-placement="upper_left"] .atanor-hologram-speech' in css
@@ -435,6 +440,10 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     status_card = (ROOT / "apps" / "web" / "app" / "AtanorUserStatusCard.tsx").read_text(encoding="utf-8")
     assert "chenglou_pretext_prepare_layout_pattern_dom_text_only" in status_card
     assert "data-text-layout-reference" in status_card
+    assert "microRequested" in status_card
+    assert "lower_right_lifted_micro" in status_card
+    assert "pressureAdjustedOrbMovement" in status_card
+    assert "client_stage_pressure_feedback" in status_card
 
 
 def test_product_archetype_cycle_excludes_central_orb_body() -> None:

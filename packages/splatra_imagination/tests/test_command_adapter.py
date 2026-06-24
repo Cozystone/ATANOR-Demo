@@ -171,6 +171,7 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert plan.dashboard_layout["agent_layout_decision"]["flow_motion_reference"] == "codepen_magnetic_swarm_noise_decay_reference"
     assert plan.dashboard_layout["agent_layout_decision"]["text_exception"] == "dom_text_measured_layout_only"
     assert plan.dashboard_layout["agent_layout_decision"]["orb_self_body_yield"] == "orb_moves_and_scales_to_clear_verified_particle_scene"
+    assert plan.dashboard_layout["agent_layout_decision"]["orb_yield_strength"] >= 0.72
     assert plan.dashboard_layout["agent_layout_decision"]["particle_recomposition_mode"] == "agent_airbend_recompose_verified_beats"
     assert plan.dashboard_layout["agent_layout_decision"]["topic_scene_templates"] is False
     assert plan.dashboard_layout["agent_layout_decision"]["renderer_may_infer_topic"] is False
@@ -207,6 +208,7 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert plan.agent_scene_decisions[0]["topic_scene_templates"] is False
     assert plan.agent_scene_decisions[0]["renderer_may_infer_topic"] is False
     assert plan.agent_scene_decisions[0]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert plan.agent_scene_decisions[0]["orb_yield_strength"] >= 0.72
     speech_decision = next(item for item in plan.agent_scene_decisions if item["decision_id"] == "speech_beat_layout_1")
     assert speech_decision["object_id"] == "apple_motion"
     assert speech_decision["text_rendering"] == "dom_text_not_particles"
