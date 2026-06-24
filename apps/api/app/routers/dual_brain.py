@@ -39,7 +39,6 @@ def _verified_store_runtime() -> dict[str, Any]:
         candidate = Path(configured)
         if candidate.exists() and candidate.is_dir():
             return {"verified_store_path": str(candidate)}
-        return {}
     for candidate in _verified_store_candidates():
         if candidate.exists() and candidate.is_dir():
             return {"verified_store_path": str(candidate)}
