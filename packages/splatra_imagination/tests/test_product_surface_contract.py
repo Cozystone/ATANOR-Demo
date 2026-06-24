@@ -253,10 +253,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "sceneSurfaceFeatures" in field
     assert "PARTICLE_RENDERING_CONTRACT" in field
     assert "all_generated_marks_particle_points_no_canvas_strokes" in field
+    assert "PARTICLE_FLOW_CONTRACT" in field
+    assert "flow_lines_are_sparse_particle_marks_not_canvas_paths" in field
     assert "FLOW_FIELD_BASIS" in field
     assert "magnetic_simplex_inspired_airbend_particles" in field
     assert "flowFieldDisplacement" in field
     assert "data-particle-rendering-contract" in field
+    assert "data-particle-flow-contract" in field
     assert "data-flow-field-basis" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
@@ -300,6 +303,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "imagination ·" not in field
     assert "flowFieldAngle" in field
     assert "drawParticleStroke" in field
+    assert "const keep = step === 0 || step === steps" in field
     assert "drawParticleSegment" in field
     assert "streamCount = distance > unit * 0.42 ? 5 : 3" in field
     assert "codepen_magnetic_swarm_noise_decay_reference" in field

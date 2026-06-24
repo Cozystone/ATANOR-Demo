@@ -173,6 +173,7 @@ type ParticleControls = {
 };
 
 const PARTICLE_RENDERING_CONTRACT = "all_generated_marks_particle_points_no_canvas_strokes";
+const PARTICLE_FLOW_CONTRACT = "flow_lines_are_sparse_particle_marks_not_canvas_paths";
 const FLOW_FIELD_BASIS = "magnetic_simplex_inspired_airbend_particles";
 const FLOW_MOTION_REFERENCE = "codepen_magnetic_swarm_noise_decay_reference";
 const SPLATRA_COMMAND_CONTRACT = "agent_scene_commands_to_particle_cartridges";
@@ -354,16 +355,19 @@ function drawParticleStroke(
   const nx = -Math.sin(angle);
   const ny = Math.cos(angle);
   const [r, g, b] = color;
-  const steps = Math.max(6, Math.min(18, Math.round(length / Math.max(0.75, size * 0.5))));
+  const steps = Math.max(8, Math.min(24, Math.round(length / Math.max(0.68, size * 0.42))));
   for (let step = 0; step <= steps; step += 1) {
     const t = step / steps;
+    const keep = step === 0 || step === steps || seeded(step, x * 0.017 + y * 0.011 + angle) > 0.24;
+    if (!keep) continue;
     const taper = Math.sin(t * Math.PI);
     const curl = Math.sin(t * Math.PI * 2.35 + x * 0.004 + y * 0.003) * length * 0.085;
     const shear = Math.cos(t * Math.PI * 3.1 + angle) * length * 0.028;
-    const px = x - dx * 0.26 + dx * 1.18 * t + nx * curl + Math.cos(angle) * shear;
-    const py = y - dy * 0.26 + dy * 1.18 * t + ny * curl + Math.sin(angle) * shear;
-    const pointAlpha = alpha * (0.08 + taper * 0.44 + t * 0.18);
-    const pointSize = size * (0.13 + taper * 0.22 + t * 0.08);
+    const noise = (seeded(step, x * 0.031 + y * 0.019) - 0.5) * length * 0.11;
+    const px = x - dx * 0.26 + dx * 1.18 * t + nx * (curl + noise) + Math.cos(angle) * shear;
+    const py = y - dy * 0.26 + dy * 1.18 * t + ny * (curl + noise) + Math.sin(angle) * shear;
+    const pointAlpha = alpha * (0.055 + taper * 0.34 + t * 0.12);
+    const pointSize = size * (0.09 + taper * 0.18 + t * 0.055);
     ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${pointAlpha})`;
     ctx.beginPath();
     ctx.arc(px, py, pointSize, 0, Math.PI * 2);
@@ -2048,6 +2052,7 @@ export default function SplatraImaginationField({
       data-layout-collision-pressure={layoutCollisionPressure(controls)}
       data-layout-text-avoidance={String(controls.layout_text_avoidance ?? "clear")}
       data-particle-rendering-contract={PARTICLE_RENDERING_CONTRACT}
+      data-particle-flow-contract={PARTICLE_FLOW_CONTRACT}
       data-flow-field-basis={FLOW_FIELD_BASIS}
       data-flow-motion-reference={FLOW_MOTION_REFERENCE}
       data-splatra-command-contract={SPLATRA_COMMAND_CONTRACT}
