@@ -1,5 +1,6 @@
 """Procedural SPLATRA imagination field, separate from verified knowledge."""
 
+from .cartridge_queue import SplatraCandidateCartridgeJob, SplatraCandidateCartridgeQueue, build_candidate_cartridge_queue
 from .command_adapter import SplatraCommandPlan, SplatraSceneCommandSequence, compile_scene_choreography_commands, compile_splatra_command
 from .generator import ImaginationGenerator, deterministic_seed, select_archetype
 from .models import ARCHETYPES, ImaginationFrame, ImaginationObject, ImaginationSeed, default_safety_flags
@@ -14,8 +15,11 @@ __all__ = [
     "ImaginationSeed",
     "SceneBeat",
     "SceneChoreographyPlan",
+    "SplatraCandidateCartridgeJob",
+    "SplatraCandidateCartridgeQueue",
     "SplatraCommandPlan",
     "SplatraSceneCommandSequence",
+    "build_candidate_cartridge_queue",
     "compile_scene_choreography",
     "compile_scene_choreography_commands",
     "compile_splatra_command",

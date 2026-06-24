@@ -126,6 +126,13 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert len(payload["splatra_command_sequence"]["scene_actions"]) == len(payload["scene_choreography"]["beats"])
     assert payload["splatra_command_sequence"]["hot_swap_policy"]["candidate_request_count"] == len(payload["scene_choreography"]["beats"])
     assert len(payload["splatra_command_sequence"]["candidate_cartridge_requests"]) == len(payload["scene_choreography"]["beats"])
+    assert payload["splatra_cartridge_queue"]["status"] == "ready_for_sidecar"
+    assert payload["splatra_cartridge_queue"]["execution_mode"] == "candidate_only_dry_run"
+    assert payload["splatra_cartridge_queue"]["side_channel"] == "GET /v1/cartridge"
+    assert payload["splatra_cartridge_queue"]["job_count"] == len(payload["scene_choreography"]["beats"])
+    assert payload["splatra_cartridge_queue"]["external_splatra_called"] is False
+    assert payload["splatra_cartridge_queue"]["raw_buffer_in_agent_context"] is False
+    assert payload["splatra_cartridge_queue"]["mutation_performed"] is False
     assert all(
         request["cartridge_format"] == "SPL3_candidate"
         for request in payload["splatra_command_sequence"]["candidate_cartridge_requests"]
@@ -149,3 +156,32 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert first_beat["scene_evidence"]["renderer_may_infer_topic"] is False
     assert payload["local_brain_write"] is False
     assert payload["production_store_mutated"] is False
+
+
+def test_scene_cartridge_queue_endpoint_is_dry_run_only() -> None:
+    payload = _client().post(
+        "/api/agentic-os/splatra/imagination/cartridge-queue",
+        json={
+            "stage_layout": "scene_focus",
+            "beats": [
+                {
+                    "op": "move",
+                    "object_id": "verified_motion",
+                    "prompt": "verified motion",
+                    "motion_path": {"from": [0.0, 0.4, 0.0], "to": [0.0, -0.4, 0.0], "basis": "verified_motion_phrase"},
+                },
+            ],
+        },
+    ).json()
+
+    assert payload["allowed"] is True
+    assert payload["agent_can_use"] is True
+    assert payload["splatra_cartridge_queue_adapter"] is True
+    assert payload["external_splatra_called"] is False
+    assert payload["raw_buffer_in_agent_context"] is False
+    assert payload["mutation_performed"] is False
+    assert payload["splatra_cartridge_queue"]["status"] == "ready_for_sidecar"
+    assert payload["splatra_cartridge_queue"]["execution_mode"] == "candidate_only_dry_run"
+    assert payload["splatra_cartridge_queue"]["job_count"] == 1
+    assert payload["splatra_cartridge_queue"]["jobs"][0]["execution"]["execute_now"] is False
+    assert payload["splatra_cartridge_queue"]["jobs"][0]["motion_path"]["basis"] == "verified_motion_phrase"

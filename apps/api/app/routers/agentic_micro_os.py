@@ -44,6 +44,7 @@ from packages.splatra_imagination import (
     ARCHETYPES,
     ImaginationGenerator,
     ImaginationSeed,
+    build_candidate_cartridge_queue,
     compile_scene_choreography,
     compile_scene_choreography_commands,
     compile_splatra_command,
@@ -913,6 +914,7 @@ def splatra_imagination_command(request: SplatraImaginationCommandApiRequest) ->
 def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> dict[str, Any]:
     plan = compile_scene_choreography(request.model_dump())
     command_sequence = compile_scene_choreography_commands(plan)
+    cartridge_queue = build_candidate_cartridge_queue(command_sequence)
     emit_runtime_event(
         source="splatra_imagination",
         event_type="splatra_generation_success",
@@ -930,6 +932,28 @@ def splatra_scene_choreography(request: SplatraSceneChoreographyApiRequest) -> d
         "topic_scene_templates": False,
         "scene_choreography": plan.to_dict(),
         "splatra_command_sequence": command_sequence.to_dict(),
+        "splatra_cartridge_queue": cartridge_queue.to_dict(),
+    }
+
+
+@router.post("/splatra/imagination/cartridge-queue")
+def splatra_scene_cartridge_queue(request: SplatraSceneChoreographyApiRequest) -> dict[str, Any]:
+    plan = compile_scene_choreography(request.model_dump())
+    command_sequence = compile_scene_choreography_commands(plan)
+    cartridge_queue = build_candidate_cartridge_queue(command_sequence)
+    return {
+        **SAFETY_FLAGS,
+        **default_safety_flags(),
+        "allowed": True,
+        "agent_can_use": True,
+        "splatra_cartridge_queue_adapter": True,
+        "external_splatra_called": False,
+        "raw_buffer_in_agent_context": False,
+        "mutation_performed": False,
+        "topic_scene_templates": False,
+        "scene_choreography": plan.to_dict(),
+        "splatra_command_sequence": command_sequence.to_dict(),
+        "splatra_cartridge_queue": cartridge_queue.to_dict(),
     }
 
 

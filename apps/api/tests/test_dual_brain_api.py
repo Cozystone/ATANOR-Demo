@@ -242,6 +242,7 @@ def test_dashboard_conversation_returns_verified_speech_timeline_for_motion_scen
     payload = response.json()["result"]
     scene = payload["splatra_scene_plan"]
     command_sequence = payload["splatra_command_sequence"]
+    cartridge_queue = payload["splatra_cartridge_queue"]
     assert scene == payload["scene_choreography"] == payload["visual_scene_plan"]
     assert command_sequence["hot_swap_policy"]["mode"] == "candidate_only"
     assert command_sequence["hot_swap_policy"]["viewer_side_channel"] == "GET /v1/cartridge"
@@ -253,6 +254,13 @@ def test_dashboard_conversation_returns_verified_speech_timeline_for_motion_scen
     assert command_sequence["particle_motion_policy"]["agent_control"] == "airbend_recompose_particles_inside_safe_region"
     assert len(command_sequence["scene_actions"]) == len(scene["beats"])
     assert len(command_sequence["candidate_cartridge_requests"]) == len(scene["beats"])
+    assert cartridge_queue["status"] == "ready_for_sidecar"
+    assert cartridge_queue["execution_mode"] == "candidate_only_dry_run"
+    assert cartridge_queue["side_channel"] == "GET /v1/cartridge"
+    assert cartridge_queue["job_count"] == len(scene["beats"])
+    assert cartridge_queue["external_splatra_called"] is False
+    assert cartridge_queue["raw_buffer_in_agent_context"] is False
+    assert cartridge_queue["mutation_performed"] is False
     assert any(action["op"] == "move" for action in command_sequence["scene_actions"])
     assert all(request["cartridge_format"] == "SPL3_candidate" for request in command_sequence["candidate_cartridge_requests"])
     assert all(request["execution"]["execute_now"] is False for request in command_sequence["candidate_cartridge_requests"])
@@ -627,6 +635,7 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     payload = response.json()["result"]
     scene = payload["splatra_scene_plan"]
     command_sequence = payload["splatra_command_sequence"]
+    cartridge_queue = payload["splatra_cartridge_queue"]
     assert payload["route_type"] == "general_knowledge_question"
     assert payload["compact_trace"]["semantic_grounding"]["grounding_source"] == "verified_store_v0_readonly"
     assert payload["answer"]
@@ -639,6 +648,12 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     assert command_sequence["hot_swap_policy"]["candidate_request_count"] == len(command_sequence["scene_actions"])
     assert len(command_sequence["scene_actions"]) == len(scene["beats"])
     assert len(command_sequence["candidate_cartridge_requests"]) == len(scene["beats"])
+    assert cartridge_queue["status"] == "ready_for_sidecar"
+    assert cartridge_queue["execution_mode"] == "candidate_only_dry_run"
+    assert cartridge_queue["job_count"] == len(scene["beats"])
+    assert cartridge_queue["external_splatra_called"] is False
+    assert cartridge_queue["raw_buffer_in_agent_context"] is False
+    assert cartridge_queue["mutation_performed"] is False
     assert any(action["op"] == "move" for action in command_sequence["scene_actions"])
     assert all(request["cartridge_format"] == "SPL3_candidate" for request in command_sequence["candidate_cartridge_requests"])
     assert all(request["execution"]["execute_now"] is False for request in command_sequence["candidate_cartridge_requests"])

@@ -71,6 +71,15 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "candidate_cartridge_requests?: Array" in status_card
     assert "data-splatra-candidate-cartridges" in status_card
     assert "data-splatra-candidate-cartridge-format" in status_card
+    assert "type SplatraCartridgeQueuePayload" in status_card
+    assert "requestedSplatraCartridgeQueue" in status_card
+    assert "setSplatraCartridgeQueue(nextSplatraCartridgeQueue)" in status_card
+    assert "data-splatra-cartridge-queue" in status_card
+    assert "data-splatra-cartridge-jobs" in status_card
+    assert "data-splatra-cartridge-execution-mode" in status_card
+    assert "data-splatra-cartridge-external-called" in status_card
+    assert "data-splatra-cartridge-raw-buffer" in status_card
+    assert "data-splatra-cartridge-mutation" in status_card
     assert "data-splatra-command-raw-buffers" in status_card
     assert "data-splatra-command-topic-templates" in status_card
     assert "data-splatra-command-renderer-inference" in status_card
@@ -326,7 +335,7 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "drawParticleStroke" in field
     assert "const keep = step === 0 || step === steps" in field
     assert "drawParticleSegment" in field
-    assert "streamCount = distance > unit * 0.42 ? 5 : 3" in field
+    assert "streamCount = distance > unit * 0.42 ? 3 : 2" in field
     assert "codepen_magnetic_swarm_noise_decay_reference" in field
     assert "agent_scene_commands_to_particle_cartridges" in field
     assert "data-flow-motion-reference" in field

@@ -438,33 +438,33 @@ function drawParticleSegment(
   const dx = to[0] - from[0];
   const dy = to[1] - from[1];
   const distance = Math.hypot(dx, dy);
-  const steps = Math.max(10, Math.ceil(distance / Math.max(10, unit * 0.026)));
+  const steps = Math.max(7, Math.ceil(distance / Math.max(18, unit * 0.046)));
   const normalX = distance > 0 ? -dy / distance : 0;
   const normalY = distance > 0 ? dx / distance : 0;
   const tangentX = distance > 0 ? dx / distance : 1;
   const tangentY = distance > 0 ? dy / distance : 0;
-  const streamCount = distance > unit * 0.42 ? 5 : 3;
+  const streamCount = distance > unit * 0.42 ? 3 : 2;
   for (let lane = 0; lane < streamCount; lane += 1) {
     for (let index = 0; index <= steps; index += 1) {
       const rawT = index / steps;
       const t = (rawT + elapsed * (0.018 + lane * 0.011) + seeded(index, salt + lane * 101) * 0.055) % 1;
-      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.48) continue;
+      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.68) continue;
       const phase = t * Math.PI * 6 + salt * 0.037 + elapsed * (1.15 + lane * 0.21);
       const laneCenter = (streamCount - 1) / 2;
-      const laneOffset = (lane - laneCenter) * unit * 0.018;
-      const curl = Math.sin(phase) * unit * (0.024 + seeded(index, salt + 5) * 0.031);
-      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.018;
+      const laneOffset = (lane - laneCenter) * unit * 0.032;
+      const curl = Math.sin(phase) * unit * (0.036 + seeded(index, salt + 5) * 0.047);
+      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.026;
       const baseX = from[0] + dx * t + normalX * (laneOffset + curl) + tangentX * shear;
       const baseY = from[1] + dy * t + normalY * (laneOffset + curl) + tangentY * shear;
-      const flow = flowFieldDisplacement(baseX, baseY, elapsed, unit * (0.006 + seeded(index, salt + lane * 29) * 0.012), salt + lane * 3);
+      const flow = flowFieldDisplacement(baseX, baseY, elapsed, unit * (0.012 + seeded(index, salt + lane * 29) * 0.024), salt + lane * 3);
       const pulse = 0.46 + 0.54 * Math.sin(t * Math.PI);
       drawGuideParticle(
         ctx,
         baseX + flow.x,
         baseY + flow.y,
-        unit * (0.00072 + seeded(index, salt + lane * 53 + 7) * 0.00125) * (0.72 + pulse * 0.3),
+        unit * (0.00062 + seeded(index, salt + lane * 53 + 7) * 0.00108) * (0.72 + pulse * 0.3),
         color,
-        alpha * (0.045 + pulse * 0.17) * (lane === Math.round(laneCenter) ? 0.86 : 0.52),
+        alpha * (0.024 + pulse * 0.095) * (lane === Math.round(laneCenter) ? 0.72 : 0.42),
       );
     }
   }
@@ -1656,7 +1656,7 @@ function drawSceneMotionPathFlow(
     const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
     points.push([canvasPoint.x, canvasPoint.y]);
   }
-  const baseAlpha = (active ? 0.105 : 0.046) * centralScale;
+  const baseAlpha = (active ? 0.052 : 0.022) * centralScale;
   drawParticlePolyline(ctx, points, [76, 230, 255], baseAlpha, unit, Math.floor(stableUnit(object.id, 73) * 1000), elapsed);
 
   const streamCount = active ? 13 : 7;
@@ -1707,7 +1707,7 @@ function drawSceneMotionParticipantFlow(
     [target.x, target.y],
   ];
 
-  drawParticlePolyline(ctx, sourceSubjectTarget, [76, 230, 255], 0.075 * centralScale, unit, groupSalt + 401, elapsed);
+  drawParticlePolyline(ctx, sourceSubjectTarget, [76, 230, 255], 0.038 * centralScale, unit, groupSalt + 401, elapsed);
 
   for (let index = 0; index < 22; index += 1) {
     const leg = index < 10 ? 0 : 1;
@@ -1731,7 +1731,7 @@ function drawSceneMotionParticipantFlow(
     );
   }
 
-  drawParticleEllipse(ctx, subject.x, subject.y, unit * 0.026, unit * 0.017, elapsed * 0.32, [255, 255, 255], 0.13 * centralScale, unit, groupSalt + 607, elapsed);
+  drawParticleEllipse(ctx, subject.x, subject.y, unit * 0.026, unit * 0.017, elapsed * 0.32, [255, 255, 255], 0.085 * centralScale, unit, groupSalt + 607, elapsed);
   return true;
 }
 
@@ -1766,7 +1766,7 @@ function drawSceneGroupRelationField(
   const radiusX = clamp((Math.max(...xs) - Math.min(...xs)) * 0.56 + unit * 0.055, unit * 0.055, unit * 0.22);
   const radiusY = clamp((Math.max(...ys) - Math.min(...ys)) * 0.56 + unit * 0.042, unit * 0.042, unit * 0.18);
   const groupSalt = Math.floor(stableUnit(String(activeObject?.beat.scene_group_id ?? activeObject?.id ?? "group"), 89) * 1000);
-  drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.018 * centralScale, unit, groupSalt, elapsed);
+  drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.01 * centralScale, unit, groupSalt, elapsed);
   const renderedMotionFlow = drawSceneMotionParticipantFlow(ctx, points, unit, elapsed, centralScale, groupSalt);
 
   points.slice(1).forEach((target, index) => {
@@ -1777,7 +1777,7 @@ function drawSceneGroupRelationField(
       : unit * 0.028 * Math.sin(elapsed * 0.31 + index);
     const midX = (primary.x + target.x) / 2 + Math.sin(elapsed * 0.23 + index * 1.7) * unit * 0.012;
     const midY = (primary.y + target.y) / 2 + relationLift;
-    const alpha = (target.object.beat.op === "move" || target.object.beat.motion_path ? 0.082 : 0.046) * centralScale;
+    const alpha = (target.object.beat.op === "move" || target.object.beat.motion_path ? 0.034 : 0.018) * centralScale;
     drawParticlePolyline(
       ctx,
       [[primary.x, primary.y], [midX, midY], [target.x, target.y]],

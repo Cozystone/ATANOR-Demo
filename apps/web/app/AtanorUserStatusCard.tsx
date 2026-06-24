@@ -281,6 +281,19 @@ type SplatraCommandSequencePayload = {
   };
 } | null;
 
+type SplatraCartridgeQueuePayload = {
+  status?: string;
+  execution_mode?: string;
+  job_count?: number;
+  side_channel?: string;
+  external_splatra_called?: boolean;
+  raw_buffer_in_agent_context?: boolean;
+  mutation_performed?: boolean;
+  topic_scene_templates?: boolean;
+  renderer_may_infer_topic?: boolean;
+  particle_text?: boolean;
+} | null;
+
 type SplatraScenePolicy = {
   scene_content_source?: string;
   scene_authoring_basis?: string | null;
@@ -426,6 +439,13 @@ function requestedSplatraCommandSequence(payload: Record<string, any>): SplatraC
   const sequence = result?.splatra_command_sequence;
   if (!sequence || typeof sequence !== "object") return null;
   return sequence as SplatraCommandSequencePayload;
+}
+
+function requestedSplatraCartridgeQueue(payload: Record<string, any>): SplatraCartridgeQueuePayload {
+  const result = payload?.result ?? {};
+  const queue = result?.splatra_cartridge_queue;
+  if (!queue || typeof queue !== "object") return null;
+  return queue as SplatraCartridgeQueuePayload;
 }
 
 function requestedTextAnchor(scenePlan: SceneChoreographyPayload): TextAnchor {
@@ -1101,6 +1121,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
   const [splatraCommandSequence, setSplatraCommandSequence] = useState<SplatraCommandSequencePayload>(null);
+  const [splatraCartridgeQueue, setSplatraCartridgeQueue] = useState<SplatraCartridgeQueuePayload>(null);
   const [scenePolicy, setScenePolicy] = useState<SplatraScenePolicy>(() => defaultSplatraScenePolicy());
   const [sceneSpeechStartedAt, setSceneSpeechStartedAt] = useState(0);
   const [sceneSpeechBeatIndex, setSceneSpeechBeatIndex] = useState(-1);
@@ -1461,6 +1482,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       const nextSceneChoreography = requestedSceneChoreography(payload);
       const nextScenePolicy = requestedSplatraScenePolicy(payload);
       const nextSplatraCommandSequence = requestedSplatraCommandSequence(payload);
+      const nextSplatraCartridgeQueue = requestedSplatraCartridgeQueue(payload);
       const nextInitialSceneBeatIndex = sceneNarrationBeats(nextSceneChoreography)[0]?.beatIndex ?? -1;
       const startVisibleSpeech = () => {
         if (nextSceneChoreography) setSceneSpeechStartedAt(performance.now());
@@ -1470,6 +1492,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setStageLayout(nextStageLayout);
       setSceneChoreography(nextSceneChoreography);
       setSplatraCommandSequence(nextSplatraCommandSequence);
+      setSplatraCartridgeQueue(nextSplatraCartridgeQueue);
       setScenePolicy(nextScenePolicy);
       setSceneSpeechStartedAt(0);
       setOrbState("speaking");
@@ -1531,6 +1554,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setStageLayout("conversation");
       setSceneChoreography(null);
       setSplatraCommandSequence(null);
+      setSplatraCartridgeQueue(null);
       setScenePolicy(defaultSplatraScenePolicy());
       setSceneSpeechStartedAt(0);
       setSceneSpeechBeatIndex(-1);
@@ -1548,6 +1572,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     ? splatraCommandSequence?.candidate_cartridge_requests?.length ?? 0
     : 0;
   const splatraCandidateCartridgeFormat = String(splatraCommandSequence?.candidate_cartridge_requests?.[0]?.cartridge_format ?? "none");
+  const splatraCartridgeQueueStatus = String(splatraCartridgeQueue?.status ?? "none");
+  const splatraCartridgeQueueMode = String(splatraCartridgeQueue?.execution_mode ?? "none");
+  const splatraCartridgeQueueJobs = Number(splatraCartridgeQueue?.job_count ?? 0) || 0;
   const effectiveOrbMovement = effectiveOrbMovementForTelemetry(stageLayout, currentLayoutState.orbMovement, layoutTelemetry);
   const orbMovementFeedback = effectiveOrbMovement === currentLayoutState.orbMovement
     ? "server_scene_geometry"
@@ -1603,6 +1630,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-splatra-command-actions={splatraCommandActionCount}
       data-splatra-candidate-cartridges={splatraCandidateCartridgeCount}
       data-splatra-candidate-cartridge-format={splatraCandidateCartridgeFormat}
+      data-splatra-cartridge-queue={splatraCartridgeQueueStatus}
+      data-splatra-cartridge-jobs={splatraCartridgeQueueJobs}
+      data-splatra-cartridge-execution-mode={splatraCartridgeQueueMode}
+      data-splatra-cartridge-side-channel={String(splatraCartridgeQueue?.side_channel ?? "none")}
+      data-splatra-cartridge-external-called={splatraCartridgeQueue?.external_splatra_called === true ? "true" : "false"}
+      data-splatra-cartridge-raw-buffer={splatraCartridgeQueue?.raw_buffer_in_agent_context === true ? "true" : "false"}
+      data-splatra-cartridge-mutation={splatraCartridgeQueue?.mutation_performed === true ? "true" : "false"}
       data-splatra-command-raw-buffers={splatraCommandSequence?.splatra_contract?.raw_buffers_in_agent_context === true ? "true" : "false"}
       data-splatra-command-topic-templates={splatraCommandSequence?.splatra_contract?.topic_scene_templates === true ? "true" : "false"}
       data-splatra-command-renderer-inference={splatraCommandSequence?.splatra_contract?.renderer_may_infer_topic === true ? "true" : "false"}

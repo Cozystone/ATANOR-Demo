@@ -16,7 +16,7 @@ from packages.cgsr.cgsr.conversation_grounding import gather_grounded_context
 from packages.cgsr.cgsr.conversation_router import route_conversation_request
 from packages.cgsr.cgsr.visual_imagination_planner import plan_visual_imagination
 from packages.core_proof.three_core_answer_path import run_prompt_proof
-from packages.splatra_imagination import compile_scene_choreography_commands
+from packages.splatra_imagination import build_candidate_cartridge_queue, compile_scene_choreography_commands
 from packages.voice_loop.local_tts import LocalTTSUnavailable, synthesize_windows_sapi, voice_audio_path
 from packages.voice_loop.runtime_availability import check_voice_runtime_availability
 from packages.surface_brain.monitor import monitor_answer, repair_answer_for_mode
@@ -501,9 +501,15 @@ def _live_selfhood_payload(
         diagnostics=diagnostics,
         answer_available=bool(generated.answer),
     )
-    splatra_command_sequence = (
-        compile_scene_choreography_commands(visual_plan.scene_choreography).to_dict()
+    splatra_command_sequence_obj = (
+        compile_scene_choreography_commands(visual_plan.scene_choreography)
         if visual_plan.scene_choreography
+        else None
+    )
+    splatra_command_sequence = splatra_command_sequence_obj.to_dict() if splatra_command_sequence_obj else None
+    splatra_cartridge_queue = (
+        build_candidate_cartridge_queue(splatra_command_sequence_obj).to_dict()
+        if splatra_command_sequence_obj
         else None
     )
     visual_policy = {
@@ -553,6 +559,14 @@ def _live_selfhood_payload(
             "topic_scene_templates": False,
             "renderer_may_infer_topic": False,
             "text_rendering": "dom_text_not_particles",
+        },
+        "splatra_cartridge_queue": {
+            "available": bool(splatra_cartridge_queue),
+            "job_count": int(splatra_cartridge_queue.get("job_count", 0)) if splatra_cartridge_queue else 0,
+            "execution_mode": splatra_cartridge_queue.get("execution_mode", "none") if splatra_cartridge_queue else "none",
+            "external_splatra_called": False,
+            "raw_buffer_in_agent_context": False,
+            "mutation_performed": False,
         },
         "confidence": "medium" if generated.confidence >= 0.5 else "abstained",
         "inner_voice": {
@@ -622,6 +636,7 @@ def _live_selfhood_payload(
             "visual_scene_plan": None,
             "splatra_scene_plan": None,
             "splatra_command_sequence": None,
+            "splatra_cartridge_queue": None,
             "splatra_scene_policy": visual_policy,
             "answer_engine": engine,
             **{**_flags(), "final_answer_generation_claimed": False},
@@ -656,6 +671,7 @@ def _live_selfhood_payload(
         "visual_scene_plan": visual_plan.scene_choreography,
         "splatra_scene_plan": visual_plan.scene_choreography,
         "splatra_command_sequence": splatra_command_sequence,
+        "splatra_cartridge_queue": splatra_cartridge_queue,
         "splatra_scene_policy": visual_policy,
         "answer_engine": engine,
         **_flags(),
