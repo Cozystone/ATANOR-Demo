@@ -121,6 +121,9 @@ type ScenePlan = {
   dashboard_layout?: {
     scene?: {
       central_scale?: number;
+      generated_visual_elements?: string;
+      line_rendering?: string;
+      text_exception?: string;
     };
     stage_safe_region?: {
       scale_strategy?: string;
@@ -129,6 +132,13 @@ type ScenePlan = {
     };
     agent_layout_decision?: {
       particle_stage_strategy?: string;
+      particle_space?: string;
+      generated_visual_elements?: string;
+      line_rendering?: string;
+      flow_motion_reference?: string;
+      text_exception?: string;
+      orb_self_body_yield?: string;
+      particle_recomposition_mode?: string;
       layout_autonomy?: string;
       orb_identity?: string;
     };
@@ -329,6 +339,34 @@ function scenePlanSafeRegionStrategy(scenePlan: ScenePlan | null | undefined) {
 
 function scenePlanParticleStageStrategy(scenePlan: ScenePlan | null | undefined) {
   return String(scenePlan?.dashboard_layout?.agent_layout_decision?.particle_stage_strategy ?? "ambient_self_body");
+}
+
+function scenePlanParticleSpace(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.particle_space ?? "orb_local_field");
+}
+
+function scenePlanGeneratedVisualElements(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.generated_visual_elements ?? scenePlan?.dashboard_layout?.scene?.generated_visual_elements ?? "particle_points_only");
+}
+
+function scenePlanLineRendering(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.line_rendering ?? scenePlan?.dashboard_layout?.scene?.line_rendering ?? "particle_segments_not_canvas_strokes");
+}
+
+function scenePlanFlowMotionReference(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.flow_motion_reference ?? FLOW_MOTION_REFERENCE);
+}
+
+function scenePlanTextException(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.text_exception ?? scenePlan?.dashboard_layout?.scene?.text_exception ?? "dom_text_measured_layout_only");
+}
+
+function scenePlanOrbSelfBodyYield(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.orb_self_body_yield ?? "none");
+}
+
+function scenePlanParticleRecompositionMode(scenePlan: ScenePlan | null | undefined) {
+  return String(scenePlan?.dashboard_layout?.agent_layout_decision?.particle_recomposition_mode ?? "ambient_orb_particles");
 }
 
 function scenePlanLayoutAutonomy(scenePlan: ScenePlan | null | undefined) {
@@ -1953,6 +1991,13 @@ export default function SplatraImaginationField({
   const activeSceneTrackId = activeSceneBeat ? sceneObjectTrackId(activeSceneBeat, Math.max(0, syncedBeatIndex)) : "";
   const safeRegionStrategy = scenePlanSafeRegionStrategy(scenePlan);
   const particleStageStrategy = scenePlanParticleStageStrategy(scenePlan);
+  const particleSpace = scenePlanParticleSpace(scenePlan);
+  const generatedVisualElements = scenePlanGeneratedVisualElements(scenePlan);
+  const lineRendering = scenePlanLineRendering(scenePlan);
+  const flowMotionReference = scenePlanFlowMotionReference(scenePlan);
+  const textException = scenePlanTextException(scenePlan);
+  const orbSelfBodyYield = scenePlanOrbSelfBodyYield(scenePlan);
+  const particleRecompositionMode = scenePlanParticleRecompositionMode(scenePlan);
   const layoutAutonomy = scenePlanLayoutAutonomy(scenePlan);
   const orbIdentity = scenePlanOrbIdentity(scenePlan);
   const splatraSceneActions = Array.isArray(splatraCommandSequence?.scene_actions) ? splatraCommandSequence?.scene_actions ?? [] : [];
@@ -2135,6 +2180,13 @@ export default function SplatraImaginationField({
       data-active-scene-focus-basis={activeSceneFocusBasis}
       data-safe-region-strategy={safeRegionStrategy}
       data-particle-stage-strategy={particleStageStrategy}
+      data-particle-space={particleSpace}
+      data-generated-visual-elements={generatedVisualElements}
+      data-line-rendering={lineRendering}
+      data-flow-motion-reference={flowMotionReference}
+      data-text-exception={textException}
+      data-orb-self-body-yield={orbSelfBodyYield}
+      data-particle-recomposition-mode={particleRecompositionMode}
       data-layout-autonomy={layoutAutonomy}
       data-orb-identity={orbIdentity}
       data-layout-collision-pressure={layoutCollisionPressure(controls)}
@@ -2142,7 +2194,7 @@ export default function SplatraImaginationField({
       data-particle-rendering-contract={PARTICLE_RENDERING_CONTRACT}
       data-particle-flow-contract={PARTICLE_FLOW_CONTRACT}
       data-flow-field-basis={FLOW_FIELD_BASIS}
-      data-flow-motion-reference={FLOW_MOTION_REFERENCE}
+      data-flow-motion-reference-contract={FLOW_MOTION_REFERENCE}
       data-splatra-command-contract={SPLATRA_COMMAND_CONTRACT}
       data-splatra-command-sequence={splatraSceneActions.length > 0 ? "available" : "none"}
       data-splatra-command-actions={splatraSceneActions.length}

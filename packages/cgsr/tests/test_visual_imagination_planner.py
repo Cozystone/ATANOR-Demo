@@ -369,6 +369,13 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["content_source"] == "verified_beats_only"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["topic_scene_templates"] is False
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["renderer_may_infer_topic"] is False
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["particle_space"] == "uncovered_dashboard_field_minus_sidebar_composer_and_text"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["generated_visual_elements"] == "particle_points_only"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["flow_motion_reference"] == "codepen_magnetic_swarm_noise_decay_reference"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["text_exception"] == "dom_text_measured_layout_only"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["orb_self_body_yield"] == "orb_moves_and_scales_to_clear_verified_particle_scene"
+    assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["particle_recomposition_mode"] == "agent_airbend_recompose_verified_beats"
     assert plan.scene_choreography["dashboard_layout"]["agent_layout_decision"]["scene_geometry_inputs"]["motion_count"] >= 1
     assert plan.scene_choreography["dashboard_layout"]["orb"]["anchor"] == "lower_right"
     assert plan.scene_choreography["dashboard_layout"]["orb"]["size_vmin"] < 24
@@ -378,6 +385,10 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["dashboard_layout"]["speech"]["lower_center_bottom_vh"] < 17
     assert plan.scene_choreography["dashboard_layout"]["self_narration"]["anchor"] == "upper_right"
     assert plan.scene_choreography["dashboard_layout"]["stage_safe_region"]["primary"] == "center_particle_stage"
+    assert plan.scene_choreography["dashboard_layout"]["stage_safe_region"]["scale_strategy"] == "fit_verified_particle_stage_inside_uncovered_dashboard"
+    assert plan.scene_choreography["dashboard_layout"]["scene"]["generated_visual_elements"] == "particle_points_only"
+    assert plan.scene_choreography["dashboard_layout"]["scene"]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert plan.scene_choreography["dashboard_layout"]["scene"]["text_exception"] == "dom_text_not_particle_geometry"
     assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"

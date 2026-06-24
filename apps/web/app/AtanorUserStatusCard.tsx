@@ -174,6 +174,13 @@ type SceneChoreographyPayload = {
       text_rendering?: string;
       scene_region?: string;
       particle_stage_strategy?: string;
+      particle_space?: string;
+      generated_visual_elements?: string;
+      line_rendering?: string;
+      flow_motion_reference?: string;
+      text_exception?: string;
+      orb_self_body_yield?: string;
+      particle_recomposition_mode?: string;
       avoid_regions?: string[];
       content_source?: string;
       renderer_may_infer_topic?: boolean;
@@ -200,6 +207,13 @@ type SceneChoreographyPayload = {
     text_strategy?: string;
     stage_region?: string;
     particle_stage_strategy?: string;
+    particle_space?: string;
+    generated_visual_elements?: string;
+    line_rendering?: string;
+    flow_motion_reference?: string;
+    text_exception?: string;
+    orb_self_body_yield?: string;
+    particle_recomposition_mode?: string;
     layout_autonomy?: string;
     particle_behavior?: string;
   }>;
@@ -505,6 +519,13 @@ function activeLayoutState(scenePlan: SceneChoreographyPayload, stageLayout: Sta
     orbIdentity: String(item.orb_identity ?? scenePlan?.dashboard_layout?.agent_layout_decision?.orb_identity ?? (stageLayout === "scene_focus" ? "atanor_self_body_not_scene_object" : "atanor_primary_self_body")),
     stageRegion: String(item.stage_region ?? scenePlan?.dashboard_layout?.agent_layout_decision?.scene_region ?? (stageLayout === "scene_focus" ? "dashboard_center" : "conversation_center")),
     particleStageStrategy: String(item.particle_stage_strategy ?? scenePlan?.dashboard_layout?.agent_layout_decision?.particle_stage_strategy ?? (stageLayout === "scene_focus" ? "airbend_recompose_particles_inside_safe_region" : "ambient_self_body")),
+    particleSpace: String(item.particle_space ?? scenePlan?.dashboard_layout?.agent_layout_decision?.particle_space ?? (stageLayout === "scene_focus" ? "uncovered_dashboard_field_minus_sidebar_composer_and_text" : "orb_local_field")),
+    generatedVisualElements: String(item.generated_visual_elements ?? scenePlan?.dashboard_layout?.agent_layout_decision?.generated_visual_elements ?? (stageLayout === "scene_focus" ? "particle_points_only" : "particle_points_only")),
+    lineRendering: String(item.line_rendering ?? scenePlan?.dashboard_layout?.agent_layout_decision?.line_rendering ?? "particle_segments_not_canvas_strokes"),
+    flowMotionReference: String(item.flow_motion_reference ?? scenePlan?.dashboard_layout?.agent_layout_decision?.flow_motion_reference ?? "codepen_magnetic_swarm_noise_decay_reference"),
+    textException: String(item.text_exception ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_exception ?? "dom_text_measured_layout_only"),
+    orbSelfBodyYield: String(item.orb_self_body_yield ?? scenePlan?.dashboard_layout?.agent_layout_decision?.orb_self_body_yield ?? (stageLayout === "scene_focus" ? "orb_moves_and_scales_to_clear_verified_particle_scene" : "none")),
+    particleRecompositionMode: String(item.particle_recomposition_mode ?? scenePlan?.dashboard_layout?.agent_layout_decision?.particle_recomposition_mode ?? (stageLayout === "scene_focus" ? "agent_airbend_recompose_verified_beats" : "ambient_orb_particles")),
     layoutAutonomy: String(item.layout_autonomy ?? scenePlan?.dashboard_layout?.agent_layout_decision?.layout_autonomy ?? (stageLayout === "scene_focus" ? "agent_authored_from_verified_scene_geometry_and_client_feedback" : "conversation_default")),
     textAnchor: coerceTextAnchor(item.text_anchor, requestedTextAnchor(scenePlan)),
     textAnchorBasis: String(item.text_anchor_basis ?? scenePlan?.dashboard_layout?.agent_layout_decision?.text_strategy ?? (stageLayout === "scene_focus" ? "verified_scene_geometry" : "conversation_default")),
@@ -1605,6 +1626,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-stage-region={currentLayoutState.stageRegion}
       data-layout-autonomy={currentLayoutState.layoutAutonomy}
       data-particle-stage-strategy={currentLayoutState.particleStageStrategy}
+      data-particle-space={currentLayoutState.particleSpace}
+      data-generated-visual-elements={currentLayoutState.generatedVisualElements}
+      data-line-rendering={currentLayoutState.lineRendering}
+      data-flow-motion-reference={currentLayoutState.flowMotionReference}
+      data-text-exception={currentLayoutState.textException}
+      data-orb-self-body-yield={currentLayoutState.orbSelfBodyYield}
+      data-particle-recomposition-mode={currentLayoutState.particleRecompositionMode}
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}
       data-layout-text-anchor-points={currentLayoutState.textAnchorPoints}

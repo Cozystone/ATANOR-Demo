@@ -46,6 +46,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-layout-stage-region" in status_card
     assert "data-layout-autonomy" in status_card
     assert "data-particle-stage-strategy" in status_card
+    assert "data-particle-space" in status_card
+    assert "data-generated-visual-elements" in status_card
+    assert "data-line-rendering" in status_card
+    assert "data-flow-motion-reference" in status_card
+    assert "data-text-exception" in status_card
+    assert "data-orb-self-body-yield" in status_card
+    assert "data-particle-recomposition-mode" in status_card
     assert "data-layout-text-rendering" in status_card
     assert "type SplatraScenePolicy" in status_card
     assert "defaultSplatraScenePolicy" in status_card
@@ -111,6 +118,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "fit_verified_particle_stage_inside_uncovered_dashboard" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "atanor_self_body_not_scene_object" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "airbend_recompose_particles_inside_safe_region" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "uncovered_dashboard_field_minus_sidebar_composer_and_text" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "particle_segments_not_canvas_strokes" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "agent_airbend_recompose_verified_beats" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
+    assert "orb_moves_and_scales_to_clear_verified_particle_scene" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "agent_authored_from_verified_scene_geometry_and_client_feedback" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "15.2 - load * 3.7" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "16.0 - load * 3.0" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
@@ -291,6 +302,14 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-particle-rendering-contract" in field
     assert "data-particle-flow-contract" in field
     assert "data-flow-field-basis" in field
+    assert "data-particle-space" in field
+    assert "data-generated-visual-elements" in field
+    assert "data-line-rendering" in field
+    assert "data-flow-motion-reference" in field
+    assert "data-flow-motion-reference-contract" in field
+    assert "data-text-exception" in field
+    assert "data-orb-self-body-yield" in field
+    assert "data-particle-recomposition-mode" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
     assert "motion_path" in field

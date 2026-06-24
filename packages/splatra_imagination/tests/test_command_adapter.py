@@ -165,15 +165,30 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert plan.dashboard_layout["agent_layout_decision"]["text_rendering"] == "dom_text_not_particles"
     assert plan.dashboard_layout["agent_layout_decision"]["decision_owner"] == "cgsr_scene_choreography_agent"
     assert plan.dashboard_layout["agent_layout_decision"]["content_source"] == "verified_beats_only"
+    assert plan.dashboard_layout["agent_layout_decision"]["particle_space"] == "uncovered_dashboard_field_minus_sidebar_composer_and_text"
+    assert plan.dashboard_layout["agent_layout_decision"]["generated_visual_elements"] == "particle_points_only"
+    assert plan.dashboard_layout["agent_layout_decision"]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert plan.dashboard_layout["agent_layout_decision"]["flow_motion_reference"] == "codepen_magnetic_swarm_noise_decay_reference"
+    assert plan.dashboard_layout["agent_layout_decision"]["text_exception"] == "dom_text_measured_layout_only"
+    assert plan.dashboard_layout["agent_layout_decision"]["orb_self_body_yield"] == "orb_moves_and_scales_to_clear_verified_particle_scene"
+    assert plan.dashboard_layout["agent_layout_decision"]["particle_recomposition_mode"] == "agent_airbend_recompose_verified_beats"
     assert plan.dashboard_layout["agent_layout_decision"]["topic_scene_templates"] is False
     assert plan.dashboard_layout["agent_layout_decision"]["renderer_may_infer_topic"] is False
     assert plan.dashboard_layout["agent_layout_decision"]["scene_geometry_inputs"]["motion_count"] == 1
+    assert plan.dashboard_layout["scene"]["generated_visual_elements"] == "particle_points_only"
+    assert plan.dashboard_layout["scene"]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert plan.dashboard_layout["scene"]["text_exception"] == "dom_text_not_particle_geometry"
     assert plan.dashboard_layout["stage_safe_region"]["footprint"]["basis"] == "verified_scene_geometry_extent"
     assert plan.dashboard_layout["stage_safe_region"]["footprint"]["block_text"] is True
     assert plan.layout_timeline[0]["action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
     assert plan.layout_timeline[0]["decision_basis"] == "verified_scene_geometry"
     assert plan.layout_timeline[0]["decision_owner"] == "cgsr_scene_choreography_agent"
     assert plan.layout_timeline[0]["text_rendering"] == "dom_text_not_particles"
+    assert plan.layout_timeline[0]["particle_space"] == "uncovered_dashboard_field_minus_sidebar_composer_and_text"
+    assert plan.layout_timeline[0]["generated_visual_elements"] == "particle_points_only"
+    assert plan.layout_timeline[0]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert plan.layout_timeline[0]["text_exception"] == "dom_text_measured_layout_only"
+    assert plan.layout_timeline[0]["particle_recomposition_mode"] == "agent_airbend_recompose_verified_beats"
     active_layout = next(item for item in plan.layout_timeline if item["action"] == "sync_orb_text_with_particle_beat" and item["beat_index"] == 1)
     assert active_layout["text_rendering"] == "dom_text_not_particles"
     assert active_layout["decision_owner"] == "cgsr_scene_choreography_agent"
