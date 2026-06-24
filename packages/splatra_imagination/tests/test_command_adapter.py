@@ -339,6 +339,7 @@ def test_scene_choreography_commands_compile_airbend_particle_sequence_without_r
     assert sequence.hot_swap_policy["mode"] == "candidate_only"
     assert sequence.hot_swap_policy["mutation_performed"] is False
     assert sequence.hot_swap_policy["viewer_side_channel"] == "GET /v1/cartridge"
+    assert sequence.hot_swap_policy["candidate_request_count"] == 3
     assert sequence.splatra_contract["compatible_source"] == "Cozystone/SPLATRA"
     assert sequence.splatra_contract["raw_buffers_in_agent_context"] is False
     assert sequence.splatra_contract["agent_context_payload"] == "sgf_summary_and_command_sequence_only"
@@ -349,6 +350,7 @@ def test_scene_choreography_commands_compile_airbend_particle_sequence_without_r
     assert sequence.particle_motion_policy["agent_control"] == "airbend_recompose_particles_inside_safe_region"
 
     assert [action["op"] for action in sequence.scene_actions] == ["spawn_object", "move", "focus_camera"]
+    assert len(sequence.candidate_cartridge_requests) == len(sequence.scene_actions)
     for action in sequence.scene_actions:
         assert action["execute_js"] is False
         assert action["mutation_performed"] is False
@@ -358,12 +360,30 @@ def test_scene_choreography_commands_compile_airbend_particle_sequence_without_r
         assert action["args"]["particle_text"] is False
         assert action["args"]["text_rendering"] == "dom_text_not_particles"
 
+    for request in sequence.candidate_cartridge_requests:
+        assert request["cartridge_format"] == "SPL3_candidate"
+        assert request["cartridge_role"] == "viewer_side_channel_candidate"
+        assert request["input_basis"] == "verified_scene_action"
+        assert request["execution"]["status"] == "candidate_request_only"
+        assert request["execution"]["execute_now"] is False
+        assert request["execution"]["agent_context_receives"] == "request_summary_only"
+        assert request["execution"]["raw_buffer_in_agent_context"] is False
+        assert request["quality_gates"]["particle_text"] is False
+        assert request["quality_gates"]["topic_scene_templates"] is False
+        assert request["quality_gates"]["renderer_may_infer_topic"] is False
+        assert request["quality_gates"]["mutation_performed"] is False
+
     move = sequence.scene_actions[1]
     assert move["args"]["track_id"] == "track_falling_object"
     assert move["args"]["particle_behavior"] == "gravity_arc"
     assert move["args"]["motion_path"]["basis"] == "verified_motion_phrase"
     assert move["args"]["physics_hint"]["field"] == "downward_attraction"
     assert move["args"]["scene_evidence"]["source_fact_hash"] == "fact_motion_hash"
+    motion_request = sequence.candidate_cartridge_requests[1]
+    assert motion_request["object_id"] == "verified_falling_object"
+    assert motion_request["motion_path"]["basis"] == "verified_motion_phrase"
+    assert motion_request["physics_hint"]["field"] == "downward_attraction"
+    assert motion_request["quality_gates"]["source_fact_hash"] == "fact_motion_hash"
 
     focus = sequence.scene_actions[2]
     assert focus["args"]["camera"]["zoom"] == 1.35

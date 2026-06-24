@@ -68,6 +68,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "splatraCommandSequence={splatraCommandSequence}" in status_card
     assert "data-splatra-command-sequence" in status_card
     assert "data-splatra-command-actions" in status_card
+    assert "candidate_cartridge_requests?: Array" in status_card
+    assert "data-splatra-candidate-cartridges" in status_card
+    assert "data-splatra-candidate-cartridge-format" in status_card
     assert "data-splatra-command-raw-buffers" in status_card
     assert "data-splatra-command-topic-templates" in status_card
     assert "data-splatra-command-renderer-inference" in status_card
@@ -330,6 +333,9 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-splatra-command-contract" in field
     assert "type SplatraCommandSequence" in field
     assert "splatraCommandSequence?: SplatraCommandSequence | null" in field
+    assert "candidate_cartridge_requests?: Array" in field
+    assert "data-splatra-candidate-cartridges" in field
+    assert "data-splatra-candidate-cartridge-format" in field
     assert "commandSequenceBeats" in field
     assert "scenePlanWithCommandSequence" in field
     assert "const renderScenePlan = useMemo" in field

@@ -245,13 +245,18 @@ def test_dashboard_conversation_returns_verified_speech_timeline_for_motion_scen
     assert scene == payload["scene_choreography"] == payload["visual_scene_plan"]
     assert command_sequence["hot_swap_policy"]["mode"] == "candidate_only"
     assert command_sequence["hot_swap_policy"]["viewer_side_channel"] == "GET /v1/cartridge"
+    assert command_sequence["hot_swap_policy"]["candidate_request_count"] == len(command_sequence["scene_actions"])
     assert command_sequence["splatra_contract"]["agent_context_payload"] == "sgf_summary_and_command_sequence_only"
     assert command_sequence["splatra_contract"]["raw_buffers_in_agent_context"] is False
     assert command_sequence["splatra_contract"]["topic_scene_templates"] is False
     assert command_sequence["splatra_contract"]["renderer_may_infer_topic"] is False
     assert command_sequence["particle_motion_policy"]["agent_control"] == "airbend_recompose_particles_inside_safe_region"
     assert len(command_sequence["scene_actions"]) == len(scene["beats"])
+    assert len(command_sequence["candidate_cartridge_requests"]) == len(scene["beats"])
     assert any(action["op"] == "move" for action in command_sequence["scene_actions"])
+    assert all(request["cartridge_format"] == "SPL3_candidate" for request in command_sequence["candidate_cartridge_requests"])
+    assert all(request["execution"]["execute_now"] is False for request in command_sequence["candidate_cartridge_requests"])
+    assert all(request["execution"]["raw_buffer_in_agent_context"] is False for request in command_sequence["candidate_cartridge_requests"])
     assert all(action["args"]["text_rendering"] == "dom_text_not_particles" for action in command_sequence["scene_actions"])
     assert all(action["args"]["particle_text"] is False for action in command_sequence["scene_actions"])
     assert scene["stage_layout"] == "scene_focus"
@@ -631,8 +636,12 @@ def test_korean_dashboard_conversation_returns_splatra_scene_plan_from_verified_
     assert command_sequence["splatra_contract"]["topic_scene_templates"] is False
     assert command_sequence["splatra_contract"]["renderer_may_infer_topic"] is False
     assert command_sequence["hot_swap_policy"]["viewer_side_channel"] == "GET /v1/cartridge"
+    assert command_sequence["hot_swap_policy"]["candidate_request_count"] == len(command_sequence["scene_actions"])
     assert len(command_sequence["scene_actions"]) == len(scene["beats"])
+    assert len(command_sequence["candidate_cartridge_requests"]) == len(scene["beats"])
     assert any(action["op"] == "move" for action in command_sequence["scene_actions"])
+    assert all(request["cartridge_format"] == "SPL3_candidate" for request in command_sequence["candidate_cartridge_requests"])
+    assert all(request["execution"]["execute_now"] is False for request in command_sequence["candidate_cartridge_requests"])
     assert all(action["execute_js"] is False for action in command_sequence["scene_actions"])
     assert all(action["mutation_performed"] is False for action in command_sequence["scene_actions"])
     assert scene["stage_layout"] == "scene_focus"

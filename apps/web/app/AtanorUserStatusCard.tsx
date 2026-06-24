@@ -255,6 +255,13 @@ type SceneChoreographyPayload = {
 
 type SplatraCommandSequencePayload = {
   scene_actions?: Array<{ op?: string; args?: Record<string, unknown> }>;
+  candidate_cartridge_requests?: Array<{
+    cartridge_format?: string;
+    execution?: {
+      execute_now?: boolean;
+      raw_buffer_in_agent_context?: boolean;
+    };
+  }>;
   splatra_contract?: {
     side_channel?: string;
     agent_context_payload?: string;
@@ -1537,6 +1544,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const splatraCommandActionCount = Array.isArray(splatraCommandSequence?.scene_actions)
     ? splatraCommandSequence?.scene_actions?.length ?? 0
     : 0;
+  const splatraCandidateCartridgeCount = Array.isArray(splatraCommandSequence?.candidate_cartridge_requests)
+    ? splatraCommandSequence?.candidate_cartridge_requests?.length ?? 0
+    : 0;
+  const splatraCandidateCartridgeFormat = String(splatraCommandSequence?.candidate_cartridge_requests?.[0]?.cartridge_format ?? "none");
   const effectiveOrbMovement = effectiveOrbMovementForTelemetry(stageLayout, currentLayoutState.orbMovement, layoutTelemetry);
   const orbMovementFeedback = effectiveOrbMovement === currentLayoutState.orbMovement
     ? "server_scene_geometry"
@@ -1590,6 +1601,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-verified-evidence-required={scenePolicy.verified_evidence_required_for_general_knowledge === true ? "true" : "false"}
       data-splatra-command-sequence={splatraCommandActionCount > 0 ? "available" : "none"}
       data-splatra-command-actions={splatraCommandActionCount}
+      data-splatra-candidate-cartridges={splatraCandidateCartridgeCount}
+      data-splatra-candidate-cartridge-format={splatraCandidateCartridgeFormat}
       data-splatra-command-raw-buffers={splatraCommandSequence?.splatra_contract?.raw_buffers_in_agent_context === true ? "true" : "false"}
       data-splatra-command-topic-templates={splatraCommandSequence?.splatra_contract?.topic_scene_templates === true ? "true" : "false"}
       data-splatra-command-renderer-inference={splatraCommandSequence?.splatra_contract?.renderer_may_infer_topic === true ? "true" : "false"}

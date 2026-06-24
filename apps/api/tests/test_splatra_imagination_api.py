@@ -124,6 +124,16 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert payload["splatra_command_sequence"]["splatra_contract"]["renderer_may_infer_topic"] is False
     assert payload["splatra_command_sequence"]["particle_motion_policy"]["agent_control"] == "airbend_recompose_particles_inside_safe_region"
     assert len(payload["splatra_command_sequence"]["scene_actions"]) == len(payload["scene_choreography"]["beats"])
+    assert payload["splatra_command_sequence"]["hot_swap_policy"]["candidate_request_count"] == len(payload["scene_choreography"]["beats"])
+    assert len(payload["splatra_command_sequence"]["candidate_cartridge_requests"]) == len(payload["scene_choreography"]["beats"])
+    assert all(
+        request["cartridge_format"] == "SPL3_candidate"
+        for request in payload["splatra_command_sequence"]["candidate_cartridge_requests"]
+    )
+    assert all(
+        request["execution"]["execute_now"] is False
+        for request in payload["splatra_command_sequence"]["candidate_cartridge_requests"]
+    )
     assert len(payload["scene_choreography"]["beats"]) == 2
     first_beat = payload["scene_choreography"]["beats"][0]
     assert first_beat["scene_directive"]["directive_owner"] == "cgsr_visual_imagination_planner"

@@ -181,6 +181,13 @@ const SPLATRA_COMMAND_CONTRACT = "agent_scene_commands_to_particle_cartridges";
 
 type SplatraCommandSequence = {
   scene_actions?: Array<{ op?: string; args?: Record<string, unknown> }>;
+  candidate_cartridge_requests?: Array<{
+    cartridge_format?: string;
+    execution?: {
+      execute_now?: boolean;
+      raw_buffer_in_agent_context?: boolean;
+    };
+  }>;
   splatra_contract?: {
     side_channel?: string;
     agent_context_payload?: string;
@@ -1949,6 +1956,10 @@ export default function SplatraImaginationField({
   const layoutAutonomy = scenePlanLayoutAutonomy(scenePlan);
   const orbIdentity = scenePlanOrbIdentity(scenePlan);
   const splatraSceneActions = Array.isArray(splatraCommandSequence?.scene_actions) ? splatraCommandSequence?.scene_actions ?? [] : [];
+  const splatraCartridgeRequests = Array.isArray(splatraCommandSequence?.candidate_cartridge_requests)
+    ? splatraCommandSequence?.candidate_cartridge_requests ?? []
+    : [];
+  const firstCartridgeFormat = String(splatraCartridgeRequests[0]?.cartridge_format ?? "none");
   const splatraContract = splatraCommandSequence?.splatra_contract ?? {};
   const splatraHotSwap = splatraCommandSequence?.hot_swap_policy ?? {};
   const splatraMotionPolicy = splatraCommandSequence?.particle_motion_policy ?? {};
@@ -2135,6 +2146,8 @@ export default function SplatraImaginationField({
       data-splatra-command-contract={SPLATRA_COMMAND_CONTRACT}
       data-splatra-command-sequence={splatraSceneActions.length > 0 ? "available" : "none"}
       data-splatra-command-actions={splatraSceneActions.length}
+      data-splatra-candidate-cartridges={splatraCartridgeRequests.length}
+      data-splatra-candidate-cartridge-format={firstCartridgeFormat}
       data-splatra-command-side-channel={String(splatraHotSwap.viewer_side_channel ?? splatraContract.side_channel ?? "none")}
       data-splatra-command-agent-payload={String(splatraContract.agent_context_payload ?? "none")}
       data-splatra-command-hot-swap-mode={String(splatraHotSwap.mode ?? "none")}

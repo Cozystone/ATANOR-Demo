@@ -36,6 +36,7 @@ class SplatraSceneCommandSequence:
     sequence_id: str
     source_plan_id: str
     scene_actions: list[dict[str, Any]]
+    candidate_cartridge_requests: list[dict[str, Any]]
     splatra_contract: dict[str, Any]
     hot_swap_policy: dict[str, Any]
     particle_motion_policy: dict[str, Any]
@@ -167,6 +168,60 @@ def _beat_scene_action(beat: SceneBeat, index: int, *, particle_budget: int) -> 
     }
 
 
+def _candidate_cartridge_request(action: dict[str, Any], index: int) -> dict[str, Any]:
+    args = action.get("args") if isinstance(action.get("args"), dict) else {}
+    request_id = _stable_id(
+        "splatra_cart_req",
+        f"{action.get('id')}:{action.get('op')}:{args.get('id')}:{args.get('prompt')}:{args.get('t_start')}",
+    )
+    evidence = args.get("scene_evidence") if isinstance(args.get("scene_evidence"), dict) else {}
+    directive = args.get("scene_directive") if isinstance(args.get("scene_directive"), dict) else {}
+    return {
+        "request_id": request_id,
+        "action_id": action.get("id"),
+        "object_id": args.get("id"),
+        "track_id": args.get("track_id"),
+        "op": action.get("op"),
+        "endpoint": "POST /v1/generate_3d_object" if action.get("op") in {"spawn_object", "morph", "move"} else "POST /v1/chat",
+        "cartridge_format": "SPL3_candidate",
+        "cartridge_role": "viewer_side_channel_candidate",
+        "input_basis": "verified_scene_action",
+        "prompt": args.get("prompt", ""),
+        "archetype": args.get("archetype"),
+        "semantic_role": args.get("semantic_role"),
+        "visual_affordance": args.get("visual_affordance"),
+        "particle_budget": args.get("particle_budget"),
+        "position": args.get("position"),
+        "motion_path": args.get("motion_path") if isinstance(args.get("motion_path"), dict) else {},
+        "physics_hint": args.get("physics_hint") if isinstance(args.get("physics_hint"), dict) else {},
+        "camera": args.get("camera") if isinstance(args.get("camera"), dict) else {},
+        "timing": {
+            "t_start": args.get("t_start"),
+            "duration": args.get("duration"),
+            "sequence_index": index,
+        },
+        "quality_gates": {
+            "source_type": evidence.get("source_type", "verified_evidence_unit"),
+            "source_fact_hash": evidence.get("source_fact_hash", ""),
+            "directive_basis": directive.get("basis", "verified_scene_beat"),
+            "particle_text": False,
+            "text_rendering": "dom_text_not_particles",
+            "topic_scene_templates": False,
+            "renderer_may_infer_topic": False,
+            "raw_buffers_in_agent_context": False,
+            "mutation_performed": False,
+            "external_splatra_called": False,
+        },
+        "execution": {
+            "status": "candidate_request_only",
+            "execute_now": False,
+            "viewer_fetch_after_swap_ready": True,
+            "agent_context_receives": "request_summary_only",
+            "raw_buffer_in_agent_context": False,
+        },
+    }
+
+
 def compile_splatra_command(
     command: str,
     *,
@@ -255,17 +310,23 @@ def compile_scene_choreography_commands(
         _beat_scene_action(beat, index, particle_budget=particle_budget)
         for index, beat in enumerate(plan.beats)
     ]
+    cartridge_requests = [
+        _candidate_cartridge_request(action, index)
+        for index, action in enumerate(scene_actions)
+    ]
     sequence_id = _stable_id("splatra_seq", f"{plan.plan_id}:{len(scene_actions)}:{particle_budget}")
     return SplatraSceneCommandSequence(
         sequence_id=sequence_id,
         source_plan_id=plan.plan_id,
         scene_actions=scene_actions,
+        candidate_cartridge_requests=cartridge_requests,
         splatra_contract=_splatra_contract(),
         hot_swap_policy={
             "mode": "candidate_only",
             "state_machine": "IDLE_TO_GENERATING_TO_SWAP_READY_TO_DISPLAYED",
             "viewer_side_channel": "GET /v1/cartridge",
             "websocket_signal": "WS /ws/viewer",
+            "candidate_request_count": len(cartridge_requests),
             "commit_to_store": False,
             "mutation_performed": False,
             "raw_buffers_in_agent_context": False,
