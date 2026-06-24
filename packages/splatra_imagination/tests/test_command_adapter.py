@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from packages.splatra_imagination.command_adapter import compile_splatra_command
+from packages.splatra_imagination.command_adapter import compile_scene_choreography_commands, compile_splatra_command
 from packages.splatra_imagination.scene_choreography import compile_scene_choreography
 
 
@@ -283,3 +283,110 @@ def test_command_adapter_keeps_safety_flags_closed() -> None:
     assert plan.safety_flags["production_store_mutated"] is False
     assert plan.safety_flags["generated_scene_committed"] is False
     assert frame.objects[0].is_verified_knowledge is False
+
+
+def test_scene_choreography_commands_compile_airbend_particle_sequence_without_raw_buffers() -> None:
+    choreography = compile_scene_choreography({
+        "stage_layout": "scene_focus",
+        "layout_intent": "wide_particle_stage",
+        "beats": [
+            {
+                "op": "spawn_object",
+                "object_id": "verified_tree_anchor",
+                "object_track_id": "track_tree_anchor",
+                "object_track_basis": "verified_source_anchor",
+                "prompt": "tree from verified source span",
+                "narration": "The tree is the verified visual anchor.",
+                "archetype": "tree",
+                "position": [-0.44, 0.0, 0.0],
+                "scene_evidence": {
+                    "source_type": "verified_evidence_unit",
+                    "source_fact_hash": "fact_tree_hash",
+                    "prompt_span": "tree from verified source span",
+                    "topic_scene_templates": False,
+                },
+            },
+            {
+                "op": "move",
+                "object_id": "verified_falling_object",
+                "object_track_id": "track_falling_object",
+                "prompt": "falling object from verified source span",
+                "narration": "The verified object moves downward.",
+                "particle_behavior": "gravity_arc",
+                "position": [0.12, 0.35, 0.0],
+                "motion_path": {"from": [0.12, 0.35, 0.0], "to": [0.18, -0.52, 0.0], "basis": "verified_motion_phrase"},
+                "physics_hint": {"basis": "verified_motion_phrase", "field": "downward_attraction", "gravity_bias": 0.7},
+                "scene_evidence": {
+                    "source_type": "verified_evidence_unit",
+                    "source_fact_hash": "fact_motion_hash",
+                    "motion_basis": "verified_motion_phrase",
+                    "topic_scene_templates": False,
+                },
+            },
+            {
+                "op": "focus_camera",
+                "object_id": "verified_falling_object",
+                "prompt": "focus verified falling object",
+                "camera": {"target": [0.18, -0.52, 0.0], "zoom": 1.35},
+            },
+        ],
+    })
+
+    sequence = compile_scene_choreography_commands(choreography, particle_budget=12_000)
+
+    assert sequence.external_splatra_called is False
+    assert sequence.raw_buffer_in_agent_context is False
+    assert sequence.hot_swap_policy["mode"] == "candidate_only"
+    assert sequence.hot_swap_policy["mutation_performed"] is False
+    assert sequence.hot_swap_policy["viewer_side_channel"] == "GET /v1/cartridge"
+    assert sequence.splatra_contract["compatible_source"] == "Cozystone/SPLATRA"
+    assert sequence.splatra_contract["raw_buffers_in_agent_context"] is False
+    assert sequence.splatra_contract["agent_context_payload"] == "sgf_summary_and_command_sequence_only"
+    assert sequence.splatra_contract["topic_scene_templates"] is False
+    assert sequence.splatra_contract["renderer_may_infer_topic"] is False
+    assert sequence.particle_motion_policy["field_model"] == "magnetic_swarm_noise_decay_reference"
+    assert sequence.particle_motion_policy["flow_lines"] == "sparse_particle_marks_not_canvas_paths"
+    assert sequence.particle_motion_policy["agent_control"] == "airbend_recompose_particles_inside_safe_region"
+
+    assert [action["op"] for action in sequence.scene_actions] == ["spawn_object", "move", "focus_camera"]
+    for action in sequence.scene_actions:
+        assert action["execute_js"] is False
+        assert action["mutation_performed"] is False
+        assert action["raw_buffer_in_agent_context"] is False
+        assert action["topic_scene_templates"] is False
+        assert action["renderer_may_infer_topic"] is False
+        assert action["args"]["particle_text"] is False
+        assert action["args"]["text_rendering"] == "dom_text_not_particles"
+
+    move = sequence.scene_actions[1]
+    assert move["args"]["track_id"] == "track_falling_object"
+    assert move["args"]["particle_behavior"] == "gravity_arc"
+    assert move["args"]["motion_path"]["basis"] == "verified_motion_phrase"
+    assert move["args"]["physics_hint"]["field"] == "downward_attraction"
+    assert move["args"]["scene_evidence"]["source_fact_hash"] == "fact_motion_hash"
+
+    focus = sequence.scene_actions[2]
+    assert focus["args"]["camera"]["zoom"] == 1.35
+    assert sequence.safety_flags["external_llm"] is False
+    assert sequence.safety_flags["local_brain_write"] is False
+    assert sequence.safety_flags["production_store_mutated"] is False
+
+
+def test_scene_choreography_command_sequence_does_not_invent_topic_objects() -> None:
+    sequence = compile_scene_choreography_commands({
+        "stage_layout": "scene_focus",
+        "beats": [
+            {
+                "op": "move",
+                "object_id": "verified_motion_only",
+                "prompt": "verified motion marker",
+                "motion_path": {"from": [-0.1, 0.2, 0.0], "to": [0.1, -0.2, 0.0], "basis": "verified_motion_phrase"},
+            },
+        ],
+    })
+
+    payload = str(sequence.to_dict()).casefold()
+    assert "apple" not in payload
+    assert "newton" not in payload
+    assert "tree" not in payload
+    assert sequence.splatra_contract["topic_scene_templates"] is False
