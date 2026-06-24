@@ -69,11 +69,22 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "object_track_id: str = \"\"" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "\"object_track_id\": beat.object_track_id" in (ROOT / "packages" / "splatra_imagination" / "scene_choreography.py").read_text(encoding="utf-8")
     assert "splatraStateForInnerVoice" in status_card
+    assert "type SceneDirective" in status_card
+    assert "sceneDirectiveForInnerVoice" in status_card
+    assert "active_scene_directive" in status_card
+    assert "active_scene_narrative_function" in status_card
+    assert "active_scene_directive_owner" in status_card
+    assert "active_scene_directive_basis" in status_card
+    assert "active_scene_text_rendering" in status_card
+    assert "active_scene_particle_text" in status_card
+    assert "active_scene_topic_templates" in status_card
+    assert "scene_directive_source" in status_card
     assert '"/api/inner-voice/generate-frame"' in status_card
     assert '"/api/inner-voice/emit"' not in status_card
     assert "append_to_log: true" in status_card
     assert "splatra_state: splatraStateForInnerVoice" in status_card
-    assert "splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry)" in status_card
+    assert "nextInitialSceneBeatIndex" in status_card
+    assert "splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex)" in status_card
     assert "layout_feedback" in status_card
     assert "splatraOrbLayoutFeedback" in status_card
     assert "nextOrbLayoutFeedback" in status_card

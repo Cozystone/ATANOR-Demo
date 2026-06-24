@@ -67,6 +67,18 @@ type LayoutTelemetry = {
 
 type SceneBeatOp = "spawn_object" | "morph" | "move" | "focus_camera" | "label" | "despawn";
 
+type SceneDirective = {
+  directive_owner?: string;
+  basis?: string;
+  narrative_function?: string;
+  stage_instruction?: string;
+  visual_affordance?: string;
+  speech_sync?: string;
+  text_rendering?: string;
+  particle_text?: boolean;
+  topic_scene_templates?: boolean;
+};
+
 type SceneChoreographyPayload = {
   stage_layout?: "conversation" | "scene_focus";
   orb_anchor?: "center" | "lower_right";
@@ -174,6 +186,7 @@ type SceneChoreographyPayload = {
     t_start?: number;
     duration?: number;
     particle_behavior?: string;
+    scene_directive?: SceneDirective;
     physics_hint?: Record<string, any>;
     motion_path?: Record<string, any>;
     semantic_role?: string;
@@ -193,6 +206,7 @@ type SceneChoreographyPayload = {
     source_fact?: string;
     speech_cue?: boolean;
     speech_cue_basis?: string;
+    scene_directive?: SceneDirective;
     scene_group_id?: string;
     scene_group_role?: string;
     t_start?: number;
@@ -437,16 +451,45 @@ function splatraOrbLayoutFeedback(
   };
 }
 
+function sceneDirectiveForInnerVoice(scenePlan: SceneChoreographyPayload, activeBeatIndex = -1) {
+  const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
+  const activeBeat = activeBeatIndex >= 0 ? beats[activeBeatIndex] : null;
+  const firstDirectiveBeat = beats.find((beat) => beat?.scene_directive);
+  const speechDirectiveBeat = Array.isArray(scenePlan?.speech_timeline)
+    ? scenePlan?.speech_timeline?.find((beat) => beat?.scene_directive)
+    : null;
+  const directive = activeBeat?.scene_directive ?? speechDirectiveBeat?.scene_directive ?? firstDirectiveBeat?.scene_directive ?? null;
+  return {
+    active_scene_directive: String(directive?.stage_instruction ?? "none"),
+    active_scene_narrative_function: String(directive?.narrative_function ?? "none"),
+    active_scene_directive_owner: String(directive?.directive_owner ?? "none"),
+    active_scene_directive_basis: String(directive?.basis ?? "none"),
+    active_scene_speech_sync: String(directive?.speech_sync ?? "none"),
+    active_scene_text_rendering: String(directive?.text_rendering ?? "dom_text_not_particles"),
+    active_scene_particle_text: directive?.particle_text === true,
+    active_scene_topic_templates: directive?.topic_scene_templates === true,
+    scene_directive_source: activeBeat?.scene_directive
+      ? "active_scene_beat"
+      : speechDirectiveBeat?.scene_directive
+        ? "speech_timeline"
+        : firstDirectiveBeat?.scene_directive
+          ? "first_scene_beat"
+          : "none",
+  };
+}
+
 function splatraStateForInnerVoice(scenePlan: SceneChoreographyPayload, stageLayout: StageLayout, layoutTelemetry?: LayoutTelemetry, activeBeatIndex = -1) {
   const beats = Array.isArray(scenePlan?.beats) ? scenePlan?.beats ?? [] : [];
   const firstBeat = beats[0] ?? {};
   const layoutFeedback = splatraLayoutTelemetryOrDefault(stageLayout, layoutTelemetry);
   const orbLayoutFeedback = splatraOrbLayoutFeedback(scenePlan, stageLayout, layoutFeedback, activeBeatIndex);
+  const sceneDirective = sceneDirectiveForInnerVoice(scenePlan, activeBeatIndex);
   return {
     stage_layout: stageLayout,
     layout_intent: requestedLayoutIntent(scenePlan),
     layout_decision: requestedLayoutDecision(scenePlan, stageLayout),
     text_rendering: "dom_text_not_particles",
+    ...sceneDirective,
     layout_feedback: {
       collision_state: layoutFeedback.collisionState,
       measured_blockers: layoutFeedback.blockers,
@@ -1201,11 +1244,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
       const nextStageLayout = requestedStageLayout(payload);
       const nextSceneChoreography = requestedSceneChoreography(payload);
+      const nextInitialSceneBeatIndex = sceneNarrationBeats(nextSceneChoreography)[0]?.beatIndex ?? -1;
       const startVisibleSpeech = () => {
         if (nextSceneChoreography) setSceneSpeechStartedAt(performance.now());
         setSpeechLine(firstSceneNarration(nextSceneChoreography) || firstSpeechBeat(answer));
       };
-      const nextOrbLayoutFeedback = splatraOrbLayoutFeedback(nextSceneChoreography, nextStageLayout, layoutTelemetry);
+      const nextOrbLayoutFeedback = splatraOrbLayoutFeedback(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex);
       setStageLayout(nextStageLayout);
       setSceneChoreography(nextSceneChoreography);
       setSceneSpeechStartedAt(0);
@@ -1232,7 +1276,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
             },
             orb_layout_feedback: nextOrbLayoutFeedback,
           },
-          splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry),
+          splatra_state: splatraStateForInnerVoice(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex),
           review_queue_pressure: 0,
           permission_tier: "OBSERVE_ONLY",
         }),
