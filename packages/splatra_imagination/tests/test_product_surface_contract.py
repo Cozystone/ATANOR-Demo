@@ -440,6 +440,11 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     status_card = (ROOT / "apps" / "web" / "app" / "AtanorUserStatusCard.tsx").read_text(encoding="utf-8")
     assert "chenglou_pretext_prepare_layout_pattern_dom_text_only" in status_card
     assert "data-text-layout-reference" in status_card
+    assert "data-dashboard-particle-budget" in status_card
+    assert "data-speech-sync-mode" in status_card
+    assert "data-voice-emotion-hint" in status_card
+    assert "dashboardParticleBudget" in status_card
+    assert "particleBudget={dashboardParticleBudget}" in status_card
     assert "microRequested" in status_card
     assert "lower_right_lifted_micro" in status_card
     assert "pressureAdjustedOrbMovement" in status_card

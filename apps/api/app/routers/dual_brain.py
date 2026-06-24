@@ -27,6 +27,7 @@ from packages.cloud_brain.graph_exchange import run_local_cloud_exchange
 from packages.cloud_brain.semantic_store import SemanticCloudStore
 from packages.neural_emotion.event_bus import emit_runtime_event, infer_user_text_runtime_event
 from packages.neural_emotion.event_bus import EVENT_BUS
+from packages.neural_emotion.voice_bridge import attach_voice_plan_metadata
 from packages.inner_voice import emit_inner_voice_from_state
 
 
@@ -355,6 +356,11 @@ def _voice_runtime_snapshot(text: str, language: str) -> dict[str, Any]:
             else "The voice engine is not installed yet. Text replies remain available."
         ),
     }
+    base["user_message"] = (
+        "음성 엔진은 아직 준비 중입니다. 텍스트 응답은 계속 사용할 수 있습니다."
+        if language == "ko"
+        else "The voice engine is not installed yet. Text replies remain available."
+    )
     try:
         availability = check_voice_runtime_availability()
     except Exception as exc:  # pragma: no cover - optional runtime isolation
@@ -405,6 +411,36 @@ def _voice_runtime_snapshot(text: str, language: str) -> dict[str, Any]:
             else "Voice synthesis wiring is still pending. Continuing with text replies."
         ),
     }
+
+
+def _estimate_voice_duration_ms(text: str, language: str) -> int:
+    compact = re.sub(r"\s+", "", text or "")
+    if not compact:
+        return 900
+    per_char = 118 if language == "ko" else 62
+    punctuation_pause = len(re.findall(r"[.!?,;:\u3001\u3002!?]", text or "")) * 120
+    return max(900, min(18000, len(compact) * per_char + punctuation_pause + 420))
+
+
+def _attach_voice_runtime_metadata(snapshot: dict[str, Any], text: str, language: str) -> dict[str, Any]:
+    duration_ms = snapshot.get("audio_duration_ms") or _estimate_voice_duration_ms(text, language)
+    with_duration = {
+        **snapshot,
+        "audio_duration_ms": duration_ms,
+        "estimated_duration_ms": duration_ms,
+        "speech_sync_source": "audio_duration" if snapshot.get("audio_duration_ms") else "estimated_from_text_length",
+    }
+    if language == "ko" and with_duration.get("tts_engine") == "windows_sapi":
+        with_duration["user_message"] = "Fish 직접 합성은 아직 연결 전이라 Windows 로컬 음성으로 발화합니다."
+    elif language == "ko" and with_duration.get("error_reason") == "synthesis_adapter_not_wired":
+        with_duration["user_message"] = "음성 합성 연결은 아직 준비 중입니다. 텍스트 응답으로 계속합니다."
+    emotion_vector = EVENT_BUS.engine.snapshot().vector
+    return attach_voice_plan_metadata(
+        with_duration,
+        emotion_vector,
+        selected_engine=str(with_duration.get("selected_engine") or "fallback"),
+        audio_available=bool(with_duration.get("audio_available")),
+    )
 
 
 def _voice_runtime_snapshot_with_local_audio(text: str, language: str) -> dict[str, Any]:
@@ -642,7 +678,11 @@ def _live_selfhood_payload(
             **{**_flags(), "final_answer_generation_claimed": False},
         }
         return {"state": "abstained", "result": payload, **{**_flags(), "final_answer_generation_claimed": False}}
-    voice_output = _voice_runtime_snapshot_with_local_audio(generated.answer, language)
+    voice_output = _attach_voice_runtime_metadata(
+        _voice_runtime_snapshot_with_local_audio(generated.answer, language),
+        generated.answer,
+        language,
+    )
     payload = {
         "answer": generated.answer,
         "language": language,

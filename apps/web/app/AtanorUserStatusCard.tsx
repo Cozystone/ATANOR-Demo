@@ -19,7 +19,16 @@ type VoiceOutput = {
   audio_available?: boolean;
   audio_url?: string | null;
   audio_mime?: string | null;
+  audio_duration_ms?: number | null;
+  estimated_duration_ms?: number | null;
   error_reason?: string | null;
+  neural_emotion_voice_controls?: {
+    emotion_hint?: string | null;
+    tts_tag?: string | null;
+    speed?: number | null;
+    energy?: number | null;
+  } | null;
+  speech_sync_source?: string | null;
   user_message?: string | null;
   text_fallback?: boolean;
 };
@@ -336,6 +345,19 @@ function firstSpeechBeat(text: string) {
   const commaBreak = clean.search(/[,\u3001]\s?/);
   if (commaBreak > 16 && commaBreak < 58) return clean.slice(0, commaBreak + 1);
   return `${clean.slice(0, 44).trim()}...`;
+}
+
+function estimatedSpeechDurationMs(text: string, voiceOutput?: VoiceOutput) {
+  const fromPayload = Number(voiceOutput?.audio_duration_ms ?? voiceOutput?.estimated_duration_ms ?? 0);
+  if (Number.isFinite(fromPayload) && fromPayload > 0) return clampNumber(fromPayload, 900, 18000);
+  const compact = stripEmotionTag(text).replace(/\s+/g, "");
+  return clampNumber(compact.length * 112 + 520, 900, 18000);
+}
+
+function typingStepForSpeech(text: string, durationMs: number) {
+  const clean = stripEmotionTag(text);
+  const target = durationMs / Math.max(1, clean.length);
+  return clampNumber(target, 16, 48);
 }
 
 function useTypewriterText(text: string, stepMs = 22) {
@@ -1154,6 +1176,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [voiceNotice, setVoiceNotice] = useState("");
   const [selfNarration, setSelfNarration] = useState("");
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [speechTypingStepMs, setSpeechTypingStepMs] = useState(24);
+  const [speechSyncMode, setSpeechSyncMode] = useState<"idle" | "audio_onplaying" | "estimated_text_clock">("idle");
+  const [speechSyncDurationMs, setSpeechSyncDurationMs] = useState(0);
+  const [voiceEmotionHint, setVoiceEmotionHint] = useState("none");
+  const [voiceTtsTag, setVoiceTtsTag] = useState("none");
   const [emotionControls, setEmotionControls] = useState<Record<string, any> | null>(null);
   const [stageLayout, setStageLayout] = useState<StageLayout>("conversation");
   const [sceneChoreography, setSceneChoreography] = useState<SceneChoreographyPayload>(null);
@@ -1182,7 +1209,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const cleanPlaceholder = voiceMode
     ? language === "ko" ? "\uC74C\uC131 \uBAA8\uB4DC - \uD14D\uC2A4\uD2B8\uB3C4 \uC785\uB825\uD560 \uC218 \uC788\uC5B4\uC694" : "Voice mode - text still works"
     : language === "ko" ? "ATANOR\uC5D0\uAC8C \uB9D0\uD558\uAE30" : "Message ATANOR";
-  const typedSpeechLine = useTypewriterText(speechLine, 24);
+  const typedSpeechLine = useTypewriterText(speechLine, speechTypingStepMs);
   const typedSelfNarration = useTypewriterText(selfNarration, 28);
   const splatraDashboardControls = useMemo(
     () => splatraControlsForLayout(emotionControls, layoutTelemetry),
@@ -1489,6 +1516,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setMessage("");
       setSpeechLine("");
       setVoiceNotice("");
+      setSpeechSyncMode("idle");
       return;
     }
 
@@ -1496,6 +1524,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     setOrbState("thinking");
     setVoiceNotice("");
     setSpeechLine(language === "ko" ? "\uC7A0\uAE50 \uC0DD\uAC01\uD560\uAC8C." : "Let me think.");
+    setSpeechSyncMode("estimated_text_clock");
+    setSpeechSyncDurationMs(0);
+    setVoiceEmotionHint("none");
+    setVoiceTtsTag("none");
     primeVoiceAudioElement();
     try {
       const response = await fetch("/api/chat/atanor", {
@@ -1515,14 +1547,23 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       if (!answer || !isAsmConversationPayload(payload)) {
         throw new Error("conversation surface unavailable");
       }
+      const voiceOutput = payload?.result?.voice_output as VoiceOutput | undefined;
+      const nextSpeechDurationMs = estimatedSpeechDurationMs(answer, voiceOutput);
+      const nextTypingStepMs = typingStepForSpeech(answer, nextSpeechDurationMs);
+      const nextVoiceControls = voiceOutput?.neural_emotion_voice_controls ?? null;
+      setSpeechTypingStepMs(nextTypingStepMs);
+      setSpeechSyncDurationMs(nextSpeechDurationMs);
+      setVoiceEmotionHint(String(nextVoiceControls?.emotion_hint ?? "none"));
+      setVoiceTtsTag(String(nextVoiceControls?.tts_tag || "none"));
       const nextStageLayout = requestedStageLayout(payload);
       const nextSceneChoreography = requestedSceneChoreography(payload);
       const nextScenePolicy = requestedSplatraScenePolicy(payload);
       const nextSplatraCommandSequence = requestedSplatraCommandSequence(payload);
       const nextSplatraCartridgeQueue = requestedSplatraCartridgeQueue(payload);
       const nextInitialSceneBeatIndex = sceneNarrationBeats(nextSceneChoreography)[0]?.beatIndex ?? -1;
-      const startVisibleSpeech = () => {
+      const startVisibleSpeech = (syncMode: "audio_onplaying" | "estimated_text_clock") => {
         if (nextSceneChoreography) setSceneSpeechStartedAt(performance.now());
+        setSpeechSyncMode(syncMode);
         setSpeechLine(firstSceneNarration(nextSceneChoreography) || firstSpeechBeat(answer));
       };
       const nextOrbLayoutFeedback = splatraOrbLayoutFeedback(nextSceneChoreography, nextStageLayout, layoutTelemetry, nextInitialSceneBeatIndex);
@@ -1578,13 +1619,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         .catch(() => undefined);
       emitNeuralEmotionEvent("speaking_start", "text conversation visible speech");
       setMessage("");
-      const audioStarted = await playVoiceOutput(payload?.result?.voice_output, startVisibleSpeech);
+      const audioStarted = await playVoiceOutput(voiceOutput, () => startVisibleSpeech("audio_onplaying"));
       if (!audioStarted) {
-        startVisibleSpeech();
+        startVisibleSpeech("estimated_text_clock");
         window.setTimeout(() => {
           setOrbState("listening");
           emitNeuralEmotionEvent("speaking_end", "text fallback speech ended");
-        }, 2900);
+        }, Math.min(4200, Math.max(1800, nextSpeechDurationMs)));
       }
     } catch {
       setOrbState("blocked");
@@ -1595,6 +1636,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       setScenePolicy(defaultSplatraScenePolicy());
       setSceneSpeechStartedAt(0);
       setSceneSpeechBeatIndex(-1);
+      setSpeechSyncMode("idle");
       setSpeechLine(cleanSafeStatusLine(language));
       setVoiceNotice(cleanVoiceFailedLine(language));
       window.setTimeout(() => setOrbState(voiceMode ? "listening" : "resting"), 2600);
@@ -1643,6 +1685,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const orbMovementFeedback = effectiveOrbMovement === currentLayoutState.orbMovement
     ? "server_scene_geometry"
     : pressureAdjustedOrbMovement !== currentLayoutState.orbMovement ? "client_stage_pressure_feedback" : "client_dom_collision_feedback";
+  const dashboardParticleBudget = stageLayout === "scene_focus"
+    ? requestedLayoutIntent(sceneChoreography) === "wide_particle_stage" ? 2600 : 1900
+    : 1280;
 
   return (
     <section
@@ -1651,6 +1696,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       aria-label={language === "ko" ? "ATANOR \uC785\uC790 \uBCF8\uCCB4" : "ATANOR particle body"}
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
+      data-speech-sync-mode={speechSyncMode}
+      data-speech-sync-duration-ms={Math.round(speechSyncDurationMs)}
+      data-speech-typing-step-ms={Math.round(speechTypingStepMs)}
+      data-voice-emotion-hint={voiceEmotionHint}
+      data-voice-tts-tag={voiceTtsTag}
       data-stage-layout={stageLayout}
       data-scene-speech-beat={sceneSpeechBeatIndex >= 0 ? String(sceneSpeechBeatIndex) : "none"}
       data-speech-placement={speechPlacement}
@@ -1683,6 +1733,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-particle-operation-intents={particleOperationIntentCount}
       data-first-particle-operation-intent={firstParticleOperationIntent}
       data-particle-operation-intent-source={particleOperationIntentSource}
+      data-dashboard-particle-budget={dashboardParticleBudget}
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}
       data-layout-text-anchor-points={currentLayoutState.textAnchorPoints}
@@ -1725,7 +1776,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       <SplatraImaginationField
         state={orbState}
         mode="product"
-        particleBudget={1280}
+        particleBudget={dashboardParticleBudget}
         interactive={false}
         controlOverride={splatraDashboardControls}
         sceneFocus={stageLayout === "scene_focus"}

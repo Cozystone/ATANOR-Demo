@@ -13,7 +13,9 @@ def test_voice_controls_are_plans_when_audio_unavailable() -> None:
 
 
 def test_voice_plan_metadata_attaches_without_audio_side_effects() -> None:
-    payload = attach_voice_plan_metadata({"text": "hello"}, EmotionVector(caution=0.9))
+    payload = attach_voice_plan_metadata({"text": "hello", "selected_engine": "fish_2", "audio_available": True}, EmotionVector(caution=0.9))
 
     assert payload["text"] == "hello"
+    assert payload["neural_emotion_voice_controls"]["selected_engine"] == "fish_2"
+    assert payload["neural_emotion_voice_controls"]["audio_available"] is True
     assert payload["neural_emotion_voice_controls"]["tts_tag"] == "[whispering]"

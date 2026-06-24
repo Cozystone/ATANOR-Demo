@@ -27,7 +27,17 @@ def voice_controls(vector: EmotionVector, *, selected_engine: str = "fallback", 
     }
 
 
-def attach_voice_plan_metadata(payload: dict[str, Any], vector: EmotionVector) -> dict[str, Any]:
+def attach_voice_plan_metadata(
+    payload: dict[str, Any],
+    vector: EmotionVector,
+    *,
+    selected_engine: str | None = None,
+    audio_available: bool | None = None,
+) -> dict[str, Any]:
     next_payload = dict(payload)
-    next_payload["neural_emotion_voice_controls"] = voice_controls(vector)
+    next_payload["neural_emotion_voice_controls"] = voice_controls(
+        vector,
+        selected_engine=selected_engine or str(payload.get("selected_engine") or "fallback"),
+        audio_available=bool(payload.get("audio_available")) if audio_available is None else audio_available,
+    )
     return next_payload

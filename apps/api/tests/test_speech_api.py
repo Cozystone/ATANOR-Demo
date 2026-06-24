@@ -59,6 +59,12 @@ def test_dashboard_conversation_voice_output_is_audio_truthful(tmp_path, monkeyp
     assert voice_output["raw_voice_saved"] is False
     assert voice_output["external_service"] is False
     assert voice_output["generated_audio_persisted"] is False
+    assert voice_output["estimated_duration_ms"] >= 900
+    assert voice_output["speech_sync_source"] == "estimated_from_text_length"
+    controls = voice_output["neural_emotion_voice_controls"]
+    assert controls["audio_available"] is True
+    assert controls["real_emotion_claim"] is False
+    assert controls["emotion_hint"] in {"calm", "warm", "curious", "cautious"}
     assert result["local_brain_write"] is False
 
     audio_response = client.get(voice_output["audio_url"])
