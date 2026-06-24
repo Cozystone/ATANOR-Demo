@@ -117,6 +117,12 @@ def test_scene_choreography_endpoint_accepts_agent_authored_beats_only() -> None
     assert payload["topic_scene_templates"] is False
     assert payload["scene_choreography"]["stage_layout"] == "scene_focus"
     assert payload["scene_choreography"]["orb_anchor"] == "lower_right"
+    assert payload["scene_choreography"]["agent_scene_decisions"][0]["decision_id"] == "scene_space_allocation"
+    assert payload["scene_choreography"]["agent_scene_decisions"][0]["generated_visual_elements"] == "particle_points_only"
+    assert payload["scene_choreography"]["agent_scene_decisions"][0]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert len(payload["scene_choreography"]["particle_operation_intents"]) == len(payload["scene_choreography"]["beats"])
+    assert payload["scene_choreography"]["particle_operation_intents"][0]["agent_control"] == "airbend_recompose_particles_inside_safe_region"
+    assert payload["scene_choreography"]["particle_operation_intents"][0]["raw_buffer_in_agent_context"] is False
     assert payload["splatra_command_sequence"]["hot_swap_policy"]["mode"] == "candidate_only"
     assert payload["splatra_command_sequence"]["hot_swap_policy"]["viewer_side_channel"] == "GET /v1/cartridge"
     assert payload["splatra_command_sequence"]["splatra_contract"]["raw_buffers_in_agent_context"] is False

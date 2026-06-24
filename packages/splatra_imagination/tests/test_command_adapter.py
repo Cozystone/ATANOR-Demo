@@ -202,6 +202,29 @@ def test_scene_choreography_exports_verified_speech_timeline() -> None:
     assert active_layout["text_anchor_basis"] == "verified_vertical_motion_path_conversational_clearance"
     assert active_layout["text_anchor_points"] == 3
     assert active_layout["self_narration_anchor"] in {"upper_left", "upper_right"}
+    assert plan.agent_scene_decisions[0]["decision_id"] == "scene_space_allocation"
+    assert plan.agent_scene_decisions[0]["selected_action"] in {"share_center_with_particle_scene", "yield_center_to_particle_scene"}
+    assert plan.agent_scene_decisions[0]["topic_scene_templates"] is False
+    assert plan.agent_scene_decisions[0]["renderer_may_infer_topic"] is False
+    assert plan.agent_scene_decisions[0]["line_rendering"] == "particle_segments_not_canvas_strokes"
+    speech_decision = next(item for item in plan.agent_scene_decisions if item["decision_id"] == "speech_beat_layout_1")
+    assert speech_decision["object_id"] == "apple_motion"
+    assert speech_decision["text_rendering"] == "dom_text_not_particles"
+    assert speech_decision["particle_text"] is False
+    assert len(plan.particle_operation_intents) == len(plan.beats)
+    move_intent = next(item for item in plan.particle_operation_intents if item["object_id"] == "apple_motion")
+    assert move_intent["operation"] == "animate_particle_motion_path"
+    assert move_intent["agent_control"] == "airbend_recompose_particles_inside_safe_region"
+    assert move_intent["generated_visual_elements"] == "particle_points_only"
+    assert move_intent["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert move_intent["flow_motion_reference"] == "codepen_magnetic_swarm_noise_decay_reference"
+    assert move_intent["text_rendering"] == "dom_text_not_particles"
+    assert move_intent["particle_text"] is False
+    assert move_intent["topic_scene_templates"] is False
+    assert move_intent["renderer_may_infer_topic"] is False
+    assert move_intent["external_splatra_called"] is False
+    assert move_intent["raw_buffer_in_agent_context"] is False
+    assert move_intent["mutation_performed"] is False
     assert plan.topic_scene_templates is False
 
 

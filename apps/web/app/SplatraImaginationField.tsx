@@ -146,6 +146,8 @@ type ScenePlan = {
   beats?: ScenePlanBeat[];
   speech_timeline?: ScenePlanBeat[];
   layout_timeline?: ScenePlanBeat[];
+  agent_scene_decisions?: Array<Record<string, unknown>>;
+  particle_operation_intents?: Array<Record<string, unknown>>;
 };
 
 type SceneTransform = {
@@ -375,6 +377,15 @@ function scenePlanLayoutAutonomy(scenePlan: ScenePlan | null | undefined) {
 
 function scenePlanOrbIdentity(scenePlan: ScenePlan | null | undefined) {
   return String(scenePlan?.dashboard_layout?.agent_layout_decision?.orb_identity ?? "atanor_primary_self_body");
+}
+
+function particleOperationForSceneBeat(beat: ScenePlanBeat | undefined) {
+  if (beat?.op === "move" || beat?.motion_path) return "animate_particle_motion_path";
+  if (beat?.op === "focus_camera") return "focus_particle_cluster";
+  if (beat?.op === "morph") return "recompose_particle_cluster";
+  if (beat?.op === "despawn") return "disperse_particle_cluster";
+  if (beat?.op) return "assemble_particle_cluster";
+  return "none";
 }
 
 function smoothstep(value: number) {
@@ -2000,6 +2011,16 @@ export default function SplatraImaginationField({
   const particleRecompositionMode = scenePlanParticleRecompositionMode(scenePlan);
   const layoutAutonomy = scenePlanLayoutAutonomy(scenePlan);
   const orbIdentity = scenePlanOrbIdentity(scenePlan);
+  const agentSceneDecisions = Array.isArray(scenePlan?.agent_scene_decisions) ? scenePlan?.agent_scene_decisions ?? [] : [];
+  const particleOperationIntents = Array.isArray(scenePlan?.particle_operation_intents) ? scenePlan?.particle_operation_intents ?? [] : [];
+  const derivedAgentSceneDecisionCount = Array.isArray(scenePlan?.layout_timeline) ? scenePlan?.layout_timeline?.length ?? 0 : 0;
+  const derivedParticleOperationIntentCount = Array.isArray(scenePlan?.beats) ? scenePlan?.beats?.length ?? 0 : 0;
+  const agentSceneDecisionCount = agentSceneDecisions.length || (stageMode ? derivedAgentSceneDecisionCount : 0);
+  const particleOperationIntentCount = particleOperationIntents.length || (stageMode ? derivedParticleOperationIntentCount : 0);
+  const firstParticleOperationIntent = String(particleOperationIntents[0]?.operation ?? particleOperationForSceneBeat(scenePlan?.beats?.[0]) ?? "none");
+  const particleOperationIntentSource = particleOperationIntents.length > 0
+    ? "explicit_particle_operation_intents"
+    : particleOperationIntentCount > 0 ? "derived_from_legacy_scene_beats" : "none";
   const splatraSceneActions = Array.isArray(splatraCommandSequence?.scene_actions) ? splatraCommandSequence?.scene_actions ?? [] : [];
   const splatraCartridgeRequests = Array.isArray(splatraCommandSequence?.candidate_cartridge_requests)
     ? splatraCommandSequence?.candidate_cartridge_requests ?? []
@@ -2187,6 +2208,10 @@ export default function SplatraImaginationField({
       data-text-exception={textException}
       data-orb-self-body-yield={orbSelfBodyYield}
       data-particle-recomposition-mode={particleRecompositionMode}
+      data-agent-scene-decisions={agentSceneDecisionCount}
+      data-particle-operation-intents={particleOperationIntentCount}
+      data-first-particle-operation-intent={firstParticleOperationIntent}
+      data-particle-operation-intent-source={particleOperationIntentSource}
       data-layout-autonomy={layoutAutonomy}
       data-orb-identity={orbIdentity}
       data-layout-collision-pressure={layoutCollisionPressure(controls)}

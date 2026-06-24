@@ -310,6 +310,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-text-exception" in field
     assert "data-orb-self-body-yield" in field
     assert "data-particle-recomposition-mode" in field
+    assert "agent_scene_decisions?: Array<Record<string, unknown>>" in field
+    assert "particle_operation_intents?: Array<Record<string, unknown>>" in field
+    assert "data-agent-scene-decisions" in field
+    assert "data-particle-operation-intents" in field
+    assert "data-first-particle-operation-intent" in field
+    assert "data-particle-operation-intent-source" in field
+    assert "derived_from_legacy_scene_beats" in field
     assert "sourceSubjectTarget" in field
     assert "small_moving_object" in field
     assert "motion_path" in field
@@ -377,6 +384,13 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "data-splatra-command-renderer-inference" in field
     assert "data-splatra-command-motion-field" in field
     assert "data-splatra-command-agent-control" in field
+    assert "agent_scene_decisions?: Array<Record<string, unknown>>" in status_card
+    assert "particle_operation_intents?: Array<Record<string, unknown>>" in status_card
+    assert "data-agent-scene-decisions" in status_card
+    assert "data-particle-operation-intents" in status_card
+    assert "data-first-particle-operation-intent" in status_card
+    assert "data-particle-operation-intent-source" in status_card
+    assert "derived_from_legacy_scene_beats" in status_card
     assert "laneOffset" in field
     assert "curl" in field
     assert "drawParticleEllipse" in field

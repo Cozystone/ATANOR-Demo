@@ -235,6 +235,8 @@ type SceneChoreographyPayload = {
     semantic_role?: string;
     visual_affordance?: string;
   }>;
+  agent_scene_decisions?: Array<Record<string, unknown>>;
+  particle_operation_intents?: Array<Record<string, unknown>>;
   beats?: Array<{
     op?: SceneBeatOp;
     archetype?: "orb" | "tower" | "tree" | "creature" | "circuit" | "city_block" | "constellation" | "machine_core" | "abstract_memory_cloud";
@@ -460,6 +462,15 @@ function requestedSplatraCartridgeQueue(payload: Record<string, any>): SplatraCa
   const queue = result?.splatra_cartridge_queue;
   if (!queue || typeof queue !== "object") return null;
   return queue as SplatraCartridgeQueuePayload;
+}
+
+function particleOperationForSceneBeat(beat: { op?: SceneBeatOp; motion_path?: unknown } | undefined) {
+  if (beat?.op === "move" || beat?.motion_path) return "animate_particle_motion_path";
+  if (beat?.op === "focus_camera") return "focus_particle_cluster";
+  if (beat?.op === "morph") return "recompose_particle_cluster";
+  if (beat?.op === "despawn") return "disperse_particle_cluster";
+  if (beat?.op) return "assemble_particle_cluster";
+  return "none";
 }
 
 function requestedTextAnchor(scenePlan: SceneChoreographyPayload): TextAnchor {
@@ -1596,6 +1607,26 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const splatraCartridgeQueueStatus = String(splatraCartridgeQueue?.status ?? "none");
   const splatraCartridgeQueueMode = String(splatraCartridgeQueue?.execution_mode ?? "none");
   const splatraCartridgeQueueJobs = Number(splatraCartridgeQueue?.job_count ?? 0) || 0;
+  const explicitAgentSceneDecisionCount = Array.isArray(sceneChoreography?.agent_scene_decisions)
+    ? sceneChoreography?.agent_scene_decisions?.length ?? 0
+    : 0;
+  const explicitParticleOperationIntentCount = Array.isArray(sceneChoreography?.particle_operation_intents)
+    ? sceneChoreography?.particle_operation_intents?.length ?? 0
+    : 0;
+  const legacyLayoutDecisionCount = Array.isArray(sceneChoreography?.layout_timeline)
+    ? sceneChoreography?.layout_timeline?.length ?? 0
+    : 0;
+  const legacyBeatCount = Array.isArray(sceneChoreography?.beats) ? sceneChoreography?.beats?.length ?? 0 : 0;
+  const agentSceneDecisionCount = explicitAgentSceneDecisionCount || (stageLayout === "scene_focus" ? legacyLayoutDecisionCount : 0);
+  const particleOperationIntentCount = explicitParticleOperationIntentCount || (stageLayout === "scene_focus" ? legacyBeatCount : 0);
+  const firstParticleOperationIntent = String(
+    sceneChoreography?.particle_operation_intents?.[0]?.operation
+      ?? particleOperationForSceneBeat(sceneChoreography?.beats?.[0])
+      ?? "none",
+  );
+  const particleOperationIntentSource = explicitParticleOperationIntentCount > 0
+    ? "explicit_particle_operation_intents"
+    : particleOperationIntentCount > 0 ? "derived_from_legacy_scene_beats" : "none";
   const effectiveOrbMovement = effectiveOrbMovementForTelemetry(stageLayout, currentLayoutState.orbMovement, layoutTelemetry);
   const orbMovementFeedback = effectiveOrbMovement === currentLayoutState.orbMovement
     ? "server_scene_geometry"
@@ -1633,6 +1664,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-text-exception={currentLayoutState.textException}
       data-orb-self-body-yield={currentLayoutState.orbSelfBodyYield}
       data-particle-recomposition-mode={currentLayoutState.particleRecompositionMode}
+      data-agent-scene-decisions={agentSceneDecisionCount}
+      data-particle-operation-intents={particleOperationIntentCount}
+      data-first-particle-operation-intent={firstParticleOperationIntent}
+      data-particle-operation-intent-source={particleOperationIntentSource}
       data-layout-text-anchor={currentLayoutState.textAnchor}
       data-layout-text-anchor-basis={currentLayoutState.textAnchorBasis}
       data-layout-text-anchor-points={currentLayoutState.textAnchorPoints}

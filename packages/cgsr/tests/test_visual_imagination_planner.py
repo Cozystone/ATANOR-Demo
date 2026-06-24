@@ -389,6 +389,25 @@ def test_visual_planner_decomposes_verified_motion_scene_without_topic_script(tm
     assert plan.scene_choreography["dashboard_layout"]["scene"]["generated_visual_elements"] == "particle_points_only"
     assert plan.scene_choreography["dashboard_layout"]["scene"]["line_rendering"] == "particle_segments_not_canvas_strokes"
     assert plan.scene_choreography["dashboard_layout"]["scene"]["text_exception"] == "dom_text_not_particle_geometry"
+    decisions = plan.scene_choreography["agent_scene_decisions"]
+    assert decisions[0]["decision_id"] == "scene_space_allocation"
+    assert decisions[0]["selected_action"] == "yield_center_to_particle_scene"
+    assert decisions[0]["topic_scene_templates"] is False
+    assert decisions[0]["renderer_may_infer_topic"] is False
+    assert decisions[0]["particle_text"] is False
+    assert decisions[0]["text_rendering"] == "dom_text_not_particles"
+    assert any(item["decision_id"].startswith("speech_beat_layout_") for item in decisions)
+    intents = plan.scene_choreography["particle_operation_intents"]
+    assert len(intents) == len(beats)
+    apple_intent = next(item for item in intents if item["prompt_span"] == "apple" and item["operation"] == "animate_particle_motion_path")
+    assert apple_intent["source_fact_hash"] == apple_motion["scene_evidence"]["source_fact_hash"]
+    assert apple_intent["agent_control"] == "airbend_recompose_particles_inside_safe_region"
+    assert apple_intent["generated_visual_elements"] == "particle_points_only"
+    assert apple_intent["line_rendering"] == "particle_segments_not_canvas_strokes"
+    assert apple_intent["flow_motion_reference"] == "codepen_magnetic_swarm_noise_decay_reference"
+    assert apple_intent["particle_text"] is False
+    assert apple_intent["topic_scene_templates"] is False
+    assert apple_intent["renderer_may_infer_topic"] is False
     assert all("apple" in beat["source_fact"].casefold() for beat in beats if "apple" in beat["prompt"].casefold())
     assert plan.scene_choreography["topic_scene_templates"] is False
     assert plan.diagnostics["scene_authoring_basis"] == "verified_fact_entity_action_extraction"

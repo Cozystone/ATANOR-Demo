@@ -62,6 +62,8 @@ class SceneChoreographyPlan:
     safety_flags: dict[str, bool]
     speech_timeline: list[dict[str, Any]] = field(default_factory=list)
     layout_timeline: list[dict[str, Any]] = field(default_factory=list)
+    agent_scene_decisions: list[dict[str, Any]] = field(default_factory=list)
+    particle_operation_intents: list[dict[str, Any]] = field(default_factory=list)
     external_splatra_called: bool = False
     raw_buffer_in_agent_context: bool = False
     topic_scene_templates: bool = False
@@ -551,6 +553,142 @@ def _layout_timeline(stage_layout: StageLayout, dashboard_layout: dict[str, Any]
     return timeline
 
 
+def _agent_scene_decisions(
+    stage_layout: StageLayout,
+    layout_intent: LayoutIntent,
+    dashboard_layout: dict[str, Any],
+    scene_extent: dict[str, Any],
+    beats: list[SceneBeat],
+) -> list[dict[str, Any]]:
+    """Expose why the agent gave dashboard space to particles.
+
+    The renderer should be able to audit an agent-authored scene without
+    smuggling in topic templates. These decisions only cite geometry,
+    evidence spans, and renderer safety constraints.
+    """
+
+    decision = dashboard_layout.get("agent_layout_decision") if isinstance(dashboard_layout.get("agent_layout_decision"), dict) else {}
+    safe_region = dashboard_layout.get("stage_safe_region") if isinstance(dashboard_layout.get("stage_safe_region"), dict) else {}
+    footprint = safe_region.get("footprint") if isinstance(safe_region.get("footprint"), dict) else {}
+    decisions: list[dict[str, Any]] = [
+        {
+            "decision_id": "scene_space_allocation",
+            "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
+            "decision_basis": decision.get("decision_basis") or ("verified_scene_geometry" if stage_layout == "scene_focus" else "conversation_default"),
+            "stage_layout": stage_layout,
+            "layout_intent": layout_intent,
+            "selected_action": decision.get("agent_action") or ("share_center_with_particle_scene" if stage_layout == "scene_focus" else "keep_orb_primary"),
+            "scene_geometry_inputs": dict(scene_extent),
+            "particle_space": decision.get("particle_space") or ("uncovered_dashboard_field_minus_sidebar_composer_and_text" if stage_layout == "scene_focus" else "orb_local_field"),
+            "orb_self_body_yield": decision.get("orb_self_body_yield") or ("orb_moves_and_scales_to_clear_verified_particle_scene" if stage_layout == "scene_focus" else "none"),
+            "text_policy": decision.get("text_exception") or "dom_text_measured_layout_only",
+            "generated_visual_elements": decision.get("generated_visual_elements") or "particle_points_only",
+            "line_rendering": decision.get("line_rendering") or "particle_segments_not_canvas_strokes",
+            "flow_motion_reference": decision.get("flow_motion_reference") or "codepen_magnetic_swarm_noise_decay_reference",
+            "topic_scene_templates": False,
+            "renderer_may_infer_topic": False,
+            "particle_text": False,
+            "text_rendering": "dom_text_not_particles",
+        },
+        {
+            "decision_id": "safe_region_fit",
+            "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
+            "decision_basis": "dashboard_uncovered_region_fit",
+            "stage_layout": stage_layout,
+            "footprint": dict(footprint),
+            "scale_strategy": safe_region.get("scale_strategy") or "fit_verified_particle_stage_inside_uncovered_dashboard",
+            "avoid_regions": list(decision.get("avoid_regions") or ["orb", "composer", "self_narration"]),
+            "particle_recomposition_mode": decision.get("particle_recomposition_mode") or "agent_airbend_recompose_verified_beats",
+            "topic_scene_templates": False,
+            "renderer_may_infer_topic": False,
+        },
+    ]
+    default_text_anchor = dashboard_layout.get("speech", {}).get("anchor", "lower_left")
+    for index, beat in enumerate(beats):
+        if beat.speech_cue is False:
+            continue
+        decisions.append(
+            {
+                "decision_id": f"speech_beat_layout_{index}",
+                "decision_owner": decision.get("decision_owner") or "cgsr_scene_choreography_agent",
+                "decision_basis": "verified_speech_cue_beat",
+                "beat_index": index,
+                "object_id": beat.object_id,
+                "object_track_id": beat.object_track_id,
+                "object_track_basis": beat.object_track_basis,
+                "scene_group_id": beat.scene_group_id,
+                "semantic_role": beat.semantic_role,
+                "text_anchor": _text_anchor_for_active_beat(beat, default_text_anchor),
+                "text_anchor_basis": _text_anchor_basis_for_active_beat(beat, default_text_anchor),
+                "orb_movement": _orb_movement_for_active_beat(beat, decision.get("orb_movement") or "lower_right_scaled_down"),
+                "particle_behavior": beat.particle_behavior,
+                "scene_directive": dict(beat.scene_directive),
+                "scene_evidence": dict(beat.scene_evidence),
+                "particle_space": decision.get("particle_space") or "uncovered_dashboard_field_minus_sidebar_composer_and_text",
+                "line_rendering": decision.get("line_rendering") or "particle_segments_not_canvas_strokes",
+                "text_rendering": "dom_text_not_particles",
+                "particle_text": False,
+                "topic_scene_templates": False,
+                "renderer_may_infer_topic": False,
+            }
+        )
+    return decisions
+
+
+def _particle_operation_for_beat(beat: SceneBeat) -> str:
+    if beat.op == "move" or beat.motion_path:
+        return "animate_particle_motion_path"
+    if beat.op == "focus_camera":
+        return "focus_particle_cluster"
+    if beat.op == "morph":
+        return "recompose_particle_cluster"
+    if beat.op == "despawn":
+        return "disperse_particle_cluster"
+    return "assemble_particle_cluster"
+
+
+def _particle_operation_intents(beats: list[SceneBeat]) -> list[dict[str, Any]]:
+    """Return SPLATRA-facing particle operations without raw particle buffers."""
+
+    intents: list[dict[str, Any]] = []
+    for index, beat in enumerate(beats):
+        operation = _particle_operation_for_beat(beat)
+        evidence = dict(beat.scene_evidence)
+        intents.append(
+            {
+                "intent_id": _stable_id("particle_intent", f"{index}:{beat.object_id}:{operation}:{beat.prompt}"),
+                "beat_index": index,
+                "object_id": beat.object_id,
+                "object_track_id": beat.object_track_id,
+                "object_track_basis": beat.object_track_basis,
+                "operation": operation,
+                "op": beat.op,
+                "prompt_span": evidence.get("prompt_span") or beat.prompt,
+                "narration_span": evidence.get("narration_span") or beat.narration,
+                "source_fact_hash": evidence.get("source_fact_hash") or "",
+                "semantic_role": beat.semantic_role,
+                "visual_affordance": beat.visual_affordance,
+                "particle_behavior": beat.particle_behavior,
+                "physics_hint": dict(beat.physics_hint),
+                "motion_path": dict(beat.motion_path),
+                "scene_directive": dict(beat.scene_directive),
+                "scene_evidence": evidence,
+                "agent_control": "airbend_recompose_particles_inside_safe_region",
+                "generated_visual_elements": "particle_points_only",
+                "line_rendering": "particle_segments_not_canvas_strokes",
+                "flow_motion_reference": "codepen_magnetic_swarm_noise_decay_reference",
+                "text_rendering": "dom_text_not_particles",
+                "particle_text": False,
+                "topic_scene_templates": False,
+                "renderer_may_infer_topic": False,
+                "external_splatra_called": False,
+                "raw_buffer_in_agent_context": False,
+                "mutation_performed": False,
+            }
+        )
+    return intents
+
+
 def _orb_movement_for_active_beat(beat: SceneBeat, fallback: Any) -> str:
     """Nudge the orb away from the active verified particle focus."""
 
@@ -681,6 +819,8 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
     dashboard_layout = _dashboard_layout(stage_layout, orb_anchor, text_anchor, layout_intent, scene_extent)
     speech_timeline = _speech_timeline(beats)
     layout_timeline = _layout_timeline(stage_layout, dashboard_layout, beats)
+    agent_scene_decisions = _agent_scene_decisions(stage_layout, layout_intent, dashboard_layout, scene_extent, beats)
+    particle_operation_intents = _particle_operation_intents(beats)
     seed = f"{stage_layout}:{orb_anchor}:{text_anchor}:{layout_intent}:{[(beat.op, beat.prompt, beat.object_id) for beat in beats]}"
     return SceneChoreographyPlan(
         plan_id=_stable_id("scene_choreo", seed),
@@ -694,5 +834,7 @@ def compile_scene_choreography(plan: dict[str, Any]) -> SceneChoreographyPlan:
         beats=beats,
         speech_timeline=speech_timeline,
         layout_timeline=layout_timeline,
+        agent_scene_decisions=agent_scene_decisions,
+        particle_operation_intents=particle_operation_intents,
         safety_flags=default_safety_flags(),
     )
