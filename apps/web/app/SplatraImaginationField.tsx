@@ -164,6 +164,8 @@ type ParticleControls = {
 
 const PARTICLE_RENDERING_CONTRACT = "all_generated_marks_particle_points_no_canvas_strokes";
 const FLOW_FIELD_BASIS = "magnetic_simplex_inspired_airbend_particles";
+const FLOW_MOTION_REFERENCE = "codepen_magnetic_swarm_noise_decay_reference";
+const SPLATRA_COMMAND_CONTRACT = "agent_scene_commands_to_particle_cartridges";
 
 type Props = {
   mode?: ImaginationMode;
@@ -323,14 +325,19 @@ function drawParticleStroke(
 ) {
   const dx = Math.cos(angle) * length;
   const dy = Math.sin(angle) * length;
+  const nx = -Math.sin(angle);
+  const ny = Math.cos(angle);
   const [r, g, b] = color;
-  const steps = Math.max(3, Math.min(10, Math.round(length / Math.max(1, size * 0.8))));
+  const steps = Math.max(6, Math.min(18, Math.round(length / Math.max(0.75, size * 0.5))));
   for (let step = 0; step <= steps; step += 1) {
     const t = step / steps;
-    const px = x - dx * 0.22 + dx * 1.22 * t;
-    const py = y - dy * 0.22 + dy * 1.22 * t;
-    const pointAlpha = alpha * (0.18 + t * 0.82);
-    const pointSize = size * (0.18 + t * 0.34);
+    const taper = Math.sin(t * Math.PI);
+    const curl = Math.sin(t * Math.PI * 2.35 + x * 0.004 + y * 0.003) * length * 0.085;
+    const shear = Math.cos(t * Math.PI * 3.1 + angle) * length * 0.028;
+    const px = x - dx * 0.26 + dx * 1.18 * t + nx * curl + Math.cos(angle) * shear;
+    const py = y - dy * 0.26 + dy * 1.18 * t + ny * curl + Math.sin(angle) * shear;
+    const pointAlpha = alpha * (0.08 + taper * 0.44 + t * 0.18);
+    const pointSize = size * (0.13 + taper * 0.22 + t * 0.08);
     ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${pointAlpha})`;
     ctx.beginPath();
     ctx.arc(px, py, pointSize, 0, Math.PI * 2);
@@ -371,7 +378,7 @@ function drawParticleSegment(
   const dx = to[0] - from[0];
   const dy = to[1] - from[1];
   const distance = Math.hypot(dx, dy);
-  const steps = Math.max(4, Math.ceil(distance / Math.max(17, unit * 0.042)));
+  const steps = Math.max(10, Math.ceil(distance / Math.max(10, unit * 0.026)));
   const normalX = distance > 0 ? -dy / distance : 0;
   const normalY = distance > 0 ? dx / distance : 0;
   const tangentX = distance > 0 ? dx / distance : 1;
@@ -381,12 +388,12 @@ function drawParticleSegment(
     for (let index = 0; index <= steps; index += 1) {
       const rawT = index / steps;
       const t = (rawT + elapsed * (0.018 + lane * 0.011) + seeded(index, salt + lane * 101) * 0.055) % 1;
-      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.34) continue;
+      if (index > 0 && index < steps && seeded(index, salt + lane * 37 + 41) < 0.48) continue;
       const phase = t * Math.PI * 6 + salt * 0.037 + elapsed * (1.15 + lane * 0.21);
       const laneCenter = (streamCount - 1) / 2;
-      const laneOffset = (lane - laneCenter) * unit * 0.013;
-      const curl = Math.sin(phase) * unit * (0.013 + seeded(index, salt + 5) * 0.019);
-      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.012;
+      const laneOffset = (lane - laneCenter) * unit * 0.018;
+      const curl = Math.sin(phase) * unit * (0.024 + seeded(index, salt + 5) * 0.031);
+      const shear = Math.cos(phase * 0.63 + salt) * unit * 0.018;
       const baseX = from[0] + dx * t + normalX * (laneOffset + curl) + tangentX * shear;
       const baseY = from[1] + dy * t + normalY * (laneOffset + curl) + tangentY * shear;
       const flow = flowFieldDisplacement(baseX, baseY, elapsed, unit * (0.006 + seeded(index, salt + lane * 29) * 0.012), salt + lane * 3);
@@ -395,9 +402,9 @@ function drawParticleSegment(
         ctx,
         baseX + flow.x,
         baseY + flow.y,
-        unit * (0.001 + seeded(index, salt + lane * 53 + 7) * 0.0016) * (0.72 + pulse * 0.3),
+        unit * (0.00072 + seeded(index, salt + lane * 53 + 7) * 0.00125) * (0.72 + pulse * 0.3),
         color,
-        alpha * (0.08 + pulse * 0.24) * (lane === Math.round(laneCenter) ? 1 : 0.68),
+        alpha * (0.045 + pulse * 0.17) * (lane === Math.round(laneCenter) ? 0.86 : 0.52),
       );
     }
   }
@@ -477,7 +484,7 @@ function drawAmbientAirbendField(
   const pressure = layoutCollisionPressure(controls);
   const fieldQuieting = layoutFieldQuieting(controls);
   const flowRecombine = layoutFlowRecombine(controls);
-  const count = Math.round(clamp((width * height) / (5200 + fieldQuieting * 2200), 128, 520));
+  const count = Math.round(clamp((width * height) / (3600 + fieldQuieting * 1800), 220, 920));
   const attraction = controls.resting
     ? 0.1
     : 0.18 + controls.curiosity * 0.18 + controls.speaking_energy * 0.2 + flowRecombine * 0.18;
@@ -514,10 +521,11 @@ function drawAmbientAirbendField(
         ? [138, 117, 255]
         : [76, 230, 255];
     const size = unit * (0.00058 + seeded(index, 7110) * 0.00105);
-    const length = unit * (0.006 + controls.curiosity * 0.009 + fieldBreath * 0.005 + controls.speaking_energy * 0.009 + flowRecombine * 0.011);
+    const length = unit * (0.0038 + controls.curiosity * 0.0058 + fieldBreath * 0.0036 + controls.speaking_energy * 0.006 + flowRecombine * 0.007);
     const alpha = (controls.resting ? 0.026 : 0.038 + controls.arousal * 0.016 + controls.speaking_energy * 0.025)
       * (0.48 + seeded(index, 7111) * 0.82)
-      * (1 - fieldQuieting * 0.34);
+      * (1 - fieldQuieting * 0.34)
+      * 0.72;
     drawParticleStroke(ctx, x, y, fieldAngle, length, size, color, alpha);
   }
 }
@@ -1542,7 +1550,7 @@ function drawSceneMotionPathFlow(
     const canvasPoint = scenePointToCanvas(object.beat, modelPoint, width, height, sceneElapsed, { x: 0, y: 0 }, cameraView);
     points.push([canvasPoint.x, canvasPoint.y]);
   }
-  const baseAlpha = (active ? 0.18 : 0.075) * centralScale;
+  const baseAlpha = (active ? 0.105 : 0.046) * centralScale;
   drawParticlePolyline(ctx, points, [76, 230, 255], baseAlpha, unit, Math.floor(stableUnit(object.id, 73) * 1000), elapsed);
 
   const streamCount = active ? 13 : 7;
@@ -1593,7 +1601,7 @@ function drawSceneMotionParticipantFlow(
     [target.x, target.y],
   ];
 
-  drawParticlePolyline(ctx, sourceSubjectTarget, [76, 230, 255], 0.12 * centralScale, unit, groupSalt + 401, elapsed);
+  drawParticlePolyline(ctx, sourceSubjectTarget, [76, 230, 255], 0.075 * centralScale, unit, groupSalt + 401, elapsed);
 
   for (let index = 0; index < 22; index += 1) {
     const leg = index < 10 ? 0 : 1;
@@ -1652,7 +1660,7 @@ function drawSceneGroupRelationField(
   const radiusX = clamp((Math.max(...xs) - Math.min(...xs)) * 0.56 + unit * 0.055, unit * 0.055, unit * 0.22);
   const radiusY = clamp((Math.max(...ys) - Math.min(...ys)) * 0.56 + unit * 0.042, unit * 0.042, unit * 0.18);
   const groupSalt = Math.floor(stableUnit(String(activeObject?.beat.scene_group_id ?? activeObject?.id ?? "group"), 89) * 1000);
-  drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.028 * centralScale, unit, groupSalt, elapsed);
+  drawParticleEllipse(ctx, centerX, centerY, radiusX, radiusY, elapsed * 0.07, [76, 230, 255], 0.018 * centralScale, unit, groupSalt, elapsed);
   const renderedMotionFlow = drawSceneMotionParticipantFlow(ctx, points, unit, elapsed, centralScale, groupSalt);
 
   points.slice(1).forEach((target, index) => {
@@ -2007,6 +2015,8 @@ export default function SplatraImaginationField({
       data-layout-text-avoidance={String(controls.layout_text_avoidance ?? "clear")}
       data-particle-rendering-contract={PARTICLE_RENDERING_CONTRACT}
       data-flow-field-basis={FLOW_FIELD_BASIS}
+      data-flow-motion-reference={FLOW_MOTION_REFERENCE}
+      data-splatra-command-contract={SPLATRA_COMMAND_CONTRACT}
       data-renderer-content-inference="explicit_scene_plan_hints_only"
       data-active-scene-group={activeSceneGroupId || "none"}
       data-active-scene-group-size={activeSceneGroupSize}

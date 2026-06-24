@@ -587,6 +587,7 @@ function cssClampPx(min: number, preferred: number, max: number) {
 
 let textLayoutMeasureCanvas: HTMLCanvasElement | null = null;
 const TEXT_LAYOUT_BASIS = "pretext_inspired_dom_text_canvas_metrics_preallocated_no_particle_text";
+const TEXT_LAYOUT_REFERENCE = "chenglou_pretext_prepare_layout_pattern_dom_text_only";
 
 function textLayoutContext() {
   if (typeof document === "undefined") return null;
@@ -1404,6 +1405,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-layout-self-narration-anchor={currentLayoutState.selfNarrationAnchor}
       data-layout-text-rendering={currentLayoutState.textRendering}
       data-text-layout-basis={TEXT_LAYOUT_BASIS}
+      data-text-layout-reference={TEXT_LAYOUT_REFERENCE}
       style={dashboardLayoutVars(sceneChoreography, stageLayout)}
     >
       <SplatraImaginationField

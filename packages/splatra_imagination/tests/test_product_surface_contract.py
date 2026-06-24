@@ -271,6 +271,10 @@ def test_product_surface_keeps_orb_input_readable_and_lab_labels_out() -> None:
     assert "drawParticleStroke" in field
     assert "drawParticleSegment" in field
     assert "streamCount = distance > unit * 0.42 ? 5 : 3" in field
+    assert "codepen_magnetic_swarm_noise_decay_reference" in field
+    assert "agent_scene_commands_to_particle_cartridges" in field
+    assert "data-flow-motion-reference" in field
+    assert "data-splatra-command-contract" in field
     assert "laneOffset" in field
     assert "curl" in field
     assert "drawParticleEllipse" in field
@@ -311,6 +315,10 @@ def test_scene_focus_layout_moves_orb_without_hiding_input() -> None:
     assert "--atanor-scene-speech-lower-center-bottom" in css
     assert "--atanor-scene-self-max" in css
     assert "atanor-hologram-composer" in css
+    assert "overflow-wrap: anywhere" in css
+    status_card = (ROOT / "apps" / "web" / "app" / "AtanorUserStatusCard.tsx").read_text(encoding="utf-8")
+    assert "chenglou_pretext_prepare_layout_pattern_dom_text_only" in status_card
+    assert "data-text-layout-reference" in status_card
 
 
 def test_product_archetype_cycle_excludes_central_orb_body() -> None:
