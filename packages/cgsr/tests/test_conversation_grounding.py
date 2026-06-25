@@ -5,11 +5,38 @@ from pathlib import Path
 
 from packages.cgsr.cgsr.conversation_grounding import (
     GroundedContext,
+    _rank_facts_for_question,
     gather_grounded_context,
     honesty_metadata,
     realize_grounded_context,
     semantic_safety_flags,
 )
+
+
+def test_grounding_drops_wrong_language_snippets() -> None:
+    # An English question must never surface a Korean web snippet, and vice versa.
+    en_facts = (
+        "react 취약점 이슈 원인 총정리 -판다랭크. 09 Dec 2025.",
+        "Next.js is a React framework for production web apps.",
+    )
+    kept_en = [fact for fact, _ in _rank_facts_for_question("What is Next.js?", en_facts, limit=3)]
+    assert kept_en == ["Next.js is a React framework for production web apps."]
+
+    ko_facts = (
+        "This is an unrelated English fact about cars.",
+        "GraphRAG는 의미 그래프로 근거를 찾는 방식입니다.",
+    )
+    kept_ko = [fact for fact, _ in _rank_facts_for_question("GraphRAG가 뭐야?", ko_facts, limit=3)]
+    assert kept_ko == ["GraphRAG는 의미 그래프로 근거를 찾는 방식입니다."]
+
+
+def test_grounding_prefers_relevant_fact_as_tiebreaker() -> None:
+    facts = (
+        "The weather is cold today.",
+        "Kubernetes orchestrates containers across machines.",
+    )
+    kept = [fact for fact, _ in _rank_facts_for_question("What is Kubernetes?", facts, limit=1)]
+    assert kept == ["Kubernetes orchestrates containers across machines."]
 from packages.cgsr.cgsr.conversation_router import route_conversation_request
 
 

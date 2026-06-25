@@ -340,8 +340,44 @@ def _drop_incomplete_tail_sentences(sentences: list[str]) -> list[str]:
     ]
 
 
+_GROUNDING_STOP = {
+    "what", "is", "are", "the", "a", "an", "of", "to", "in", "on", "for", "and", "or",
+    "does", "do", "how", "why", "this", "that", "with", "about", "from", "into",
+    "뭐", "무엇", "왜", "어떻게", "이란", "란", "그것", "이것", "차이", "정의", "설명",
+}
+
+
+def _grounding_text_lang(text: str) -> str | None:
+    hangul = len(re.findall(r"[가-힣]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    if hangul == 0 and latin == 0:
+        return None
+    # A snippet with a meaningful Hangul fraction is Korean even when English
+    # brand names inflate the Latin count (e.g. a Korean blog title about
+    # "Cloudflare … Next.js …"). Only treat as English when Hangul is negligible.
+    if hangul >= 3 and hangul / (hangul + latin) >= 0.2:
+        return "ko"
+    return "ko" if hangul > latin else "en"
+
+
+def _grounding_content_tokens(text: str) -> set[str]:
+    lowered = str(text or "").lower()
+    latin = set(re.findall(r"[a-z0-9]{3,}", lowered))
+    hangul = set(re.findall(r"[가-힣]{2,}", str(text or "")))
+    return (latin | hangul) - _GROUNDING_STOP
+
+
 def _rank_facts_for_question(question: str, facts: tuple[str, ...], *, limit: int) -> tuple[tuple[str, str], ...]:
     mode = _question_discourse_mode(question)
+    # Web/cloud evidence is noisy: filter out facts in the wrong language or with
+    # no shared content with the question, so we never paste an irrelevant,
+    # cross-language snippet. If everything is filtered out, the caller abstains
+    # (and the base-brain fallback can still answer honestly).
+    # A Korean question always carries Hangul particles/endings even when it
+    # contains a Latin proper noun ("GraphRAG가 뭐야?"), so detect by Hangul
+    # presence rather than character-count ratio.
+    question_lang = "ko" if re.search(r"[가-힣]", question) else "en"
+    question_tokens = _grounding_content_tokens(question)
     preferred_by_mode = {
         "causal_explanation": ("cause_or_relation", "definition", "supporting_fact", "history_or_origin"),
         "mechanism_explanation": ("cause_or_relation", "definition", "supporting_fact", "history_or_origin"),
@@ -351,15 +387,22 @@ def _rank_facts_for_question(question: str, facts: tuple[str, ...], *, limit: in
         "grounded_statement": ("definition", "cause_or_relation", "history_or_origin", "supporting_fact"),
     }.get(mode, ("definition", "cause_or_relation", "history_or_origin", "supporting_fact"))
     order = {role: index for index, role in enumerate(preferred_by_mode)}
-    cleaned: list[tuple[str, str, int]] = []
+    cleaned: list[tuple[str, str, int, int]] = []
     for index, fact in enumerate(facts):
         clean = _clean_fact(fact)
         if not clean:
             continue
+        fact_lang = _grounding_text_lang(clean)
+        if question_lang and fact_lang and fact_lang != question_lang:
+            continue  # don't paste a wrong-language snippet
         role = _fact_discourse_role(clean)
-        cleaned.append((clean, role, index))
-    ranked = sorted(cleaned, key=lambda item: (order.get(item[1], 99), item[2]))
-    return tuple((fact, role) for fact, role, _ in ranked[:limit])
+        relevance = len(_grounding_content_tokens(clean) & question_tokens)
+        cleaned.append((clean, role, index, relevance))
+    # Keep discourse-role priority, then prefer facts that share content with the
+    # question (soft tiebreaker — never drops, so cleaning/boundary behaviour is
+    # unchanged), then original order.
+    ranked = sorted(cleaned, key=lambda item: (order.get(item[1], 99), -item[3], item[2]))
+    return tuple((fact, role) for fact, role, _, _ in ranked[:limit])
 
 
 def grounded_discourse_metadata(question: str, context: GroundedContext) -> dict[str, Any]:
