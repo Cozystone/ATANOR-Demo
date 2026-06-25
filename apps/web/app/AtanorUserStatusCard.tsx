@@ -461,13 +461,14 @@ function stripEmotionTag(text: string) {
 }
 
 function firstSpeechBeat(text: string) {
+  // A knowledge answer should be readable in full, not clipped to one short
+  // clause. Show the whole answer when it is reasonably short; otherwise cut at
+  // a sentence boundary near the limit so the user still reads complete thoughts.
   const clean = stripEmotionTag(text);
-  if (clean.length <= 46) return clean;
-  const naturalBreak = clean.search(/[.!?]\s?/);
-  if (naturalBreak > 16 && naturalBreak < 64) return clean.slice(0, naturalBreak + 1);
-  const commaBreak = clean.search(/[,\u3001]\s?/);
-  if (commaBreak > 16 && commaBreak < 58) return clean.slice(0, commaBreak + 1);
-  return `${clean.slice(0, 44).trim()}...`;
+  if (clean.length <= 260) return clean;
+  const boundary = Math.max(clean.lastIndexOf(". ", 260), clean.lastIndexOf("\ub2e4. ", 260));
+  if (boundary > 90) return clean.slice(0, boundary + 1);
+  return `${clean.slice(0, 256).trim()}\u2026`;
 }
 
 function estimatedSpeechDurationMs(text: string, voiceOutput?: VoiceOutput) {
@@ -1581,9 +1582,13 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     if (!speechLine) return;
     if (stageLayout === "scene_focus") return undefined;
     setSceneSpeechBeatIndex(-1);
-    const clearTimer = window.setTimeout(() => setSpeechLine(""), 5600);
+    // Keep the answer on screen long enough to finish typing AND be read: scale
+    // by the estimated speech duration with a generous floor (the old fixed 5.6s
+    // clipped longer answers before they finished).
+    const holdMs = Math.max(11000, (speechSyncDurationMs || 0) + 4000);
+    const clearTimer = window.setTimeout(() => setSpeechLine(""), holdMs);
     return () => window.clearTimeout(clearTimer);
-  }, [speechLine, stageLayout]);
+  }, [speechLine, stageLayout, speechSyncDurationMs]);
 
   useEffect(() => {
     if (!voiceNotice) return;
