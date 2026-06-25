@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.services.alpha_services import alpha_service
+from packages.base_brain.scene_grounding import extract_scene_grounding
 from packages.base_brain.zero_user_answer import answer_with_base_brain
 from packages.cgsr.cgsr.conversation_surface import generate_conversation_surface
 from packages.cgsr.cgsr.conversation_context import ConversationContextPacket, build_conversation_context
@@ -918,6 +919,12 @@ def _live_selfhood_payload(
         generated.answer,
         language,
     )
+    # M4 gate: only attach a SPLATRA scene when the answer is concretely grounded.
+    # Abstract answers stay text-only so the readable answer is not replaced by
+    # particle scene beats on the dashboard.
+    answer_scene_grounding = extract_scene_grounding(generated.answer, [], language=language)
+    scene_eligible = bool(answer_scene_grounding.get("eligible"))
+    gated_scene = visual_plan.scene_choreography if scene_eligible else None
     payload = {
         "answer": generated.answer,
         "language": language,
@@ -942,9 +949,10 @@ def _live_selfhood_payload(
             "q_cortex_used": False,
             "q_cortex_run_id": None,
         },
-        "scene_choreography": visual_plan.scene_choreography,
-        "visual_scene_plan": visual_plan.scene_choreography,
-        "splatra_scene_plan": visual_plan.scene_choreography,
+        "scene_choreography": gated_scene,
+        "visual_scene_plan": gated_scene,
+        "splatra_scene_plan": gated_scene,
+        "scene_grounding": answer_scene_grounding,
         "splatra_command_sequence": splatra_command_sequence,
         "splatra_interactive_scene_analysis": splatra_interactive_scene_analysis,
         "splatra_cartridge_queue": splatra_cartridge_queue,
