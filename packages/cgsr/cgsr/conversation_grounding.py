@@ -352,12 +352,10 @@ def _grounding_text_lang(text: str) -> str | None:
     latin = len(re.findall(r"[A-Za-z]", text))
     if hangul == 0 and latin == 0:
         return None
-    # A snippet with a meaningful Hangul fraction is Korean even when English
-    # brand names inflate the Latin count (e.g. a Korean blog title about
-    # "Cloudflare … Next.js …"). Only treat as English when Hangul is negligible.
-    if hangul >= 3 and hangul / (hangul + latin) >= 0.2:
-        return "ko"
-    return "ko" if hangul > latin else "en"
+    # Any non-trivial Hangul makes the snippet "Korean": an English answer should
+    # stay clean English, so a mixed citation like "페이지(소프트웨어). … iPad …"
+    # must not be pasted into it. Negligible Hangul (<3 chars) reads as English.
+    return "ko" if hangul >= 3 else "en"
 
 
 def _grounding_content_tokens(text: str) -> set[str]:

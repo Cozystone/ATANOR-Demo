@@ -87,6 +87,18 @@ def _human_text(value: Any) -> str:
     return "" if _is_internal_hash_text(text) else text
 
 
+def _evidence_lang_ok(text: str, language: str) -> bool:
+    """Don't surface evidence whose language doesn't match the answer language
+    (a Korean web snippet must never appear in an English answer, or vice versa).
+    A meaningful Hangul fraction counts as Korean even with English brand names."""
+    hangul = len(re.findall(r"[가-힣]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    if hangul == 0 and latin == 0:
+        return True
+    text_lang = "ko" if hangul >= 3 else "en"
+    return text_lang == language
+
+
 def _is_quality_evidence_text(text: str) -> bool:
     normalized = re.sub(r"\s+", " ", str(text or "")).strip()
     if len(normalized) < 24:
@@ -225,6 +237,8 @@ def _natural_answer(query: str, semantic: dict[str, Any], plan: dict[str, Any]) 
     grounded = _has_grounding(semantic)
     relation_text = _relation_summary(semantic, language) if grounded else ""
     evidence_text = _evidence_sentence(semantic)
+    if evidence_text and not _evidence_lang_ok(evidence_text, language):
+        evidence_text = ""
     public_concepts = _public_concepts(semantic) if grounded else []
     intent = str(plan.get("intent") or "")
 
