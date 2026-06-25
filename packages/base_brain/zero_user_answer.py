@@ -472,10 +472,14 @@ def answer_with_base_brain(
     surface_candidates = get_surface_candidates(query, semantic_context, language, audience_level, limit=8, pack=pack)
     selection = select_surface_candidates(surface_candidates, max_selected=4, seed=_seed(query), q_cortex_enabled=True)
     answer, useful = _compose_answer(query, semantic_context, language, audience_level, intent)
+    # M3 honesty signal: was this surface a hand-authored canned answer, or was it
+    # realized from the graph? General questions must be graph-derived (False).
+    hand_authored_answer_used = _project_level_answer(query, language) is not None
     trace = {
         "mode": mode,
         "pack_id": pack.pack_id,
         "intent": intent,
+        "hand_authored_answer_used": hand_authored_answer_used,
         "matched_concepts": [
             {
                 "concept_id": item.get("concept_id"),
@@ -506,6 +510,7 @@ def answer_with_base_brain(
         "answer": final_answer,
         "answer_kind": "base_brain_zero_user_data",
         "scene_grounding": scene_grounding,
+        "hand_authored_answer_used": hand_authored_answer_used,
         "semantic_context_count": len(semantic_context),
         "surface_candidate_count": len(surface_candidates),
         "q_cortex_used": bool(selection.get("q_cortex_used")),

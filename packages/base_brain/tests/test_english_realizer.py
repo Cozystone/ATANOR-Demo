@@ -92,6 +92,25 @@ def test_noun_phrase_determiner_rules() -> None:
     assert _en_noun_phrase("semantic graph", with_article=False) == "semantic graph"
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "What is GraphRAG?",
+        "What is a semantic graph?",
+        "What is an ontology graph?",
+        "What is Kubernetes?",
+        "Why does evidence matter for reducing hallucination?",
+    ],
+)
+def test_general_english_answers_are_graph_derived_not_hand_authored(query, tmp_path, monkeypatch) -> None:
+    # M3: general questions must be realized from the graph, not pulled from a
+    # hand-authored canned-answer table. This is what makes ATANOR "not rule-based".
+    monkeypatch.chdir(tmp_path)
+    result = answer_with_base_brain(query, language="en", audience_level="beginner")
+    assert result["hand_authored_answer_used"] is False, f"{query!r} used a canned answer"
+    assert str(result["answer"]).strip(), f"{query!r} produced an empty answer"
+
+
 def test_english_label_never_returns_hangul() -> None:
     concept = {
         "concept_id": "local_brain",
