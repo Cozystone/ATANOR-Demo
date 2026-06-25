@@ -14,6 +14,41 @@ def _source() -> WebSourceRecord:
     )
 
 
+def test_review_queue_persists_and_reloads(tmp_path) -> None:
+    source = _source()
+    draft = CloudBrainCandidateDraft(
+        draft_id="draft_p",
+        source_url=source.source_url,
+        title=source.title,
+        content_hash=source.content_hash,
+        excerpt=source.excerpt,
+        summary=source.summary,
+        claims=source.claims,
+        tags=source.tags,
+        confidence=source.confidence,
+    )
+    queue = ReviewQueue()
+    item = queue.import_payload("cloud_candidate", draft)
+    queue.decide(item.item_id, "approved", "operator", "looks good")
+
+    path = tmp_path / "review_queue.json"
+    queue.save(path)
+    assert path.exists()
+
+    reloaded = ReviewQueue.load(path)
+    assert item.item_id in reloaded.items
+    assert reloaded.items[item.item_id].status == "approved"
+    assert reloaded.items[item.item_id].title == item.title
+    assert len(reloaded.decisions) == 1
+    # status counts survive the round trip
+    assert reloaded.status()["approved"] == 1
+
+
+def test_review_queue_load_missing_path_is_empty(tmp_path) -> None:
+    queue = ReviewQueue.load(tmp_path / "nope.json")
+    assert queue.status()["items_total"] == 0
+
+
 def test_review_item_created_from_web_candidate() -> None:
     source = _source()
     draft = CloudBrainCandidateDraft(

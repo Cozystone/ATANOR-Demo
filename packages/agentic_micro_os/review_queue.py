@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime, timezone
 import hashlib
+import json
+from pathlib import Path
 from typing import Any, Literal
 
 
@@ -213,6 +215,51 @@ class ReviewQueue:
             "decisions": [decision.to_dict() for decision in self.decisions],
             "invariants": INVARIANTS.copy(),
         }
+
+    # ----- persistence (durable web cumulative learning) -------------------------
+
+    def to_state(self) -> dict[str, Any]:
+        return {
+            "items": [item.to_dict() for item in self.items.values()],
+            "decisions": [decision.to_dict() for decision in self.decisions],
+        }
+
+    def save(self, path: Path | str) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic-ish write: temp then replace, so a crash mid-write can't corrupt.
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(json.dumps(self.to_state(), ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(target)
+
+    @classmethod
+    def load(cls, path: Path | str) -> "ReviewQueue":
+        queue = cls()
+        target = Path(path)
+        if not target.exists():
+            return queue
+        try:
+            state = json.loads(target.read_text(encoding="utf-8"))
+        except Exception:  # pragma: no cover - corrupt artifact → start empty
+            return queue
+        for raw in state.get("items", []) or []:
+            if not isinstance(raw, dict) or not raw.get("item_id"):
+                continue
+            fields = {key: raw.get(key) for key in ReviewItem.__dataclass_fields__ if key in raw}
+            try:
+                item = ReviewItem(**fields)
+            except TypeError:  # pragma: no cover - schema drift tolerance
+                continue
+            queue.items[item.item_id] = item
+        for raw in state.get("decisions", []) or []:
+            if not isinstance(raw, dict):
+                continue
+            fields = {key: raw.get(key) for key in ReviewDecision.__dataclass_fields__ if key in raw}
+            try:
+                queue.decisions.append(ReviewDecision(**fields))
+            except TypeError:  # pragma: no cover
+                continue
+        return queue
 
     def _duplicate_score(self, item_id: str, title: str, content_hash: str) -> float:
         if item_id in self.items:

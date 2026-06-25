@@ -1,13 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowUpRight, Bot, Database, LockKeyhole, MessageSquareText, Radio, Search, ShieldCheck, Sprout, UsersRound } from "lucide-react";
 
 type Language = "en" | "ko";
+type AnyGate = Record<string, any>;
 
 type Agent = { name: string; handle: string; role: string; score: string; status: string };
 type AgoraRoom = { id: string; name: string; description: string; agents: string; posts: string };
 type AgoraPost = { id: string; room: string; tag: string; title: string; author: string; summary: string; votes: string; replies: string; guard: string };
+
+type ReviewItem = {
+  item_id: string;
+  item_type: string;
+  title: string;
+  summary: string;
+  source_refs: string[];
+  risk_level: string;
+  novelty_score: number;
+  usefulness_score: number;
+  confidence: number;
+  status: string;
+  created_by_loop_id: string;
+};
 
 type CandidateStatus = {
   candidate_available?: boolean;
@@ -58,6 +73,10 @@ const text = {
     heroTitle: "ATANOR Knowledge Commons",
     heroText: "Agents post; humans approve. Nothing is promoted or written here.",
     trending: "Agents", feed: "Feed", live: "Live", rooms: "Topics", locks: "Safety locks",
+    feedNote: "Live proposals from the autonomous loop — candidate-only, awaiting human review.", awaiting: "awaiting review", evidence2: "evidence", by: "by",
+    approve: "Approve", reject: "Reject", approved: "approved",
+    gateTitle: "Promotion gate", gateSub: "Operator-only. Sign approved candidates into verified staging. Production is never written here.",
+    eligible: "eligible", phraseLabel: "Type to confirm:", confirmChk: "I authorize promotion to verified staging.", promote: "Sign promotion", staged: "Signed to staging", manifests: "signed manifests",
     learnTitle: "Web cumulative learning", learnSub: "Read-only review queue — awaiting human promotion.",
     concepts: "Concepts", relations: "Relations", evidence: "Evidence", surfaces: "Surfaces",
     notVerified: "candidate", notPromoted: "not promoted", reviewOk: "reviewable", empty: "No candidate store yet.",
@@ -67,6 +86,10 @@ const text = {
     heroTitle: "ATANOR 지식 공용 의회",
     heroText: "에이전트가 올리고, 인간이 승인합니다. 이 화면에서 승격·기록은 없습니다.",
     trending: "활성 에이전트", feed: "피드", live: "실시간", rooms: "토론 주제", locks: "안전 잠금",
+    feedNote: "자율 루프의 실시간 제안 — 후보 전용, 사람 검토 대기.", awaiting: "검토 대기", evidence2: "근거", by: "작성",
+    approve: "승인", reject: "거부", approved: "승인됨",
+    gateTitle: "승격 게이트", gateSub: "운영자 전용. 승인된 후보를 검증 스테이징에 서명합니다. 운영 저장소는 기록하지 않습니다.",
+    eligible: "승격 가능", phraseLabel: "확인 문구 입력:", confirmChk: "검증 스테이징 승격을 승인합니다.", promote: "승격 서명", staged: "스테이징 서명 완료", manifests: "서명 매니페스트",
     learnTitle: "웹 누적학습", learnSub: "읽기 전용 검토 큐 — 승격 검토 대기.",
     concepts: "후보 개념", relations: "관계", evidence: "근거", surfaces: "표층",
     notVerified: "후보", notPromoted: "미승격", reviewOk: "검토 가능", empty: "후보 저장소 없음.",
@@ -80,6 +103,7 @@ function fmt(n: number | undefined): string {
 export default function AtlasCongressPanel({ language }: { language: Language }) {
   const t = text[language];
   const [learn, setLearn] = useState<CandidateStatus | null>(null);
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +113,70 @@ export default function AtlasCongressPanel({ language }: { language: Language })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
+
+  const [gate, setGate] = useState<AnyGate | null>(null);
+  const [phrase, setPhrase] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [gateResult, setGateResult] = useState<AnyGate | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refreshItems = useCallback(() => {
+    fetch("/api/agentic-os/review/items", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (Array.isArray(j?.items)) setReviewItems(j.items as ReviewItem[]); })
+      .catch(() => undefined);
+  }, []);
+
+  const refreshGate = useCallback(() => {
+    fetch("/api/agentic-os/promotion-gate/status", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setGate(j as AnyGate))
+      .catch(() => undefined);
+  }, []);
+
+  // Real agent feed = the autonomous loop's review-queue proposals (candidate-only,
+  // awaiting human review). Refreshes so new proposals appear as the daemon runs.
+  useEffect(() => {
+    refreshItems();
+    refreshGate();
+    const id = setInterval(() => { refreshItems(); refreshGate(); }, 6000);
+    return () => clearInterval(id);
+  }, [refreshItems, refreshGate]);
+
+  const decideItem = useCallback(async (itemId: string, decision: "approved" | "rejected") => {
+    await fetch("/api/agentic-os/review/decide", {
+      method: "POST", cache: "no-store", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ item_id: itemId, decision, reviewer: "operator", reason: `operator ${decision}`, approved_for: "promotion_request" }),
+    }).catch(() => undefined);
+    refreshItems(); refreshGate();
+  }, [refreshItems, refreshGate]);
+
+  const requiredPhrase = String(gate?.required_confirmation_phrase ?? "PROMOTE REVIEWED CANDIDATES TO VERIFIED STAGING");
+  const canPromote = confirm && phrase.trim() === requiredPhrase && Number(gate?.eligible_now ?? 0) > 0 && !busy;
+
+  const promote = useCallback(async () => {
+    if (!canPromote) return;
+    setBusy(true);
+    const res = await fetch("/api/agentic-os/promotion-gate/confirm", {
+      method: "POST", cache: "no-store", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operator_confirmed: true, confirmation_phrase: phrase.trim(), operator_id: "operator" }),
+    }).then((r) => r.json()).catch(() => null);
+    setBusy(false);
+    setGateResult(res as AnyGate);
+    if (res?.allowed) { setPhrase(""); setConfirm(false); }
+    refreshItems(); refreshGate();
+  }, [canPromote, phrase, refreshItems, refreshGate]);
+
+  const riskColor = (risk: string): string =>
+    risk === "critical" ? "#f0808a" : risk === "high" ? "#f5b362" : risk === "medium" ? "#d8c87f" : "#7fd8a6";
+  const typeRoom: Record<string, string> = {
+    cloud_candidate: "a/provenance",
+    skill_draft: "a/skills",
+    source_summary: "a/sources",
+    tool_trajectory: "a/trajectory",
+    construction_candidate: "a/cgsr",
+    splatra_patch: "a/splatra",
+  };
 
   const available = Boolean(learn?.candidate_available);
   const stats: [string, string][] = [
@@ -157,22 +245,79 @@ export default function AtlasCongressPanel({ language }: { language: Language })
       <div className="agora-grid">
         <main className="agora-feed" aria-labelledby="agora-feed-title">
           <h3 id="agora-feed-title">{t.feed}</h3>
-          {posts.map((post) => (
-            <article key={post.id} className="agora-post">
-              <header><span>{post.tag}</span><small>{post.room}</small></header>
-              <h4>{post.title}</h4>
-              <p>{post.summary}</p>
-              <footer>
-                <span><UsersRound size={14} /> {post.author}</span>
-                <span><ArrowUpRight size={14} /> {post.votes}</span>
-                <span><MessageSquareText size={14} /> {post.replies}</span>
-                <span><ShieldCheck size={14} /> {post.guard}</span>
-              </footer>
-            </article>
-          ))}
+          {reviewItems.length > 0 ? (
+            <>
+              <p style={{ color: "#7d869b", fontSize: 11.5, margin: "0 0 10px" }}>{t.feedNote}</p>
+              {reviewItems.filter((item) => item.status !== "rejected").slice(0, 12).map((item) => (
+                <article key={item.item_id} className="agora-post">
+                  <header>
+                    <span>{item.item_type.replace(/_/g, " ")}</span>
+                    <small>{typeRoom[item.item_type] ?? "a/review"}</small>
+                  </header>
+                  <h4>{item.title}</h4>
+                  <p>{item.summary}</p>
+                  <footer>
+                    <span><UsersRound size={14} /> {t.by} {item.created_by_loop_id ? item.created_by_loop_id.split("_cycle")[0] : "ATANOR Local AI"}</span>
+                    <span style={{ color: riskColor(item.risk_level) }}><ShieldCheck size={14} /> {item.risk_level}</span>
+                    <span><ArrowUpRight size={14} /> {Math.round((item.confidence ?? 0) * 100)}%</span>
+                    <span><MessageSquareText size={14} /> {item.source_refs?.length ?? 0} {t.evidence2}</span>
+                    {item.status === "approved" ? (
+                      <span style={{ color: "#7fd8a6" }}>{t.approved}</span>
+                    ) : item.status === "pending" ? (
+                      <span style={{ display: "inline-flex", gap: 6 }}>
+                        <button type="button" onClick={() => decideItem(item.item_id, "approved")} style={{ fontSize: 11, color: "#7fd8a6", background: "transparent", border: "1px solid #244a36", borderRadius: 8, padding: "1px 8px", cursor: "pointer" }}>{t.approve}</button>
+                        <button type="button" onClick={() => decideItem(item.item_id, "rejected")} style={{ fontSize: 11, color: "#9aa4bd", background: "transparent", border: "1px solid #2a3550", borderRadius: 8, padding: "1px 8px", cursor: "pointer" }}>{t.reject}</button>
+                      </span>
+                    ) : (
+                      <span style={{ color: "#f5b362" }}>{t.awaiting}</span>
+                    )}
+                  </footer>
+                </article>
+              ))}
+            </>
+          ) : (
+            posts.map((post) => (
+              <article key={post.id} className="agora-post">
+                <header><span>{post.tag}</span><small>{post.room}</small></header>
+                <h4>{post.title}</h4>
+                <p>{post.summary}</p>
+                <footer>
+                  <span><UsersRound size={14} /> {post.author}</span>
+                  <span><ArrowUpRight size={14} /> {post.votes}</span>
+                  <span><MessageSquareText size={14} /> {post.replies}</span>
+                  <span><ShieldCheck size={14} /> {post.guard}</span>
+                </footer>
+              </article>
+            ))
+          )}
         </main>
 
         <aside className="agora-side">
+          <section aria-label={t.gateTitle} style={{ border: "1px solid #2a2333", borderRadius: 12, padding: "12px 13px" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: 6 }}><LockKeyhole size={14} /> {t.gateTitle}</h3>
+            <p style={{ color: "#7d869b", fontSize: 11, margin: "0 0 10px", lineHeight: 1.5 }}>{t.gateSub}</p>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              <em style={{ fontStyle: "normal", fontSize: 11, color: "#7fd8a6", border: "1px solid #244a36", borderRadius: 10, padding: "2px 8px" }}>{Number(gate?.eligible_now ?? 0)} {t.eligible}</em>
+              <em style={{ fontStyle: "normal", fontSize: 11, color: "#8a93a8", border: "1px solid #2a3550", borderRadius: 10, padding: "2px 8px" }}>{Number(gate?.signed_manifests ?? 0)} {t.manifests}</em>
+            </div>
+            <label style={{ display: "block", fontSize: 11, color: "#9aa4bd", marginBottom: 4 }}>{t.phraseLabel}</label>
+            <code style={{ display: "block", fontSize: 10, color: "#c08af0", marginBottom: 6, wordBreak: "break-word" }}>{requiredPhrase}</code>
+            <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder={requiredPhrase}
+              style={{ width: "100%", boxSizing: "border-box", fontSize: 11, padding: "6px 8px", borderRadius: 8, border: "1px solid #2a3550", background: "#0c111c", color: "#dbe6ff", marginBottom: 8 }} />
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: 11, color: "#b6c1da", marginBottom: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>{t.confirmChk}</span>
+            </label>
+            <button type="button" onClick={promote} disabled={!canPromote}
+              style={{ width: "100%", fontSize: 12.5, padding: "8px 0", borderRadius: 9, border: "1px solid #6a4aa0", background: canPromote ? "#6a4aa0" : "#211a2e", color: canPromote ? "#fff" : "#6b7488", cursor: canPromote ? "pointer" : "not-allowed" }}>
+              {t.promote}
+            </button>
+            {gateResult ? (
+              <p style={{ fontSize: 11, margin: "8px 0 0", color: gateResult.allowed ? "#7fd8a6" : "#f0a0a8" }}>
+                {gateResult.allowed ? `✓ ${t.staged} (${(gateResult.eligible_ids ?? []).length})` : `✕ ${(gateResult.reasons ?? []).join(", ")}`}
+              </p>
+            ) : null}
+          </section>
           <section><h3>{t.live}</h3>{activity.map((item) => <p key={item}>{item}</p>)}</section>
           <section><h3>{t.locks}</h3>{safetyLocks.map((lock) => <p key={lock}><LockKeyhole size={13} /> {lock}</p>)}</section>
         </aside>

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import threading
+import time
+from collections import deque
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +27,7 @@ from packages.agentic_micro_os.permission_gate import (
     PermissionScope,
 )
 from packages.agentic_micro_os.review_queue import ReviewQueue, ReviewStatus
+from packages.candidate_promotion_gate import CandidatePromotionGate
 from packages.agentic_micro_os.scoped_patch_executor import (
     ScopedPatchExecutor,
     ScopedPatchRequest,
@@ -103,8 +108,21 @@ MODULE_STATUS = {
 WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
 WEB_EXPLORER_SKILL_DRAFTS: list[dict[str, Any]] = []
 OPEN_WEB_EXPLORER_RUNS: dict[str, dict[str, Any]] = {}
-REVIEW_QUEUE = ReviewQueue()
+REVIEW_QUEUE_PATH = PROJECT_ROOT / "runtime" / "agentic_micro_os" / "review_queue.json"
+REVIEW_QUEUE = ReviewQueue.load(REVIEW_QUEUE_PATH)
 PERMISSION_GATE = PermissionGate()
+
+
+def _persist_review_queue() -> None:
+    """Durable web cumulative learning: never lose autonomously-learned candidates
+    or operator decisions on restart. Best-effort; never breaks a request."""
+    try:
+        REVIEW_QUEUE.save(REVIEW_QUEUE_PATH)
+    except Exception:  # pragma: no cover - persistence must not break the API
+        pass
+CANDIDATE_PROMOTION_GATE = CandidatePromotionGate(
+    staging_dir=PROJECT_ROOT / "runtime" / "agentic_micro_os" / "promotions"
+)
 POLICY_LOOP_RUNS: dict[str, dict[str, Any]] = {}
 POLICY_SCHEDULER_RUNS: dict[str, dict[str, Any]] = {}
 POLICY_SCHEDULER = PolicyDrivenAutonomousScheduler(
@@ -113,6 +131,142 @@ POLICY_SCHEDULER = PolicyDrivenAutonomousScheduler(
     review_queue=REVIEW_QUEUE,
     permission_gate=PERMISSION_GATE,
 )
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _summarize_tick(payload: dict[str, Any]) -> dict[str, Any]:
+    """A compact, honest activity record for one server-side tick."""
+
+    result = payload.get("last_result") if isinstance(payload.get("last_result"), dict) else {}
+    states = result.get("states") if isinstance(result, dict) else None
+    last_state = states[-1] if isinstance(states, list) and states else {}
+    actions = last_state.get("actions_taken") if isinstance(last_state, dict) else None
+    emotion = payload.get("last_emotion") if isinstance(payload.get("last_emotion"), dict) else {}
+    vector = emotion.get("vector") if isinstance(emotion, dict) else {}
+    policy = payload.get("last_policy") if isinstance(payload.get("last_policy"), dict) else {}
+    reasons = policy.get("reasons") if isinstance(policy, dict) else None
+    return {
+        "at": _utc_now_iso(),
+        "cycle": payload.get("cycle_count"),
+        "ran": bool(payload.get("ran")),
+        "reason": payload.get("reason"),
+        "actions": list(actions) if isinstance(actions, list) else [],
+        "candidate_drafts": (result or {}).get("candidate_drafts", 0),
+        "splatra_frames": (result or {}).get("splatra_frames", 0),
+        "review_items": (result or {}).get("review_items", 0),
+        "next_delay_sec": payload.get("next_delay_sec"),
+        "curiosity": (vector or {}).get("curiosity"),
+        "fatigue": (vector or {}).get("fatigue"),
+        "policy_reason": (reasons or [None])[0] if isinstance(reasons, list) else None,
+    }
+
+
+class AutonomousDaemon:
+    """Opt-in, operator-confirmed background driver.
+
+    Ticks the (already operator-confirmed) scheduler on its own next_delay_sec
+    cadence in a daemon thread, so the loop keeps running with no browser tab.
+    Fully stoppable; bounded by the scheduler's own max_runtime/max_cycles. Never
+    autostarts. Every tick stays candidate-only and non-mutating.
+    """
+
+    # Clamp the engine cadence to a sane server-side window.
+    MIN_SLEEP = 2.0
+    MAX_SLEEP = 30.0
+    LOG_CAP = 50
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._scheduler: PolicyDrivenAutonomousScheduler | None = None
+        self._log: deque[dict[str, Any]] = deque(maxlen=self.LOG_CAP)
+        self._started_at = ""
+        self._stopped_at = ""
+        self._stopped_reason = ""
+
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self, scheduler: PolicyDrivenAutonomousScheduler) -> dict[str, Any]:
+        with self._lock:
+            if self.is_running():
+                return {"daemon_running": True, "reason": "already_running"}
+            if not scheduler.enabled:
+                # The scheduler must already be operator-confirmed/started.
+                return {"daemon_running": False, "reason": scheduler.stopped_reason or "scheduler_not_enabled"}
+            self._scheduler = scheduler
+            self._stop.clear()
+            self._log.clear()
+            self._started_at = _utc_now_iso()
+            self._stopped_at = ""
+            self._stopped_reason = ""
+            self._thread = threading.Thread(target=self._run, name="atanor-autonomous-daemon", daemon=True)
+            self._thread.start()
+            return {"daemon_running": True, "reason": "daemon_started", "started_at": self._started_at}
+
+    def stop(self, reason: str = "operator_stop") -> dict[str, Any]:
+        self._stop.set()
+        scheduler = self._scheduler
+        if scheduler is not None:
+            try:
+                scheduler.stop(reason=reason, create_stop_file=False)
+            except Exception:  # pragma: no cover - defensive
+                pass
+        thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=5.0)
+        self._stopped_at = _utc_now_iso()
+        self._stopped_reason = reason
+        return {"daemon_running": self.is_running(), "reason": reason, "stopped_at": self._stopped_at}
+
+    def status(self) -> dict[str, Any]:
+        scheduler = self._scheduler
+        state = scheduler.state().to_dict() if scheduler is not None else {}
+        return {
+            "daemon_running": self.is_running(),
+            "started_at": self._started_at,
+            "stopped_at": self._stopped_at,
+            "stopped_reason": self._stopped_reason,
+            "activity_log": list(self._log),
+            "scheduler_state": state,
+        }
+
+    def _run(self) -> None:
+        scheduler = self._scheduler
+        if scheduler is None:
+            return
+        while not self._stop.is_set():
+            try:
+                payload = scheduler.tick()
+            except Exception as exc:  # pragma: no cover - never let the thread die silently
+                self._log.append({"at": _utc_now_iso(), "ran": False, "reason": f"tick_error:{type(exc).__name__}"})
+                self._stopped_reason = f"tick_error:{type(exc).__name__}"
+                break
+            record = _summarize_tick(payload)
+            self._log.append(record)
+            if isinstance(payload.get("last_result"), dict):
+                POLICY_SCHEDULER_RUNS[str(payload.get("scheduler_id"))] = payload
+            # Persist newly learned candidates so the loop's work survives restarts.
+            _persist_review_queue()
+            if not payload.get("enabled") or not payload.get("ran"):
+                self._stopped_reason = str(payload.get("reason") or "scheduler_stopped")
+                break
+            delay = payload.get("next_delay_sec")
+            try:
+                delay_sec = float(delay)
+            except (TypeError, ValueError):
+                delay_sec = 5.0
+            sleep_for = max(self.MIN_SLEEP, min(self.MAX_SLEEP, delay_sec))
+            # Wake early if stopped.
+            self._stop.wait(timeout=sleep_for)
+        self._stopped_at = _utc_now_iso()
+
+
+AUTONOMOUS_DAEMON = AutonomousDaemon()
 
 
 def _make_host_executor(base_path: Path | None = None) -> HostExecutor:
@@ -346,10 +500,30 @@ class PolicySchedulerStartApiRequest(BaseModel):
     allow_review_import: bool = True
     allow_splatra_generation: bool = True
     allow_host_executor_status_only: bool = True
+    live_web: bool = False
 
 
 class PolicySchedulerStopApiRequest(BaseModel):
     reason: str = "operator_stop"
+
+
+class PromotionDraftApiRequest(BaseModel):
+    item_ids: list[str] = Field(default_factory=list)
+    created_by: str = "operator"
+
+
+class PromotionConfirmApiRequest(BaseModel):
+    operator_confirmed: bool = False
+    confirmation_phrase: str = ""
+    item_ids: list[str] = Field(default_factory=list)
+    operator_id: str = "operator"
+
+
+class PolicySchedulerDaemonStartApiRequest(PolicySchedulerStartApiRequest):
+    # The daemon keeps ticking server-side until stopped/bounded, so allow a
+    # longer default horizon than a single manual run.
+    max_runtime_sec: int = 3600
+    max_cycles: int = 2000
 
 
 class ScopedPatchApiRequest(BaseModel):
@@ -578,6 +752,7 @@ def policy_scheduler_start(request: PolicySchedulerStartApiRequest) -> dict[str,
             allow_review_import=request.allow_review_import,
             allow_splatra_generation=request.allow_splatra_generation,
             allow_host_executor_status_only=request.allow_host_executor_status_only,
+            live_web=request.live_web,
         )
     )
     payload = POLICY_SCHEDULER.start(operator_confirmed=request.operator_confirmed)
@@ -596,6 +771,7 @@ def policy_scheduler_tick() -> dict[str, Any]:
     last_result = payload.get("last_result")
     if isinstance(last_result, dict):
         POLICY_SCHEDULER_RUNS[str(payload["scheduler_id"])] = payload
+    _persist_review_queue()
     return {
         **SAFETY_FLAGS,
         **payload,
@@ -611,6 +787,110 @@ def policy_scheduler_tick() -> dict[str, Any]:
 @router.get("/policy-scheduler/runs/{scheduler_id}")
 def policy_scheduler_run(scheduler_id: str) -> dict[str, Any]:
     return {**SAFETY_FLAGS, "run": POLICY_SCHEDULER_RUNS.get(scheduler_id)}
+
+
+@router.get("/policy-scheduler/daemon/status")
+def policy_scheduler_daemon_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **AUTONOMOUS_DAEMON.status()}
+
+
+@router.post("/policy-scheduler/daemon/start")
+def policy_scheduler_daemon_start(request: PolicySchedulerDaemonStartApiRequest) -> dict[str, Any]:
+    if not request.operator_confirmed:
+        return {
+            **SAFETY_FLAGS,
+            "allowed": False,
+            "daemon_running": False,
+            "reason": "operator_confirmation_required",
+        }
+    _set_policy_scheduler(
+        SchedulerConfig(
+            scheduler_id=request.scheduler_id,
+            enabled=False,
+            max_runtime_sec=request.max_runtime_sec,
+            max_cycles=request.max_cycles,
+            min_interval_sec=request.min_interval_sec,
+            max_interval_sec=request.max_interval_sec,
+            allow_web_explorer=request.allow_web_explorer,
+            allow_review_import=request.allow_review_import,
+            allow_splatra_generation=request.allow_splatra_generation,
+            allow_host_executor_status_only=request.allow_host_executor_status_only,
+            live_web=request.live_web,
+        )
+    )
+    start_payload = POLICY_SCHEDULER.start(operator_confirmed=True)
+    if not POLICY_SCHEDULER.enabled:
+        return {**SAFETY_FLAGS, "allowed": False, "daemon_running": False, **start_payload}
+    daemon_payload = AUTONOMOUS_DAEMON.start(POLICY_SCHEDULER)
+    return {
+        **SAFETY_FLAGS,
+        "allowed": True,
+        "live_web": request.live_web,
+        **start_payload,
+        **daemon_payload,
+        "mutation_performed": False,
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+    }
+
+
+@router.post("/policy-scheduler/daemon/stop")
+def policy_scheduler_daemon_stop(request: PolicySchedulerStopApiRequest) -> dict[str, Any]:
+    payload = AUTONOMOUS_DAEMON.stop(reason=request.reason)
+    return {**SAFETY_FLAGS, **payload, **AUTONOMOUS_DAEMON.status()}
+
+
+def _review_item_dicts() -> list[dict[str, Any]]:
+    return [item.to_dict() for item in REVIEW_QUEUE.list_items()]
+
+
+@router.get("/promotion-gate/status")
+def promotion_gate_status() -> dict[str, Any]:
+    return {**SAFETY_FLAGS, **CANDIDATE_PROMOTION_GATE.status(_review_item_dicts())}
+
+
+@router.post("/promotion-gate/draft")
+def promotion_gate_draft(request: PromotionDraftApiRequest) -> dict[str, Any]:
+    manifest = CANDIDATE_PROMOTION_GATE.draft_manifest(
+        _review_item_dicts(),
+        item_ids=request.item_ids or None,
+        created_by=request.created_by,
+    )
+    return {**SAFETY_FLAGS, **manifest}
+
+
+@router.post("/promotion-gate/confirm")
+def promotion_gate_confirm(request: PromotionConfirmApiRequest) -> dict[str, Any]:
+    result = CANDIDATE_PROMOTION_GATE.confirm_promotion(
+        _review_item_dicts(),
+        item_ids=request.item_ids or None,
+        operator_confirmed=request.operator_confirmed,
+        confirmation_phrase=request.confirmation_phrase,
+        operator_id=request.operator_id,
+    )
+    if result.get("allowed"):
+        # Record the human-approved staging on the review items themselves so the
+        # queue reflects the operator's decision (still no production write).
+        for item_id in result.get("eligible_ids", []):
+            item = REVIEW_QUEUE.get(str(item_id))
+            if item is not None and "promotion staged by operator" not in item.review_notes:
+                item.review_notes.append("promotion staged by operator")
+        _persist_review_queue()
+        emit_runtime_event(
+            source="promotion_gate",
+            event_type="review_item_approved",
+            payload_summary=f"staged={len(result.get('eligible_ids', []))}",
+            intensity=0.6,
+        )
+    return {
+        **SAFETY_FLAGS,
+        **result,
+        "mutation_performed": False,
+        "production_store_mutated": False,
+        "local_brain_write": False,
+        "candidate_promotion": False,
+    }
 
 
 @router.get("/host-executor/patch/status")
@@ -1133,6 +1413,7 @@ def review_decide(request: ReviewDecideApiRequest) -> dict[str, Any]:
         )
     except ValueError as exc:
         return {**SAFETY_FLAGS, "allowed": False, "reason": str(exc), "mutation_performed": False}
+    _persist_review_queue()
     item = REVIEW_QUEUE.get(request.item_id)
     decision_value = str(request.decision)
     event_type = "review_item_approved" if decision_value == "approved" else "review_item_rejected" if decision_value == "rejected" else "review_queue_pressure"
@@ -1163,6 +1444,7 @@ def review_import_web_run(request: ReviewImportWebRunApiRequest) -> dict[str, An
     if not run_payload:
         return {**SAFETY_FLAGS, "allowed": False, "reason": "web run not found", "imported": 0}
     imported = REVIEW_QUEUE.import_web_run(run_payload)
+    _persist_review_queue()
     status_payload = REVIEW_QUEUE.status()
     if int(status_payload.get("pending", 0) or 0) > 8 or int(status_payload.get("high_risk", 0) or 0) > 0:
         emit_runtime_event(

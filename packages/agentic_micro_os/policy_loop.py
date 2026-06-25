@@ -11,6 +11,8 @@ from packages.agentic_micro_os.web_explorer_loop import (
     FixtureOpenWebFetcher,
     OpenWebExplorerConfig,
     OpenWebExplorerLoop,
+    OpenWebFetcher,
+    default_open_web_seed_urls,
 )
 from packages.neural_emotion.autonomy_policy import AutonomyRuntimeState, evaluate_autonomy_policy
 from packages.neural_emotion.event_bus import NeuralEmotionEventBus
@@ -45,6 +47,7 @@ class PolicyLoopConfig:
     recent_failures: int = 0
     unsafe_request: bool = False
     voice_available: bool = False
+    live_web: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "loop_id", self.loop_id or f"policy_loop_{uuid4().hex[:12]}")
@@ -162,7 +165,7 @@ class PolicyDrivenAutonomousLoop:
 
             web_result = self._run_web_step(budgets["web_pages_budget"])
             if web_result:
-                actions.append("web_explorer_fixture_step")
+                actions.append("open_web_live_read" if self.config.live_web else "web_explorer_fixture_step")
                 candidate_drafts += int(web_result.get("candidate_drafts_count", 0) or 0)
                 skill_drafts += int(web_result.get("skill_drafts_count", 0) or 0)
                 imported = self.review_queue.import_web_run(web_result)
@@ -260,6 +263,8 @@ class PolicyDrivenAutonomousLoop:
     def _run_web_step(self, web_pages_budget: int) -> dict[str, Any] | None:
         if web_pages_budget <= 0:
             return None
+        if self.config.live_web:
+            return self._run_live_web_step(web_pages_budget)
         fixtures = {
             "https://example.com/policy-loop": (
                 "<html><title>Policy Loop</title><body>"
@@ -285,6 +290,38 @@ class PolicyDrivenAutonomousLoop:
             fetch_live_web=False,
         )
         return OpenWebExplorerLoop(config, fetcher=FixtureOpenWebFetcher(fixtures)).run().to_dict()
+
+    def _run_live_web_step(self, web_pages_budget: int) -> dict[str, Any] | None:
+        # Real, bounded, read-only public-web read. Rotates through a small curated
+        # seed set so each cycle explores something different. All the same guards
+        # apply: denylist (login/payment/download/private), per-domain delay,
+        # robots.txt respect, byte cap, candidate-draft-only (production write blocked).
+        seeds = default_open_web_seed_urls()
+        if not seeds:
+            return None
+        start = abs(hash(self.config.loop_id)) % len(seeds)
+        chosen = [seeds[(start + offset) % len(seeds)] for offset in range(min(2, len(seeds)))]
+        config = OpenWebExplorerConfig(
+            goal="policy-driven autonomous loop live public-web read",
+            seed_urls=list(dict.fromkeys(chosen)),
+            max_pages=max(1, min(web_pages_budget, 3)),
+            max_depth=1,
+            max_runtime_sec=max(1, min(self.config.max_runtime_sec, 25)),
+            max_bytes_per_page=200_000,
+            per_domain_delay_sec=3.0,
+            max_pages_per_domain=2,
+            max_candidate_drafts=max(1, self.config.base_review_batch),
+            max_skill_drafts=1,
+            fetch_live_web=True,
+        )
+        try:
+            return OpenWebExplorerLoop(
+                config,
+                fetcher=OpenWebFetcher(),
+                respect_robots=True,
+            ).run().to_dict()
+        except Exception:  # pragma: no cover - network failure never breaks the loop
+            return None
 
     def _run_splatra_step(self, splatra_frame_budget: int) -> int:
         if splatra_frame_budget <= 0:

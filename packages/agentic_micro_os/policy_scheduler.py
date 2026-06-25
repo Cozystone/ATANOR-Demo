@@ -38,6 +38,7 @@ class SchedulerConfig:
     allow_review_import: bool = True
     allow_splatra_generation: bool = True
     allow_host_executor_status_only: bool = True
+    live_web: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "scheduler_id", self.scheduler_id or f"policy_scheduler_{uuid4().hex[:12]}")
@@ -183,6 +184,7 @@ class PolicyDrivenAutonomousScheduler:
             recent_failures=0,
             unsafe_request=False,
             voice_available=False,
+            live_web=bool(self.config.live_web and self.config.allow_web_explorer),
         )
 
     def _policy(self) -> dict[str, Any]:

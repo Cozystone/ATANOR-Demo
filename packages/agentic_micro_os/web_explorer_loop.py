@@ -11,6 +11,7 @@ import time
 from typing import Any
 from urllib.parse import urldefrag, urljoin, urlparse
 from urllib.request import Request, urlopen
+from urllib.robotparser import RobotFileParser
 from uuid import uuid4
 
 from .brain_access import BrainAccessRequest, BrainAccessRoad
@@ -303,6 +304,8 @@ class OpenWebExplorerLoop:
         store: WebCollectionStore | None = None,
         brain_road: BrainAccessRoad | None = None,
         kernel: CapabilityKernel | None = None,
+        respect_robots: bool = False,
+        user_agent: str = "ATANOR-AgenticMicroOS-Proof/1.0",
     ) -> None:
         self.config = config
         self.fetcher = fetcher or OpenWebFetcher()
@@ -310,10 +313,13 @@ class OpenWebExplorerLoop:
         self.brain_road = brain_road or BrainAccessRoad()
         self.kernel = kernel or CapabilityKernel()
         self.policy = OpenWebPolicy()
+        self.respect_robots = respect_robots
+        self.user_agent = user_agent
         self.skill_drafts: list[WebSkillDraft] = []
         self.safety_blocks: list[str] = []
         self.domain_counts: dict[str, int] = {}
         self.last_domain_read_at: dict[str, float] = {}
+        self._robots: dict[str, RobotFileParser | None] = {}
         self.errors = 0
 
     def run(self) -> OpenWebExplorerRunResult:
@@ -359,6 +365,10 @@ class OpenWebExplorerLoop:
             if self.domain_counts.get(domain, 0) >= self.config.max_pages_per_domain:
                 rejected_count += 1
                 self.safety_blocks.append(f"per-domain budget reached: {domain}")
+                continue
+            if not self._robots_allows(url):
+                rejected_count += 1
+                self.safety_blocks.append(f"robots.txt disallow: {url}")
                 continue
             self._respect_domain_delay(domain)
             try:
@@ -446,6 +456,33 @@ class OpenWebExplorerLoop:
             trajectory=asdict(trajectory),
             invariants=INVARIANTS.copy(),
         )
+
+    def _robots_allows(self, url: str) -> bool:
+        # Only enforced for live fetches and only when explicitly enabled. Fixture
+        # fetches and disabled mode keep prior behavior. Fail-open on robots fetch
+        # errors but fail-closed on an explicit Disallow.
+        if not self.respect_robots or isinstance(self.fetcher, FixtureOpenWebFetcher):
+            return True
+        parsed = urlparse(url)
+        domain = parsed.hostname or ""
+        if domain not in self._robots:
+            parser: RobotFileParser | None = RobotFileParser()
+            robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+            try:
+                request = Request(robots_url, headers={"User-Agent": self.user_agent})
+                with urlopen(request, timeout=8) as response:  # noqa: S310 - public robots.txt only
+                    raw = response.read(80_000).decode("utf-8", errors="replace")
+                parser.parse(raw.splitlines())
+            except Exception:
+                parser = None  # robots unavailable → fail-open
+            self._robots[domain] = parser
+        cached = self._robots.get(domain)
+        if cached is None:
+            return True
+        try:
+            return cached.can_fetch(self.user_agent, url)
+        except Exception:
+            return True
 
     def _respect_domain_delay(self, domain: str) -> None:
         if isinstance(self.fetcher, FixtureOpenWebFetcher):
