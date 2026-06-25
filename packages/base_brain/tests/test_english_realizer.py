@@ -166,12 +166,35 @@ def test_real_query_includes_second_hop_reasoning(tmp_path, monkeypatch) -> None
 
 
 def test_precision_gate_abstains_on_loose_false_match(tmp_path, monkeypatch) -> None:
-    # The pack has no "capital of France" / "Graph Hub" concept; a loose match
+    # The pack has no "capital of France" / "Bitcoin" concept; a loose match
     # must abstain instead of confidently describing the wrong concept.
     monkeypatch.chdir(tmp_path)
-    for query in ["What is the capital of France?", "What is Graph Hub?"]:
+    for query in ["What is the capital of France?", "What is Bitcoin?"]:
         result = answer_with_base_brain(query, language="en", audience_level="beginner")
         assert result["confidence"] <= 0.2, f"{query!r} should abstain, got {result['answer']!r}"
+
+
+def test_atanor_product_concepts_are_answered(tmp_path, monkeypatch) -> None:
+    # ATANOR's own sidebar features must be answerable from the graph.
+    monkeypatch.chdir(tmp_path)
+    for query, needle in [("What is Graph Hub?", "cartridge"), ("What is Atlas?", "relay")]:
+        result = answer_with_base_brain(query, language="en", audience_level="beginner")
+        assert needle in result["answer"].lower(), result["answer"]
+        assert result["confidence"] >= 0.5
+
+
+def test_undocumented_feature_still_abstains(tmp_path, monkeypatch) -> None:
+    # AGORA has no documented definition — never fabricate one.
+    monkeypatch.chdir(tmp_path)
+    result = answer_with_base_brain("What is AGORA?", language="en", audience_level="beginner")
+    assert result["confidence"] <= 0.2
+
+
+def test_identity_question_answers_as_atanor(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    for query, lang in [("Who are you?", "en"), ("너는 누구야?", "ko")]:
+        result = answer_with_base_brain(query, language=lang, audience_level="beginner")
+        assert "ATANOR" in result["answer"]
 
 
 def test_precision_gate_keeps_directly_named_concept(tmp_path, monkeypatch) -> None:

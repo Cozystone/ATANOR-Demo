@@ -239,6 +239,9 @@ KO_DESCRIPTIONS = {
     "local_brain": "사용자의 기기 안에서만 다루는 개인 맥락 영역입니다.",
     "cloud_brain": "개인 데이터와 분리된 공개 지식 보조 영역입니다.",
     "q_cortex": "실제 양자컴퓨터가 아니라 후보 경로를 고르는 고전적 최적화 계층입니다.",
+    "graph_hub": "그래프 지식을 카탈로그, 설치, 권한, 읽기 전용 부착, 내보내기, 감사로 다루는 카트리지 시스템입니다.",
+    "atlas": "기여 노드를 위한 지역 릴레이 상태를 개인정보 노출 없이 시각화하는 영역이며, 사설 기억을 공유하지 않습니다.",
+    "brain_graph": "로컬, 클라우드, 카트리지, 작업 기억 노드를 같은 출처나 프라이버시인 것처럼 섞지 않고 탭별 뷰로 보여 주는 그래프입니다.",
 }
 
 
@@ -536,7 +539,7 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
     # the query never actually names it, we are likely about to describe the
     # WRONG concept confidently (e.g. "capital of France" -> "API"). Abstain
     # honestly instead. (Definitional questions only; comparisons handled above.)
-    if intent in {"define", "explain"} and not _named_in_query(query, primary):
+    if intent in {"define", "explain"} and not _named_in_query(query, primary) and not _is_identity_question(query):
         return (
             "지금 확인된 근거가 부족해서 단정하기 어렵습니다. 주제나 참고 문장을 조금 더 주면 그 범위 안에서 설명할 수 있습니다."
             if language == "ko"
@@ -583,6 +586,15 @@ def _concept_names(concept: dict[str, Any]) -> list[str]:
     return [name for name in names if name and len(name) >= 3]
 
 
+_IDENTITY_MARKERS_KO = ("너는 누구", "넌 누구", "너 누구", "네 정체", "자기소개", "너는 뭐야", "넌 뭐야", "당신은 누구")
+_IDENTITY_MARKERS_EN = ("who are you", "what are you", "introduce yourself", "who is atanor")
+
+
+def _is_identity_question(query: str) -> bool:
+    q = re.sub(r"\s+", " ", query.lower()).strip(" ?!.")
+    return any(m in query for m in _IDENTITY_MARKERS_KO) or any(m in q for m in _IDENTITY_MARKERS_EN)
+
+
 def _named_in_query(query: str, concept: dict[str, Any]) -> bool:
     """True when the query actually names the concept. The ASCII-boundary
     lookarounds give English word boundaries ("api" is not matched inside
@@ -621,6 +633,26 @@ def answer_with_base_brain(
     pack = load_base_brain_pack()
     semantic_context = get_semantic_context(query, pack, limit=12)
     semantic_context = _disambiguate_memory_context(query, semantic_context)
+    if _is_identity_question(query):
+        # "Who are you?" — answer from the grounded ATANOR concept (not a canned
+        # string), so identity is graph-derived like any other answer.
+        atanor = next(
+            (concept for concept in pack.semantic_graph.get("concepts", []) if str(concept.get("concept_id")) == "atanor"),
+            None,
+        )
+        if atanor:
+            related_ids = {str(relation.get("target")) for relation in atanor.get("relations", [])}
+            related = [
+                {**concept, "match_score": 1.0}
+                for concept in pack.semantic_graph.get("concepts", [])
+                if str(concept.get("concept_id")) in related_ids
+            ]
+            keep = {"atanor", *related_ids}
+            semantic_context = (
+                [{**atanor, "match_score": 5.0}]
+                + related
+                + [item for item in semantic_context if str(item.get("concept_id")) not in keep]
+            )
     intent = classify_intent(query, pack)
     surface_candidates = get_surface_candidates(query, semantic_context, language, audience_level, limit=8, pack=pack)
     selection = select_surface_candidates(surface_candidates, max_selected=4, seed=_seed(query), q_cortex_enabled=True)

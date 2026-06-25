@@ -86,6 +86,9 @@ def build_general_semantic_pack_v0() -> dict[str, Any]:
         _concept("local_brain", "Local Brain", ["로컬 브레인", "저장된 개인 맥락", "private context"], "The private on-device context area that should not be shared without the user.", [("used_for", "privacy", 0.86), ("contrasts_with", "cloud_brain", 0.82)], ko="저장된 개인 맥락"),
         _concept("cloud_brain", "Cloud Brain", ["클라우드 브레인", "공개 지식 보조층", "public knowledge assist"], "The public or shared knowledge-assist layer separated from private user data.", [("contrasts_with", "local_brain", 0.82), ("requires", "evidence", 0.78)], ko="공개 지식 보조층"),
         _concept("q_cortex", "Q-Cortex", ["q cortex", "고전 최적화 계층", "quantum-inspired optimizer"], "Q-Cortex is a classical local optimizer for selecting candidate reasoning paths; it is not quantum hardware.", [("contrasts_with", "quantum_computer", 0.84), ("used_for", "semantic_graph", 0.62)], ko="고전 최적화 계층"),
+        _concept("graph_hub", "Graph Hub", ["그래프 허브", "graph cartridge system"], "Graph Hub is a cartridge system for graph knowledge: catalog, install, entitlement, read-only attachment, export, and audit.", [("part_of", "atanor", 0.72), ("uses", "semantic_graph", 0.6)], ko="그래프 허브"),
+        _concept("atlas", "Atlas", ["아틀라스", "regional relay map"], "Atlas is a privacy-safe visualization of regional relay state for future contributor nodes; it does not share private memory.", [("part_of", "atanor", 0.7), ("contrasts_with", "local_brain", 0.55)], ko="아틀라스"),
+        _concept("brain_graph", "Brain Graph", ["브레인 링크", "brain link", "브레인 그래프", "brain graph view"], "Brain Graph materializes tab-aware views of local, cloud, cartridge, and working-memory nodes without pretending they share the same privacy or provenance.", [("part_of", "atanor", 0.72), ("uses", "semantic_graph", 0.6)], ko="브레인 그래프"),
     ]
     pack = {
         "pack_id": "general_semantic_v0",
