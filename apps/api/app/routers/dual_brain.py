@@ -794,6 +794,88 @@ def _live_selfhood_payload(
         "diagnostics": diagnostics,
     }
     if not generated.answer:
+        # The live conversation router abstained (no safe surface walk yet, e.g.
+        # sparse English constructions). Rather than show the user nothing, fall
+        # back to the graph-grounded Base Brain answer, which carries its own
+        # evidence and English realizer. Still no external LLM and no rule-based
+        # canned answer — Base Brain composes from the seed/semantic graph.
+        # Compose directly from Base Brain in its native "default" answer mode.
+        # We intentionally do NOT route through the shared _base_brain_payload
+        # helper here: once the conversation router has already run inside this
+        # request, that helper path can yield an empty surface, whereas the
+        # direct call still returns the graph-grounded answer.
+        base = answer_with_base_brain(
+            question,
+            language=language,  # type: ignore[arg-type]
+            audience_level=request.audience_level,  # type: ignore[arg-type]
+            mode="default",
+        )
+        base_answer = str(base.get("answer") or "").strip()
+        if base_answer:
+            fallback_trace = {
+                **compact_trace,
+                "conversation_fallback": "base_brain_after_conversation_abstain",
+                "local_coverage": "base_brain",
+            }
+            return {
+                "state": "completed",
+                "result": {
+                    "answer": base_answer,
+                    "language": language,
+                    "confidence": 0.62,
+                    "answer_kind": "base_brain_after_conversation_abstain",
+                    # M4 bridge to SPLATRA: visualize a scene only when the verified
+                    # evidence is concrete. Abstract answers stay text-only.
+                    "scene_grounding": base.get("scene_grounding"),
+                    "speech_act": speech_act,
+                    "can_speak": True,
+                    "abstained_conversation_reason": generated.diagnostics.get(
+                        "abstain_reason", "no_safe_token_walk"
+                    ),
+                    "default_trace_visible": False,
+                    "trace": fallback_trace
+                    if request.include_trace or request.mode in {"trace", "research"}
+                    else None,
+                    "compact_trace": fallback_trace,
+                    "research_trace": None,
+                    "evidence_docs": [],
+                    "matched_nodes": [],
+                    "matched_edges": [],
+                    "surface_plan": {
+                        "plan_id": None,
+                        "intent": "base_brain_after_conversation_abstain",
+                        "construction_families": compact_trace["surface_graph"]["construction_families"],
+                        "q_cortex_used": False,
+                        "q_cortex_run_id": None,
+                    },
+                    "scene_choreography": None,
+                    "visual_scene_plan": None,
+                    "splatra_scene_plan": None,
+                    "splatra_command_sequence": None,
+                    "splatra_interactive_scene_analysis": None,
+                    "splatra_cartridge_queue": None,
+                    "splatra_scene_policy": visual_policy,
+                    "answer_engine": {
+                        **engine,
+                        "answer_kind": "base_brain_after_conversation_abstain",
+                        "base_brain_fallback": True,
+                        # Honest provenance: this surface came from the Base Brain
+                        # seed/semantic graph realizer, not the conversation router.
+                        "generation_basis": "base_brain_seed_graph_surface_v0",
+                        "external_llm": False,
+                        "external_sllm": False,
+                        "external_llm_used": False,
+                        "external_sllm_used": False,
+                        "rule_based_answer_used": False,
+                        "internal_trace_exposed": False,
+                        "local_brain_write": False,
+                        "production_store_mutated": False,
+                        "candidate_promotion": False,
+                    },
+                    **{**_flags(), "final_answer_generation_claimed": True},
+                },
+                **{**_flags(), "final_answer_generation_claimed": True},
+            }
         payload = {
             "answer": None,
             "language": language,

@@ -522,7 +522,8 @@ function isAsmConversationPayload(payload: Record<string, any>) {
   const isAllowedLocalConversation =
     generationBasis === "local_corpus_construction_transition_model"
     || generationBasis === "semantic_grounded_conversation_router_v0"
-    || generationBasis === "semantic_cloud_graph_surface_brain_v0";
+    || generationBasis === "semantic_cloud_graph_surface_brain_v0"
+    || generationBasis === "base_brain_seed_graph_surface_v0";
   return (
     isAllowedLocalConversation
     && engine.external_llm === false

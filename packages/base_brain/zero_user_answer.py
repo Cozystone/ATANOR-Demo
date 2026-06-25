@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
+
+_HANGUL = re.compile(r"[가-힣]")
 
 from packages.surface_brain.monitor import repair_answer_for_mode
 from packages.surface_brain.q_cortex_bridge import select_surface_candidates
 
 from .models import AnswerMode, AudienceLevel, Language, honesty_flags
 from .pack_loader import classify_intent, get_semantic_context, get_surface_candidates, load_base_brain_pack
+from .scene_grounding import extract_scene_grounding
 
 
 UNSUPPORTED_HINTS_KO = ("오늘", "최신", "실시간", "주가", "가격", "유재석", "우리 동네", "날씨")
@@ -50,6 +54,104 @@ RELATION_WORDS_EN = {
     "contains": "contains",
     "uses": "uses",
 }
+
+# English micro-NLG: turn (subject, relation, object) triples into one aggregated,
+# article-correct, pronoun-using sentence instead of repeating the subject per relation.
+EN_RELATION_CLAUSE = {
+    "is_a": "is a kind of {o}",
+    "part_of": "is part of {o}",
+    "has_property": "has the property {o}",
+    "used_for": "is used for {o}",
+    "causes": "can cause {o}",
+    "enables": "enables {o}",
+    "requires": "requires {o}",
+    "contrasts_with": "contrasts with {o}",
+    "similar_to": "is similar to {o}",
+    "example_of": "is an example of {o}",
+    "manages": "manages {o}",
+    "produces": "produces {o}",
+    "depends_on": "depends on {o}",
+    "supports": "supports {o}",
+    "contains": "contains {o}",
+    "uses": "uses {o}",
+}
+
+# Relations whose object reads as a countable noun phrase and should take a determiner.
+EN_ARTICLE_RELATIONS = {"requires", "uses", "causes", "produces", "contains", "manages", "supports"}
+
+# Objects that are mass/abstract nouns and must stay bare (no "a"/"an").
+EN_UNCOUNTABLE = {
+    "privacy",
+    "evidence",
+    "hallucination reduction",
+    "software deployment",
+    "container orchestration",
+    "ai training",
+    "ai inference",
+}
+
+
+def _en_noun_phrase(label: str, *, with_article: bool) -> str:
+    label = label.strip()
+    if not label:
+        return label
+    if not with_article:
+        return label
+    if label[:1].isupper():  # proper noun (GraphRAG, ATANOR, Local Brain)
+        return label
+    if label.lower() in EN_UNCOUNTABLE:
+        return label
+    article = "an" if label[:1].lower() in "aeiou" else "a"
+    return f"{article} {label}"
+
+
+def _join_en(parts: list[str]) -> str:
+    parts = [p for p in parts if p]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} and {parts[1]}"
+    return f"{', '.join(parts[:-1])}, and {parts[-1]}"
+
+
+def _english_relation_sentence(
+    primary: dict[str, Any],
+    context_map: dict[str, dict[str, Any]],
+    *,
+    max_relations: int = 3,
+) -> str:
+    """Aggregate a concept's relations into one fluent sentence: 'It <clauses>.'."""
+    grouped: list[tuple[str, list[str]]] = []
+    index: dict[str, int] = {}
+    for relation in primary.get("relations", [])[:max_relations]:
+        relation_name = str(relation.get("relation") or "related_to")
+        clause_template = EN_RELATION_CLAUSE.get(relation_name)
+        if clause_template is None:
+            continue
+        target_id = str(relation.get("target") or "")
+        if target_id not in context_map and "_" in target_id:
+            continue
+        target = context_map.get(
+            target_id, {"concept_id": target_id, "canonical_name": target_id, "labels": {}}
+        )
+        target_label = _label(target, "en")
+        obj = _en_noun_phrase(target_label, with_article=relation_name in EN_ARTICLE_RELATIONS)
+        if relation_name in index:
+            grouped[index[relation_name]][1].append(obj)
+        else:
+            index[relation_name] = len(grouped)
+            grouped.append((relation_name, [obj]))
+
+    clauses: list[str] = []
+    for relation_name, objects in grouped:
+        clause_template = EN_RELATION_CLAUSE[relation_name]
+        clauses.append(clause_template.format(o=_join_en(objects)))
+    if not clauses:
+        return ""
+    return f"It {_join_en(clauses)}."
+
 
 KO_DESCRIPTIONS = {
     "kubernetes": "여러 서버에 흩어진 컨테이너를 자동으로 배포하고, 상태를 확인하며, 필요하면 다시 띄우거나 복구해 주는 오픈소스 운영 플랫폼입니다.",
@@ -154,9 +256,23 @@ def _seed(query: str) -> int:
     return int(hashlib.sha256(query.encode("utf-8", errors="ignore")).hexdigest()[:8], 16)
 
 
+def _clean_label(value: str) -> str:
+    return str(value or "").replace("_", " ").strip()
+
+
 def _label(concept: dict[str, Any], language: str) -> str:
     labels = concept.get("labels") or {}
-    return str(labels.get(language) or concept.get("canonical_name") or concept.get("concept_id")).replace("_", " ")
+    raw = _clean_label(labels.get(language) or concept.get("canonical_name") or concept.get("concept_id"))
+    if language != "en":
+        return raw
+    # English mode must never emit Hangul or corrupted (non-ASCII) surface forms.
+    if raw and raw.isascii() and not _HANGUL.search(raw):
+        return raw
+    en_label = _clean_label(labels.get("en"))
+    if en_label and en_label.isascii() and not _HANGUL.search(en_label):
+        return en_label
+    # Last resort: derive a clean English label from the stable concept id.
+    return _clean_label(concept.get("concept_id")) or raw
 
 
 def _has_final_consonant(text: str) -> bool:
@@ -327,9 +443,15 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
             answer = f"{answer} {' '.join(relation_lines)}"
         return answer, True
 
-    answer = base
-    if relation_lines and audience_level != "expert":
-        answer = f"{answer}. {' '.join(relation_lines)}"
+    base_text = base.rstrip(". ").strip()
+    parts = [base_text] if base_text else []
+    if audience_level != "expert":
+        rel_sentence = _english_relation_sentence(primary, context_map)
+        if rel_sentence:
+            parts.append(rel_sentence.rstrip("."))
+    answer = ". ".join(parts).strip()
+    if answer and not answer.endswith((".", "!", "?")):
+        answer = f"{answer}."
     if str(primary.get("concept_id")) == "kubernetes" and "software deployment" not in answer.lower():
         answer = f"{answer} It is commonly used for software deployment and container orchestration."
     if str(primary.get("concept_id")) == "spring_boot" and "web framework" not in answer.lower():
@@ -372,11 +494,18 @@ def answer_with_base_brain(
         "useful_answer": useful,
         **honesty_flags(),
     }
-    repair_result = repair_answer_for_mode(answer, mode=mode, trace=trace)
+    repair_result = repair_answer_for_mode(answer, mode=mode, trace=trace, language=language)
     final_answer = str(repair_result.get("repaired_answer") or answer)
+    evidence_sentences = [
+        str(item.get("short_description") or "")
+        for item in semantic_context
+        if str(item.get("short_description") or "").strip()
+    ]
+    scene_grounding = extract_scene_grounding(final_answer, evidence_sentences, language=language)
     return {
         "answer": final_answer,
         "answer_kind": "base_brain_zero_user_data",
+        "scene_grounding": scene_grounding,
         "semantic_context_count": len(semantic_context),
         "surface_candidate_count": len(surface_candidates),
         "q_cortex_used": bool(selection.get("q_cortex_used")),

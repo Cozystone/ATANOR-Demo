@@ -15,6 +15,9 @@ from .repair_rules import (
 from .rule_registry import get_enabled_repair_rules, record_rule_usage
 
 
+_HANGUL = re.compile(r"[가-힣]")
+
+
 INTERNAL_TRACE_TERMS = (
     "Local Brain",
     "Cloud Brain",
@@ -77,6 +80,7 @@ def repair_answer_for_mode(
     mode: str = "default",
     trace: dict[str, Any] | None = None,
     rules: list[Any] | None = None,
+    language: str = "ko",
 ) -> dict[str, Any]:
     original = str(answer or "")
     current = original
@@ -97,6 +101,14 @@ def repair_answer_for_mode(
     candidate_rules, built_in_rule_ids, production_rule_ids = _repair_rules_for_run(rules)
     for rule in active_rules(candidate_rules):
         if not mode_allows_rule(rule, mode):
+            continue
+        # Do not inject Korean user-facing wording into non-Korean answers.
+        if (
+            language != "ko"
+            and rule.action in {"replace", "soften", "shorten", "rewrite_sentence"}
+            and rule.replacement
+            and _HANGUL.search(str(rule.replacement))
+        ):
             continue
         rule_used = False
         for term in rule.trigger_terms:
