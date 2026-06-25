@@ -568,6 +568,36 @@ def get_voice_loop_audio(filename: str) -> FileResponse:
     return FileResponse(path, media_type="audio/wav", filename=filename)
 
 
+_GROUNDED_PASTE_PREFIXES = (
+    "The retrieved evidence defines",
+    "Within the retrieved evidence",
+    "Grounded in the retrieved evidence",
+    "The evidence points to",
+    "확인된 근거는",
+)
+_GROUNDED_CITATION_NOISE = ("GMT", "PMC ", "PMID", "http", "doi:", "ISBN", "《", "》", "-판다랭크")
+
+
+def _grounded_answer_low_quality(answer: str, language: str) -> bool:
+    """A grounded answer should be demoted to the clean Base Brain surface when it
+    is cross-language for the question, looks like un-synthesized pasted evidence,
+    or carries raw web-citation noise."""
+    text = str(answer or "")
+    if not text.strip():
+        return True
+    hangul = len(re.findall(r"[가-힣]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    if language == "en" and hangul >= 3:
+        return True  # English answer must not carry Korean
+    if language == "ko" and hangul == 0 and latin >= 8:
+        return True  # Korean answer that is entirely English
+    if any(text.strip().startswith(prefix) for prefix in _GROUNDED_PASTE_PREFIXES):
+        return True  # un-synthesized paste
+    if any(marker in text for marker in _GROUNDED_CITATION_NOISE):
+        return True  # raw citation fragment
+    return False
+
+
 def _live_selfhood_payload(
     request: AtanorChatRequest,
     *,
@@ -795,7 +825,7 @@ def _live_selfhood_payload(
         "splatra_scene_policy": visual_policy,
         "diagnostics": diagnostics,
     }
-    if not generated.answer:
+    if not generated.answer or _grounded_answer_low_quality(generated.answer, language):
         # The live conversation router abstained (no safe surface walk yet, e.g.
         # sparse English constructions). Rather than show the user nothing, fall
         # back to the graph-grounded Base Brain answer, which carries its own
@@ -2086,8 +2116,55 @@ def _base_brain_payload(
     return {"state": "completed", "result": payload, **_flags()}
 
 
+def _demote_low_quality_to_base_brain(response: dict[str, Any], request: AtanorChatRequest) -> dict[str, Any]:
+    """Final quality gate across ALL answer paths: if the surfaced answer is
+    cross-language / pasted / citation-noise, replace it with the clean Base Brain
+    answer (or Base Brain's honest abstention). Keeps the dashboard from ever
+    showing a raw, wrong-language web snippet."""
+    result = response.get("result")
+    if not isinstance(result, dict):
+        return response
+    answer = str(result.get("answer") or "")
+    if not answer.strip():
+        return response
+    question = request.question_text()
+    language = request.language or ("ko" if any("\uac00" <= char <= "\ud7a3" for char in question) else "en")
+    if not _grounded_answer_low_quality(answer, language):
+        return response
+    base = answer_with_base_brain(
+        question, language=language, audience_level=request.audience_level, mode="default"  # type: ignore[arg-type]
+    )
+    base_answer = str(base.get("answer") or "").strip()
+    if not base_answer:
+        return response
+    result["answer"] = base_answer
+    result["answer_kind"] = "base_brain_after_low_quality_grounding"
+    result["confidence"] = float(base.get("confidence") or 0.5)
+    result["scene_grounding"] = base.get("scene_grounding")
+    result["reasoning_certificate"] = base.get("reasoning_certificate")
+    result["scene_choreography"] = None
+    result["visual_scene_plan"] = None
+    result["splatra_scene_plan"] = None
+    engine = result.get("answer_engine")
+    if not isinstance(engine, dict):
+        engine = {}
+    engine["generation_basis"] = "base_brain_seed_graph_surface_v0"
+    for flag in (
+        "external_llm", "external_sllm", "external_llm_used", "external_sllm_used",
+        "rule_based_answer_used", "internal_trace_exposed", "local_brain_write",
+        "production_store_mutated", "candidate_promotion",
+    ):
+        engine[flag] = False
+    result["answer_engine"] = engine
+    return response
+
+
 @router.post("/api/chat/atanor")
 async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
+    return _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
+
+
+async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
     question = request.question_text()
     if not question:
         raise HTTPException(status_code=422, detail="question, query, or message is required")
