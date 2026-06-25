@@ -12,6 +12,15 @@ from pydantic import BaseModel, Field
 from app.services.alpha_services import alpha_service
 from packages.base_brain.scene_grounding import extract_scene_grounding
 from packages.base_brain.zero_user_answer import answer_with_base_brain
+from packages.base_brain.pack_loader import get_semantic_context, load_base_brain_pack
+from packages.holographic_fold import (
+    build_field_inputs,
+    build_pair_representation,
+    build_state_field,
+    compare_fold_to_answer,
+    fold_state,
+    folded_core,
+)
 from packages.cgsr.cgsr.conversation_surface import generate_conversation_surface
 from packages.cgsr.cgsr.conversation_context import ConversationContextPacket, build_conversation_context
 from packages.cgsr.cgsr.conversation_grounding import (
@@ -36,6 +45,7 @@ from packages.surface_brain.monitor import monitor_answer, repair_answer_for_mod
 from packages.surface_brain.dual_projection import ingest_source_sentence_dual_projection
 from packages.surface_brain.models import SourceSentence, honesty_flags
 from packages.surface_brain.realization_planner import plan_speech, realize_answer
+from packages.cloud_brain.candidate_read_model import candidate_cloud_status
 from packages.cloud_brain.graph_exchange import run_local_cloud_exchange
 from packages.cloud_brain.semantic_store import SemanticCloudStore
 from packages.neural_emotion.event_bus import emit_runtime_event, infer_user_text_runtime_event
@@ -83,6 +93,52 @@ def _verified_store_candidates() -> list[Path]:
         seen.add(key)
         deduped.append(candidate)
     return deduped
+
+
+def _candidate_runs_roots() -> list[Path]:
+    """Find read-only Cloud Brain candidate-run roots across sibling worktrees.
+
+    Mirrors `_verified_store_candidates` but points at `candidate_runs` (the
+    review-gated queue). Read-only: never creates, mutates, or promotes.
+    """
+
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for verified in _verified_store_candidates():
+        runs = verified.parent / "candidate_runs"
+        key = str(runs.resolve() if runs.exists() else runs)
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(runs)
+    return roots
+
+
+def _review_queue_status() -> dict[str, Any] | None:
+    """Read the live review-gated candidate queue without promotion.
+
+    Returns the bounded candidate status (counts + honesty flags) for the most
+    recent candidate run, or None if no candidate store can be resolved. This is
+    a pure read: no production mutation, no Local Brain write, no promotion.
+    """
+
+    configured = os.environ.get("ATANOR_CANDIDATE_STORE_PATH")
+    if configured:
+        candidate = Path(configured)
+        if candidate.exists() and candidate.is_dir():
+            return candidate_cloud_status(candidate)
+    for runs_dir in _candidate_runs_roots():
+        if not runs_dir.exists() or not runs_dir.is_dir():
+            continue
+        stores = [
+            item
+            for item in runs_dir.iterdir()
+            if item.is_dir() and (item / "manifest.json").exists()
+        ]
+        if stores:
+            latest = max(stores, key=lambda item: item.stat().st_mtime)
+            return candidate_cloud_status(latest)
+    return None
 
 
 def _splatra_dispatch_budget(
@@ -607,7 +663,12 @@ def _live_selfhood_payload(
 ) -> dict[str, Any]:
     context_packet = conversation_context or build_conversation_context(question, request.conversation_context)
     route = route_conversation_request(context_packet.contextual_query)
-    grounded_context = gather_grounded_context(context_packet.contextual_query, route, runtime=_verified_store_runtime())
+    runtime = _verified_store_runtime()
+    runtime["language"] = language
+    review_status = _review_queue_status()
+    if review_status is not None:
+        runtime["review_queue_status"] = review_status
+    grounded_context = gather_grounded_context(context_packet.contextual_query, route, runtime=runtime)
     speech_act = _live_selfhood_speech_act(question, language)
     generated = generate_conversation_surface(
         question,
@@ -2167,20 +2228,32 @@ def _demote_low_quality_to_base_brain(response: dict[str, Any], request: AtanorC
     language = request.language or ("ko" if any("\uac00" <= char <= "\ud7a3" for char in question) else "en")
     engine_now = result.get("answer_engine") if isinstance(result.get("answer_engine"), dict) else {}
     answer_is_abstention = _looks_like_abstention(answer)
-    # Demote when: the answer is cross-language/pasted/citation-noise, OR its
-    # engine can't prove graph-derived honesty (would fail the dashboard render
-    # gate), OR the live path abstained (the grounded path only hand-authors a few
-    # topics, so it abstains on concepts Base Brain actually knows, e.g. Docker).
-    if (
-        not _grounded_answer_low_quality(answer, language)
-        and _engine_passes_frontend_gate(engine_now)
-        and not answer_is_abstention
-    ):
-        return response
     base = answer_with_base_brain(
         question, language=language, audience_level=request.audience_level, mode="default"  # type: ignore[arg-type]
     )
     base_answer = str(base.get("answer") or "").strip()
+    base_conf = float(base.get("confidence") or 0.0)
+    grounding_source = str(engine_now.get("grounding_source") or "")
+    # A loosely-matched verified-store paste yields to a Base-Brain answer that
+    # actually NAMES the concept (conf >= 0.85): the precise graph answer beats a
+    # tangential pasted fact (e.g. "AI 학습과 AI 추론" → a cognitive-science snippet).
+    prefer_base = (
+        grounding_source == "verified_store_v0_readonly"
+        and base_conf >= 0.85
+        and not _looks_like_abstention(base_answer)
+    )
+    # Demote when: the answer is cross-language/pasted/citation-noise, OR its
+    # engine can't prove graph-derived honesty (would fail the dashboard render
+    # gate), OR the live path abstained (the grounded path only hand-authors a few
+    # topics, so it abstains on concepts Base Brain actually knows, e.g. Docker),
+    # OR a verified-store paste should yield to a confident Base-Brain naming.
+    if (
+        not _grounded_answer_low_quality(answer, language)
+        and _engine_passes_frontend_gate(engine_now)
+        and not answer_is_abstention
+        and not prefer_base
+    ):
+        return response
     if not base_answer:
         return response
     # Don't swap one honest abstention for another: if the live path abstained and
@@ -2209,9 +2282,261 @@ def _demote_low_quality_to_base_brain(response: dict[str, Any], request: AtanorC
     return response
 
 
+def _concepts_for_fold(question: str) -> list[dict[str, Any]]:
+    """Real base-brain concepts (+ relation neighbours) matched to the query."""
+
+    pack = load_base_brain_pack()
+    matched = get_semantic_context(question, pack, limit=24)
+    concepts: list[dict[str, Any]] = []
+    for concept in matched:
+        score = float(concept.get("match_score") or 0.0)
+        hop = 0 if score >= 4.0 else (1 if score >= 1.0 else 2)
+        importance = min(1.0, max(0.1, 0.3 + score * 0.12))
+        concepts.append({**concept, "importance": importance, "hop_depth": hop})
+    return concepts
+
+
+_SHOW_FOLD_MARKERS_KO = ("작동방식", "작동 방식", "어떻게 작동", "어떻게 동작", "구조 보여", "구조를 보여", "생각을 보여", "생각하는 걸 보여", "3d로 보여", "3d로 펼", "접히는 걸 보여")
+_SHOW_FOLD_MARKERS_EN = ("show how you work", "show how you think", "how do you work", "how do you think", "show your structure", "think in 3d", "show me your reasoning in 3d", "visualize your")
+
+
+def _is_show_fold_request(question: str) -> bool:
+    text = re.sub(r"\s+", " ", str(question or "").strip().lower())
+    if not text:
+        return False
+    if any(marker in text for marker in _SHOW_FOLD_MARKERS_EN):
+        return True
+    raw = str(question or "")
+    return any(marker in raw for marker in _SHOW_FOLD_MARKERS_KO)
+
+
+def _is_local_graph_request(question: str) -> bool:
+    raw = str(question or "")
+    lowered = raw.lower()
+    return ("로컬 그래프" in raw or "로컬그래프" in raw or "local graph" in lowered) and (
+        "파동" in raw or "보여" in raw or "알려" in raw or "wave" in lowered or "show" in lowered
+    )
+
+
+def _atanor_self_concepts() -> list[dict[str, Any]]:
+    """Real base-brain concepts that describe ATANOR itself (for the self-fold)."""
+
+    pack = load_base_brain_pack()
+    seed = "ATANOR 구조 로컬 브레인 클라우드 브레인 graph hub atlas brain graph 추론 그래프"
+    matched = get_semantic_context(seed, pack, limit=24)
+    concepts: list[dict[str, Any]] = []
+    for concept in matched:
+        score = float(concept.get("match_score") or 0.0)
+        hop = 0 if score >= 4.0 else (1 if score >= 1.0 else 2)
+        concepts.append({**concept, "importance": min(1.0, max(0.2, 0.4 + score * 0.1)), "hop_depth": hop})
+    return concepts
+
+
+def _local_graph_concepts() -> list[dict[str, Any]]:
+    """ALL base-brain concepts (the local knowledge graph) as fold inputs."""
+
+    pack = load_base_brain_pack()
+    concepts: list[dict[str, Any]] = []
+    for concept in pack.semantic_graph.get("concepts", []) or []:
+        confidence = float(concept.get("confidence", 0.75) or 0.75)
+        concepts.append({**concept, "importance": min(1.0, max(0.2, 0.4 + confidence * 0.4)), "hop_depth": 0})
+    return concepts
+
+
+def _build_fold_scene(question: str, concepts: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+    """Fold a concept set and assemble a renderable 3D scene (read-only).
+
+    Defaults to ATANOR's self-knowledge; pass `concepts` to fold an explicit
+    graph (e.g. the whole local knowledge graph).
+    """
+
+    concepts = concepts if concepts is not None else _atanor_self_concepts()
+    if not concepts:
+        return None
+    emotion = None
+    try:
+        snapshot = EVENT_BUS.engine.snapshot().to_dict()
+        emotion = {**snapshot, "provenance": "neural_emotion:snapshot"}
+    except Exception:  # pragma: no cover - optional
+        emotion = None
+    raw_nodes, edges = build_field_inputs(question, concepts=concepts, emotion=emotion)
+    if not raw_nodes:
+        return None
+    label_by_id = {node["node_id"]: node.get("label") or node["node_id"] for node in raw_nodes}
+    field = build_state_field(question, raw_nodes)
+    folded = fold_state(field, edges=edges, capture_trajectory=True, trajectory_frames=48)
+    index = {node.node_id: i for i, node in enumerate(folded.nodes)}
+    pair_rep = build_pair_representation(field, edges=edges)
+    scene_edges = [
+        {
+            "i": index[pair.i],
+            "j": index[pair.j],
+            "intf": round(pair.interference_energy, 4),
+            "constructive": bool(pair.constructive),
+        }
+        for pair in pair_rep.pairs
+        if pair.has_edge and pair.i in index and pair.j in index
+    ]
+    scene_nodes = [
+        {
+            "id": node.node_id,
+            "label": label_by_id.get(node.node_id, node.node_id),
+            "source_type": node.source_type,
+            "position": list(node.position),
+            "radius": round(node.radius, 4),
+            "coherence": round(node.coherence, 4),
+            # real wave parameters → renderer computes the live interference field
+            "amplitude": round(node.amplitude, 5),
+            "phase": round(node.phase, 5),
+            "frequency": round(node.frequency, 2),
+        }
+        for node in folded.nodes
+    ]
+    return {
+        "render_kind": "phase_holographic_fold_v0",
+        "nodes": scene_nodes,
+        "edges": scene_edges,
+        "core": folded_core(folded, top_k=5),
+        "trajectory": list(folded.trajectory),
+        "meta": {
+            "active_node_count": folded.metadata.get("active_node_count"),
+            "global_coherence": folded.metadata.get("global_coherence"),
+            "fold_timing_ms": folded.metadata.get("fold_timing_ms"),
+            "trajectory_frame_count": folded.metadata.get("trajectory_frame_count"),
+            "mean_radius_by_source": folded.metadata.get("mean_radius_by_source"),
+            "original_brain_state_mutated": False,
+            "fold_driver_mode": "compare_mode",
+            "note": "ATANOR 내부 상태(검증 개념·후보·감정)를 위상 홀로그래픽 폴딩으로 접은 실제 구조입니다. 답변을 구동하지는 않습니다.",
+        },
+    }
+
+
+@router.get("/api/holographic-fold/local")
+async def holographic_fold_local() -> dict[str, Any]:
+    """Fold the whole local knowledge graph (real engine) → renderable scene."""
+
+    try:
+        scene = _build_fold_scene("local knowledge graph", concepts=_local_graph_concepts())
+    except Exception:  # pragma: no cover - never break the dashboard
+        scene = None
+    return {"folded_state_field": scene, "render_fold_scene": bool(scene)}
+
+
+def _attach_holographic_fold_trace(response: dict[str, Any], request: AtanorChatRequest) -> dict[str, Any]:
+    """Attach a compare_mode Phase-Holographic-Fold trace (hidden, read-only).
+
+    The fold's recommended core is compared to the answer's own evidence and
+    LOGGED only. It never changes the answer (compare_mode, spec §7). Fully
+    defensive: any failure leaves the response untouched.
+    """
+
+    try:
+        result = response.get("result")
+        if not isinstance(result, dict) or not result.get("answer"):
+            return response
+        question = request.question_text()
+        if not question:
+            return response
+
+        # VISUALIZATION commands ("local graph waves" / "show how ATANOR works")
+        # are handled FIRST: they fold an explicit graph (the whole local graph or
+        # the self-concepts) and must not be blocked by the compare-trace concept
+        # gate below, which can be empty for a pure render request.
+        local_req = _is_local_graph_request(question)
+        if local_req or _is_show_fold_request(question):
+            scene = (
+                _build_fold_scene(question, concepts=_local_graph_concepts())
+                if local_req
+                else _build_fold_scene(question)
+            )
+            if scene:
+                if local_req:
+                    scene["render_kind"] = "local_graph_wave"
+                result["folded_state_field"] = scene
+                result["render_fold_scene"] = True
+                # This is a render command, not a knowledge question — the scene is
+                # the real content. Replace any tangential grounded paste with a
+                # short, data-aware caption describing exactly what is shown.
+                is_ko = bool(re.search(r"[가-힣]", question))
+                node_count = len(scene.get("nodes") or [])
+                if local_req:
+                    result["answer"] = (
+                        f"실시간 로컬 지식 그래프 {node_count}개 노드를 불러와, 각 노드의 파동이 퍼지며 겹치는 실제 간섭장을 보여드립니다."
+                        if is_ko
+                        else f"Loading the live local knowledge graph ({node_count} nodes) and rendering the real superposed wave-interference field of every node."
+                    )
+                else:
+                    result["answer"] = (
+                        "ATANOR의 내부 상태(검증 개념·후보·감정)를 위상 홀로그래픽 폴딩으로 3D 구조로 접어 보여드립니다."
+                        if is_ko
+                        else "Folding ATANOR's internal state (verified concepts, candidates, emotion) into a 3D phase-holographic structure."
+                    )
+
+        concepts = _concepts_for_fold(question)
+        if not concepts:
+            return response
+        emotion = None
+        try:
+            snapshot = EVENT_BUS.engine.snapshot().to_dict()
+            emotion = {**snapshot, "provenance": "neural_emotion:snapshot"}
+        except Exception:  # pragma: no cover - optional emotion source
+            emotion = None
+        raw_nodes, edges = build_field_inputs(question, concepts=concepts, emotion=emotion)
+        if not raw_nodes:
+            return response
+        field = build_state_field(question, raw_nodes)
+        folded = fold_state(field, edges=edges)
+
+        # resolve the answer's evidence (concept ids OR display names) to node ids
+        resolver: dict[str, str] = {}
+        for node in field.nodes:
+            resolver[node.node_id.casefold()] = node.node_id
+            resolver[node.label.casefold()] = node.node_id
+            if node.node_id.startswith("concept:"):
+                resolver[node.node_id.split("concept:", 1)[1].casefold()] = node.node_id
+        certificate = result.get("reasoning_certificate")
+        certificate = certificate if isinstance(certificate, dict) else {}
+        evidence_raw = list(certificate.get("evidence_concepts") or [])
+        anchor = certificate.get("anchor_concept")
+        if anchor:
+            evidence_raw.append(anchor)
+
+        def _evidence_key(item: Any) -> str:
+            # evidence entries may be plain ids or concept dicts ({id, label, ...})
+            if isinstance(item, dict):
+                item = item.get("id") or item.get("concept_id") or item.get("canonical_name") or ""
+            return str(item).strip().casefold()
+
+        evidence_ids = []
+        for item in evidence_raw:
+            key = _evidence_key(item)
+            if not key:
+                continue
+            evidence_ids.append(resolver.get(key) or resolver.get(f"concept:{key}") or f"concept:{key}")
+
+        report = compare_fold_to_answer(folded, evidence_ids)
+        report["folded_global_coherence"] = folded.metadata.get("global_coherence")
+        report["fold_timing_ms"] = folded.metadata.get("fold_timing_ms")
+        report["mean_radius_by_source"] = folded.metadata.get("mean_radius_by_source")
+
+        compact = result.setdefault("compact_trace", {})
+        if isinstance(compact, dict):
+            compact["holographic_fold"] = report
+        engine = result.setdefault("answer_engine", {})
+        if isinstance(engine, dict):
+            engine["phase_holographic_fold_attached"] = True
+            engine["fold_driver_mode"] = "compare_mode"
+            engine["fold_answer_source"] = "hidden_trace_only"
+
+    except Exception:  # pragma: no cover - never break the answer path
+        return response
+    return response
+
+
 @router.post("/api/chat/atanor")
 async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
-    return _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
+    response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
+    return _attach_holographic_fold_trace(response, request)
 
 
 async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
