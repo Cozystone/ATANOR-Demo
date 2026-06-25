@@ -2124,6 +2124,16 @@ _FRONTEND_ALLOWED_BASES = {
 }
 
 
+def _looks_like_abstention(text: str) -> bool:
+    low = str(text or "").lower()
+    return (
+        "enough" in low
+        or "confidently yet" in low
+        or "부족" in str(text)
+        or "단정하기 어렵" in str(text)
+    )
+
+
 def _engine_passes_frontend_gate(engine: dict[str, Any]) -> bool:
     """Mirror the web client's isAsmConversationPayload honesty gate. An answer
     that cannot prove it is graph-derived (allowed basis + all honesty flags
@@ -2156,13 +2166,26 @@ def _demote_low_quality_to_base_brain(response: dict[str, Any], request: AtanorC
     question = request.question_text()
     language = request.language or ("ko" if any("\uac00" <= char <= "\ud7a3" for char in question) else "en")
     engine_now = result.get("answer_engine") if isinstance(result.get("answer_engine"), dict) else {}
-    if not _grounded_answer_low_quality(answer, language) and _engine_passes_frontend_gate(engine_now):
+    answer_is_abstention = _looks_like_abstention(answer)
+    # Demote when: the answer is cross-language/pasted/citation-noise, OR its
+    # engine can't prove graph-derived honesty (would fail the dashboard render
+    # gate), OR the live path abstained (the grounded path only hand-authors a few
+    # topics, so it abstains on concepts Base Brain actually knows, e.g. Docker).
+    if (
+        not _grounded_answer_low_quality(answer, language)
+        and _engine_passes_frontend_gate(engine_now)
+        and not answer_is_abstention
+    ):
         return response
     base = answer_with_base_brain(
         question, language=language, audience_level=request.audience_level, mode="default"  # type: ignore[arg-type]
     )
     base_answer = str(base.get("answer") or "").strip()
     if not base_answer:
+        return response
+    # Don't swap one honest abstention for another: if the live path abstained and
+    # Base Brain also has nothing concrete, keep the original.
+    if answer_is_abstention and _looks_like_abstention(base_answer):
         return response
     result["answer"] = base_answer
     result["answer_kind"] = "base_brain_after_low_quality_grounding"
