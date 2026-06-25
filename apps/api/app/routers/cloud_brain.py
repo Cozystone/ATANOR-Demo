@@ -1040,6 +1040,28 @@ def _resolve_candidate_store_path() -> str | None:
     return None
 
 
+def merge_candidates_to_production_now() -> dict[str, Any]:
+    """Resolve the sibling-aware candidate store and merge it into the production
+    semantic store. Safe to call from the autonomous loop (idempotent shard)."""
+    from packages.cloud_brain.candidate_promotion_merge import merge_candidates_to_production
+
+    store = _resolve_candidate_store_path()
+    if not store:
+        return {"merged": False, "reason": "no_candidate_store"}
+    try:
+        return merge_candidates_to_production(store)
+    except Exception as exc:  # pragma: no cover - merge must never crash the loop
+        return {"merged": False, "reason": f"merge_error:{type(exc).__name__}"}
+
+
+@router.post("/merge-candidates-to-production")
+def cloud_brain_merge_candidates() -> dict[str, Any]:
+    """Real promotion: merge web-learned candidates into the production cloud
+    semantic store as a reversible growth shard. The Cloud Brain then genuinely
+    contains the learned knowledge (not just a surfaced overlay)."""
+    return merge_candidates_to_production_now()
+
+
 @router.get("/candidate/status")
 def cloud_brain_candidate_status(
     candidate_store_path: str | None = Query(default=None, max_length=800),

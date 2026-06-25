@@ -141,6 +141,15 @@ def _auto_promote_review_queue() -> dict[str, Any]:
                     item.review_notes.append("auto-promoted to staging")
         if result.get("newly_promoted_ids"):
             _persist_review_queue()
+            # Real promotion: also merge the learned candidates into the production
+            # cloud semantic store so the Cloud Brain genuinely grows (reversible
+            # shard; user policy: unconditional promotion).
+            try:
+                from apps.api.app.routers.cloud_brain import merge_candidates_to_production_now
+
+                result["production_merge"] = merge_candidates_to_production_now()
+            except Exception:  # pragma: no cover - merge must never break the loop
+                result["production_merge"] = {"merged": False, "reason": "merge_unavailable"}
         return result
     except Exception:  # pragma: no cover - never break the loop
         return {"allowed": False, "auto_promoted": 0}
