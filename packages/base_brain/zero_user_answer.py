@@ -373,6 +373,73 @@ def _relation_sentence(source: dict[str, Any], relation: dict[str, Any], context
     return f"{source_label} {relation_word} {target_label}."
 
 
+# Korean micro-NLG: each relation carries its own connecting particle, applied to
+# the BARE label with the correct allomorph (을/를, 과/와) by final consonant —
+# never double-marking ("그래프를 를 필요로"). (particle_kind, verb_phrase)
+KO_RELATION = {
+    "is_a": ("genitive", "한 종류입니다"),
+    "part_of": ("genitive", "일부입니다"),
+    "causes": ("genitive", "원인이 될 수 있습니다"),
+    "example_of": ("genitive", "예입니다"),
+    "used_for": ("locative", "쓰입니다"),
+    "depends_on": ("locative", "의존합니다"),
+    "enables": ("object", "가능하게 합니다"),
+    "requires": ("object", "필요로 합니다"),
+    "manages": ("object", "관리합니다"),
+    "produces": ("object", "만듭니다"),
+    "supports": ("object", "뒷받침합니다"),
+    "contains": ("object", "포함합니다"),
+    "uses": ("object", "사용합니다"),
+    "contrasts_with": ("comitative", "대비됩니다"),
+    "similar_to": ("comitative", "비슷합니다"),
+    "has_property": ("property", "특성을 가집니다"),
+}
+
+
+def _ko_relation_clause(relation_name: str, target_label: str) -> str:
+    spec = KO_RELATION.get(relation_name)
+    if spec is None:
+        return f"{_with_and(target_label)} 관련이 있습니다"
+    kind, verb = spec
+    if kind == "object":
+        return f"{_object(target_label)} {verb}"
+    if kind == "genitive":
+        return f"{target_label}의 {verb}"
+    if kind == "locative":
+        return f"{target_label}에 {verb}"
+    if kind == "comitative":
+        return f"{_with_and(target_label)} {verb}"
+    if kind == "property":
+        marker = "이라는" if _has_final_consonant(target_label) else "라는"
+        return f"{target_label}{marker} {verb}"
+    return f"{_object(target_label)} {verb}"
+
+
+def _korean_relation_sentence(
+    primary: dict[str, Any], context_map: dict[str, dict[str, Any]], *, max_relations: int = 3
+) -> str:
+    """Aggregate a concept's relations: '이는 <clause1>. 또한 <clause2>.' — one
+    subject ('이는' = it), correct particles, no subject repetition."""
+    clauses: list[str] = []
+    for relation in primary.get("relations", [])[:max_relations]:
+        relation_name = str(relation.get("relation") or "related_to")
+        if relation_name not in KO_RELATION:
+            continue
+        target_id = str(relation.get("target") or "")
+        if target_id not in context_map and "_" in target_id:
+            continue
+        target = context_map.get(target_id, {"concept_id": target_id, "labels": {}})
+        target_label = _label(target, "ko")
+        if not target_label:
+            continue
+        clauses.append(_ko_relation_clause(relation_name, target_label))
+    if not clauses:
+        return ""
+    parts = [f"이는 {clauses[0]}."]
+    parts += [f"또한 {clause}." for clause in clauses[1:]]
+    return " ".join(parts)
+
+
 def _compare_answer(context: list[dict[str, Any]], language: str, audience_level: str) -> str:
     if len(context) < 2:
         return ""
@@ -466,14 +533,6 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
 
     primary = strong[0]
     context_map = _concept_by_id(context)
-    relation_lines = [
-        line
-        for line in (
-            _relation_sentence(primary, relation, context_map, language)
-            for relation in primary.get("relations", [])[:2]
-        )
-        if line
-    ]
     base = _description_sentence(primary, language, audience_level)
     if language == "ko":
         if audience_level == "expert":
@@ -482,8 +541,10 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
             answer = f"{base} 쉽게 말하면 여러 작업이 흩어져 있어도 사람이 일일이 챙기지 않게 정리하고 조율하는 장치에 가깝습니다."
         else:
             answer = base
-        if relation_lines and audience_level != "expert":
-            answer = f"{answer} {' '.join(relation_lines)}"
+        if audience_level != "expert":
+            rel_sentence = _korean_relation_sentence(primary, context_map)
+            if rel_sentence:
+                answer = f"{answer} {rel_sentence}"
         return answer, True
 
     base_text = base.rstrip(". ").strip()
