@@ -58,6 +58,105 @@ router = APIRouter(tags=["dual-brain"])
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
+# ----- Local Brain cumulative memory (private on-device) ----------------------
+from packages.local_brain import LocalBrainMemory, extract_user_facts
+
+LOCAL_BRAIN = LocalBrainMemory(PROJECT_ROOT / "runtime" / "local_brain" / "local_memory.json")
+
+# Questions that ask the agent to recall something about the USER (not ATANOR).
+_SELF_RECALL_KO = ("내 이름", "제 이름", "내가 누구", "내가 뭘 좋아", "내가 좋아하는", "나 뭐 좋아", "내 직업", "내가 어디", "나에 대해", "내 정보")
+_SELF_RECALL_EN = ("my name", "what do i like", "what's my favorite", "what is my favorite", "where do i live", "my job", "about me", "what do you know about me")
+
+
+def _is_self_recall_question(question: str) -> bool:
+    raw = str(question or "")
+    lowered = raw.lower()
+    return any(m in raw for m in _SELF_RECALL_KO) or any(m in lowered for m in _SELF_RECALL_EN)
+
+
+def _accumulate_user_facts(question: str, language: str) -> int:
+    """Accumulate user preferences/info from this turn into the Local Brain.
+
+    The extractor already skips interrogative turns, so a question like
+    "내 이름이 뭐야?" never pollutes memory while a statement like
+    "내 이름은 블루야" still accumulates.
+    """
+    try:
+        facts = extract_user_facts(question, language)
+        for kind, subject, value, confidence in facts:
+            LOCAL_BRAIN.remember(kind, subject, value, source="conversation", source_ref="conversation_turn", confidence=confidence, save=False)
+        if facts:
+            LOCAL_BRAIN.save()
+        return len(facts)
+    except Exception:  # pragma: no cover - never break the chat
+        return 0
+
+
+def _local_brain_recall(question: str, language: str) -> dict[str, Any] | None:
+    """If the user asks ATANOR to recall something about THEM and the Local Brain
+    knows it, answer from private memory with a certificate. Else None."""
+    try:
+        raw = str(question or "")
+        lowered = raw.lower()
+        # Only treat it as a recall when there is a question/recall cue, so a
+        # statement ("내 이름은 블루야") is not answered as if it were a question.
+        has_cue = (
+            "?" in raw
+            or any(c in raw for c in ("뭐", "뭘", "뭣", "뭔", "누구", "말해", "알려", "기억", "어디", "였"))
+            or any(c in lowered for c in ("what", "who", "where", "tell me", "remember", "do you know"))
+        )
+        if not has_cue:
+            return None
+        # Map the question to a known self-subject, then fetch that fact directly
+        # (token overlap fails across languages: "내 이름" vs subject "name").
+        subject: str | None = None
+        if any(m in raw for m in ("내 이름", "제 이름", "내가 누구")) or "my name" in lowered or "who am i" in lowered:
+            subject = "name"
+        elif "싫어" in raw or any(w in lowered for w in ("dislike", "hate")):
+            subject = "dislikes"
+        elif "좋아" in raw or "선호" in raw or any(w in lowered for w in ("like", "favorite", "favourite", "prefer", "enjoy")):
+            subject = "likes"
+        elif "직업" in raw or any(w in lowered for w in ("job", "work")):
+            subject = "job"
+        elif "어디" in raw or "live" in lowered or "location" in lowered:
+            subject = "location"
+        if not subject:
+            return None
+        hits = [f for f in LOCAL_BRAIN.all_facts() if f.subject == subject]
+        if not hits:
+            return None
+        is_ko = language == "ko"
+        top = hits[0]
+
+        def _eul(word: str) -> str:
+            # pick the object particle by whether the last Hangul char has a 받침
+            if word and "가" <= word[-1] <= "힣":
+                return "을" if (ord(word[-1]) - 0xAC00) % 28 else "를"
+            return "을(를)"
+
+        if top.subject == "name":
+            answer = f"당신의 이름은 {top.value}입니다." if is_ko else f"Your name is {top.value}."
+        elif top.subject == "likes":
+            answer = f"당신은 {top.value}{_eul(top.value)} 좋아한다고 하셨어요." if is_ko else f"You told me you like {top.value}."
+        elif top.subject == "dislikes":
+            answer = f"당신은 {top.value}{_eul(top.value)} 싫어한다고 하셨어요." if is_ko else f"You told me you dislike {top.value}."
+        else:
+            answer = f"제가 기억하기로는, {top.subject}: {top.value}." if is_ko else f"From what I remember — {top.subject}: {top.value}."
+        steps = [{"type": "local_memory_fact", "fact": f"{f.subject}: {f.value}", "source": f.source} for f in hits]
+        certificate = {
+            "derivation_kind": "local_brain_memory_recall",
+            "anchor_concept": {"id": top.subject, "label": top.subject, "match": "local_memory"},
+            "steps": steps,
+            "evidence_concepts": [f"local_memory:{f.subject}" for f in hits],
+            "confidence": round(float(top.confidence), 4),
+            "confidence_basis": "private_on_device_memory",
+            "guarantees": {"external_llm": False, "fabricated_facts": False, "private_on_device": True, "uploaded_to_cloud": False},
+        }
+        return {"answer": answer, "reasoning_certificate": certificate, "confidence": float(top.confidence)}
+    except Exception:  # pragma: no cover
+        return None
+
+
 def _verified_store_runtime() -> dict[str, Any]:
     configured = os.environ.get("ATANOR_VERIFIED_STORE_PATH")
     if configured:
@@ -2605,8 +2704,56 @@ def _attach_holographic_fold_trace(response: dict[str, Any], request: AtanorChat
 
 @router.post("/api/chat/atanor")
 async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
+    question = request.question_text()
+    language = request.language or ("ko" if any("가" <= c <= "힣" for c in (question or "")) else "en")
+    # Local Brain cumulative learning: accumulate user prefs/info from this turn.
+    _accumulate_user_facts(question, language)
+    recall = _local_brain_recall(question, language)
+
     response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
-    return _attach_holographic_fold_trace(response, request)
+    response = _attach_holographic_fold_trace(response, request)
+
+    # If the user asked ATANOR to recall something about THEM and the Local Brain
+    # knows it, that private memory is authoritative — the public engine cannot
+    # know the user's name/preferences, so override its answer.
+    if recall and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = recall["answer"]
+        result["reasoning_certificate"] = recall["reasoning_certificate"]
+        result["confidence"] = recall["confidence"]
+        result["answer_kind"] = "local_brain_memory_recall"
+        result["can_speak"] = True
+    return response
+
+
+class GraphHubImportRequest(BaseModel):
+    source_id: str
+    kind: str = "knowledge"  # "persona" or "knowledge"
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.get("/api/local-brain/memory/status")
+def local_brain_memory_status() -> dict[str, Any]:
+    return {**_flags(), **LOCAL_BRAIN.status()}
+
+
+@router.get("/api/local-brain/memory/facts")
+def local_brain_memory_facts() -> dict[str, Any]:
+    return {**_flags(), "facts": [f.to_dict() for f in LOCAL_BRAIN.all_facts()], **LOCAL_BRAIN.status()}
+
+
+@router.post("/api/local-brain/memory/import-graph-hub")
+def local_brain_import_graph_hub(request: GraphHubImportRequest) -> dict[str, Any]:
+    kind = request.kind if request.kind in {"persona", "knowledge"} else "knowledge"
+    added = LOCAL_BRAIN.import_graph_hub_source(request.source_id, kind, request.items)  # type: ignore[arg-type]
+    return {
+        **_flags(),
+        "imported": len(added),
+        "items": [f.to_dict() for f in added],
+        "uploaded_to_cloud": False,
+        "production_store_mutated": False,
+        **LOCAL_BRAIN.status(),
+    }
 
 
 async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
