@@ -2116,11 +2116,37 @@ def _base_brain_payload(
     return {"state": "completed", "result": payload, **_flags()}
 
 
+_FRONTEND_ALLOWED_BASES = {
+    "local_corpus_construction_transition_model",
+    "semantic_grounded_conversation_router_v0",
+    "semantic_cloud_graph_surface_brain_v0",
+    "base_brain_seed_graph_surface_v0",
+}
+
+
+def _engine_passes_frontend_gate(engine: dict[str, Any]) -> bool:
+    """Mirror the web client's isAsmConversationPayload honesty gate. An answer
+    that cannot prove it is graph-derived (allowed basis + all honesty flags
+    False) is not rendered by the dashboard, so we must demote it."""
+    if str(engine.get("generation_basis") or "") not in _FRONTEND_ALLOWED_BASES:
+        return False
+    for flag in (
+        "external_llm", "external_sllm", "external_llm_used", "external_sllm_used",
+        "rule_based_answer_used", "internal_trace_exposed", "local_brain_write",
+        "production_store_mutated", "candidate_promotion",
+    ):
+        if engine.get(flag) is not False:
+            return False
+    return True
+
+
 def _demote_low_quality_to_base_brain(response: dict[str, Any], request: AtanorChatRequest) -> dict[str, Any]:
-    """Final quality gate across ALL answer paths: if the surfaced answer is
-    cross-language / pasted / citation-noise, replace it with the clean Base Brain
-    answer (or Base Brain's honest abstention). Keeps the dashboard from ever
-    showing a raw, wrong-language web snippet."""
+    """Final quality gate across ALL answer paths: replace the surfaced answer
+    with the clean Base Brain answer (or Base Brain's honest abstention) when it
+    is cross-language / pasted / citation-noise, OR when its engine cannot prove
+    graph-derived honesty (so the dashboard's render gate would reject it). Keeps
+    the dashboard from showing raw web snippets \u2014 and from silently dropping good
+    answers whose provenance metadata is incomplete."""
     result = response.get("result")
     if not isinstance(result, dict):
         return response
@@ -2129,7 +2155,8 @@ def _demote_low_quality_to_base_brain(response: dict[str, Any], request: AtanorC
         return response
     question = request.question_text()
     language = request.language or ("ko" if any("\uac00" <= char <= "\ud7a3" for char in question) else "en")
-    if not _grounded_answer_low_quality(answer, language):
+    engine_now = result.get("answer_engine") if isinstance(result.get("answer_engine"), dict) else {}
+    if not _grounded_answer_low_quality(answer, language) and _engine_passes_frontend_gate(engine_now):
         return response
     base = answer_with_base_brain(
         question, language=language, audience_level=request.audience_level, mode="default"  # type: ignore[arg-type]
