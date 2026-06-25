@@ -165,6 +165,31 @@ def test_real_query_includes_second_hop_reasoning(tmp_path, monkeypatch) -> None
     assert "in turn" in answer  # multi-hop reasoning surfaced
 
 
+def test_precision_gate_abstains_on_loose_false_match(tmp_path, monkeypatch) -> None:
+    # The pack has no "capital of France" / "Graph Hub" concept; a loose match
+    # must abstain instead of confidently describing the wrong concept.
+    monkeypatch.chdir(tmp_path)
+    for query in ["What is the capital of France?", "What is Graph Hub?"]:
+        result = answer_with_base_brain(query, language="en", audience_level="beginner")
+        assert result["confidence"] <= 0.2, f"{query!r} should abstain, got {result['answer']!r}"
+
+
+def test_precision_gate_keeps_directly_named_concept(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    for query in ["What is GraphRAG?", "How does a CPU work?"]:
+        result = answer_with_base_brain(query, language="en", audience_level="beginner")
+        assert result["confidence"] >= 0.5
+        assert "enough" not in result["answer"].lower()  # not the abstain message
+
+
+def test_korean_named_concept_is_confident(tmp_path, monkeypatch) -> None:
+    # Korean attaches a particle to the name ("양자컴퓨터가"); name-matching must
+    # still recognise it, so confidence is high (was wrongly 0.45 before).
+    monkeypatch.chdir(tmp_path)
+    result = answer_with_base_brain("양자컴퓨터가 뭐야?", language="ko", audience_level="beginner")
+    assert result["confidence"] >= 0.5
+
+
 def test_confidence_is_honest_not_a_constant(tmp_path, monkeypatch) -> None:
     # M5: confidence reflects grounding strength.
     monkeypatch.chdir(tmp_path)

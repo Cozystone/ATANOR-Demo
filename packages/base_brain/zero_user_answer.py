@@ -532,6 +532,16 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
             return compared, True
 
     primary = strong[0]
+    # Precision gate: if the top concept is only a loose token-overlap match and
+    # the query never actually names it, we are likely about to describe the
+    # WRONG concept confidently (e.g. "capital of France" -> "API"). Abstain
+    # honestly instead. (Definitional questions only; comparisons handled above.)
+    if intent in {"define", "explain"} and not _named_in_query(query, primary):
+        return (
+            "지금 확인된 근거가 부족해서 단정하기 어렵습니다. 주제나 참고 문장을 조금 더 주면 그 범위 안에서 설명할 수 있습니다."
+            if language == "ko"
+            else "I do not have enough confidently matched evidence for that. Name the topic directly and I can answer within that scope."
+        ), False
     context_map = _concept_by_id(context)
     base = _description_sentence(primary, language, audience_level)
     if language == "ko":
@@ -566,6 +576,26 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
     return answer, True
 
 
+def _concept_names(concept: dict[str, Any]) -> list[str]:
+    names = [str(concept.get("concept_id") or ""), str(concept.get("canonical_name") or "")]
+    names += [str(value) for value in (concept.get("labels") or {}).values()]
+    names += [str(alias) for alias in (concept.get("aliases") or [])]
+    return [name for name in names if name and len(name) >= 3]
+
+
+def _named_in_query(query: str, concept: dict[str, Any]) -> bool:
+    """True when the query actually names the concept. The ASCII-boundary
+    lookarounds give English word boundaries ("api" is not matched inside
+    "capital") while still allowing a Korean particle to follow a Latin name
+    ("GraphRAG가") and any Hangul-name substring ("로컬 브레인이")."""
+    query_lower = query.lower()
+    for name in _concept_names(concept):
+        pattern = r"(?<![A-Za-z0-9])" + re.escape(name.lower().replace("_", " ")) + r"(?![A-Za-z0-9])"
+        if re.search(pattern, query_lower):
+            return True
+    return False
+
+
 def _answer_confidence(query: str, strong_context: list[dict[str, Any]], useful: bool) -> float:
     """M5: honest confidence, not a fixed constant.
 
@@ -577,17 +607,7 @@ def _answer_confidence(query: str, strong_context: list[dict[str, Any]], useful:
     """
     if not useful or not strong_context:
         return 0.18
-    primary = strong_context[0]
-    names = [str(primary.get("concept_id") or ""), str(primary.get("canonical_name") or "")]
-    names += [str(value) for value in (primary.get("labels") or {}).values()]
-    names += [str(alias) for alias in (primary.get("aliases") or [])]
-    query_lower = query.lower()
-    name_matched = any(
-        name
-        and len(name) >= 3
-        and re.search(r"\b" + re.escape(name.lower().replace("_", " ")) + r"\b", query_lower)
-        for name in names
-    )
+    name_matched = _named_in_query(query, strong_context[0])
     corroboration = min(0.06, max(0, len(strong_context) - 1) * 0.02)
     return round((0.85 if name_matched else 0.45) + corroboration, 3)
 
