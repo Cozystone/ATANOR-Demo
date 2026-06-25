@@ -33,8 +33,34 @@ EN_QUERIES = [
     "What is an ontology graph?",
     "What is Kubernetes?",
     "What is the difference between local AI and cloud AI?",
+    # Regression: these concept descriptions END with a period; the comparison
+    # frame used to append another, yielding "... user.." (double period).
+    "What is the difference between local brain and cloud brain?",
     "Why does evidence matter for reducing hallucination?",
 ]
+
+
+def test_comparison_with_period_terminated_descriptions_is_clean(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    answer = answer_with_base_brain(
+        "What is the difference between local brain and cloud brain?",
+        language="en",
+        audience_level="beginner",
+    )["answer"]
+    assert ".." not in answer, f"double period in comparison: {answer!r}"
+    assert "By contrast," in answer  # still uses the comparison frame
+
+
+def test_description_does_not_stutter_the_concept_name(tmp_path, monkeypatch) -> None:
+    # "AI inference" whose description begins "inference uses …" used to render
+    # "AI inference is inference uses …". The clause should stand on its own.
+    monkeypatch.chdir(tmp_path)
+    answer = answer_with_base_brain(
+        "Compare AI training and AI inference.", language="en", audience_level="beginner"
+    )["answer"]
+    assert "is inference uses" not in answer.lower(), f"stutter: {answer!r}"
+    assert "is training adjusts" not in answer.lower(), f"stutter: {answer!r}"
+    assert ".." not in answer
 
 
 @pytest.mark.parametrize("query", EN_QUERIES)

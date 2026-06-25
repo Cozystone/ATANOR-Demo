@@ -348,6 +348,14 @@ def _description_sentence(concept: dict[str, Any], language: str, audience_level
     lowered = description.lower()
     if lowered.startswith(label.lower()) or lowered.startswith("a ") or lowered.startswith("an "):
         return description.rstrip(".")
+    # If the description restates the concept as a full clause ("inference uses …",
+    # "training adjusts …"), rendering "{label} is {description}" stutters
+    # ("AI inference is inference uses …"). Use the clause as its own sentence.
+    label_words = [word for word in label.lower().split() if word]
+    last_word = label_words[-1] if label_words else ""
+    if last_word and len(last_word) > 3 and lowered.startswith(f"{last_word} "):
+        standalone = description.rstrip(". ").strip()
+        return standalone[:1].upper() + standalone[1:] if standalone else label
     if audience_level == "expert":
         return f"{label}: {description}"
     return f"{label} is {description[:1].lower() + description[1:] if description else 'a related concept in the base graph'}"
@@ -454,10 +462,12 @@ def _compare_answer(context: list[dict[str, Any]], language: str, audience_level
             f"반면 {_description_sentence(second, language, audience_level)} "
             "둘은 관련된 문제를 다룰 수 있지만, 선택 기준과 운영 방식은 다릅니다."
         )
+    first_desc = _description_sentence(first, language, audience_level).rstrip(". ").strip()
+    second_desc = _description_sentence(second, language, audience_level).rstrip(". ").strip()
     return (
         f"The main difference between {_label(first, language)} and {_label(second, language)} is their role and operating context. "
-        f"{_description_sentence(first, language, audience_level)}. "
-        f"By contrast, {_description_sentence(second, language, audience_level)}. "
+        f"{first_desc}. "
+        f"By contrast, {second_desc}. "
         "They may solve related problems, but they are chosen for different constraints."
     )
 
@@ -548,27 +558,25 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
     context_map = _concept_by_id(context)
     base = _description_sentence(primary, language, audience_level)
     if language == "ko":
-        if audience_level == "expert":
-            answer = base
-        elif any(token in query for token in ("쉽게", "중학생", "초등학생")):
+        if audience_level != "expert" and any(token in query for token in ("쉽게", "중학생", "초등학생")):
             answer = f"{base} 쉽게 말하면 여러 작업이 흩어져 있어도 사람이 일일이 챙기지 않게 정리하고 조율하는 장치에 가깝습니다."
         else:
             answer = base
-        if audience_level != "expert":
-            rel_sentence = _korean_relation_sentence(primary, context_map)
-            if rel_sentence:
-                answer = f"{answer} {rel_sentence}"
+        # graph relations are substantive reasoning (not hand-holding): keep them
+        # at every audience level so expert answers are not strictly thinner.
+        rel_sentence = _korean_relation_sentence(primary, context_map)
+        if rel_sentence:
+            answer = f"{answer} {rel_sentence}"
         return answer, True
 
     base_text = base.rstrip(". ").strip()
     parts = [base_text] if base_text else []
-    if audience_level != "expert":
-        rel_sentence = _english_relation_sentence(primary, context_map)
-        if rel_sentence:
-            parts.append(rel_sentence.rstrip("."))
-        second_hop = _english_second_hop(primary, context_map)
-        if second_hop:
-            parts.append(second_hop.rstrip("."))
+    rel_sentence = _english_relation_sentence(primary, context_map)
+    if rel_sentence:
+        parts.append(rel_sentence.rstrip("."))
+    second_hop = _english_second_hop(primary, context_map)
+    if second_hop:
+        parts.append(second_hop.rstrip("."))
     answer = ". ".join(parts).strip()
     if answer and not answer.endswith((".", "!", "?")):
         answer = f"{answer}."
@@ -583,7 +591,17 @@ def _concept_names(concept: dict[str, Any]) -> list[str]:
     names = [str(concept.get("concept_id") or ""), str(concept.get("canonical_name") or "")]
     names += [str(value) for value in (concept.get("labels") or {}).values()]
     names += [str(alias) for alias in (concept.get("aliases") or [])]
-    return [name for name in names if name and len(name) >= 3]
+    # Korean concept names are legitimately 2 chars (도커/근거/전압/전류); keep
+    # them. Latin names keep a >=3 floor (the ASCII-boundary lookarounds in
+    # _named_in_query already stop short Latin names matching inside words).
+    out: list[str] = []
+    for name in names:
+        if not name:
+            continue
+        has_hangul = bool(re.search(r"[가-힣]", name))
+        if (has_hangul and len(name) >= 2) or (not has_hangul and len(name) >= 3):
+            out.append(name)
+    return out
 
 
 _IDENTITY_MARKERS_KO = ("너는 누구", "넌 누구", "너 누구", "네 정체", "자기소개", "너는 뭐야", "넌 뭐야", "당신은 누구")

@@ -342,11 +342,19 @@ def _natural_answer(query: str, semantic: dict[str, Any], plan: dict[str, Any]) 
             "GraphRAG first expands the concepts related to a question, then retrieves the evidence chunks attached to those graph paths. "
             "The answer is checked against those chunks, so unsupported claims can be downweighted, qualified, or removed."
         )
+    # English answer tail — mirror the careful Korean branch above. Never paste a
+    # raw evidence snippet (it leaks off-topic web candidates); hedge instead. A
+    # degenerate "The core concepts are …" relation is treated as no relation.
+    degenerate_relation = relation_text.startswith("The core concepts are")
+    usable_relation = relation_text and not degenerate_relation
+    if evidence_text and usable_relation:
+        return f"The verified evidence points to: {relation_text}. I can only answer within this scope."
     if evidence_text:
-        return f"{evidence_text} In short, {relation_text or 'the retrieved evidence supports the answer'}."
-    if relation_text:
-        if relation_text.startswith("The core concepts are"):
-            return "I do not have enough local evidence to answer that confidently yet."
+        return (
+            "The verified evidence is related to this question but is not yet enough to answer it "
+            "confidently. As more stable relations accumulate, I can explain it specifically."
+        )
+    if usable_relation:
         return f"{relation_text}. This is limited to the evidence currently available."
     return "I do not have enough local evidence to answer that confidently yet."
 
