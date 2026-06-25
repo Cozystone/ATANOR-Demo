@@ -505,6 +505,32 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
     return answer, True
 
 
+def _answer_confidence(query: str, strong_context: list[dict[str, Any]], useful: bool) -> float:
+    """M5: honest confidence, not a fixed constant.
+
+    The retrieval match_score is not a reliable signal (loose token overlap can
+    score an unrelated concept highly). The honest signal is whether the query
+    *actually names* the concept we answered with: a direct name/label/alias hit
+    means high confidence; answering on loose overlap only is mid-low; an
+    abstaining / ungrounded answer stays low.
+    """
+    if not useful or not strong_context:
+        return 0.18
+    primary = strong_context[0]
+    names = [str(primary.get("concept_id") or ""), str(primary.get("canonical_name") or "")]
+    names += [str(value) for value in (primary.get("labels") or {}).values()]
+    names += [str(alias) for alias in (primary.get("aliases") or [])]
+    query_lower = query.lower()
+    name_matched = any(
+        name
+        and len(name) >= 3
+        and re.search(r"\b" + re.escape(name.lower().replace("_", " ")) + r"\b", query_lower)
+        for name in names
+    )
+    corroboration = min(0.06, max(0, len(strong_context) - 1) * 0.02)
+    return round((0.85 if name_matched else 0.45) + corroboration, 3)
+
+
 def answer_with_base_brain(
     query: str,
     language: Language = "ko",
@@ -521,6 +547,9 @@ def answer_with_base_brain(
     # M3 honesty signal: was this surface a hand-authored canned answer, or was it
     # realized from the graph? General questions must be graph-derived (False).
     hand_authored_answer_used = _project_level_answer(query, language) is not None
+    # M5 honest confidence from grounding strength.
+    strong_context = [item for item in semantic_context if float(item.get("match_score") or 0.0) > 0]
+    confidence = _answer_confidence(query, strong_context, useful)
     trace = {
         "mode": mode,
         "pack_id": pack.pack_id,
@@ -557,6 +586,7 @@ def answer_with_base_brain(
         "answer_kind": "base_brain_zero_user_data",
         "scene_grounding": scene_grounding,
         "hand_authored_answer_used": hand_authored_answer_used,
+        "confidence": confidence,
         "semantic_context_count": len(semantic_context),
         "surface_candidate_count": len(surface_candidates),
         "q_cortex_used": bool(selection.get("q_cortex_used")),

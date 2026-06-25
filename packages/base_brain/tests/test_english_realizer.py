@@ -165,6 +165,18 @@ def test_real_query_includes_second_hop_reasoning(tmp_path, monkeypatch) -> None
     assert "in turn" in answer  # multi-hop reasoning surfaced
 
 
+def test_confidence_is_honest_not_a_constant(tmp_path, monkeypatch) -> None:
+    # M5: confidence reflects grounding strength.
+    monkeypatch.chdir(tmp_path)
+    grounded = answer_with_base_brain("What is GraphRAG?", language="en", audience_level="beginner")
+    ungrounded = answer_with_base_brain(
+        "What is the weather today?", language="en", audience_level="beginner"
+    )
+    assert grounded["confidence"] > 0.5, "a directly named concept should be confident"
+    assert ungrounded["confidence"] < 0.3, "an ungrounded / real-time answer should be low confidence"
+    assert grounded["confidence"] != ungrounded["confidence"]  # not a fixed constant
+
+
 def test_noun_phrase_determiner_rules() -> None:
     assert _en_noun_phrase("semantic graph", with_article=True) == "a semantic graph"
     assert _en_noun_phrase("ontology", with_article=True) == "an ontology"

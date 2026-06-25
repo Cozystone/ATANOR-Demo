@@ -822,7 +822,7 @@ def _live_selfhood_payload(
                 "result": {
                     "answer": base_answer,
                     "language": language,
-                    "confidence": 0.62,
+                    "confidence": float(base.get("confidence") or 0.62),
                     "answer_kind": "base_brain_after_conversation_abstain",
                     # M4 bridge to SPLATRA: visualize a scene only when the verified
                     # evidence is concrete. Abstract answers stay text-only.
@@ -2042,7 +2042,7 @@ def _base_brain_payload(
     payload = {
         "answer": base["answer"],
         "language": language,
-        "confidence": 0.64,
+        "confidence": float(base.get("confidence") or 0.64),
         "default_trace_visible": False,
         "trace": compact_trace if request.include_trace or request.mode in {"trace", "research"} else None,
         "compact_trace": compact_trace,
