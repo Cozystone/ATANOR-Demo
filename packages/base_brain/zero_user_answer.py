@@ -77,7 +77,10 @@ EN_RELATION_CLAUSE = {
 }
 
 # Relations whose object reads as a countable noun phrase and should take a determiner.
-EN_ARTICLE_RELATIONS = {"requires", "uses", "causes", "produces", "contains", "manages", "supports"}
+EN_ARTICLE_RELATIONS = {
+    "requires", "uses", "causes", "produces", "contains", "manages", "supports",
+    "contrasts_with", "similar_to", "depends_on",
+}
 
 # Objects that are mass/abstract nouns and must stay bare (no "a"/"an").
 EN_UNCOUNTABLE = {
@@ -150,7 +153,14 @@ def _english_relation_sentence(
         clauses.append(clause_template.format(o=_join_en(objects)))
     if not clauses:
         return ""
-    return f"It {_join_en(clauses)}."
+    # When a clause already coordinates objects ("uses a semantic graph and a
+    # surface graph"), join the clauses with an Oxford ", and" so the sentence
+    # doesn't read as a run-on chain of "and ... and ...".
+    if len(clauses) >= 2 and any(" and " in clause for clause in clauses):
+        body = f"{', '.join(clauses[:-1])}, and {clauses[-1]}"
+    else:
+        body = _join_en(clauses)
+    return f"It {body}."
 
 
 KO_DESCRIPTIONS = {

@@ -84,6 +84,39 @@ def test_relation_sentence_aggregates_and_articles() -> None:
     assert sentence.endswith(".")
 
 
+def test_compound_clause_uses_oxford_comma() -> None:
+    # M1.5: avoid run-on "uses X and Y and requires Z".
+    primary = {
+        "concept_id": "atanor",
+        "labels": {"en": "ATANOR"},
+        "relations": [
+            {"relation": "uses", "target": "semantic_graph"},
+            {"relation": "uses", "target": "surface_graph"},
+            {"relation": "requires", "target": "privacy"},
+        ],
+    }
+    context_map = {
+        "semantic_graph": {"concept_id": "semantic_graph", "labels": {"en": "semantic graph"}},
+        "surface_graph": {"concept_id": "surface_graph", "labels": {"en": "surface graph"}},
+        "privacy": {"concept_id": "privacy", "labels": {"en": "privacy"}},
+    }
+    sentence = _english_relation_sentence(primary, context_map)
+    assert "a semantic graph and a surface graph, and requires privacy" in sentence
+    assert " and a surface graph and requires" not in sentence  # no run-on
+
+
+def test_contrasts_with_takes_a_determiner() -> None:
+    # M1.5: "contrasts with surface graph" -> "contrasts with a surface graph".
+    primary = {
+        "concept_id": "semantic_graph",
+        "labels": {"en": "semantic graph"},
+        "relations": [{"relation": "contrasts_with", "target": "surface_graph"}],
+    }
+    context_map = {"surface_graph": {"concept_id": "surface_graph", "labels": {"en": "surface graph"}}}
+    sentence = _english_relation_sentence(primary, context_map)
+    assert "contrasts with a surface graph" in sentence
+
+
 def test_noun_phrase_determiner_rules() -> None:
     assert _en_noun_phrase("semantic graph", with_article=True) == "a semantic graph"
     assert _en_noun_phrase("ontology", with_article=True) == "an ontology"
