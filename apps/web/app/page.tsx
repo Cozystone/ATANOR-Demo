@@ -6,6 +6,7 @@ import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, Refr
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
 import AutonomousAgentPanel from "./AutonomousAgentPanel";
+import OvernightBriefing from "./OvernightBriefing";
 import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import BrainConnectionStatus from "./BrainConnectionStatus";
@@ -5203,6 +5204,7 @@ export default function BakeBoardPage() {
           </p>
         ) : null}
 
+        {mainSection === "home" ? <OvernightBriefing language={language} /> : null}
         {mainSection === "home" ? <AtanorUserStatusCard language={language} onMessageSubmit={handleHologramMessage} /> : null}
 
         {mainSection === "atlas" ? (

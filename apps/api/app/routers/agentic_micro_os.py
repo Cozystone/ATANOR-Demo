@@ -878,6 +878,47 @@ def policy_scheduler_daemon_stop(request: PolicySchedulerStopApiRequest) -> dict
     return {**SAFETY_FLAGS, **payload, **AUTONOMOUS_DAEMON.status()}
 
 
+@router.get("/overnight-briefing")
+def overnight_briefing() -> dict[str, Any]:
+    """Lightweight 'while you were away' summary, shown when the user returns.
+
+    The agent worked autonomously (AGORA + web) and may have something to mention
+    or ask about. If nothing notable happened, ``has_briefing`` is False and the
+    dashboard shows nothing. Nothing here requires action — it just informs.
+    """
+    log = AUTONOMOUS_DAEMON.status().get("activity_log") or []
+    learned = 0
+    auto_promoted = 0
+    web_reads = 0
+    for rec in log:
+        actions = rec.get("actions") or []
+        learned += int(rec.get("candidate_drafts") or 0)
+        if any(str(a).startswith("open_web") or str(a).startswith("web_explorer") for a in actions):
+            web_reads += 1
+    review = REVIEW_QUEUE.status()
+    auto_promoted = len(AUTO_PROMOTED_IDS)
+    # Anything the agent held back (private/mutation hard floor) is worth a glance.
+    items = [item.to_dict() for item in REVIEW_QUEUE.list_items()]
+    held = [
+        {"title": it.get("title"), "reason": "held: private/mutation signal"}
+        for it in items
+        if str(it.get("risk_level")) == "critical"
+    ][:5]
+    pending = int(review.get("pending") or 0)
+    has_briefing = bool(log or learned > 0 or auto_promoted > 0 or held or int(review.get("items_total") or 0) > 0)
+    return {
+        **SAFETY_FLAGS,
+        "has_briefing": has_briefing,
+        "cycles": len(log),
+        "web_read_cycles": web_reads,
+        "candidates_learned": int(review.get("items_total") or 0),
+        "auto_promoted": auto_promoted,
+        "pending_review": pending,
+        "needs_confirmation": held,
+        "production_store_mutated": False,
+    }
+
+
 def _review_item_dicts() -> list[dict[str, Any]]:
     return [item.to_dict() for item in REVIEW_QUEUE.list_items()]
 
