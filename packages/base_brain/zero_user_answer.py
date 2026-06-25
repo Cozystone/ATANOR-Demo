@@ -604,8 +604,14 @@ def _concept_names(concept: dict[str, Any]) -> list[str]:
     return out
 
 
-_IDENTITY_MARKERS_KO = ("너는 누구", "넌 누구", "너 누구", "네 정체", "자기소개", "너는 뭐야", "넌 뭐야", "당신은 누구")
-_IDENTITY_MARKERS_EN = ("who are you", "what are you", "introduce yourself", "who is atanor")
+_IDENTITY_MARKERS_KO = (
+    "너는 누구", "넌 누구", "너 누구", "네 정체", "자기소개", "너는 뭐야", "넌 뭐야", "당신은 누구",
+    "이름이 뭐", "이름이 뭐니", "이름 뭐", "이름은 뭐", "이름이 어떻게", "너 이름", "네 이름", "당신 이름", "당신의 이름",
+)
+_IDENTITY_MARKERS_EN = (
+    "who are you", "what are you", "introduce yourself", "who is atanor",
+    "what is your name", "what's your name", "your name",
+)
 
 
 def _is_identity_question(query: str) -> bool:

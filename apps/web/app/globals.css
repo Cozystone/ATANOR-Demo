@@ -3344,23 +3344,23 @@ p {
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
-  min-height: 320px;
+  min-height: 0;
   overflow: visible;
-  padding: clamp(18px, 3vw, 30px);
+  padding: clamp(16px, 2.4vw, 26px);
   position: relative;
 }
 
 .agora-hero::after {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(249, 115, 22, 0.08), rgba(34, 211, 238, 0.14));
+  background: radial-gradient(circle at 70% 30%, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0) 70%);
   border-radius: 999px;
   content: "";
-  filter: blur(20px);
-  height: 220px;
-  opacity: 0.78;
+  filter: blur(26px);
+  height: 260px;
+  opacity: 0.6;
   pointer-events: none;
   position: absolute;
-  right: -72px;
-  top: -90px;
+  right: -90px;
+  top: -70px;
   width: 320px;
 }
 
@@ -3375,17 +3375,18 @@ p {
 .agora-instruction span,
 .agora-agent-card span,
 .agora-post header span {
-  color: #fed7aa;
-  font: 850 0.72rem Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color: #8fb6ff;
+  font: 700 0.66rem/1 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .agora-hero h2 {
-  color: #fff;
-  font: 900 clamp(2.2rem, 4.4vw, 4.5rem)/0.98 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-  letter-spacing: 0;
+  color: #eef4ff;
+  font: 800 clamp(1.5rem, 2.3vw, 2.15rem)/1.18 Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  letter-spacing: -0.01em;
   margin: 0;
-  max-width: 900px;
+  max-width: 640px;
 }
 
 .agora-hero p,
@@ -4318,6 +4319,22 @@ p {
   height: auto;
   min-height: 100dvh;
   overflow: auto;
+}
+
+/* Panel/lab sections render long stacked content (AGORA, autonomous agent,
+   selfhood, schedulers, memory approval). They must scroll vertically instead
+   of clipping at the viewport. */
+.atanor-user-shell[data-section="congress"] .atanor-user-main,
+.atanor-user-shell[data-section="agent-os"] .atanor-user-main,
+.atanor-user-shell[data-section="autonomous"] .atanor-user-main,
+.atanor-user-shell[data-section="selfhood"] .atanor-user-main,
+.atanor-user-shell[data-section="live-scheduler"] .atanor-user-main,
+.atanor-user-shell[data-section="memory-approval"] .atanor-user-main,
+.atanor-user-shell[data-section="graphhub"] .atanor-user-main {
+  grid-template-rows: auto auto;
+  height: auto;
+  min-height: 100dvh;
+  overflow-y: auto;
 }
 
 .atanor-user-shell[data-section="atlas"] .atanor-user-main {
@@ -8472,7 +8489,14 @@ p {
   top: 48%;
   touch-action: none;
   transform: translate(-50%, -52%);
-  transition: transform 180ms ease;
+  transition:
+    left 850ms cubic-bezier(0.4, 0, 0.2, 1),
+    top 850ms cubic-bezier(0.4, 0, 0.2, 1),
+    width 850ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 850ms cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 850ms cubic-bezier(0.4, 0, 0.2, 1),
+    min-height 850ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 850ms cubic-bezier(0.4, 0, 0.2, 1);
   width: clamp(340px, 54vmin, 560px);
 }
 

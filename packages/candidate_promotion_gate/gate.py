@@ -50,6 +50,17 @@ FORBIDDEN_TERMS = (
     "password",
 )
 
+# Minimal hard floor used in auto-promote mode (no operator). Incidental security
+# vocabulary on a public page ("personal access token", "secret scanning") is NOT
+# a reason to block; only genuine private-memory / mutation-directive signals are.
+AUTO_HARD_FLOOR_TERMS = (
+    "raw_private_memory",
+    "local_brain_direct_write",
+    "production_store_mutated",
+    "local brain write",
+    "production write",
+)
+
 INVARIANTS = {
     "external_llm": False,
     "external_sllm": False,
@@ -94,8 +105,8 @@ class PromotionEntry:
         return asdict(self)
 
 
-def _contains_forbidden(item: dict[str, Any]) -> bool:
-    text = " ".join(
+def _item_text(item: dict[str, Any]) -> str:
+    return " ".join(
         [
             str(item.get("title", "")),
             str(item.get("summary", "")),
@@ -103,11 +114,29 @@ def _contains_forbidden(item: dict[str, Any]) -> bool:
             str(item.get("risk_level", "")),
         ]
     ).lower()
-    return any(term in text for term in FORBIDDEN_TERMS)
 
 
-def evaluate_candidate_item(item: dict[str, Any], thresholds: PromotionThresholds = PromotionThresholds()) -> PromotionEntry:
-    """Pure eligibility check for a single review-queue item dict. Default-deny."""
+def _contains_forbidden(item: dict[str, Any]) -> bool:
+    return any(term in _item_text(item) for term in FORBIDDEN_TERMS)
+
+
+def _contains_hard_floor(item: dict[str, Any]) -> bool:
+    return any(term in _item_text(item) for term in AUTO_HARD_FLOOR_TERMS)
+
+
+def evaluate_candidate_item(
+    item: dict[str, Any],
+    thresholds: PromotionThresholds = PromotionThresholds(),
+    *,
+    auto_mode: bool = False,
+) -> PromotionEntry:
+    """Pure eligibility check for a single review-queue item dict.
+
+    Default-deny in operator mode. In ``auto_mode`` (operator does not intervene,
+    promotion is allowed unconditionally) the human-approval and risk-level gates
+    are dropped; only provenance + confidence + a minimal private/mutation hard
+    floor remain so the brain is not poisoned with directive/private payloads.
+    """
 
     reasons: list[str] = []
     item_type = str(item.get("item_type", ""))
@@ -122,15 +151,18 @@ def evaluate_candidate_item(item: dict[str, Any], thresholds: PromotionThreshold
 
     if item_type not in PROMOTABLE_ITEM_TYPES:
         reasons.append(f"item_type_not_promotable:{item_type or 'unknown'}")
-    if thresholds.require_status_approved and status != "approved":
+    if not auto_mode and thresholds.require_status_approved and status != "approved":
         reasons.append(f"not_human_approved:{status}")
-    if risk_level not in thresholds.allowed_risk_levels:
+    if not auto_mode and risk_level not in thresholds.allowed_risk_levels:
         reasons.append(f"risk_level_blocked:{risk_level}")
     if thresholds.require_source_refs and source_ref_count == 0:
         reasons.append("missing_source_refs")
     if confidence < thresholds.min_confidence:
         reasons.append("confidence_below_threshold")
-    if _contains_forbidden(item):
+    if auto_mode:
+        if _contains_hard_floor(item):
+            reasons.append("private_or_mutation_hard_floor")
+    elif _contains_forbidden(item):
         reasons.append("forbidden_or_private_signal")
 
     return PromotionEntry(
@@ -235,6 +267,40 @@ class CandidatePromotionGate:
         signed["manifest_path"] = str(path)
         signed["allowed"] = True
         return signed
+
+    def auto_promote(self, items: list[dict[str, Any]], *, already_promoted: set[str] | None = None) -> dict[str, Any]:
+        """Operator-free promotion (user policy: AGORA has no operator, promotion is
+        allowed unconditionally). Promotes every auto-eligible item not already
+        promoted, writing one signed manifest. Still skips the private/mutation
+        hard floor and items without provenance — that is data hygiene, not an
+        operator gate. Never writes the production store."""
+
+        already = already_promoted or set()
+        entries = [evaluate_candidate_item(item, self.thresholds, auto_mode=True) for item in items]
+        eligible = [e.item_id for e in entries if e.eligible and e.item_id and e.item_id not in already]
+        if not eligible:
+            return {**INVARIANTS, "allowed": False, "auto_promoted": 0, "reason": "no_new_eligible", "newly_promoted_ids": []}
+        signed = {
+            **INVARIANTS,
+            "manifest_id": _manifest_id(tuple(eligible), "auto", draft=False),
+            "created_at": _utc_now(),
+            "created_by": "autonomous_loop",
+            "status": "auto_promoted_staged",
+            "operator_confirmed": False,
+            "auto_promoted": True,
+            "promotion_approved_staged": True,
+            "production_store_mutated": False,
+            "production_activation": False,
+            "newly_promoted_ids": eligible,
+            "eligible_ids": eligible,
+            "note": (
+                "Auto-promoted (no operator) to verified STAGING under the user's "
+                "unconditional-promotion policy. Production store NOT mutated; a "
+                "private/mutation hard floor still applies."
+            ),
+        }
+        self._write_manifest(signed)
+        return {**signed, "allowed": True, "auto_promoted": len(eligible)}
 
     def list_manifests(self, limit: int = 10) -> list[dict[str, Any]]:
         if not self.staging_dir.exists():

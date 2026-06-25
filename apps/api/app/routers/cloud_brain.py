@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import sqlite3
 import threading
@@ -48,7 +49,12 @@ from packages.cloud_brain.bounded_learning_runner import (
 )
 from packages.cloud_brain.read_model import build_cloud_read_model, load_fast_graph_sample
 from packages.cloud_brain.continuous_learning import CloudSurfaceLearningLoop
-from packages.cloud_brain.candidate_read_model import candidate_cloud_graph, candidate_cloud_status
+from packages.cloud_brain.candidate_read_model import (
+    DEFAULT_CANDIDATE_RUNS_DIR,
+    DEFAULT_CANDIDATE_STORE,
+    candidate_cloud_graph,
+    candidate_cloud_status,
+)
 from packages.cloud_brain.verified_payload_feeder import PayloadSourcePolicy, VerifiedPayloadFeeder, payload_from_mapping
 from rag_engine.ghost_graph import GhostTopology
 from rag_engine.fusion import epistemic_uncertainty, local_density_score, route_ratio, weighted_rrf
@@ -709,6 +715,38 @@ def cloud_brain_status() -> dict[str, Any]:
         payload["public_cloud_backend_enabled"] = True
         provider = str(remote.get("cloud_provider") or remote.get("remote_status", {}).get("provider") or "remote")
         payload["implementation"] = f"{provider}-remote-cloud-brain-broker"
+    # If the production semantic store is empty but the autonomous loop has
+    # accumulated web-learned candidates, surface those counts so Cloud Brain is
+    # not blank. Honestly labelled candidate-sourced — production is NOT mutated.
+    try:
+        counts = payload.get("counts") or {}
+        production_nodes = int(counts.get("nodes") or 0)
+        cand = candidate_cloud_status(_resolve_candidate_store_path())
+        concepts = int(cand.get("candidate_concepts") or 0)
+        # Surface the web-learned candidate store whenever it carries materially
+        # more knowledge than the tiny local proof/seed store (so Cloud Brain shows
+        # the real accumulated graph, not an 8-node seed).
+        if cand.get("candidate_available") and concepts > production_nodes:
+            relations = int(cand.get("candidate_relations") or 0)
+            payload["counts"] = {**counts, "nodes": concepts, "edges": relations}
+            payload["state"] = "candidate_surfaced"
+            payload["counts_source"] = "web_learned_candidate_store"
+            payload["candidate_surfaced"] = True
+            payload["candidate_evidence"] = int(cand.get("candidate_evidence") or 0)
+            payload["cloud_graph_state"] = {
+                **(payload.get("cloud_graph_state") or {}),
+                "source": "candidate_store_surfaced",
+                "cloud_total_nodes": concepts,
+                "cloud_total_relations": relations,
+                "cloud_store_backend": "web_learned_candidate_runs",
+                "production_store_mutated": False,
+                "growth_explanation": (
+                    "Surfacing the web-learned candidate store (larger than the local "
+                    "proof/seed store); auto-promoted to staging, not production-merged."
+                ),
+            }
+    except Exception:  # pragma: no cover - overlay must never break status
+        pass
     return payload
 
 
@@ -968,11 +1006,45 @@ def cloud_brain_surface_graph_status() -> dict[str, Any]:
     }
 
 
+_CLOUD_BRAIN_WORKTREE_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _resolve_candidate_store_path() -> str | None:
+    """Find the latest web-cumulative-learning candidate store across THIS and
+    sibling worktrees. The learning runs may live in a sibling repo's data dir,
+    so a bare worktree-relative lookup (the default) misses them. Read-only."""
+    env = os.environ.get("ATANOR_CANDIDATE_STORE_PATH")
+    if env and Path(env).is_dir():
+        return env
+    runs_dirs = [DEFAULT_CANDIDATE_RUNS_DIR]
+    parent = _CLOUD_BRAIN_WORKTREE_ROOT.parent
+    if parent.exists() and parent.is_dir():
+        for child in sorted(parent.iterdir(), key=lambda item: item.name.casefold()):
+            if child.is_dir():
+                runs_dirs.append(child / "data" / "cloud_brain" / "candidate_runs")
+    best: Path | None = None
+    for runs in runs_dirs:
+        try:
+            if not runs.exists():
+                continue
+            stores = [item for item in runs.iterdir() if item.is_dir() and (item / "manifest.json").exists()]
+        except OSError:
+            continue
+        for cand in stores:
+            if best is None or cand.stat().st_mtime > best.stat().st_mtime:
+                best = cand
+    if best is not None:
+        return str(best)
+    if (DEFAULT_CANDIDATE_STORE / "manifest.json").exists():
+        return str(DEFAULT_CANDIDATE_STORE)
+    return None
+
+
 @router.get("/candidate/status")
 def cloud_brain_candidate_status(
     candidate_store_path: str | None = Query(default=None, max_length=800),
 ) -> dict[str, Any]:
-    return candidate_cloud_status(candidate_store_path)
+    return candidate_cloud_status(candidate_store_path or _resolve_candidate_store_path())
 
 
 @router.get("/candidate/graph")
@@ -981,7 +1053,7 @@ def cloud_brain_candidate_graph(
     max_nodes: int = Query(default=200, ge=1, le=1200),
     max_edges: int = Query(default=400, ge=0, le=2400),
 ) -> dict[str, Any]:
-    return candidate_cloud_graph(candidate_store_path, max_nodes=max_nodes, max_edges=max_edges)
+    return candidate_cloud_graph(candidate_store_path or _resolve_candidate_store_path(), max_nodes=max_nodes, max_edges=max_edges)
 
 
 @router.get("/identity")
@@ -1172,6 +1244,24 @@ def semantic_cloud_graph(
     limit_edges: int = Query(default=3000, ge=0, le=10000),
 ) -> dict[str, Any]:
     graph = load_fast_graph_sample(limit_nodes=limit_nodes, limit_edges=limit_edges)
+    # Surface the web-learned candidate graph whenever it is larger than the local
+    # proof/seed graph, so the Cloud Brain 3D view shows the real accumulated graph
+    # (not an 8-node seed). Honestly labelled; production is not mutated.
+    if len(graph.get("nodes") or []) < limit_nodes:
+        try:
+            store = _resolve_candidate_store_path()
+            if store:
+                cand = candidate_cloud_graph(store, max_nodes=limit_nodes, max_edges=limit_edges)
+                if len(cand.get("nodes") or []) > len(graph.get("nodes") or []):
+                    return {
+                        **cand,
+                        "proof_store_only": True,
+                        "old_mirror_snapshot_used": False,
+                        "graph_source": "web_learned_candidate_store",
+                        "production_store_mutated": False,
+                    }
+        except Exception:  # pragma: no cover - overlay must never break the graph
+            pass
     return {**graph, "proof_store_only": True, "old_mirror_snapshot_used": False}
 
 

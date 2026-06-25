@@ -1044,6 +1044,11 @@ def _live_selfhood_payload(
         "visual_scene_plan": gated_scene,
         "splatra_scene_plan": gated_scene,
         "scene_grounding": answer_scene_grounding,
+        # Evidence-grounded answers (web / verified store) expose a reasoning
+        # certificate citing their sources and how they were processed.
+        "reasoning_certificate": _grounded_conversation_certificate(
+            question, grounded_context, generated.confidence, language
+        ),
         "splatra_command_sequence": splatra_command_sequence,
         "splatra_interactive_scene_analysis": splatra_interactive_scene_analysis,
         "splatra_cartridge_queue": splatra_cartridge_queue,
@@ -1053,6 +1058,71 @@ def _live_selfhood_payload(
         **_flags(),
     }
     return {"state": "completed", "result": payload, **_flags()}
+
+
+_ONTOLOGY_GROUNDING_SOURCES = {
+    "asm_v0_construction_graph",
+    "base_brain_semantic_graph",
+    "product_conversation_grounding",
+}
+
+
+def _grounded_conversation_certificate(
+    question: str,
+    grounded_context: Any,
+    confidence: float,
+    language: str,
+) -> dict[str, Any] | None:
+    """Build a reasoning certificate for an evidence-grounded conversation answer.
+
+    Web / verified-store answers carry real sources and a processing path; expose
+    them as a certificate (which sources, which facts, how grounded) instead of
+    silently dropping it. No new claims are invented — only what grounding already
+    produced is cited.
+    """
+
+    source_refs = [str(ref) for ref in getattr(grounded_context, "source_refs", ()) if ref]
+    facts = [str(fact) for fact in getattr(grounded_context, "facts", ()) if fact]
+    grounding_source = str(getattr(grounded_context, "grounding_source", "") or "")
+    grounding_quality = str(getattr(grounded_context, "grounding_quality", "none") or "none")
+    if not source_refs or grounding_quality == "none" or grounding_source in {"", "none"}:
+        return None
+
+    is_ko = language == "ko"
+    steps: list[dict[str, Any]] = [
+        {
+            "type": "evidence_grounding",
+            "source": grounding_source,
+            "fact": (
+                f"검증 근거를 {grounding_quality} 품질로 정합한 뒤 그 범위 안에서만 답을 구성했습니다."
+                if is_ko
+                else f"Aligned verified evidence at {grounding_quality} quality and composed the answer only within that scope."
+            ),
+        }
+    ]
+    for fact in facts[:6]:
+        steps.append({"type": "grounded_fact", "fact": fact})
+    for ref in source_refs[:8]:
+        steps.append({"type": "evidence_source", "source": ref})
+
+    topic = (question or "").strip()[:80] or ("이 질문" if is_ko else "this question")
+    is_web = "web_evidence" in grounding_source or "cloud_graph" in grounding_source or "verified_store" in grounding_source
+    return {
+        "derivation_kind": "web_evidence_grounding" if is_web else "verified_evidence_grounding",
+        "anchor_concept": {"id": topic, "label": topic, "match": "grounded_evidence"},
+        "steps": steps,
+        "evidence_concepts": source_refs,
+        "confidence": round(float(confidence), 4),
+        "confidence_basis": f"{grounding_source}:{grounding_quality}",
+        "guarantees": {
+            "external_llm": False,
+            "external_sllm": False,
+            "fabricated_facts": False,
+            "evidence_grounded": True,
+            "ontology_traceable": grounding_source in _ONTOLOGY_GROUNDING_SOURCES,
+            "source_count": len(source_refs),
+        },
+    }
 
 
 def _clean_graph_count_question(question: str) -> bool:

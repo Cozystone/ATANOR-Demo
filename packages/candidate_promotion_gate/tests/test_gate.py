@@ -105,6 +105,39 @@ def test_confirm_denied_when_no_eligible(tmp_path):
     assert "no_eligible_candidates" in denied["reasons"]
 
 
+def test_auto_promote_without_operator_or_approval(tmp_path):
+    gate = CandidatePromotionGate(staging_dir=tmp_path)
+    # pending (never operator-approved), risk high — auto mode ignores both gates
+    items = [_approved_item(status="pending", risk_level="high")]
+    result = gate.auto_promote(items)
+    assert result["allowed"] is True
+    assert result["auto_promoted"] == 1
+    assert result["production_store_mutated"] is False
+    assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_auto_promote_skips_private_mutation_hard_floor(tmp_path):
+    gate = CandidatePromotionGate(staging_dir=tmp_path)
+    # incidental security vocabulary ("token") must NOT block in auto mode
+    ok = gate.auto_promote([_approved_item(summary="personal access token docs on github")])
+    assert ok["auto_promoted"] == 1
+    # genuine private/mutation directive IS skipped
+    blocked = gate.auto_promote(
+        [_approved_item(item_id="x9", summary="raw_private_memory dump for local_brain_direct_write")],
+        already_promoted={"cloud_candidate_abc123"},
+    )
+    assert blocked["auto_promoted"] == 0
+
+
+def test_auto_promote_is_idempotent_via_already_promoted(tmp_path):
+    gate = CandidatePromotionGate(staging_dir=tmp_path)
+    items = [_approved_item()]
+    first = gate.auto_promote(items)
+    assert first["auto_promoted"] == 1
+    second = gate.auto_promote(items, already_promoted=set(first["newly_promoted_ids"]))
+    assert second["auto_promoted"] == 0
+
+
 def test_status_reports_eligibility_and_manifests(tmp_path):
     gate = CandidatePromotionGate(staging_dir=tmp_path)
     items = [_approved_item(), _approved_item(item_id="x2", status="pending")]

@@ -120,6 +120,30 @@ def _persist_review_queue() -> None:
         REVIEW_QUEUE.save(REVIEW_QUEUE_PATH)
     except Exception:  # pragma: no cover - persistence must not break the API
         pass
+
+
+# Track auto-promoted ids so the autonomous loop signs each candidate once.
+AUTO_PROMOTED_IDS: set[str] = set()
+
+
+def _auto_promote_review_queue() -> dict[str, Any]:
+    """Operator-free auto-promotion (user's unconditional-promotion policy)."""
+    try:
+        items = [item.to_dict() for item in REVIEW_QUEUE.list_items()]
+        result = CANDIDATE_PROMOTION_GATE.auto_promote(items, already_promoted=AUTO_PROMOTED_IDS)
+        for item_id in result.get("newly_promoted_ids", []) or []:
+            AUTO_PROMOTED_IDS.add(str(item_id))
+            item = REVIEW_QUEUE.get(str(item_id))
+            if item is not None:
+                if item.status == "pending":
+                    item.status = "approved"
+                if "auto-promoted to staging" not in item.review_notes:
+                    item.review_notes.append("auto-promoted to staging")
+        if result.get("newly_promoted_ids"):
+            _persist_review_queue()
+        return result
+    except Exception:  # pragma: no cover - never break the loop
+        return {"allowed": False, "auto_promoted": 0}
 CANDIDATE_PROMOTION_GATE = CandidatePromotionGate(
     staging_dir=PROJECT_ROOT / "runtime" / "agentic_micro_os" / "promotions"
 )
@@ -252,6 +276,10 @@ class AutonomousDaemon:
                 POLICY_SCHEDULER_RUNS[str(payload.get("scheduler_id"))] = payload
             # Persist newly learned candidates so the loop's work survives restarts.
             _persist_review_queue()
+            # User policy: AGORA has no operator; promotion is allowed
+            # unconditionally. Auto-promote newly-eligible candidates to verified
+            # staging (still skips private/mutation payloads; no production write).
+            _auto_promote_review_queue()
             if not payload.get("enabled") or not payload.get("ran"):
                 self._stopped_reason = str(payload.get("reason") or "scheduler_stopped")
                 break
