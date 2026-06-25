@@ -163,6 +163,39 @@ def _english_relation_sentence(
     return f"It {body}."
 
 
+def _english_second_hop(primary: dict[str, Any], context_map: dict[str, dict[str, Any]]) -> str:
+    """M2: surface ONE verified second-hop fact (A→B→C) as a connected sentence.
+
+    Pure graph reasoning — it only states relations that exist in the graph
+    (primary → target → target's relation), never an invented causal link. The
+    intermediate concept must be relevant to the query (present in context_map).
+    """
+    primary_id = str(primary.get("concept_id"))
+    for relation in primary.get("relations", [])[:3]:
+        target_id = str(relation.get("target") or "")
+        target = context_map.get(target_id)
+        if not target:
+            continue
+        for sub in target.get("relations", [])[:3]:
+            sub_target_id = str(sub.get("target") or "")
+            if not sub_target_id or sub_target_id == primary_id or sub_target_id == target_id:
+                continue
+            clause_template = EN_RELATION_CLAUSE.get(str(sub.get("relation") or "related_to"))
+            if clause_template is None:
+                continue
+            sub_rel = str(sub.get("relation"))
+            sub_target = context_map.get(sub_target_id, {"concept_id": sub_target_id, "labels": {}})
+            sub_label = _label(sub_target, "en")
+            target_label = _label(target, "en")
+            if not sub_label or not target_label or _HANGUL.search(sub_label) or _HANGUL.search(target_label):
+                continue
+            obj = _en_noun_phrase(sub_label, with_article=sub_rel in EN_ARTICLE_RELATIONS)
+            subject = _en_noun_phrase(target_label, with_article=not target_label[:1].isupper())
+            subject = subject[:1].upper() + subject[1:]
+            return f"{subject}, in turn, {clause_template.format(o=obj)}."
+    return ""
+
+
 KO_DESCRIPTIONS = {
     "kubernetes": "여러 서버에 흩어진 컨테이너를 자동으로 배포하고, 상태를 확인하며, 필요하면 다시 띄우거나 복구해 주는 오픈소스 운영 플랫폼입니다.",
     "container_orchestration_system": "컨테이너를 어디에서 실행할지 정하고, 배포와 복구를 자동화하는 관리 시스템입니다.",
@@ -459,6 +492,9 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
         rel_sentence = _english_relation_sentence(primary, context_map)
         if rel_sentence:
             parts.append(rel_sentence.rstrip("."))
+        second_hop = _english_second_hop(primary, context_map)
+        if second_hop:
+            parts.append(second_hop.rstrip("."))
     answer = ". ".join(parts).strip()
     if answer and not answer.endswith((".", "!", "?")):
         answer = f"{answer}."

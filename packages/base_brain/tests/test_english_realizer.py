@@ -19,6 +19,7 @@ import pytest
 from packages.base_brain.zero_user_answer import (
     _en_noun_phrase,
     _english_relation_sentence,
+    _english_second_hop,
     _label,
     answer_with_base_brain,
 )
@@ -115,6 +116,53 @@ def test_contrasts_with_takes_a_determiner() -> None:
     context_map = {"surface_graph": {"concept_id": "surface_graph", "labels": {"en": "surface graph"}}}
     sentence = _english_relation_sentence(primary, context_map)
     assert "contrasts with a surface graph" in sentence
+
+
+def test_second_hop_chains_a_verified_fact() -> None:
+    # M2: A→B→C reasoning, stating only relations that exist in the graph.
+    primary = {
+        "concept_id": "graphrag",
+        "labels": {"en": "GraphRAG"},
+        "relations": [{"relation": "requires", "target": "semantic_graph"}],
+    }
+    context_map = {
+        "semantic_graph": {
+            "concept_id": "semantic_graph",
+            "labels": {"en": "semantic graph"},
+            "relations": [{"relation": "contrasts_with", "target": "surface_graph"}],
+        },
+        "surface_graph": {"concept_id": "surface_graph", "labels": {"en": "surface graph"}},
+    }
+    hop = _english_second_hop(primary, context_map)
+    assert hop == "A semantic graph, in turn, contrasts with a surface graph."
+
+
+def test_second_hop_does_not_loop_back_to_primary() -> None:
+    primary = {
+        "concept_id": "a",
+        "labels": {"en": "A"},
+        "relations": [{"relation": "requires", "target": "b"}],
+    }
+    context_map = {
+        "b": {"concept_id": "b", "labels": {"en": "B"}, "relations": [{"relation": "requires", "target": "a"}]},
+    }
+    assert _english_second_hop(primary, context_map) == ""  # b→a loops back, skip
+
+
+def test_second_hop_needs_relevant_intermediate() -> None:
+    # If the intermediate concept was not retrieved (not in context_map), no hop.
+    primary = {
+        "concept_id": "graphrag",
+        "labels": {"en": "GraphRAG"},
+        "relations": [{"relation": "requires", "target": "semantic_graph"}],
+    }
+    assert _english_second_hop(primary, {}) == ""
+
+
+def test_real_query_includes_second_hop_reasoning(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    answer = answer_with_base_brain("What is GraphRAG?", language="en", audience_level="beginner")["answer"]
+    assert "in turn" in answer  # multi-hop reasoning surfaced
 
 
 def test_noun_phrase_determiner_rules() -> None:
