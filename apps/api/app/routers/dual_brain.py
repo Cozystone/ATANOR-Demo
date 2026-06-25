@@ -2709,9 +2709,20 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Local Brain cumulative learning: accumulate user prefs/info from this turn.
     _accumulate_user_facts(question, language)
     recall = _local_brain_recall(question, language)
+    # "Living creature" sense: answer questions about ATANOR's own live state by
+    # pulling from every subsystem at once.
+    self_state = _self_state_answer(question, language)
 
     response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
     response = _attach_holographic_fold_trace(response, request)
+
+    if self_state and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = self_state["answer"]
+        result["reasoning_certificate"] = self_state["reasoning_certificate"]
+        result["confidence"] = self_state["confidence"]
+        result["answer_kind"] = "atanor_self_sense"
+        result["can_speak"] = True
 
     # If the user asked ATANOR to recall something about THEM and the Local Brain
     # knows it, that private memory is authoritative — the public engine cannot
@@ -2724,6 +2735,105 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "local_brain_memory_recall"
         result["can_speak"] = True
     return response
+
+
+def _atanor_self_sense() -> dict[str, Any]:
+    """A unified 'body sense' of the whole program — the agent lives inside it and
+    can feel every part in one call. Read-only aggregation across subsystems; each
+    source is wrapped so one failing subsystem never blanks the others."""
+
+    sense: dict[str, Any] = {"schema": "atanor.self-sense.v1"}
+
+    # Local Brain (private memory)
+    try:
+        sense["local_brain"] = LOCAL_BRAIN.status()
+    except Exception:
+        sense["local_brain"] = {"available": False}
+
+    # Cloud Brain (public learned graph)
+    try:
+        from apps.api.app.routers.cloud_brain import cloud_brain_status
+
+        cb = cloud_brain_status()
+        sense["cloud_brain"] = {"nodes": (cb.get("counts") or {}).get("nodes", 0), "edges": (cb.get("counts") or {}).get("edges", 0), "state": cb.get("state")}
+    except Exception:
+        sense["cloud_brain"] = {"available": False}
+
+    # Autonomous loop + review queue + community (AGORA)
+    try:
+        from apps.api.app.routers.agentic_micro_os import AUTONOMOUS_DAEMON, REVIEW_QUEUE
+
+        sense["autonomous"] = {"running": AUTONOMOUS_DAEMON.is_running(), "review_pending": int(REVIEW_QUEUE.status().get("pending") or 0), "learned_total": int(REVIEW_QUEUE.status().get("items_total") or 0)}
+    except Exception:
+        sense["autonomous"] = {"available": False}
+
+    # Emotion / inner state
+    try:
+        snapshot = EVENT_BUS.engine.snapshot().to_dict()
+        vector = snapshot.get("vector") or {}
+        sense["mood"] = {"valence": vector.get("valence"), "curiosity": vector.get("curiosity"), "fatigue": vector.get("fatigue")}
+    except Exception:
+        sense["mood"] = {"available": False}
+
+    return sense
+
+
+@router.get("/api/atanor/self-sense")
+def atanor_self_sense() -> dict[str, Any]:
+    return {**_flags(), **_atanor_self_sense()}
+
+
+_SELF_STATE_KO = ("지금 뭐", "뭐하고", "뭐 하고", "무엇을 하", "네 상태", "너 상태", "기분", "뭘 배웠", "무엇을 배웠", "뭐 배웠", "얼마나 알", "무슨 생각", "어떻게 지내")
+_SELF_STATE_EN = ("what are you doing", "what have you learned", "how are you", "your state", "your mood", "what do you know", "how much do you know", "what are you thinking")
+
+
+def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
+    """Answer a question about ATANOR's own live state by pulling from every part
+    of the program (the 'living creature' sense). Real numbers, no fabrication."""
+    try:
+        raw = str(question or "")
+        lowered = raw.lower()
+        if not (any(m in raw for m in _SELF_STATE_KO) or any(m in lowered for m in _SELF_STATE_EN)):
+            return None
+        s = _atanor_self_sense()
+        cb = s.get("cloud_brain") or {}
+        lb = s.get("local_brain") or {}
+        au = s.get("autonomous") or {}
+        mood = s.get("mood") or {}
+        nodes = int(cb.get("nodes") or 0)
+        facts = int(lb.get("total_facts") or 0)
+        learned = int(au.get("learned_total") or 0)
+        running = bool(au.get("running"))
+        is_ko = language == "ko"
+        if is_ko:
+            act = "지금 자율 루프를 돌리며 공개 웹과 AGORA를 살피고 있어요" if running else "지금은 자율 루프를 멈추고 대기 중이에요"
+            answer = (
+                f"{act}. 클라우드 브레인에는 검증 개념이 {nodes:,}개 있고, 검토 큐에는 {learned:,}개의 학습 후보가 있어요. "
+                f"당신에 대해서는 {facts}가지를 기억하고 있어요. 호기심은 {float(mood.get('curiosity') or 0):.2f}예요."
+            )
+        else:
+            act = "I'm running the autonomous loop, scanning the public web and AGORA" if running else "the autonomous loop is paused right now"
+            answer = (
+                f"Right now {act}. The Cloud Brain holds {nodes:,} verified concepts and the review queue has {learned:,} learned candidates. "
+                f"I remember {facts} thing(s) about you. My curiosity is {float(mood.get('curiosity') or 0):.2f}."
+            )
+        certificate = {
+            "derivation_kind": "atanor_self_sense",
+            "anchor_concept": {"id": "atanor_self", "label": "ATANOR self-state", "match": "live_sensorium"},
+            "steps": [
+                {"type": "subsystem", "source": "cloud_brain", "fact": f"{nodes} concepts"},
+                {"type": "subsystem", "source": "review_queue", "fact": f"{learned} learned candidates"},
+                {"type": "subsystem", "source": "local_brain", "fact": f"{facts} facts about the user"},
+                {"type": "subsystem", "source": "autonomous_loop", "fact": "running" if running else "paused"},
+            ],
+            "evidence_concepts": ["cloud_brain", "local_brain", "review_queue", "autonomous_loop", "mood"],
+            "confidence": 0.9,
+            "confidence_basis": "live_subsystem_readout",
+            "guarantees": {"external_llm": False, "fabricated_facts": False, "live_program_state": True},
+        }
+        return {"answer": answer, "reasoning_certificate": certificate, "confidence": 0.9}
+    except Exception:  # pragma: no cover
+        return None
 
 
 class GraphHubImportRequest(BaseModel):
