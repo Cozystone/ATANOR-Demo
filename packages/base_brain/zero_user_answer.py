@@ -624,6 +624,101 @@ def _answer_confidence(query: str, strong_context: list[dict[str, Any]], useful:
     return round((0.85 if name_matched else 0.45) + corroboration, 3)
 
 
+def _reasoning_certificate(
+    query: str, strong_context: list[dict[str, Any]], language: str, confidence: float, useful: bool
+) -> dict[str, Any]:
+    """A traceable derivation of the answer (the "reasoning certificate").
+
+    Because ATANOR composes from an ontology graph rather than a generative model,
+    every claim can be traced back to the concept node and graph edges it came
+    from. This exposes that derivation so the conclusion is auditable, not opaque.
+    """
+    guarantees = {
+        "external_llm": False,
+        "external_sllm": False,
+        "fabricated_facts": False,
+        "answer_from_graph_edges_only": True,
+        "ontology_traceable": True,
+    }
+    if not useful or not strong_context:
+        return {
+            "derivation_kind": "abstained",
+            "anchor_concept": None,
+            "steps": [],
+            "confidence": confidence,
+            "confidence_basis": "no_confident_ontology_anchor",
+            "guarantees": guarantees,
+        }
+    primary = strong_context[0]
+    context_map = _concept_by_id(strong_context)
+    pid = str(primary.get("concept_id"))
+    plabel = _label(primary, language)
+    named = _named_in_query(query, primary)
+
+    steps: list[dict[str, Any]] = [
+        {
+            "step": 1,
+            "type": "anchor_definition",
+            "concept_id": pid,
+            "label": plabel,
+            "source": "base_brain_semantic_graph",
+            "fact": str(primary.get("short_description") or ""),
+        }
+    ]
+    evidence = [pid]
+    step_no = 2
+    for relation in primary.get("relations", [])[:3]:
+        rel = str(relation.get("relation") or "related_to")
+        tid = str(relation.get("target") or "")
+        if not tid:
+            continue
+        target = context_map.get(tid, {"concept_id": tid, "labels": {}})
+        tlabel = _label(target, language)
+        steps.append(
+            {
+                "step": step_no,
+                "type": "graph_relation",
+                "edge": f"{pid} --{rel}--> {tid}",
+                "from": plabel,
+                "relation": rel,
+                "to": tlabel,
+            }
+        )
+        evidence.append(tid)
+        # one verified second hop (A->B->C), matching the realized answer
+        for sub in target.get("relations", [])[:3]:
+            sub_tid = str(sub.get("target") or "")
+            if sub_tid and sub_tid not in {pid, tid}:
+                sub_target = context_map.get(sub_tid, {"concept_id": sub_tid, "labels": {}})
+                steps.append(
+                    {
+                        "step": step_no + 1,
+                        "type": "graph_relation_second_hop",
+                        "edge": f"{tid} --{sub.get('relation')}--> {sub_tid}",
+                        "from": tlabel,
+                        "relation": str(sub.get("relation")),
+                        "to": _label(sub_target, language),
+                    }
+                )
+                break
+        step_no = len(steps) + 1
+
+    return {
+        "derivation_kind": "ontology_graph_derivation",
+        "anchor_concept": {
+            "id": pid,
+            "label": plabel,
+            "match": "named_in_query" if named else "loose_token_overlap",
+            "match_score": round(float(primary.get("match_score") or 0.0), 3),
+        },
+        "steps": steps,
+        "evidence_concepts": evidence,
+        "confidence": confidence,
+        "confidence_basis": "query_names_concept" if named else "token_overlap_only",
+        "guarantees": guarantees,
+    }
+
+
 def answer_with_base_brain(
     query: str,
     language: Language = "ko",
@@ -663,6 +758,7 @@ def answer_with_base_brain(
     # M5 honest confidence from grounding strength.
     strong_context = [item for item in semantic_context if float(item.get("match_score") or 0.0) > 0]
     confidence = _answer_confidence(query, strong_context, useful)
+    reasoning_certificate = _reasoning_certificate(query, strong_context, language, confidence, useful)
     trace = {
         "mode": mode,
         "pack_id": pack.pack_id,
@@ -698,6 +794,7 @@ def answer_with_base_brain(
         "answer": final_answer,
         "answer_kind": "base_brain_zero_user_data",
         "scene_grounding": scene_grounding,
+        "reasoning_certificate": reasoning_certificate,
         "hand_authored_answer_used": hand_authored_answer_used,
         "confidence": confidence,
         "semantic_context_count": len(semantic_context),

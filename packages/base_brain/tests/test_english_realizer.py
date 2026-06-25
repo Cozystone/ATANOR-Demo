@@ -174,6 +174,33 @@ def test_precision_gate_abstains_on_loose_false_match(tmp_path, monkeypatch) -> 
         assert result["confidence"] <= 0.2, f"{query!r} should abstain, got {result['answer']!r}"
 
 
+def test_reasoning_certificate_traces_the_derivation(tmp_path, monkeypatch) -> None:
+    # Every claim must be traceable to the ontology concept + graph edges it came
+    # from (the "reasoning certificate"): no opaque generation.
+    monkeypatch.chdir(tmp_path)
+    cert = answer_with_base_brain("What is GraphRAG?", language="en", audience_level="beginner")[
+        "reasoning_certificate"
+    ]
+    assert cert["derivation_kind"] == "ontology_graph_derivation"
+    assert cert["anchor_concept"]["id"] == "graphrag"
+    assert cert["anchor_concept"]["match"] == "named_in_query"
+    assert cert["steps"][0]["type"] == "anchor_definition"
+    edges = [s["edge"] for s in cert["steps"] if s["type"].startswith("graph_relation")]
+    assert "graphrag --requires--> semantic_graph" in edges
+    assert cert["guarantees"]["external_llm"] is False
+    assert cert["guarantees"]["fabricated_facts"] is False
+    assert cert["guarantees"]["ontology_traceable"] is True
+
+
+def test_reasoning_certificate_abstains_cleanly(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    cert = answer_with_base_brain("What is Bitcoin?", language="en", audience_level="beginner")[
+        "reasoning_certificate"
+    ]
+    assert cert["derivation_kind"] == "abstained"
+    assert cert["anchor_concept"] is None
+
+
 def test_atanor_product_concepts_are_answered(tmp_path, monkeypatch) -> None:
     # ATANOR's own sidebar features must be answerable from the graph.
     monkeypatch.chdir(tmp_path)

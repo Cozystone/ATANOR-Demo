@@ -828,6 +828,9 @@ def _live_selfhood_payload(
                     # M4 bridge to SPLATRA: visualize a scene only when the verified
                     # evidence is concrete. Abstract answers stay text-only.
                     "scene_grounding": base.get("scene_grounding"),
+                    # Traceable derivation (the "reasoning certificate") — which
+                    # ontology concept + graph edges produced this answer.
+                    "reasoning_certificate": base.get("reasoning_certificate"),
                     "speech_act": speech_act,
                     "can_speak": True,
                     "abstained_conversation_reason": generated.diagnostics.get(
