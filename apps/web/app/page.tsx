@@ -5,6 +5,7 @@ import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent }
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
+import AutonomousAgentPanel from "./AutonomousAgentPanel";
 import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import BrainConnectionStatus from "./BrainConnectionStatus";
@@ -23,7 +24,7 @@ type RightMode = "process" | "chat";
 type LabStageKey = "collect" | "learn" | "output";
 type AnyRecord = Record<string, any>;
 type Language = "en" | "ko";
-type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "agent-os" | "selfhood" | "live-scheduler" | "memory-approval" | "graphhub" | "contribute" | "chat" | "settings";
+type MainSectionId = "home" | "graph" | "local" | "cloud" | "atlas" | "congress" | "agent-os" | "autonomous" | "selfhood" | "live-scheduler" | "memory-approval" | "graphhub" | "contribute" | "chat" | "settings";
 type SurfaceClass = "product" | "advanced" | "lab";
 type GraphPresentationMode = "home_unified_overview" | "local_private_memory" | "cloud_world_knowledge" | "unified_projection";
 
@@ -35,6 +36,7 @@ const mainNavIcon = {
   atlas: Globe2,
   congress: UsersRound,
   "agent-os": Package,
+  autonomous: Brain,
   selfhood: UserCircle,
   "live-scheduler": RefreshCw,
   "memory-approval": Bell,
@@ -55,13 +57,14 @@ const mainSectionSurface = {
   settings: "product",
   congress: "product",
   "agent-os": "lab",
+  autonomous: "lab",
   "memory-approval": "advanced",
   selfhood: "lab",
   "live-scheduler": "lab",
   graphhub: "lab",
 } satisfies Record<MainSectionId, SurfaceClass>;
 
-const internalMainSections = new Set<MainSectionId>(["agent-os", "selfhood", "live-scheduler", "memory-approval", "graphhub"]);
+const internalMainSections = new Set<MainSectionId>(["agent-os", "autonomous", "selfhood", "live-scheduler", "memory-approval", "graphhub"]);
 
 const MAIN_COPY: Record<Language, {
   nav: Array<{ id: MainSectionId; key: string; label: string }>;
@@ -111,6 +114,7 @@ const MAIN_COPY: Record<Language, {
       { id: "atlas", key: "A", label: "Atlas" },
       { id: "congress", key: "C", label: "AGORA" },
       { id: "agent-os", key: "O", label: "Agentic OS" },
+      { id: "autonomous", key: "U", label: "Autonomous Agent" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
@@ -175,6 +179,7 @@ const MAIN_COPY: Record<Language, {
       { id: "atlas", key: "A", label: "아틀라스" },
       { id: "congress", key: "C", label: "AGORA" },
       { id: "agent-os", key: "O", label: "Agentic OS" },
+      { id: "autonomous", key: "U", label: "Autonomous Agent" },
       { id: "selfhood", key: "F", label: "Selfhood Lab" },
       { id: "live-scheduler", key: "Y", label: "Live Scheduler" },
       { id: "memory-approval", key: "M", label: "Memory Approval" },
@@ -1712,7 +1717,7 @@ export default function BakeBoardPage() {
       : "en";
     setLanguage(initialLanguage);
     const requestedSection = params.get("section");
-    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "agent-os", "selfhood", "live-scheduler", "memory-approval", "graphhub", "contribute", "chat", "settings"];
+    const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "agent-os", "autonomous", "selfhood", "live-scheduler", "memory-approval", "graphhub", "contribute", "chat", "settings"];
     if (requestedSection && sectionIds.includes(requestedSection as MainSectionId)) {
       const nextSection = requestedSection as MainSectionId;
       if (internalMainSections.has(nextSection) && !labSurfaceRequested) {
@@ -5145,6 +5150,10 @@ export default function BakeBoardPage() {
               </button>
             );
           })}
+          <button onClick={() => { window.location.href = "/chat"; }}>
+            <span aria-hidden="true"><MessageCircle size={17} strokeWidth={1.8} /></span>
+            <strong>{language === "ko" ? "대화록" : "Transcript"}</strong>
+          </button>
         </nav>
         <div className="atanor-user-connection">
           <span><i data-tone="green" />{copy.localBrain}</span>
@@ -5289,6 +5298,8 @@ export default function BakeBoardPage() {
           <AtlasCongressPanel language={language} />
         ) : mainSection === "agent-os" ? (
           <AgenticMicroOSPanel language={language} localBackendUrl={localBackendUrl} />
+        ) : mainSection === "autonomous" ? (
+          <AutonomousAgentPanel language={language} />
         ) : mainSection === "selfhood" ? (
           <SelfhoodRuntimePanel language={language} />
         ) : mainSection === "live-scheduler" ? (
