@@ -597,6 +597,7 @@ def _live_selfhood_payload(
         agent_loop_state={},
         permission_tier="OBSERVE_ONLY",
         latest_user_input=question,
+        language=language,
         latest_action_result={
             "speech_act": speech_act,
             "generated": bool(generated.answer),

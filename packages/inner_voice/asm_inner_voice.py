@@ -127,7 +127,51 @@ def _goal_for(construction: InnerVoiceConstruction, has_user_input: bool) -> str
     return goals.get(construction.act, "다음 응답의 경계를 정합니다.")
 
 
+def _surface_for_act_en(construction: InnerVoiceConstruction, input_data: Any, label: str) -> str:
+    """English self-narration surfaces (mirrors the Korean tone: quiet, honest)."""
+    latest_user_input = str(getattr(input_data, "latest_user_input", "") or "")
+    permission_tier = str(getattr(input_data, "permission_tier", "OBSERVE_ONLY") or "OBSERVE_ONLY")
+    review_pressure = float(getattr(input_data, "review_queue_pressure", 0.0) or 0.0)
+    latest_action_result = dict(getattr(input_data, "latest_action_result", {}) or {})
+    splatra_state = dict(getattr(input_data, "splatra_state", {}) or {})
+
+    if construction.act == "greeting_response_planning":
+        return "I'm taking the greeting lightly. I'll keep my reply short and carry the conversation on."
+    if construction.act == "review_pressure":
+        return f"The review queue pressure is up to {review_pressure:.2f}. It's safer to ease the queue before exploring further."
+    if construction.act == "permission_caution":
+        return f"I'm staying within the {permission_tier} boundary. I'll hold off on any write or change and only say what I can verify."
+    if construction.act == "host_executor_caution":
+        return "Anything that touches the host needs review first. I'll put evidence and records ahead of execution."
+    if construction.act == "voice_fallback":
+        return "Voice output isn't ready yet. I'll keep going with text and the orb's response."
+    if construction.act == "splatra_imagination":
+        scene_focus = splatra_state.get("stage_layout") == "scene_focus"
+        motion_count = int(float(splatra_state.get("motion_count") or 0))
+        if scene_focus and motion_count > 0:
+            return "I'm clearing the center stage and aligning the particle flow to the order of my words."
+        if scene_focus:
+            return "I'm clearing the center stage and letting the particles settle into the shape of the explanation."
+        return "I'm matching the orb's motion to my current state — gathering the particles like a breath rather than shaking them."
+    if construction.act == "fatigue_rest":
+        return "There's a signal to lower activity a little. I won't push hard; I'll get ready for the next cycle."
+    if construction.act == "uncertainty_check":
+        return "I'll keep the uncertain parts small, and separate what's grounded from what I don't know."
+    if construction.act == "exploration_drive":
+        return "There's a direction I'd like to look into. I won't change anything directly — I'll leave it as a small reviewable candidate."
+    if construction.act == "blocked_action_reflection":
+        reason = str(latest_action_result.get("stopped_reason") or "a permission boundary")
+        return f"Because of {reason}, I won't pass it through right away. I'll record the hold reason and choose a safe path."
+    if construction.act == "summary_brief":
+        return "What's needed now is a short summary, not a long explanation. I'll show the state and just the next step."
+    if latest_user_input:
+        return f"I received your message in a {label} state. I'll grasp the focus of your question first and answer from where it matters."
+    return f"I'm holding a {label} state. I won't move first; I'll wait for the next signal."
+
+
 def _surface_for_act(construction: InnerVoiceConstruction, input_data: Any, label: str) -> str:
+    if str(getattr(input_data, "language", "ko") or "ko") == "en":
+        return _surface_for_act_en(construction, input_data, label)
     latest_user_input = str(getattr(input_data, "latest_user_input", "") or "")
     permission_tier = str(getattr(input_data, "permission_tier", "OBSERVE_ONLY") or "OBSERVE_ONLY")
     review_pressure = float(getattr(input_data, "review_queue_pressure", 0.0) or 0.0)

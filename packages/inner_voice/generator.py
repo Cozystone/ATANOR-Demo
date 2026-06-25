@@ -20,6 +20,7 @@ class InnerVoiceInput:
     latest_action_result: dict[str, Any] = field(default_factory=dict)
     review_queue_pressure: float = 0.0
     splatra_state: dict[str, Any] = field(default_factory=dict)
+    language: str = "ko"
 
 
 def _frame_id(seed: str) -> str:
