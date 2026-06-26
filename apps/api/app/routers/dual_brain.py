@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.services.alpha_services import alpha_service
 from packages.base_brain.scene_grounding import extract_scene_grounding
 from packages.base_brain.zero_user_answer import answer_with_base_brain
+from packages.base_brain.atanor_self_knowledge import answer_self_question
 from packages.base_brain.pack_loader import get_semantic_context, load_base_brain_pack
 from packages.holographic_fold import (
     build_field_inputs,
@@ -3039,6 +3040,9 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # "Living creature" sense: answer questions about ATANOR's own live state by
     # pulling from every subsystem at once.
     self_state = _self_state_answer(question, language)
+    # Self-model: who ATANOR is and how it works, answered from a stable curated
+    # self-knowledge base (not the web). "너 이름이 뭐야" / "어떻게 작동해" land here.
+    self_knowledge = answer_self_question(question, language) if not self_state else None
 
     response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
     response = _attach_holographic_fold_trace(response, request)
@@ -3051,10 +3055,20 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "atanor_self_sense"
         result["can_speak"] = True
 
+    # Self-model answer (name / how I work / what I am) — authoritative over the
+    # public engine, which cannot know ATANOR's own identity.
+    if self_knowledge and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = self_knowledge["answer"]
+        result["reasoning_certificate"] = self_knowledge["reasoning_certificate"]
+        result["confidence"] = self_knowledge["confidence"]
+        result["answer_kind"] = "atanor_self_knowledge"
+        result["can_speak"] = True
+
     # Web-grounded rescue (outermost): if web search is on and the final answer is
     # still an abstention from ANY internal path, answer from a real cited web
     # source. RAG grounding — answer is the retrieved evidence, attributed.
-    if request.web_search and not (self_state or recall) and isinstance(response.get("result"), dict):
+    if request.web_search and not (self_state or self_knowledge or recall) and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):
