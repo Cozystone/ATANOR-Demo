@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
 import HologramVoiceOrb, { HologramVoiceOrbState } from "./HologramVoiceOrb";
 import SplatraImaginationField from "./SplatraImaginationField";
+import PhaseHolographicFoldScene, { type FoldScene } from "./PhaseHolographicFoldScene";
 
 type Language = "en" | "ko";
 type StageLayout = "conversation" | "scene_focus";
@@ -1494,6 +1495,16 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const [speechLine, setSpeechLine] = useState("");
   const [voiceNotice, setVoiceNotice] = useState("");
   const [selfNarration, setSelfNarration] = useState("");
+  // ATANOR no-rule-based-surface principle: the orange self-narration ("…질문의 초점을
+  // 먼저 붙잡고…") is a hand-authored inner-voice template, i.e. a rule-based canned
+  // surface. Keep it out of the user-facing dashboard. (Inner-voice still runs for the
+  // internal Live Selfhood lab panels; this only suppresses the user-facing narration.)
+  const SHOW_RULE_BASED_SELF_NARRATION = false;
+  const [foldScene, setFoldScene] = useState<FoldScene | null>(null);
+  // Iframe content stage: ATANOR can surface a search box or a document/page in a
+  // sandboxed iframe; the orb slides to the lower-right (scene_focus) to make room.
+  const [iframeStage, setIframeStage] = useState<{ url: string; title: string } | null>(null);
+  const [iframeQuery, setIframeQuery] = useState("");
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [speechTypingStepMs, setSpeechTypingStepMs] = useState(24);
   const [speechSyncMode, setSpeechSyncMode] = useState<"idle" | "audio_onplaying" | "estimated_text_clock">("idle");
@@ -1553,6 +1564,14 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const selfNarrationHoldUntilRef = useRef(0);
+  // When the holographic fold is showing, let the particle diffusion burst from
+  // the CENTRED orb first, then smoothly slide the orb to the lower-right (the
+  // CSS transition animates the move) and give the centre stage to the fold.
+  useEffect(() => {
+    if (!foldScene) return;
+    const timer = window.setTimeout(() => setStageLayout("scene_focus"), 820);
+    return () => window.clearTimeout(timer);
+  }, [foldScene]);
   const speakingVisual = orbState === "speaking" || audioPlaying;
   const cleanPlaceholder = voiceMode
     ? language === "ko" ? "\uC74C\uC131 \uBAA8\uB4DC - \uD14D\uC2A4\uD2B8\uB3C4 \uC785\uB825\uD560 \uC218 \uC788\uC5B4\uC694" : "Voice mode - text still works"
@@ -1844,6 +1863,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   }, []);
 
   useEffect(() => {
+    if (!SHOW_RULE_BASED_SELF_NARRATION) return;
     let cancelled = false;
     async function refreshSelfNarration() {
       const payload = await fetch("/api/inner-voice/status?workspace=product", { cache: "no-store" })
@@ -2051,6 +2071,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     event.preventDefault();
     const trimmed = message.trim();
     if (!trimmed) return;
+    setFoldScene(null); // clear any prior fold; a fold request re-attaches it
 
     if (onMessageSubmit?.(trimmed)) {
       setMessage("");
@@ -2109,6 +2130,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       });
       if (!response.ok) throw new Error(`conversation surface failed: ${response.status}`);
       const payload = await response.json();
+      if (payload?.result?.render_fold_scene && payload?.result?.folded_state_field) {
+        setFoldScene(payload.result.folded_state_field as FoldScene);
+      }
       const answer = String(payload?.result?.answer ?? "");
       if (!answer || !isAsmConversationPayload(payload)) {
         throw new Error("conversation surface unavailable");
@@ -2198,7 +2222,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
               ?? innerVoicePayload?.product_summary?.summary
               ?? "",
           ).trim();
-          if (next) {
+          if (next && SHOW_RULE_BASED_SELF_NARRATION) {
             selfNarrationHoldUntilRef.current = Date.now() + 30000;
             setSelfNarration(next);
           }
@@ -2437,19 +2461,94 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-text-layout-reference={TEXT_LAYOUT_REFERENCE}
       style={dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry)}
     >
-      <SplatraImaginationField
-        state={orbState}
-        mode="product"
-        particleBudget={dashboardParticleBudget}
-        interactive={false}
-        controlOverride={splatraDashboardControls}
-        sceneFocus={stageLayout === "scene_focus"}
-        scenePlan={sceneChoreography}
-        splatraCommandSequence={splatraCommandSequence}
-        splatraCartridgeQueue={splatraCartridgeQueue}
-        activeSpeechBeatIndex={sceneSpeechBeatIndex}
-        className="atanor-dashboard-imagination-field"
-      />
+      <div style={(foldScene || iframeStage) ? { opacity: 0, pointerEvents: "none" } : undefined}>
+        <SplatraImaginationField
+          state={orbState}
+          mode="product"
+          particleBudget={dashboardParticleBudget}
+          interactive={false}
+          controlOverride={splatraDashboardControls}
+          sceneFocus={stageLayout === "scene_focus"}
+          scenePlan={sceneChoreography}
+          splatraCommandSequence={splatraCommandSequence}
+          splatraCartridgeQueue={splatraCartridgeQueue}
+          activeSpeechBeatIndex={sceneSpeechBeatIndex}
+          className="atanor-dashboard-imagination-field"
+        />
+      </div>
+      {foldScene ? (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 84, zIndex: 5, pointerEvents: "auto", cursor: "grab" }}>
+          <PhaseHolographicFoldScene scene={foldScene} />
+        </div>
+      ) : null}
+      {foldScene ? (
+        <>
+          <div style={{ position: "absolute", left: "calc(var(--atanor-sidebar-w, 240px) + 28px)", top: 78, maxWidth: "34vw", zIndex: 40, pointerEvents: "none" }}>
+            <strong style={{ display: "block", color: "#dbe6ff", fontSize: 13.5, letterSpacing: "0.02em" }}>
+              {foldScene.render_kind === "local_graph_wave"
+                ? (language === "ko" ? "실시간 로컬 그래프 · 파동 간섭장" : "Live local graph · wave interference field")
+                : (language === "ko" ? "ATANOR 사고 구조 · 위상 홀로그래픽 폴딩" : "ATANOR thought structure · phase holographic fold")}
+            </strong>
+            <span style={{ color: "#7d869b", fontSize: 11 }}>
+              {foldScene.render_kind === "local_graph_wave"
+                ? (language === "ko" ? `노드 ${foldScene.nodes.length} · 각 노드의 파동이 퍼져 겹친 실제 간섭장` : `${foldScene.nodes.length} nodes · real superposed field of each node's wave`)
+                : (language === "ko" ? "검증(밝음·중심) · 후보(주황·외곽) · 감정" : "verified (bright, center) · candidate (amber, outer) · emotion")}
+            </span>
+          </div>
+          <button
+            onClick={() => { setFoldScene(null); setStageLayout("conversation"); }}
+            aria-label={language === "ko" ? "닫기" : "Close"}
+            style={{ position: "absolute", top: 18, right: 22, zIndex: 41, width: 34, height: 34, borderRadius: 17, border: "1px solid #2a2f3d", background: "rgba(15,18,26,0.85)", color: "#cfe0ff", cursor: "pointer", fontSize: 18, lineHeight: "32px" }}
+          >
+            ×
+          </button>
+        </>
+      ) : null}
+      {iframeStage ? (
+        <div style={{ position: "absolute", left: "calc(var(--atanor-sidebar-w, 240px) + 20px)", top: 64, right: 20, bottom: 96, zIndex: 6, display: "flex", flexDirection: "column", borderRadius: 14, overflow: "hidden", border: "1px solid #232a3a", background: "rgba(10,13,20,0.92)", boxShadow: "0 18px 60px rgba(0,0,0,0.5)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid #1c2230", background: "rgba(14,18,28,0.95)" }}>
+            <span style={{ color: "#9bb4ff", fontSize: 12.5, whiteSpace: "nowrap" }}>{iframeStage.title}</span>
+            <form
+              style={{ flex: 1, display: "flex", gap: 6 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                const q = iframeQuery.trim();
+                if (!q) return;
+                const host = /[가-힣]/.test(q) ? "ko.wikipedia.org" : "en.wikipedia.org";
+                setIframeStage({ url: `https://${host}/wiki/Special:Search?search=${encodeURIComponent(q)}`, title: q });
+              }}
+            >
+              <input
+                value={iframeQuery}
+                onChange={(e) => setIframeQuery(e.target.value)}
+                placeholder={language === "ko" ? "검색어 입력 후 Enter…" : "Type to search, then Enter…"}
+                style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "6px 10px", borderRadius: 8, border: "1px solid #2a3550", background: "#0c111c", color: "#dbe6ff" }}
+              />
+            </form>
+            <a href={iframeStage.url} target="_blank" rel="noreferrer" style={{ color: "#7d869b", fontSize: 11, textDecoration: "none", whiteSpace: "nowrap" }}>
+              {language === "ko" ? "새 탭 ↗" : "open ↗"}
+            </a>
+            <button
+              onClick={() => { setIframeStage(null); setStageLayout("conversation"); }}
+              aria-label={language === "ko" ? "닫기" : "Close"}
+              style={{ width: 28, height: 28, borderRadius: 14, border: "1px solid #2a2f3d", background: "rgba(15,18,26,0.85)", color: "#cfe0ff", cursor: "pointer", fontSize: 16, lineHeight: "26px" }}
+            >
+              ×
+            </button>
+          </div>
+          <iframe
+            key={iframeStage.url}
+            src={iframeStage.url}
+            title={iframeStage.title}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            referrerPolicy="no-referrer"
+            style={{ flex: 1, width: "100%", border: 0, background: "#fff" }}
+          />
+          <div style={{ padding: "5px 12px", borderTop: "1px solid #1c2230", color: "#5a6478", fontSize: 10.5 }}>
+            {language === "ko" ? "일부 사이트는 임베드를 차단합니다 — 그럴 땐 ‘새 탭 ↗’을 누르세요. (표시 전용 · 입력 정보 없음)" : "Some sites block embedding — use ‘open ↗’ then. (display-only · no data entered)"}
+          </div>
+        </div>
+      ) : null}
       <div className="atanor-hologram-stage">
         <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
         {typedSelfNarration ? (
@@ -2468,6 +2567,38 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           </p>
         ) : null}
       </div>
+      {!message && !foldScene && !iframeStage ? (
+        <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", zIndex: 6, display: "flex", justifyContent: "center", gap: 8, pointerEvents: "auto" }}>
+          {[
+            language === "ko" ? "ATANOR 작동방식 3D로 알려줘" : "show how ATANOR works in 3D",
+            language === "ko" ? "실시간 로컬 그래프 파동 보여줘" : "show live local-graph waves",
+          ].map((phrase) => (
+            <button
+              key={phrase}
+              type="button"
+              onClick={() => {
+                setMessage(phrase);
+                window.setTimeout(() => composerRef.current?.requestSubmit?.(), 90);
+              }}
+              style={{ background: "rgba(20,26,40,0.66)", border: "1px solid #2a3550", color: "#aeb9d4", borderRadius: 14, padding: "4px 12px", fontSize: 11.5, cursor: "pointer" }}
+            >
+              {phrase}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              const host = language === "ko" ? "ko.wikipedia.org" : "en.wikipedia.org";
+              setIframeStage({ url: `https://${host}/wiki/Special:Search`, title: language === "ko" ? "검색·문서" : "Search · documents" });
+              setIframeQuery("");
+              setStageLayout("scene_focus");
+            }}
+            style={{ background: "rgba(20,30,46,0.66)", border: "1px solid #2f4a6e", color: "#9bb4ff", borderRadius: 14, padding: "4px 12px", fontSize: 11.5, cursor: "pointer" }}
+          >
+            {language === "ko" ? "검색·문서 띄워줘" : "open search · documents"}
+          </button>
+        </div>
+      ) : null}
       <form ref={composerRef} className="atanor-hologram-composer" data-voice-mode={voiceMode ? "true" : "false"} onSubmit={submitMessage}>
         <button type="button" aria-label={language === "ko" ? "\uC74C\uC131 \uB300\uD654 \uBAA8\uB4DC" : "Voice conversation mode"} onClick={voiceMode ? cancelVoiceMode : startVoiceMode}>
           <Mic size={18} strokeWidth={1.8} />
