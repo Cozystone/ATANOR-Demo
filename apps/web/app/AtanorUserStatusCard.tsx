@@ -2133,6 +2133,14 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       if (payload?.result?.render_fold_scene && payload?.result?.folded_state_field) {
         setFoldScene(payload.result.folded_state_field as FoldScene);
       }
+      // The agent decided to surface a document/search — open the iframe stage on
+      // its own (orb slides to the lower-right). No button needed.
+      const renderIframe = payload?.result?.render_iframe as { url?: string; title?: string } | undefined;
+      if (renderIframe?.url) {
+        setIframeStage({ url: String(renderIframe.url), title: String(renderIframe.title || "") });
+        setIframeQuery("");
+        setStageLayout("scene_focus");
+      }
       const answer = String(payload?.result?.answer ?? "");
       if (!answer || !isAsmConversationPayload(payload)) {
         throw new Error("conversation surface unavailable");

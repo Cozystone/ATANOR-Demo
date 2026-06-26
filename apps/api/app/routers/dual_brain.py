@@ -1993,6 +1993,29 @@ def _first_sentences(text: str, *, max_chars: int = 360) -> str:
     return (cut[: last + 1] if last > 60 else cut).strip()
 
 
+_OPEN_BROWSER_KO = ("검색해", "검색 해", "찾아봐", "찾아 줘", "찾아줘", "띄워", "띄워줘", "열어줘", "보여줘", "브라우저")
+_OPEN_BROWSER_EN = ("search for", "look up", "look it up", "open the", "open a", "show me the", "browse", "pull up", "find online")
+
+
+def _render_iframe_for_intent(question: str, language: str) -> dict[str, Any] | None:
+    """If the user explicitly asks ATANOR to search/open/show something, the agent
+    opens a search/document in the iframe stage of its own accord."""
+    raw = str(question or "")
+    lowered = raw.lower()
+    if not (any(m in raw for m in _OPEN_BROWSER_KO) or any(m in lowered for m in _OPEN_BROWSER_EN)):
+        return None
+    topic = re.sub(r"(검색해줘|검색해|검색|찾아봐|찾아줘|띄워줘|띄워|열어줘|보여줘|에 대해|에 대한|브라우저로|브라우저)", " ", raw)
+    topic = re.sub(r"\b(search for|look it up|look up|open the|open a|show me the|browse|pull up|find online|please|on the web|online)\b", " ", topic, flags=re.IGNORECASE)
+    topic = re.sub(r"[?!.]", " ", topic)
+    topic = re.sub(r"\s+", " ", topic).strip()
+    if len(topic) < 2:
+        return None
+    host = "ko.wikipedia.org" if re.search(r"[가-힣]", topic) else "en.wikipedia.org"
+    from urllib.parse import quote_plus
+
+    return {"url": f"https://{host}/wiki/Special:Search?search={quote_plus(topic)}", "title": topic[:60]}
+
+
 async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] | None:
     """When the local engine has no answer and web search is ON, answer from a
     real web source (Wikipedia, or a configured provider) and cite it. This is
@@ -2810,6 +2833,10 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
                 result["answer_kind"] = "web_search_grounded"
                 result["web_search_provider"] = rescue["provider"]
                 result["can_speak"] = True
+                # The agent surfaces the source document on its own — the dashboard
+                # opens it in the iframe stage (orb slides aside).
+                if rescue.get("source_url"):
+                    result["render_iframe"] = {"url": rescue["source_url"], "title": rescue.get("source_title") or question[:60]}
 
     # If the user asked ATANOR to recall something about THEM and the Local Brain
     # knows it, that private memory is authoritative — the public engine cannot
@@ -2821,6 +2848,13 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["confidence"] = recall["confidence"]
         result["answer_kind"] = "local_brain_memory_recall"
         result["can_speak"] = True
+
+    # Explicit "search / open / show me X" → the agent opens the iframe stage of
+    # its own accord (the dashboard auto-renders it; orb slides aside).
+    if isinstance(response.get("result"), dict) and not response["result"].get("render_iframe"):
+        intent_iframe = _render_iframe_for_intent(question, language)
+        if intent_iframe:
+            response["result"]["render_iframe"] = intent_iframe
     return response
 
 
@@ -3039,6 +3073,8 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
                     fb_result["answer_kind"] = "web_search_grounded"
                     fb_result["web_search_provider"] = rescue["provider"]
                     fb_result["can_speak"] = True
+                    if rescue.get("source_url"):
+                        fb_result["render_iframe"] = {"url": rescue["source_url"], "title": rescue.get("source_title") or question[:60]}
             response = _attach_three_core_trace(fallback, request=request, three_core_trace=three_core_trace)
             _emit_conversation_result_events(response)
             return response
