@@ -2978,6 +2978,12 @@ def _attach_holographic_fold_trace(response: dict[str, Any], request: AtanorChat
 async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     question = request.question_text()
     language = request.language or ("ko" if any("가" <= c <= "힣" for c in (question or "")) else "en")
+    # A context-resolved query so a follow-up ("where is it?") carries the prior
+    # topic into web grounding / recall.
+    try:
+        web_query = build_conversation_context(question, request.conversation_context).contextual_query or question
+    except Exception:  # pragma: no cover - defensive
+        web_query = question
     # Local Brain cumulative learning: accumulate user prefs/info from this turn.
     _accumulate_user_facts(question, language)
     recall = _local_brain_recall(question, language)
@@ -3003,7 +3009,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):
-            rescue = await _web_grounded_rescue(question, language)
+            rescue = await _web_grounded_rescue(web_query, language)
             if rescue:
                 result["answer"] = rescue["answer"]
                 result["reasoning_certificate"] = rescue["reasoning_certificate"]
@@ -3035,7 +3041,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         if (not ans or _answer_is_abstention(ans)) and result.get("answer_kind") not in (
             "web_search_grounded", "web_unreachable", "local_brain_memory_recall", "atanor_self_sense"
         ):
-            cached = _recall_web_fact(question)
+            cached = _recall_web_fact(web_query)
             if cached:
                 result["answer"] = cached["answer"]
                 result["reasoning_certificate"] = cached["reasoning_certificate"]
