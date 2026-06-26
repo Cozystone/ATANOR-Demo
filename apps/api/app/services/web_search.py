@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 import json
@@ -9,6 +11,36 @@ from html import unescape
 from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import quote, quote_plus
+
+
+# Small TTL cache so repeated questions don't re-hit Wikipedia (cuts latency and
+# avoids 429 rate-limiting). Keyed by request URL.
+_WIKI_CACHE: dict[str, tuple[float, Any]] = {}
+_WIKI_CACHE_TTL = 900.0  # 15 min
+
+
+def _wiki_get_json(url: str, *, timeout: float = 5.0, retries: int = 1) -> Any:
+    """GET + parse JSON from a bounded public Wikipedia endpoint, with a tiny TTL
+    cache and one backoff retry on 429/5xx. Returns {} on failure (never raises)."""
+    now = time.monotonic()
+    cached = _WIKI_CACHE.get(url)
+    if cached and now - cached[0] < _WIKI_CACHE_TTL:
+        return cached[1]
+    request = urllib.request.Request(url, headers={"User-Agent": "ATANORAlpha/0.1 (web-search; contact: local)"})
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - bounded public API
+                payload = json.loads(response.read().decode("utf-8"))
+            _WIKI_CACHE[url] = (now, payload)
+            return payload
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 500, 502, 503) and attempt < retries:
+                time.sleep(1.2 * (attempt + 1))
+                continue
+            return {}
+        except Exception:
+            return {}
+    return {}
 
 
 @dataclass
@@ -307,9 +339,7 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
         f"https://{wiki_host}/w/api.php?action=query&list=search&format=json&utf8=1"
         f"&srlimit={max(bounded_count, 8)}&srsearch={quote_plus(lookup)}"
     )
-    request = urllib.request.Request(api_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
-    with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public API endpoint
-        body = json.loads(response.read().decode("utf-8"))
+    body = _wiki_get_json(api_url)
     results: list[dict[str, Any]] = []
     for index, item in enumerate((body.get("query", {}).get("search", []) or [])[: max(bounded_count, 8)], start=1):
         title = _strip_html(item.get("title") or lookup)
@@ -317,15 +347,11 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
         page_url = f"https://{wiki_host}/wiki/{page_slug}"
         snippet = _strip_html(item.get("snippet") or "")
         if index <= 2:
-            try:
-                summary_url = f"https://{wiki_host}/api/rest_v1/page/summary/{page_slug}"
-                summary_request = urllib.request.Request(summary_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
-                with urllib.request.urlopen(summary_request, timeout=5) as summary_response:  # nosec B310
-                    summary = json.loads(summary_response.read().decode("utf-8"))
+            summary_url = f"https://{wiki_host}/api/rest_v1/page/summary/{page_slug}"
+            summary = _wiki_get_json(summary_url)
+            if isinstance(summary, dict) and summary:
                 snippet = _strip_html(summary.get("extract") or snippet)
                 page_url = summary.get("content_urls", {}).get("desktop", {}).get("page") or page_url
-            except Exception:
-                pass
         if title and snippet:
             haystack = f"{title} {snippet}".lower()
             term_hits = sum(1 for term in lookup_terms if term in haystack)
