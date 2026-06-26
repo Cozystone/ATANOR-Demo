@@ -558,6 +558,16 @@ function shouldRequestWebGrounding(input: string) {
   if (/(splatra|스플라트라|구슬|홀로그램|음성|목소리|fish|selfhood|자기 모델|내적 언어)/i.test(input)) {
     return false;
   }
+  // Questions about ATANOR itself or the user are answered from self/local memory,
+  // never the web — so a "what's your name" must not search Wikipedia.
+  if (/(네?\s*이름|너의?\s*이름|당신\s*이름|넌?\s*누구|너는?\s*누구|니가\s*누구|네가\s*누구|자기소개|소개해|who\s+are\s+you|your\s+name|what'?s\s+your\s+name)/i.test(input)) {
+    return false;
+  }
+  // Dashboard control ("창 닫아", "이거 치워") is an instruction to the orb, not a
+  // search query.
+  if (/(창|탭|페이지|문서|화면|window|tab|page).{0,6}(닫|꺼|치워|없애|close|hide|dismiss)|^\s*(닫아|닫아줘|꺼줘|치워|close|닫기)\s*$/i.test(input)) {
+    return false;
+  }
   return /검색|찾아|최신|최근|오늘|뉴스|현재|인터넷|웹|누구|무엇|뭐야|왜|어떻게|설명|법칙|원리|정의|근거|확인|search|look up|latest|recent|today|news|current|who|what|why|how|explain|law|principle|definition/i.test(input);
 }
 
@@ -1512,6 +1522,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   // Iframe content stage: ATANOR can surface a search box or a document/page in a
   // sandboxed iframe; the orb slides to the lower-right (scene_focus) to make room.
   const [iframeStage, setIframeStage] = useState<{ url: string; title: string } | null>(null);
+  // Browser-style tabs: the orb can open the answer's source plus related pages.
+  const [iframeTabs, setIframeTabs] = useState<{ url: string; title: string }[]>([]);
   const [iframeQuery, setIframeQuery] = useState("");
   // Nodes the agent just fetched from the web, added to the Cloud Brain, and
   // grafted onto the Local Brain to answer. Rendered glowing as they emerge.
@@ -2147,9 +2159,23 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       }
       // The agent decided to surface a document/search — open the iframe stage on
       // its own (orb slides to the lower-right). No button needed.
+      // Dashboard control directive: the orb obeys layout commands ("창 닫아").
+      const directive = payload?.result?.dashboard_directive as { action?: string } | undefined;
+      if (directive?.action === "close_window") {
+        setIframeStage(null);
+        setIframeTabs([]);
+        setStageLayout("conversation");
+      }
       const renderIframe = payload?.result?.render_iframe as { url?: string; title?: string } | undefined;
+      const renderIframeTabs = payload?.result?.render_iframe_tabs as { url?: string; title?: string }[] | undefined;
       if (renderIframe?.url) {
-        setIframeStage({ url: String(renderIframe.url), title: String(renderIframe.title || "") });
+        const tabs = Array.isArray(renderIframeTabs) && renderIframeTabs.length > 1
+          ? renderIframeTabs
+              .filter((tab) => tab?.url)
+              .map((tab) => ({ url: String(tab.url), title: String(tab.title || "") }))
+          : [{ url: String(renderIframe.url), title: String(renderIframe.title || "") }];
+        setIframeTabs(tabs);
+        setIframeStage(tabs[0]);
         setIframeQuery("");
         setStageLayout("scene_focus");
       }
@@ -2536,10 +2562,27 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       ) : null}
       {iframeStage ? (
         <>
-        <div className="atanor-iframe-backdrop" onClick={() => { setIframeStage(null); setStageLayout("conversation"); }} aria-hidden="true" />
-        <div key={iframeStage.url} className="atanor-iframe-window">
+        <div className="atanor-iframe-backdrop" onClick={() => { setIframeStage(null); setIframeTabs([]); setStageLayout("conversation"); }} aria-hidden="true" />
+        <div key={iframeTabs[0]?.url ?? iframeStage.url} className="atanor-iframe-window">
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid #1c2230", background: "rgba(14,18,28,0.95)" }}>
-            <span style={{ color: "#9bb4ff", fontSize: 12.5, whiteSpace: "nowrap" }}>{iframeStage.title}</span>
+            {iframeTabs.length > 1 ? (
+              <div className="atanor-iframe-tabs">
+                {iframeTabs.map((tab) => (
+                  <button
+                    key={tab.url}
+                    type="button"
+                    className={`atanor-iframe-tab${tab.url === iframeStage.url ? " is-active" : ""}`}
+                    onClick={() => setIframeStage(tab)}
+                    title={tab.title || tab.url}
+                  >
+                    <span className="atanor-iframe-tab-dot" />
+                    <span className="atanor-iframe-tab-label">{tab.title || "page"}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span style={{ color: "#9bb4ff", fontSize: 12.5, whiteSpace: "nowrap" }}>{iframeStage.title}</span>
+            )}
             <form
               style={{ flex: 1, display: "flex", gap: 6 }}
               onSubmit={(e) => {
@@ -2547,7 +2590,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
                 const q = iframeQuery.trim();
                 if (!q) return;
                 const host = /[가-힣]/.test(q) ? "ko.wikipedia.org" : "en.wikipedia.org";
-                setIframeStage({ url: `https://${host}/wiki/Special:Search?search=${encodeURIComponent(q)}`, title: q });
+                const newTab = { url: `https://${host}/wiki/Special:Search?search=${encodeURIComponent(q)}`, title: q };
+                setIframeTabs((prev) => (prev.length ? [...prev, newTab] : [iframeStage as { url: string; title: string }, newTab]));
+                setIframeStage(newTab);
+                setIframeQuery("");
               }}
             >
               <input

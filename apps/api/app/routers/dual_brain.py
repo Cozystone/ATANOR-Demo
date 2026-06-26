@@ -3103,7 +3103,16 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # new nodes to the Local Brain graph — for ANY path that grounded the answer
     # on the web (RAG conversation grounding OR the abstention rescue). The orb
     # answer and these glowing new nodes come from the same retrieved evidence.
-    if request.web_search and isinstance(response.get("result"), dict):
+    answer_kind_now = str((response.get("result") or {}).get("answer_kind") or "")
+    # A self/identity/personal answer (ATANOR about itself, base-brain identity, a
+    # demoted low-quality grounding, or a Local Brain recall) is NOT a web lookup —
+    # never graft web nodes or open a source page for it ("너 이름이 뭐야" must not
+    # surface a stranger's Wikipedia page).
+    answer_is_self_or_local = bool(self_state or recall) or any(
+        marker in answer_kind_now
+        for marker in ("self", "atanor", "base_brain", "local", "low_quality", "unreachable")
+    )
+    if request.web_search and not answer_is_self_or_local and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
         if ans and not _answer_is_abstention(ans) and not result.get("web_grafted_nodes"):
@@ -3129,12 +3138,21 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         if intent_iframe:
             response["result"]["render_iframe"] = intent_iframe
 
+    # Dashboard control: the orb obeys layout instructions ("창 닫아") by emitting a
+    # directive the frontend executes. A control instruction is never also a search.
+    directive = _dashboard_directive_for(question)
+    if directive and isinstance(response.get("result"), dict):
+        response["result"]["dashboard_directive"] = directive
+        if directive.get("action") == "close_window":
+            for key in ("render_iframe", "render_iframe_tabs"):
+                response["result"].pop(key, None)
+
     # Pick ONE primary answer modality so the dashboard renders a single thing —
     # a readable document (iframe), a particle scene, or plain text — instead of
     # stacking unrecognisable particles. A web-grounded factual/entity lookup
     # ("손흥민이 누구야") opens its source page; a visual/physics question keeps its
     # particle scene; everything else is text.
-    if isinstance(response.get("result"), dict):
+    if isinstance(response.get("result"), dict) and not (directive and directive.get("action") == "close_window"):
         response["result"] = _decide_answer_modality(response["result"], question)
     return response
 
@@ -3144,6 +3162,26 @@ _VISUAL_SCENE_CUE_RE = re.compile(
     r"fall|drop|gravity|orbit|motion|move|rotat|collide|wave|interfere|visual|show me|draw|scene)",
     re.IGNORECASE,
 )
+
+# The orb has authority over the dashboard surface. The user can instruct it in
+# natural language; each directive is acted on by the frontend (no buttons).
+_CLOSE_WINDOW_RE = re.compile(
+    r"((창|탭|페이지|문서|화면|이거|그거|이걸|그걸|window|tab|page|it)\s*\S{0,5}(닫|꺼|치워|없애|지워|close|hide|dismiss))"
+    r"|^\s*(창\s*)?(닫아(줘)?|닫어|꺼(줘)?|치워(줘)?|없애|닫기|close( it)?|dismiss)\s*$",
+    re.IGNORECASE,
+)
+_NEW_TAB_RE = re.compile(r"(새\s*(탭|창)|탭\s*(추가|열어)|new\s+tab|open\s+(a\s+)?tab)", re.IGNORECASE)
+
+
+def _dashboard_directive_for(question: str) -> dict[str, Any] | None:
+    """Map a natural-language dashboard instruction to a control directive the
+    orb executes on the surface (close/dismiss the document window, etc.)."""
+    text = (question or "").strip()
+    if not text:
+        return None
+    if _CLOSE_WINDOW_RE.search(text):
+        return {"action": "close_window"}
+    return None
 
 
 def _decide_answer_modality(result: dict[str, Any], question: str) -> dict[str, Any]:
@@ -3172,6 +3210,26 @@ def _decide_answer_modality(result: dict[str, Any], question: str) -> dict[str, 
 
     if result.get("render_iframe") and not wants_visual:
         result["answer_modality"] = "iframe"
+        # Open the answer's source plus its related grafted pages as browser-style
+        # tabs in one window.
+        tabs: list[dict[str, str]] = []
+        seen: set[str] = set()
+        primary = result["render_iframe"]
+        primary_url = str(primary.get("url") or "")
+        if primary_url:
+            tabs.append({"url": primary_url, "title": str(primary.get("title") or "")})
+            seen.add(primary_url)
+        for node in grafted:
+            if not isinstance(node, dict):
+                continue
+            url = str(node.get("source_url") or "")
+            if url and url not in seen:
+                tabs.append({"url": url, "title": str(node.get("label") or "")})
+                seen.add(url)
+            if len(tabs) >= 5:
+                break
+        if len(tabs) > 1:
+            result["render_iframe_tabs"] = tabs
         # Don't render a particle scene behind the document.
         for key in scene_keys:
             result.pop(key, None)

@@ -8594,6 +8594,50 @@ p {
 .atanor-ai-dashboard[data-iframe-stage="open"] .hologram-voice-orb:hover {
   transform: translate(-50%, -50%) scale(1.012);
 }
+.atanor-iframe-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.atanor-iframe-tabs::-webkit-scrollbar { display: none; }
+.atanor-iframe-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 168px;
+  padding: 4px 11px;
+  border-radius: 9px 9px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: rgba(30, 38, 56, 0.5);
+  color: #94a3c4;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.atanor-iframe-tab:hover { color: #c9d6f5; background: rgba(44, 56, 86, 0.6); }
+.atanor-iframe-tab.is-active {
+  background: rgba(10, 13, 20, 0.97);
+  color: #dbe6ff;
+  border-color: rgba(130, 165, 255, 0.4);
+}
+.atanor-iframe-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6f9bff;
+  flex: none;
+}
+.atanor-iframe-tab.is-active .atanor-iframe-tab-dot { box-shadow: 0 0 7px 1px rgba(120, 170, 255, 0.8); }
+.atanor-iframe-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .atanor-iframe-window,
   .atanor-iframe-backdrop { animation-duration: 0.001s; }
