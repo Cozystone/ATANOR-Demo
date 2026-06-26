@@ -166,7 +166,9 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
     camera.position.set(0, 0, 7.2);
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "high-performance" });
+    // antialias is off: it has no visible effect on additively-blended point
+    // sprites (no polygon edges) but costs real GPU fill — pure waste here.
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x000000, 0);
     activeHost.appendChild(renderer.domElement);
@@ -247,6 +249,13 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     let activeShape = 0;
     let nextShape = 1;
     let morphStart = 0;
+    // The 24k-particle ribbon morph (a CPU loop + full GPU buffer re-upload) is
+    // the orb's heaviest per-frame cost. The morph is a slow ~4.4s transition, so
+    // recomputing it at ~33fps instead of every frame is visually identical but
+    // halves that work — which is what keeps the orb smooth while the page is busy
+    // (API calls, JSON parsing, React re-renders). Rotation still runs every frame.
+    let lastMorphAt = -1;
+    const MORPH_MIN_INTERVAL = 1 / 33;
 
     function resize() {
       const rect = activeHost.getBoundingClientRect();
@@ -286,7 +295,10 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
 
     function renderFrame() {
       const elapsed = clock.getElapsedTime();
-      updateRibbonMorph(elapsed);
+      if (lastMorphAt < 0 || elapsed - lastMorphAt >= MORPH_MIN_INTERVAL) {
+        updateRibbonMorph(elapsed);
+        lastMorphAt = elapsed;
+      }
 
       targetRotation.y += 0.0018;
       currentRotation.x += (targetRotation.x - currentRotation.x) * 0.055;
