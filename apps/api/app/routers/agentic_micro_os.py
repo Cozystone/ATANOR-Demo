@@ -125,6 +125,34 @@ def _persist_review_queue() -> None:
 # Track auto-promoted ids so the autonomous loop signs each candidate once.
 AUTO_PROMOTED_IDS: set[str] = set()
 
+# Wikipedia-grounded cumulative learning: the loop accumulates real concepts via
+# the clean grounding path rather than tokenising raw HTML. Bounded to a small
+# batch on a slow cadence so it stays a polite background reader.
+WIKIPEDIA_GROUNDED_MIN_INTERVAL_SEC = 90.0
+WIKIPEDIA_GROUNDED_TOPICS_PER_TICK = 2
+_LAST_WIKIPEDIA_GROUNDED_AT = 0.0
+_LAST_WIKIPEDIA_GROUNDED_RESULT: dict[str, Any] = {}
+
+
+def _run_wikipedia_grounded_learning(*, force: bool = False) -> dict[str, Any]:
+    """Ingest a bounded batch of clean Wikipedia-grounded concepts.
+
+    Cadence-gated and offline-safe: on a network miss it records an honest
+    "no_grounded_payloads" rather than inventing growth. Never raises."""
+    global _LAST_WIKIPEDIA_GROUNDED_AT, _LAST_WIKIPEDIA_GROUNDED_RESULT
+    now = time.monotonic()
+    if not force and (now - _LAST_WIKIPEDIA_GROUNDED_AT) < WIKIPEDIA_GROUNDED_MIN_INTERVAL_SEC:
+        return {"ingested": False, "reason": "cadence_throttled"}
+    _LAST_WIKIPEDIA_GROUNDED_AT = now
+    try:
+        from app.services.wikipedia_grounded_learning import ingest_wikipedia_grounded_once
+
+        result = ingest_wikipedia_grounded_once(max_topics=WIKIPEDIA_GROUNDED_TOPICS_PER_TICK)
+    except Exception as exc:  # pragma: no cover - learning must never break the loop
+        result = {"ingested": False, "reason": f"wikipedia_grounded_error:{type(exc).__name__}"}
+    _LAST_WIKIPEDIA_GROUNDED_RESULT = result
+    return result
+
 
 def _auto_promote_review_queue() -> dict[str, Any]:
     """Operator-free auto-promotion (user's unconditional-promotion policy)."""
@@ -285,6 +313,12 @@ class AutonomousDaemon:
                 POLICY_SCHEDULER_RUNS[str(payload.get("scheduler_id"))] = payload
             # Persist newly learned candidates so the loop's work survives restarts.
             _persist_review_queue()
+            # Accumulate real concepts via the clean Wikipedia grounding path
+            # (cadence-gated, offline-safe) before promotion, so the candidate
+            # store grows with grounded knowledge instead of tokenised noise.
+            grounded = _run_wikipedia_grounded_learning()
+            if grounded.get("ingested") and grounded.get("concepts_added"):
+                record["wikipedia_grounded_concepts"] = int(grounded.get("concepts_added") or 0)
             # User policy: AGORA has no operator; promotion is allowed
             # unconditionally. Auto-promote newly-eligible candidates to verified
             # staging (still skips private/mutation payloads; no production write).
@@ -876,6 +910,25 @@ def policy_scheduler_daemon_start(request: PolicySchedulerDaemonStartApiRequest)
 def policy_scheduler_daemon_stop(request: PolicySchedulerStopApiRequest) -> dict[str, Any]:
     payload = AUTONOMOUS_DAEMON.stop(reason=request.reason)
     return {**SAFETY_FLAGS, **payload, **AUTONOMOUS_DAEMON.status()}
+
+
+@router.post("/wikipedia-grounded/ingest")
+def wikipedia_grounded_ingest() -> dict[str, Any]:
+    """Manually run one bounded Wikipedia-grounded learning batch.
+
+    Same clean grounding path the autonomous loop uses each cycle. Candidate-only
+    (no production write); promotion still flows through the loop's gate."""
+    return {**SAFETY_FLAGS, **_run_wikipedia_grounded_learning(force=True)}
+
+
+@router.get("/wikipedia-grounded/status")
+def wikipedia_grounded_status() -> dict[str, Any]:
+    return {
+        **SAFETY_FLAGS,
+        "min_interval_sec": WIKIPEDIA_GROUNDED_MIN_INTERVAL_SEC,
+        "topics_per_tick": WIKIPEDIA_GROUNDED_TOPICS_PER_TICK,
+        "last_result": _LAST_WIKIPEDIA_GROUNDED_RESULT,
+    }
 
 
 @router.get("/overnight-briefing")

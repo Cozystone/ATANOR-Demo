@@ -74,6 +74,55 @@ ENGLISH_STOPWORDS = {
     "to",
     "with",
 }
+# Bare function/quantifier heads that are not real concepts on their own. Filtered
+# at concept creation so single tokens like "other"/"such" never become nodes.
+ENGLISH_GENERIC_HEADS = {
+    "other",
+    "others",
+    "such",
+    "various",
+    "many",
+    "more",
+    "most",
+    "one",
+    "ones",
+    "thing",
+    "things",
+    "kind",
+    "kinds",
+    "type",
+    "types",
+    "way",
+    "ways",
+    "etc",
+    "some",
+    "any",
+    "each",
+    "both",
+}
+_ENGLISH_COPULA_RE = re.compile(r"\b(is|are|was|were)\b", re.IGNORECASE)
+_ENGLISH_INTRO_PREPOSITIONS = {
+    "in",
+    "on",
+    "at",
+    "as",
+    "for",
+    "by",
+    "with",
+    "from",
+    "within",
+    "under",
+    "during",
+    "throughout",
+    "through",
+    "after",
+    "before",
+    "among",
+    "across",
+    "despite",
+    "unlike",
+    "according",
+}
 
 
 @dataclass
@@ -155,6 +204,34 @@ def _english_head(tokens: list[str]) -> str:
     return ""
 
 
+def _english_definition_subject(sentence: str) -> str:
+    """Return the leading subject phrase of a copula definition, e.g.
+    "Marie Curie was a physicist" -> "Marie Curie", "The telephone is ..." ->
+    "telephone". Keeps the real multi-word subject as one concept instead of a
+    single trailing token. Returns "" when there is no clean short subject."""
+
+    match = _ENGLISH_COPULA_RE.search(sentence)
+    if not match:
+        return ""
+    before = sentence[: match.start()]
+    parts = [part.strip() for part in before.split(",") if part.strip()]
+    if not parts:
+        return ""
+    # "In physics, gravity is ..." opens with an introductory phrase; the real
+    # subject follows it. An appositive ("A telephone, shortened to phone, is ...")
+    # keeps the subject in the first segment.
+    head = parts[0]
+    if len(parts) > 1 and head.split()[0].casefold() in _ENGLISH_INTRO_PREPOSITIONS:
+        head = parts[1]
+    tokens = _english_tokens(head)
+    while tokens and tokens[0].casefold() in {"a", "an", "the"}:
+        tokens = tokens[1:]
+    # A clean definitional subject is a short noun phrase, not a whole clause.
+    if not tokens or len(tokens) > 5:
+        return ""
+    return " ".join(tokens)
+
+
 def extract_english_case_roles(sentence: str) -> tuple[list[dict[str, str]], str]:
     """Return a conservative English SVO-style case frame.
 
@@ -177,7 +254,13 @@ def extract_english_case_roles(sentence: str) -> tuple[list[dict[str, str]], str
     if predicate_index < 0:
         return [], ""
     roles: list[dict[str, str]] = []
-    subject = _english_head(tokens[:predicate_index])
+    # For copula definitions ("X is/are ..."), keep the real multi-word subject
+    # ("Marie Curie") rather than a single trailing token ("Curie").
+    subject = ""
+    if predicate == "be":
+        subject = _english_definition_subject(sentence)
+    if not subject:
+        subject = _english_head(tokens[:predicate_index])
     obj = _english_head(tokens[predicate_index + 1 :])
     if subject:
         roles.append({"role": "SUBJ", "marker": "", "head": subject})
@@ -247,7 +330,11 @@ def decompose_sentence(
         roles, predicate = extract_english_case_roles(sentence.text)
     else:
         roles, predicate = extract_case_roles(sentence.text)
-    concept_names = {role["head"] for role in roles if normalize_concept(role["head"])}
+    concept_names = {
+        role["head"]
+        for role in roles
+        if normalize_concept(role["head"]) and role["head"].casefold() not in ENGLISH_GENERIC_HEADS
+    }
     if predicate:
         concept_names.add(predicate)
     concepts: dict[str, dict[str, Any]] = {}
