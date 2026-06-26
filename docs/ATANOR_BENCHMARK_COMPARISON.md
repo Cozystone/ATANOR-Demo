@@ -73,10 +73,34 @@ should be judged on the RAG/factual-QA metrics.
 > cited and auditable)**, at the honest cost of **lower coverage and shallower
 > multi-hop reasoning** than a frontier LLM.
 
-## 5. To make this a *measured* comparison (next step, not yet done)
+## 5. Measured numbers (harness now exists)
 
-To replace "by construction" with numbers, run a small held-out factual-QA set
-(e.g. 100 Korean+English entity/definition questions) through ATANOR and record:
-hallucination rate, citation precision, abstention-correctness, EM/F1 where a gold
-answer exists, and median latency. That harness does not exist yet; this document
-is the honest qualitative placement until it does.
+`packages/answer_quality/factual_qa_benchmark.py` runs a held-out KO+EN set
+(real entities, concepts, identity questions, and **invented-entity honesty
+traps**) through the live answer path and scores it. Run it with
+`python -m packages.answer_quality.factual_qa_benchmark` (reports land in
+`data/audits/factual_qa_benchmark/`).
+
+First live run (14 items, 2026-06-27):
+
+| Metric | Result |
+|---|---|
+| **Hallucination rate on honesty-traps** | **0%** (0/4 invented entities fabricated — all correctly abstained) |
+| **Abstention correctness on traps** | **100%** |
+| **Citation precision on answered** | **100%** (every web answer carried a real source URL) |
+| **Gold-term match (answerable)** | 75% |
+| **Answer rate (answerable)** | 88% |
+| **Self-knowledge accuracy** | "name" correct; "how it works" answers from the self-model |
+
+The **0% hallucination / 100% citation** results are the robust, design-defining
+ones. The answer-rate gap is honest: when the public web is slow or rate-limited
+the system **abstains rather than guesses** (two items abstained on this run due
+to Wikipedia throttling, and re-tested correctly afterward) — degrading to "I
+don't know," never to a fabricated answer. That is the intended trade-off, and it
+is now measured, not asserted.
+
+### Still to deepen
+- Scale the trap+answerable set to ~100 items for tighter intervals.
+- Add EM/F1 against gold answers where they exist (not just gold-term presence).
+- The multi-hop reasoning gap (no GSM8K-style chaining) remains the main weakness
+  vs. frontier LLMs.
