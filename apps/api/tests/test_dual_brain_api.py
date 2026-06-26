@@ -1506,3 +1506,22 @@ def test_web_grounded_fact_clipping_keeps_sentence_boundary() -> None:
     assert clipped.endswith("법칙이다.")
     assert "처음." not in clipped
     assert not clipped.endswith("다음과 같다.")
+
+
+def test_render_iframe_for_intent_opens_search_on_request() -> None:
+    ko = dual_brain._render_iframe_for_intent("에펠탑 검색해줘", "ko")
+    assert ko is not None and "wiki/Special:Search" in ko["url"] and "ko.wikipedia.org" in ko["url"]
+    en = dual_brain._render_iframe_for_intent("search for the Eiffel Tower", "en")
+    assert en is not None and "en.wikipedia.org" in en["url"]
+
+
+def test_render_iframe_for_intent_ignores_plain_questions() -> None:
+    assert dual_brain._render_iframe_for_intent("What is GraphRAG?", "en") is None
+    assert dual_brain._render_iframe_for_intent("안녕", "ko") is None
+
+
+def test_answer_is_abstention_recognizes_base_brain_phrasings() -> None:
+    assert dual_brain._answer_is_abstention("I do not have enough base concepts to support this question yet.")
+    assert dual_brain._answer_is_abstention("지금 확인된 근거가 부족해서 단정하기 어렵습니다.")
+    assert dual_brain._answer_is_abstention("")  # empty == abstain
+    assert not dual_brain._answer_is_abstention("The Eiffel Tower is a lattice tower in Paris, France.")
