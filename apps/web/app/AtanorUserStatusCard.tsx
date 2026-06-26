@@ -21,6 +21,14 @@ type ConversationContextTurn = {
   text: string;
 };
 
+type GraftedNode = {
+  id?: string;
+  label?: string;
+  kind?: string;
+  source_url?: string;
+  definition?: string;
+};
+
 type VoiceOutput = {
   audio_available?: boolean;
   audio_url?: string | null;
@@ -1505,6 +1513,10 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   // sandboxed iframe; the orb slides to the lower-right (scene_focus) to make room.
   const [iframeStage, setIframeStage] = useState<{ url: string; title: string } | null>(null);
   const [iframeQuery, setIframeQuery] = useState("");
+  // Nodes the agent just fetched from the web, added to the Cloud Brain, and
+  // grafted onto the Local Brain to answer. Rendered glowing as they emerge.
+  const [graftedNodes, setGraftedNodes] = useState<GraftedNode[]>([]);
+  const [graftBatchId, setGraftBatchId] = useState(0);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [speechTypingStepMs, setSpeechTypingStepMs] = useState(24);
   const [speechSyncMode, setSpeechSyncMode] = useState<"idle" | "audio_onplaying" | "estimated_text_clock">("idle");
@@ -2145,6 +2157,14 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       if (!answer || !isAsmConversationPayload(payload)) {
         throw new Error("conversation surface unavailable");
       }
+      // New web→Cloud Brain→Local Brain nodes for this answer: light them up.
+      const newGrafted = (payload?.result?.web_grafted_nodes as GraftedNode[] | undefined) ?? [];
+      if (Array.isArray(newGrafted) && newGrafted.length > 0) {
+        setGraftedNodes(newGrafted);
+        setGraftBatchId((previous) => previous + 1);
+      } else {
+        setGraftedNodes([]);
+      }
       const voiceOutput = payload?.result?.voice_output as VoiceOutput | undefined;
       const nextSpeechDurationMs = estimatedSpeechDurationMs(answer, voiceOutput);
       const nextTypingStepMs = typingStepForSpeech(answer, nextSpeechDurationMs);
@@ -2562,6 +2582,42 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           )}
           <div style={{ padding: "5px 12px", borderTop: "1px solid #1c2230", color: "#5a6478", fontSize: 10.5 }}>
             {language === "ko" ? "일부 사이트는 임베드를 차단합니다 — 그럴 땐 ‘새 탭 ↗’을 누르세요. (표시 전용 · 입력 정보 없음)" : "Some sites block embedding — use ‘open ↗’ then. (display-only · no data entered)"}
+          </div>
+        </div>
+      ) : null}
+      {graftedNodes.length > 0 ? (
+        <div key={graftBatchId} className="atanor-graft-stage" aria-live="polite">
+          <div className="atanor-graft-head">
+            <span className="atanor-graft-spark" />
+            <span>{language === "ko" ? "웹에서 찾아 붙인 새 노드" : "New nodes grafted from the web"}</span>
+            <button
+              className="atanor-graft-close"
+              onClick={() => setGraftedNodes([])}
+              aria-label={language === "ko" ? "닫기" : "Close"}
+            >
+              ×
+            </button>
+          </div>
+          <div className="atanor-graft-nodes">
+            {graftedNodes.map((node, index) => (
+              <a
+                key={node.id ?? node.source_url ?? index}
+                className="atanor-graft-node"
+                href={node.source_url || undefined}
+                target="_blank"
+                rel="noreferrer"
+                style={{ animationDelay: `${index * 0.16}s` }}
+                title={node.definition || node.label || ""}
+              >
+                <span className="atanor-graft-node-dot" />
+                <span className="atanor-graft-node-label">{node.label || "node"}</span>
+              </a>
+            ))}
+          </div>
+          <div className="atanor-graft-foot">
+            {language === "ko"
+              ? "클라우드 브레인에 추가 → 로컬 브레인에 연결 (후보 · 검증 전)"
+              : "added to Cloud Brain → linked into Local Brain (candidate · pre-verified)"}
           </div>
         </div>
       ) : null}

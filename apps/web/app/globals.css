@@ -8417,6 +8417,116 @@ p {
   z-index: 1;
 }
 
+/* Newly web-grafted Cloud Brain → Local Brain nodes: emerge + glow. */
+.atanor-graft-stage {
+  position: absolute;
+  top: 70px;
+  right: 22px;
+  z-index: 7;
+  width: min(320px, 36vw);
+  padding: 12px 14px 11px;
+  border-radius: 14px;
+  border: 1px solid rgba(120, 160, 255, 0.22);
+  background: linear-gradient(180deg, rgba(16, 22, 38, 0.92), rgba(11, 15, 26, 0.92));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(90, 140, 255, 0.06);
+  backdrop-filter: blur(8px);
+  animation: atanor-graft-panel-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.atanor-graft-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: #aebfe6;
+}
+.atanor-graft-spark {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #8fb4ff;
+  box-shadow: 0 0 10px 2px rgba(120, 170, 255, 0.85);
+  animation: atanor-graft-pulse 1.5s ease-in-out infinite;
+}
+.atanor-graft-close {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  border: 1px solid #2a2f3d;
+  background: rgba(15, 18, 26, 0.7);
+  color: #cfe0ff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 18px;
+}
+.atanor-graft-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 11px 0 9px;
+}
+.atanor-graft-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px 6px 9px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: #eaf1ff;
+  font-size: 12.5px;
+  border: 1px solid rgba(130, 175, 255, 0.45);
+  background: rgba(40, 70, 140, 0.28);
+  box-shadow: 0 0 0 0 rgba(130, 175, 255, 0);
+  transform-origin: left center;
+  animation:
+    atanor-graft-node-in 0.5s cubic-bezier(0.2, 0.9, 0.2, 1) both,
+    atanor-graft-node-glow 2.4s ease-in-out 0.5s infinite;
+}
+.atanor-graft-node:hover {
+  border-color: rgba(160, 195, 255, 0.85);
+}
+.atanor-graft-node-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #cfe0ff, #6f9bff 70%);
+  box-shadow: 0 0 8px 2px rgba(120, 170, 255, 0.8);
+}
+.atanor-graft-node-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.atanor-graft-foot {
+  font-size: 10.5px;
+  color: #6f7b96;
+  line-height: 1.4;
+}
+@keyframes atanor-graft-panel-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes atanor-graft-node-in {
+  0% { opacity: 0; transform: scale(0.2); filter: blur(3px); }
+  60% { opacity: 1; transform: scale(1.12); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes atanor-graft-node-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(130, 175, 255, 0.0); border-color: rgba(130, 175, 255, 0.4); }
+  50% { box-shadow: 0 0 16px 2px rgba(130, 175, 255, 0.55); border-color: rgba(170, 200, 255, 0.9); }
+}
+@keyframes atanor-graft-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.35); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atanor-graft-stage,
+  .atanor-graft-node,
+  .atanor-graft-spark { animation-duration: 0.001s; animation-iteration-count: 1; }
+}
+
 .atanor-hologram-speech {
   bottom: clamp(104px, 13vh, 148px);
   color: rgba(236, 249, 255, 0.72);

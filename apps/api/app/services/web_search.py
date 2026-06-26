@@ -19,7 +19,7 @@ _WIKI_CACHE: dict[str, tuple[float, Any]] = {}
 _WIKI_CACHE_TTL = 900.0  # 15 min
 
 
-def _wiki_get_json(url: str, *, timeout: float = 5.0, retries: int = 1) -> Any:
+def _wiki_get_json(url: str, *, timeout: float = 5.0, retries: int = 2) -> Any:
     """GET + parse JSON from a bounded public Wikipedia endpoint, with a tiny TTL
     cache and one backoff retry on 429/5xx. Returns {} on failure (never raises)."""
     now = time.monotonic()

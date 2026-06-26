@@ -2125,13 +2125,26 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     retrieval-augmented grounding — the answer IS the retrieved evidence,
     attributed; no LLM, no fabrication. Returns None if nothing relevant."""
     try:
-        from app.services.web_search import search_web
+        from app.services.web_search import search_web, wikipedia_search
 
         payload = await search_web(question, 5)
     except Exception:  # pragma: no cover - network/optional
-        return None
+        payload = None
     provider = str((payload or {}).get("provider") or "")
+    rows_available = list((payload or {}).get("results") or [])
     is_ko = language == "ko"
+    # Reliable free fallback: a configured provider may be missing/unconfigured
+    # (→ "static" fixtures) or the provider path may yield nothing. Wikipedia is a
+    # keyless public encyclopedia, so try it directly (language-aware) before ever
+    # declaring the web unreachable. This is what makes the answer reflect search.
+    if provider in ("", "static") or not rows_available:
+        try:
+            wiki_rows = wikipedia_search(question, 5)
+        except Exception:  # pragma: no cover - network/optional
+            wiki_rows = []
+        if wiki_rows:
+            provider = "wikipedia"
+            payload = {"provider": "wikipedia", "results": wiki_rows}
     # For a knowledge query the web search tries real retrieval first and only
     # falls back to "static" when the live web could not be reached (offline /
     # rate-limited / down). Say so honestly instead of pasting fixtures.
@@ -2194,6 +2207,19 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     is_ko = language == "ko"
     suffix = f" (출처: {title})" if is_ko and title else (f" (source: {title})" if title else "")
 
+    # Graft the cited web result(s) into the Cloud Brain as real concept nodes,
+    # ordering the answer's own source first, and hand the new nodes back so the
+    # Local Brain graph can light them up as they are added.
+    ordered_rows = [best] + [r for r in (payload.get("results") or []) if r is not best]
+    graft = _graft_web_nodes_to_cloud_brain(ordered_rows, language) if provider == "wikipedia" else {}
+    grafted_nodes = graft.get("grafted_nodes") or []
+    web_graft = {
+        "cloud_brain_concepts_added": int(graft.get("concepts_added") or 0),
+        "cloud_brain_relations_added": int(graft.get("relations_added") or 0),
+        "candidate_store_path": graft.get("candidate_store_path"),
+        "production_store_mutated": bool(graft.get("production_store_mutated")),
+    } if graft else {}
+
     # Attribution questions ("who invented X?") get the PERSON, not just a
     # definition — extracted deterministically from the retrieved snippets.
     all_snippets = [str(r.get("snippet") or "") for r in (payload.get("results") or [])]
@@ -2223,7 +2249,11 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         }
         attribution_text = (attribution + suffix).strip()
         _store_web_fact(question, title, attribution_text, url)
-        return {"answer": attribution_text, "reasoning_certificate": cert, "confidence": 0.7, "provider": provider, "source_url": url, "source_title": title}
+        return {
+            "answer": attribution_text, "reasoning_certificate": cert, "confidence": 0.7,
+            "provider": provider, "source_url": url, "source_title": title,
+            "grafted_nodes": grafted_nodes, "web_graft": web_graft,
+        }
 
     answer = _first_sentences(str(best.get("snippet") or ""), max_chars=420)
     if len(answer) < 40:
@@ -2248,7 +2278,21 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         "provider": provider,
         "source_url": url,
         "source_title": title,
+        "grafted_nodes": grafted_nodes,
+        "web_graft": web_graft,
     }
+
+
+def _graft_web_nodes_to_cloud_brain(results: list[dict[str, Any]], language: str) -> dict[str, Any]:
+    """Add cited web results to the Cloud Brain candidate store as real concepts
+    and return the new node descriptors. Never raises (grounding answer must not
+    depend on the graft succeeding)."""
+    try:
+        from app.services.wikipedia_grounded_learning import ingest_web_result
+
+        return ingest_web_result(results, language=language, max_nodes=3)
+    except Exception:  # pragma: no cover - graft is best-effort
+        return {}
 
 
 def _is_recent_learning_question(question: str) -> bool:
@@ -3017,6 +3061,11 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
                 result["answer_kind"] = "web_unreachable" if rescue.get("web_unreachable") else "web_search_grounded"
                 result["web_search_provider"] = rescue["provider"]
                 result["can_speak"] = True
+                # New Cloud Brain nodes grafted from the web result, handed to the
+                # Local Brain graph so it can light them up as they appear.
+                if rescue.get("grafted_nodes"):
+                    result["web_grafted_nodes"] = rescue["grafted_nodes"]
+                    result["web_graft"] = rescue.get("web_graft") or {}
                 # The agent surfaces the source document on its own — the dashboard
                 # opens it in the iframe stage (orb slides aside).
                 if rescue.get("source_url"):
@@ -3049,6 +3098,29 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
                 result["answer_kind"] = "local_web_fact_recall"
                 result["web_search_provider"] = "local_web_memory"
                 result["can_speak"] = True
+
+    # Graft web-sourced evidence into the Cloud Brain as real nodes and hand the
+    # new nodes to the Local Brain graph — for ANY path that grounded the answer
+    # on the web (RAG conversation grounding OR the abstention rescue). The orb
+    # answer and these glowing new nodes come from the same retrieved evidence.
+    if request.web_search and isinstance(response.get("result"), dict):
+        result = response["result"]
+        ans = str(result.get("answer") or "")
+        if ans and not _answer_is_abstention(ans) and not result.get("web_grafted_nodes"):
+            web_docs = [
+                doc for doc in (result.get("evidence_docs") or [])
+                if isinstance(doc, dict) and "wikipedia.org" in str(doc.get("url") or "")
+            ]
+            if web_docs:
+                graft = _graft_web_nodes_to_cloud_brain(web_docs, language)
+                if graft.get("grafted_nodes"):
+                    result["web_grafted_nodes"] = graft["grafted_nodes"]
+                    result["web_graft"] = {
+                        "cloud_brain_concepts_added": int(graft.get("concepts_added") or 0),
+                        "cloud_brain_relations_added": int(graft.get("relations_added") or 0),
+                        "candidate_store_path": graft.get("candidate_store_path"),
+                        "production_store_mutated": bool(graft.get("production_store_mutated")),
+                    }
 
     # Explicit "search / open / show me X" → the agent opens the iframe stage of
     # its own accord (the dashboard auto-renders it; orb slides aside).
