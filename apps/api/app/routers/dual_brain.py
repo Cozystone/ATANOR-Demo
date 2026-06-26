@@ -3072,6 +3072,12 @@ def _atanor_self_sense() -> dict[str, Any]:
     except Exception:
         sense["local_brain"] = {"available": False}
 
+    # Web facts it has looked up and remembered locally
+    try:
+        sense["web_memory"] = {"facts_remembered": int(WEB_FACT_MEMORY.status().get("total_facts") or 0)}
+    except Exception:
+        sense["web_memory"] = {"facts_remembered": 0}
+
     # Cloud Brain (public learned graph)
     try:
         from apps.api.app.routers.cloud_brain import cloud_brain_status
@@ -3124,6 +3130,7 @@ def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
         mood = s.get("mood") or {}
         nodes = int(cb.get("nodes") or 0)
         facts = int(lb.get("total_facts") or 0)
+        web_facts = int((s.get("web_memory") or {}).get("facts_remembered") or 0)
         learned = int(au.get("learned_total") or 0)
         running = bool(au.get("running"))
         is_ko = language == "ko"
@@ -3131,13 +3138,13 @@ def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
             act = "지금 자율 루프를 돌리며 공개 웹과 AGORA를 살피고 있어요" if running else "지금은 자율 루프를 멈추고 대기 중이에요"
             answer = (
                 f"{act}. 클라우드 브레인에는 검증 개념이 {nodes:,}개 있고, 검토 큐에는 {learned:,}개의 학습 후보가 있어요. "
-                f"당신에 대해서는 {facts}가지를 기억하고 있어요. 호기심은 {float(mood.get('curiosity') or 0):.2f}예요."
+                f"웹에서 찾아 기억해 둔 사실은 {web_facts}개이고, 당신에 대해서는 {facts}가지를 기억하고 있어요. 호기심은 {float(mood.get('curiosity') or 0):.2f}예요."
             )
         else:
-            act = "I'm running the autonomous loop, scanning the public web and AGORA" if running else "the autonomous loop is paused right now"
+            act = "I'm running the autonomous loop, scanning the public web and AGORA" if running else "the autonomous loop is paused"
             answer = (
                 f"Right now {act}. The Cloud Brain holds {nodes:,} verified concepts and the review queue has {learned:,} learned candidates. "
-                f"I remember {facts} thing(s) about you. My curiosity is {float(mood.get('curiosity') or 0):.2f}."
+                f"I've looked up and remembered {web_facts} web fact(s), and I remember {facts} thing(s) about you. My curiosity is {float(mood.get('curiosity') or 0):.2f}."
             )
         certificate = {
             "derivation_kind": "atanor_self_sense",
