@@ -8642,6 +8642,40 @@ p {
   text-overflow: ellipsis;
 }
 
+/* When a document is open, the spoken answer becomes a caption pinned to the
+   bottom (above the input) so it never overlaps the document. */
+.atanor-ai-dashboard[data-iframe-stage="open"] .atanor-hologram-speech {
+  position: absolute !important;
+  left: 50% !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: clamp(86px, 12vh, 124px) !important;
+  transform: translateX(-50%) !important;
+  width: min(72%, 760px) !important;
+  max-width: min(72%, 760px) !important;
+  text-align: center !important;
+  padding: 9px 16px !important;
+  border-radius: 12px !important;
+  background: rgba(8, 11, 18, 0.82) !important;
+  border: 1px solid rgba(120, 150, 220, 0.18) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(6px) !important;
+  font-size: clamp(13px, 1.2vw, 15px) !important;
+  line-height: 1.5 !important;
+  z-index: 21 !important;
+  pointer-events: none;
+}
+/* The self-narration line is hidden behind a document — the caption carries the
+   answer. */
+.atanor-ai-dashboard[data-iframe-stage="open"] .atanor-hologram-self-narration {
+  display: none !important;
+}
+/* With a document open, the tabs already ARE the grafted pages, so the separate
+   glow panel is redundant and would overlap the window — hide it. */
+.atanor-ai-dashboard[data-iframe-stage="open"] .atanor-graft-stage {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .atanor-iframe-window,
   .atanor-iframe-backdrop { animation-duration: 0.001s; }
