@@ -2028,8 +2028,33 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     except Exception:  # pragma: no cover - network/optional
         return None
     provider = str((payload or {}).get("provider") or "")
-    # Only real retrieval providers — never the tiny static fixture set.
-    if provider in ("", "static", "microsoft-grounding"):
+    is_ko = language == "ko"
+    # For a knowledge query the web search tries real retrieval first and only
+    # falls back to "static" when the live web could not be reached (offline /
+    # rate-limited / down). Say so honestly instead of pasting fixtures.
+    if provider in ("", "static"):
+        return {
+            "answer": (
+                "지금 인터넷에서 확인하지 못했어요 (웹 연결 또는 검색 불가). 로컬에 있는 지식 범위 안에서만 답할 수 있어요."
+                if is_ko
+                else "I couldn't reach the web to check this right now (no connection or search unavailable). I can only answer from local knowledge."
+            ),
+            "reasoning_certificate": {
+                "derivation_kind": "web_unreachable",
+                "anchor_concept": None,
+                "steps": [{"type": "web_status", "fact": "live web retrieval unavailable; no fixtures used"}],
+                "evidence_concepts": [],
+                "confidence": 0.2,
+                "confidence_basis": "web_unreachable",
+                "guarantees": {"external_llm": False, "fabricated_facts": False, "static_fixtures_used": False},
+            },
+            "confidence": 0.2,
+            "provider": "offline",
+            "source_url": "",
+            "source_title": "",
+            "web_unreachable": True,
+        }
+    if provider == "microsoft-grounding":
         return None
     def _looks_like_definition(snippet: str) -> bool:
         head = snippet[:80]
@@ -2830,7 +2855,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
                 result["answer"] = rescue["answer"]
                 result["reasoning_certificate"] = rescue["reasoning_certificate"]
                 result["confidence"] = rescue["confidence"]
-                result["answer_kind"] = "web_search_grounded"
+                result["answer_kind"] = "web_unreachable" if rescue.get("web_unreachable") else "web_search_grounded"
                 result["web_search_provider"] = rescue["provider"]
                 result["can_speak"] = True
                 # The agent surfaces the source document on its own — the dashboard
@@ -3070,7 +3095,7 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
                     fb_result["answer"] = rescue["answer"]
                     fb_result["reasoning_certificate"] = rescue["reasoning_certificate"]
                     fb_result["confidence"] = rescue["confidence"]
-                    fb_result["answer_kind"] = "web_search_grounded"
+                    fb_result["answer_kind"] = "web_unreachable" if rescue.get("web_unreachable") else "web_search_grounded"
                     fb_result["web_search_provider"] = rescue["provider"]
                     fb_result["can_speak"] = True
                     if rescue.get("source_url"):

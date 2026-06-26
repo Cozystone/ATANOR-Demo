@@ -2544,14 +2544,22 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
               ×
             </button>
           </div>
-          <iframe
-            key={iframeStage.url}
-            src={iframeStage.url}
-            title={iframeStage.title}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-            referrerPolicy="no-referrer"
-            style={{ flex: 1, width: "100%", border: 0, background: "#fff" }}
-          />
+          {(typeof navigator !== "undefined" && navigator.onLine === false) ? (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24, color: "#9aa4bd", fontSize: 13, lineHeight: 1.6 }}>
+              {language === "ko"
+                ? "오프라인이에요 — 인터넷에 연결되면 검색·문서를 띄울 수 있어요. 그동안에도 로컬 지식으로는 답할 수 있어요."
+                : "You're offline — search and documents need an internet connection. I can still answer from local knowledge in the meantime."}
+            </div>
+          ) : (
+            <iframe
+              key={iframeStage.url}
+              src={iframeStage.url}
+              title={iframeStage.title}
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              referrerPolicy="no-referrer"
+              style={{ flex: 1, width: "100%", border: 0, background: "#fff" }}
+            />
+          )}
           <div style={{ padding: "5px 12px", borderTop: "1px solid #1c2230", color: "#5a6478", fontSize: 10.5 }}>
             {language === "ko" ? "일부 사이트는 임베드를 차단합니다 — 그럴 땐 ‘새 탭 ↗’을 누르세요. (표시 전용 · 입력 정보 없음)" : "Some sites block embedding — use ‘open ↗’ then. (display-only · no data entered)"}
           </div>
