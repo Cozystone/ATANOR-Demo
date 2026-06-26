@@ -8527,6 +8527,78 @@ p {
   .atanor-graft-spark { animation-duration: 0.001s; animation-iteration-count: 1; }
 }
 
+/* ── iframe document stage: a clearly-framed window that genies out of the orb ── */
+.atanor-iframe-backdrop {
+  position: absolute;
+  left: var(--atanor-sidebar-w, 240px);
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  background: radial-gradient(120% 120% at 18% 88%, rgba(5, 7, 12, 0.32), rgba(5, 7, 12, 0.62) 60%, rgba(4, 6, 11, 0.78));
+  backdrop-filter: blur(1.5px);
+  animation: atanor-iframe-backdrop-in 0.32s ease both;
+  cursor: zoom-out;
+}
+.atanor-iframe-window {
+  position: absolute;
+  left: calc(var(--atanor-sidebar-w, 240px) + clamp(20px, 4vw, 64px));
+  top: clamp(56px, 8vh, 86px);
+  right: clamp(20px, 3vw, 48px);
+  bottom: clamp(96px, 13vh, 132px);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(130, 165, 255, 0.5);
+  background: rgba(10, 13, 20, 0.97);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(140, 175, 255, 0.16),
+    0 0 44px rgba(70, 110, 220, 0.22);
+  /* Genie: stretch up out of the lower-left orb. */
+  transform-origin: 6% 100%;
+  animation: atanor-iframe-genie-in 0.52s cubic-bezier(0.16, 0.84, 0.24, 1) both;
+}
+@keyframes atanor-iframe-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes atanor-iframe-genie-in {
+  0% { opacity: 0; transform: translate(-22%, 34%) scale(0.06, 0.16); filter: blur(2px); border-radius: 50% 50% 14px 40%; }
+  45% { opacity: 1; transform: translate(-4%, 7%) scale(0.62, 0.8); filter: blur(0.4px); border-radius: 30px 30px 16px 22px; }
+  72% { transform: translate(0, -1.5%) scale(1.015, 1.02); border-radius: 16px; }
+  100% { opacity: 1; transform: translate(0, 0) scale(1, 1); border-radius: 16px; }
+}
+
+/* When a document is open, the orb tucks to the lower-LEFT (genie origin) and the
+   particle body always rides on the very top layer. */
+.atanor-ai-dashboard[data-iframe-stage="open"] .atanor-hologram-stage {
+  z-index: 20;
+  pointer-events: none;
+}
+.atanor-ai-dashboard[data-iframe-stage="open"] .hologram-voice-orb {
+  left: calc(var(--atanor-sidebar-w, 240px) + clamp(60px, 7vw, 128px));
+  top: calc(100% - clamp(150px, 18vh, 206px));
+  width: clamp(120px, 17vmin, 178px);
+  height: clamp(120px, 17vmin, 178px);
+  min-width: clamp(120px, 17vmin, 178px);
+  min-height: clamp(120px, 17vmin, 178px);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  z-index: 22;
+  transition: left 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.5s ease, height 0.5s ease;
+}
+.atanor-ai-dashboard[data-iframe-stage="open"] .hologram-voice-orb:hover {
+  transform: translate(-50%, -50%) scale(1.012);
+}
+@media (prefers-reduced-motion: reduce) {
+  .atanor-iframe-window,
+  .atanor-iframe-backdrop { animation-duration: 0.001s; }
+}
+
 .atanor-hologram-speech {
   bottom: clamp(104px, 13vh, 148px);
   color: rgba(236, 249, 255, 0.72);

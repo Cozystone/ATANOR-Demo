@@ -3128,7 +3128,61 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         intent_iframe = _render_iframe_for_intent(question, language)
         if intent_iframe:
             response["result"]["render_iframe"] = intent_iframe
+
+    # Pick ONE primary answer modality so the dashboard renders a single thing —
+    # a readable document (iframe), a particle scene, or plain text — instead of
+    # stacking unrecognisable particles. A web-grounded factual/entity lookup
+    # ("손흥민이 누구야") opens its source page; a visual/physics question keeps its
+    # particle scene; everything else is text.
+    if isinstance(response.get("result"), dict):
+        response["result"] = _decide_answer_modality(response["result"], question)
     return response
+
+
+_VISUAL_SCENE_CUE_RE = re.compile(
+    r"(떨어|낙하|중력|궤도|움직|이동|회전|충돌|흐르|퍼지|파동|간섭|시각|보여|그려|장면|"
+    r"fall|drop|gravity|orbit|motion|move|rotat|collide|wave|interfere|visual|show me|draw|scene)",
+    re.IGNORECASE,
+)
+
+
+def _decide_answer_modality(result: dict[str, Any], question: str) -> dict[str, Any]:
+    """Resolve a single primary modality and prune the others.
+
+    iframe (document) wins for web-grounded entity/factual lookups; a particle
+    scene is kept only for explicitly visual/physical questions; otherwise text.
+    """
+    grafted = result.get("web_grafted_nodes") or []
+    wants_visual = bool(_VISUAL_SCENE_CUE_RE.search(question or ""))
+
+    # A web-grounded entity lookup with no explicit iframe yet → open its source.
+    if grafted and not result.get("render_iframe") and not wants_visual:
+        primary = grafted[0] if isinstance(grafted[0], dict) else {}
+        src = str(primary.get("source_url") or "")
+        if src:
+            result["render_iframe"] = {"url": src, "title": str(primary.get("label") or question[:60])}
+
+    scene_keys = (
+        "scene_choreography", "splatra_scene_plan", "splatra_command_sequence",
+        "splatra_interactive_scene_analysis", "splatra_cartridge_queue",
+        "splatra_sidecar_dispatch", "visual_scene_plan", "render_fold_scene",
+        "folded_state_field",
+    )
+    has_scene = any(result.get(key) for key in scene_keys)
+
+    if result.get("render_iframe") and not wants_visual:
+        result["answer_modality"] = "iframe"
+        # Don't render a particle scene behind the document.
+        for key in scene_keys:
+            result.pop(key, None)
+    elif wants_visual and has_scene:
+        result["answer_modality"] = "particle_scene"
+        result.pop("render_iframe", None)
+    elif has_scene and not result.get("render_iframe"):
+        result["answer_modality"] = "particle_scene"
+    else:
+        result["answer_modality"] = "iframe" if result.get("render_iframe") else "text"
+    return result
 
 
 def _atanor_self_sense() -> dict[str, Any]:

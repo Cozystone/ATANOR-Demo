@@ -2181,7 +2181,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         source: String(voiceOutput?.fallback_prosody_source ?? "none"),
         volume: Number(voiceOutput?.local_tts_volume ?? 0) || 0,
       });
-      const nextStageLayout = requestedStageLayout(payload);
+      // An open document keeps the stage in scene_focus so the orb tucks aside.
+      const nextStageLayout = renderIframe?.url ? "scene_focus" : requestedStageLayout(payload);
       const nextSceneChoreography = requestedSceneChoreography(payload);
       const nextScenePolicy = requestedSplatraScenePolicy(payload);
       const nextSplatraCommandSequence = requestedSplatraCommandSequence(payload);
@@ -2379,6 +2380,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-voice-playback-error={voicePlaybackState.error}
       data-voice-playback-unlocked={voicePlaybackState.unlocked ? "true" : "false"}
       data-stage-layout={stageLayout}
+      data-iframe-stage={iframeStage ? "open" : "closed"}
       data-scene-speech-beat={sceneSpeechBeatIndex >= 0 ? String(sceneSpeechBeatIndex) : "none"}
       data-speech-placement={speechPlacement}
       data-self-narration-placement={selfNarrationPlacement}
@@ -2533,7 +2535,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         </>
       ) : null}
       {iframeStage ? (
-        <div style={{ position: "absolute", left: "calc(var(--atanor-sidebar-w, 240px) + 20px)", top: 64, right: 20, bottom: 96, zIndex: 6, display: "flex", flexDirection: "column", borderRadius: 14, overflow: "hidden", border: "1px solid #232a3a", background: "rgba(10,13,20,0.92)", boxShadow: "0 18px 60px rgba(0,0,0,0.5)" }}>
+        <>
+        <div className="atanor-iframe-backdrop" onClick={() => { setIframeStage(null); setStageLayout("conversation"); }} aria-hidden="true" />
+        <div key={iframeStage.url} className="atanor-iframe-window">
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid #1c2230", background: "rgba(14,18,28,0.95)" }}>
             <span style={{ color: "#9bb4ff", fontSize: 12.5, whiteSpace: "nowrap" }}>{iframeStage.title}</span>
             <form
@@ -2584,6 +2588,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
             {language === "ko" ? "일부 사이트는 임베드를 차단합니다 — 그럴 땐 ‘새 탭 ↗’을 누르세요. (표시 전용 · 입력 정보 없음)" : "Some sites block embedding — use ‘open ↗’ then. (display-only · no data entered)"}
           </div>
         </div>
+        </>
       ) : null}
       {graftedNodes.length > 0 ? (
         <div key={graftBatchId} className="atanor-graft-stage" aria-live="polite">
