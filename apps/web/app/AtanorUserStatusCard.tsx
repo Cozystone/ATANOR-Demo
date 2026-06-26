@@ -558,9 +558,10 @@ function shouldRequestWebGrounding(input: string) {
   if (/(splatra|스플라트라|구슬|홀로그램|음성|목소리|fish|selfhood|자기 모델|내적 언어)/i.test(input)) {
     return false;
   }
-  // Questions about ATANOR itself or the user are answered from self/local memory,
-  // never the web — so a "what's your name" must not search Wikipedia.
-  if (/(네?\s*이름|너의?\s*이름|당신\s*이름|넌?\s*누구|너는?\s*누구|니가\s*누구|네가\s*누구|자기소개|소개해|who\s+are\s+you|your\s+name|what'?s\s+your\s+name)/i.test(input)) {
+  // Questions about ATANOR ITSELF are answered from self memory, never the web —
+  // but only when there's an explicit 2nd-person reference, so "아인슈타인이 누구야"
+  // (3rd-person entity lookup) still searches. The pronoun is mandatory here.
+  if (/((너|넌|네|너의|니|니가|네가|당신|당신의)\s*(이름|누구|누군지|뭐|뭐야))|자기소개|소개\s*해|who\s+are\s+you|your\s+name|what'?s\s+your\s+name/i.test(input)) {
     return false;
   }
   // Dashboard control ("창 닫아", "이거 치워") is an instruction to the orb, not a

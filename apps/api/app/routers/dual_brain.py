@@ -1561,6 +1561,11 @@ def _should_use_web_grounded_conversation(question: str) -> bool:
             "정의",
             "법칙",
             "원리",
+            "누구",
+            "누가",
+            "who",
+            "뜻",
+            "알려줘",
         )
     )
 

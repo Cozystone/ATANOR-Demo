@@ -8557,18 +8557,20 @@ p {
     0 30px 90px rgba(0, 0, 0, 0.62),
     0 0 0 1px rgba(140, 175, 255, 0.16),
     0 0 44px rgba(70, 110, 220, 0.22);
-  /* Genie: stretch up out of the lower-left orb. */
-  transform-origin: 6% 100%;
-  animation: atanor-iframe-genie-in 0.52s cubic-bezier(0.16, 0.84, 0.24, 1) both;
+  /* Apple dock genie: collapse point sits on the shrunken lower-left orb; the
+     window rises as a thin neck, then unfurls to full. */
+  transform-origin: 3% 100%;
+  animation: atanor-iframe-genie-in 0.62s cubic-bezier(0.22, 0.61, 0.18, 1) both;
 }
 @keyframes atanor-iframe-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 @keyframes atanor-iframe-genie-in {
-  0% { opacity: 0; transform: translate(-22%, 34%) scale(0.06, 0.16); filter: blur(2px); border-radius: 50% 50% 14px 40%; }
-  45% { opacity: 1; transform: translate(-4%, 7%) scale(0.62, 0.8); filter: blur(0.4px); border-radius: 30px 30px 16px 22px; }
-  72% { transform: translate(0, -1.5%) scale(1.015, 1.02); border-radius: 16px; }
+  0% { opacity: 0; transform: translate(-32%, 62%) scale(0.045, 0.06); filter: blur(2px); border-radius: 50%; }
+  28% { opacity: 1; transform: translate(-15%, 30%) scale(0.10, 0.52); filter: blur(0.6px); border-radius: 44% 44% 26px 26px; }
+  58% { transform: translate(-3%, 8%) scale(0.66, 0.92); filter: blur(0); border-radius: 28px 28px 18px 18px; }
+  82% { transform: translate(0, -1%) scale(1.014, 1.016); border-radius: 16px; }
   100% { opacity: 1; transform: translate(0, 0) scale(1, 1); border-radius: 16px; }
 }
 
@@ -8578,21 +8580,23 @@ p {
   z-index: 20;
   pointer-events: none;
 }
+.atanor-ai-dashboard[data-iframe-stage="open"][data-stage-layout="scene_focus"] .hologram-voice-orb,
 .atanor-ai-dashboard[data-iframe-stage="open"] .hologram-voice-orb {
-  left: calc(var(--atanor-sidebar-w, 240px) + clamp(60px, 7vw, 128px));
-  top: calc(100% - clamp(150px, 18vh, 206px));
-  width: clamp(120px, 17vmin, 178px);
-  height: clamp(120px, 17vmin, 178px);
-  min-width: clamp(120px, 17vmin, 178px);
-  min-height: clamp(120px, 17vmin, 178px);
-  transform: translate(-50%, -50%);
+  left: calc(var(--atanor-sidebar-w, 240px) + clamp(58px, 6vw, 120px)) !important;
+  top: calc(100% - clamp(132px, 16vh, 184px)) !important;
+  width: clamp(112px, 15vmin, 168px) !important;
+  height: clamp(112px, 15vmin, 168px) !important;
+  min-width: clamp(112px, 15vmin, 168px) !important;
+  min-height: clamp(112px, 15vmin, 168px) !important;
+  transform: translate(-50%, -50%) !important;
   pointer-events: auto;
   z-index: 22;
-  transition: left 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
-    width 0.5s ease, height 0.5s ease;
+  transition: left 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.55s ease, height 0.55s ease;
 }
+.atanor-ai-dashboard[data-iframe-stage="open"][data-stage-layout="scene_focus"] .hologram-voice-orb:hover,
 .atanor-ai-dashboard[data-iframe-stage="open"] .hologram-voice-orb:hover {
-  transform: translate(-50%, -50%) scale(1.012);
+  transform: translate(-50%, -50%) scale(1.012) !important;
 }
 .atanor-iframe-tabs {
   display: flex;
