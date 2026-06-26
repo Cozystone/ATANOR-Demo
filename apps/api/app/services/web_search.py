@@ -69,7 +69,11 @@ FRESH_SEARCH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 KNOWLEDGE_LOOKUP_PATTERN = re.compile(
-    "(\uB204\uAD6C|\uB204\uAD6C\uC57C|\uBB50\uC57C|\uBB34\uC5C7|\uC815\uC758|\uC54C\uB824\uC918|\uC124\uBA85|\uC65C|\uC774\uC720|\uC6D0\uB9AC|\uC5B4\uB5BB\uAC8C|who is|what is|tell me about|define|explain|why|how)",
+    "(\uB204\uAD6C|\uB204\uAD6C\uC57C|\uBB50\uC57C|\uBB34\uC5C7|\uC815\uC758|\uC54C\uB824\uC918|\uC124\uBA85|\uC65C|\uC774\uC720|\uC6D0\uB9AC|\uC5B4\uB5BB\uAC8C"
+    "|\uC5B8\uC81C|\uC5B4\uB514|\uC5B4\uB290|\uBC1C\uBA85|\uBC1C\uACAC|\uB9CC\uB4E0|\uC9C0\uC740|\uC4F4"  # \uC5B8\uC81C \uC5B4\uB514 \uC5B4\uB290 \uBC1C\uBA85 \uBC1C\uACAC \uB9CC\uB4E0 \uC9C0\uC740 \uC4F4
+    r"|\bwho\b|\bwhat\b|\bwhen\b|\bwhere\b|\bwhich\b|\bwhom\b"
+    r"|tell me about|define|explain|why|how"
+    r"|invented|discovered|founded|created|located|capital of|author of)",
     re.IGNORECASE,
 )
 
@@ -271,12 +275,20 @@ def _wikipedia_visual_event_results(base_results: list[dict[str, Any]], *, limit
     return enriched
 
 
+def _wiki_host_for_query(query: str) -> str:
+    # Use the Wikipedia edition that matches the query language. A Korean query
+    # hits ko.wikipedia; an otherwise-Latin query hits en.wikipedia (searching
+    # ko.wikipedia for "Eiffel Tower" returns irrelevant pages).
+    return "ko.wikipedia.org" if re.search(r"[가-힣]", query or "") else "en.wikipedia.org"
+
+
 def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     lookup = _normalize_lookup_query(query)
     lookup_terms = _lookup_terms(lookup)
     bounded_count = max(1, min(count, 10))
+    wiki_host = _wiki_host_for_query(query)
     api_url = (
-        "https://ko.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1"
+        f"https://{wiki_host}/w/api.php?action=query&list=search&format=json&utf8=1"
         f"&srlimit={max(bounded_count, 8)}&srsearch={quote_plus(lookup)}"
     )
     request = urllib.request.Request(api_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
@@ -286,11 +298,11 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     for index, item in enumerate((body.get("query", {}).get("search", []) or [])[: max(bounded_count, 8)], start=1):
         title = _strip_html(item.get("title") or lookup)
         page_slug = quote(title.replace(" ", "_"), safe="")
-        page_url = f"https://ko.wikipedia.org/wiki/{page_slug}"
+        page_url = f"https://{wiki_host}/wiki/{page_slug}"
         snippet = _strip_html(item.get("snippet") or "")
         if index <= 2:
             try:
-                summary_url = f"https://ko.wikipedia.org/api/rest_v1/page/summary/{page_slug}"
+                summary_url = f"https://{wiki_host}/api/rest_v1/page/summary/{page_slug}"
                 summary_request = urllib.request.Request(summary_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
                 with urllib.request.urlopen(summary_request, timeout=5) as summary_response:  # nosec B310
                     summary = json.loads(summary_response.read().decode("utf-8"))

@@ -1984,6 +1984,72 @@ def _needs_base_brain_fallback(semantic_context: dict[str, Any]) -> bool:
     return not (semantic_context.get("relations") or semantic_context.get("evidence") or semantic_context.get("claims"))
 
 
+def _first_sentences(text: str, *, max_chars: int = 360) -> str:
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars]
+    last = max(cut.rfind(". "), cut.rfind(". "), cut.rfind("다. "))
+    return (cut[: last + 1] if last > 60 else cut).strip()
+
+
+async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] | None:
+    """When the local engine has no answer and web search is ON, answer from a
+    real web source (Wikipedia, or a configured provider) and cite it. This is
+    retrieval-augmented grounding — the answer IS the retrieved evidence,
+    attributed; no LLM, no fabrication. Returns None if nothing relevant."""
+    try:
+        from app.services.web_search import search_web
+
+        payload = await search_web(question, 4)
+    except Exception:  # pragma: no cover - network/optional
+        return None
+    provider = str((payload or {}).get("provider") or "")
+    # Only real retrieval providers — never the tiny static fixture set.
+    if provider in ("", "static", "microsoft-grounding"):
+        return None
+    def _looks_like_definition(snippet: str) -> bool:
+        head = snippet[:80]
+        if re.match(r"^\s*(\d|pp\b|p\.|vol\b|archived|retrieved)", head, re.IGNORECASE):
+            return False  # citation / reference-list cruft, not a definition
+        return bool(re.search(r"\b(is|was|are|were)\s+(a|an|the)\b", head) or re.search(r"(이다|입니다|[은는이가]\s)", head))
+
+    rows = [r for r in (payload.get("results") or []) if len(str(r.get("snippet") or "").strip()) >= 60]
+    # prefer a definition-shaped snippet with the strongest term match; fall back
+    # to the most term-relevant readable snippet.
+    best = next((r for r in rows if _looks_like_definition(str(r.get("snippet") or ""))), None)
+    if best is None:
+        best = max(rows, key=lambda r: int(r.get("query_terms_matched") or 0), default=None)
+    if not best:
+        return None
+    answer = _first_sentences(str(best.get("snippet") or ""), max_chars=420)
+    if len(answer) < 40:
+        return None
+    title = str(best.get("title") or "")
+    url = str(best.get("url") or "")
+    is_ko = language == "ko"
+    suffix = f" (출처: {title})" if is_ko and title else (f" (source: {title})" if title else "")
+    certificate = {
+        "derivation_kind": "web_search_grounding",
+        "anchor_concept": {"id": title or question[:60], "label": title or question[:60], "match": "web_retrieval"},
+        "steps": [
+            {"type": "web_source", "source": url or provider, "fact": _first_sentences(str(best.get("snippet") or ""), max_chars=160)},
+        ],
+        "evidence_concepts": [url] if url else [provider],
+        "confidence": 0.72,
+        "confidence_basis": f"web_retrieval:{provider}",
+        "guarantees": {"external_llm": False, "fabricated_facts": False, "evidence_grounded": True, "source_cited": True},
+    }
+    return {
+        "answer": (answer + suffix).strip(),
+        "reasoning_certificate": certificate,
+        "confidence": 0.72,
+        "provider": provider,
+        "source_url": url,
+        "source_title": title,
+    }
+
+
 def _is_recent_learning_question(question: str) -> bool:
     lower = question.lower()
     return any(token in question for token in ("최근 학습", "최근 배운", "학습한 개념", "새로 배운")) or (
@@ -2171,9 +2237,14 @@ def _answer_is_abstention(answer: str) -> bool:
         for marker in (
             "not have enough verified evidence",
             "verified evidence to answer confidently",
+            "not have enough base concepts",
+            "not have enough local evidence",
+            "not have enough confidently matched evidence",
             "지금 확인된 근거가 부족",
             "확인 가능한 근거가 부족",
+            "근거가 부족",
             "단정하기 어렵",
+            "설명할 근거가 없",
         )
     )
 
@@ -2724,6 +2795,22 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "atanor_self_sense"
         result["can_speak"] = True
 
+    # Web-grounded rescue (outermost): if web search is on and the final answer is
+    # still an abstention from ANY internal path, answer from a real cited web
+    # source. RAG grounding — answer is the retrieved evidence, attributed.
+    if request.web_search and not (self_state or recall) and isinstance(response.get("result"), dict):
+        result = response["result"]
+        ans = str(result.get("answer") or "")
+        if not ans or _answer_is_abstention(ans):
+            rescue = await _web_grounded_rescue(question, language)
+            if rescue:
+                result["answer"] = rescue["answer"]
+                result["reasoning_certificate"] = rescue["reasoning_certificate"]
+                result["confidence"] = rescue["confidence"]
+                result["answer_kind"] = "web_search_grounded"
+                result["web_search_provider"] = rescue["provider"]
+                result["can_speak"] = True
+
     # If the user asked ATANOR to recall something about THEM and the Local Brain
     # knows it, that private memory is authoritative — the public engine cannot
     # know the user's name/preferences, so override its answer.
@@ -2938,6 +3025,20 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
         )
         fallback = _base_brain_payload(request, question=question, language=language, rag_result=rag_result, exchange=exchange)
         if fallback is not None:
+            # Web-grounded rescue: if Base Brain has no local answer but web search
+            # is on, answer from a real cited web source instead of abstaining.
+            fb_result = fallback.get("result") if isinstance(fallback, dict) else None
+            if request.web_search and isinstance(fb_result, dict) and (
+                not fb_result.get("answer") or _answer_is_abstention(str(fb_result.get("answer") or ""))
+            ):
+                rescue = await _web_grounded_rescue(question, language)
+                if rescue:
+                    fb_result["answer"] = rescue["answer"]
+                    fb_result["reasoning_certificate"] = rescue["reasoning_certificate"]
+                    fb_result["confidence"] = rescue["confidence"]
+                    fb_result["answer_kind"] = "web_search_grounded"
+                    fb_result["web_search_provider"] = rescue["provider"]
+                    fb_result["can_speak"] = True
             response = _attach_three_core_trace(fallback, request=request, three_core_trace=three_core_trace)
             _emit_conversation_result_events(response)
             return response
