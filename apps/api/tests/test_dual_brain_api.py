@@ -1546,3 +1546,30 @@ def test_attribution_relation_only_for_who_questions() -> None:
     assert dual_brain._detect_attribution_relation("Who invented radio?") is not None
     assert dual_brain._detect_attribution_relation("What is a telephone?") is None
     assert dual_brain._extract_attribution("What is a telephone?", ["invented by Bell"]) is None
+
+
+def test_web_fact_cache_stores_and_recalls(tmp_path, monkeypatch) -> None:
+    from packages.local_brain import LocalBrainMemory
+    monkeypatch.setattr(dual_brain, "WEB_FACT_MEMORY", LocalBrainMemory(tmp_path / "web.json"))
+    dual_brain._store_web_fact(
+        "What is the Eiffel Tower?", "Eiffel Tower",
+        "The Eiffel Tower is a lattice tower in Paris, France.",
+        "https://en.wikipedia.org/wiki/Eiffel_Tower",
+    )
+    hit = dual_brain._recall_web_fact("Tell me about the Eiffel Tower")
+    assert hit is not None
+    assert "Eiffel Tower" in hit["answer"]
+    assert hit["provider"] == "local_web_memory"
+    assert hit["source_url"].endswith("Eiffel_Tower")
+    # an unrelated question must not surface the cached fact
+    assert dual_brain._recall_web_fact("What is photosynthesis?") is None
+
+
+def test_web_fact_cache_persists_across_instances(tmp_path, monkeypatch) -> None:
+    from packages.local_brain import LocalBrainMemory
+    path = tmp_path / "web.json"
+    monkeypatch.setattr(dual_brain, "WEB_FACT_MEMORY", LocalBrainMemory(path))
+    dual_brain._store_web_fact("What is DNA?", "DNA", "DNA carries genetic instructions.", "https://en.wikipedia.org/wiki/DNA")
+    # a fresh instance (simulating a restart) still has the looked-up fact
+    monkeypatch.setattr(dual_brain, "WEB_FACT_MEMORY", LocalBrainMemory(path))
+    assert dual_brain._recall_web_fact("what is dna")["answer"] == "DNA carries genetic instructions."

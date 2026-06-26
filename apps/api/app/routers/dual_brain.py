@@ -62,6 +62,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 from packages.local_brain import LocalBrainMemory, extract_user_facts
 
 LOCAL_BRAIN = LocalBrainMemory(PROJECT_ROOT / "runtime" / "local_brain" / "local_memory.json")
+# Facts ATANOR has looked up on the web are retained locally, so re-asking is
+# instant and still works offline (the agent remembers what it learned).
+WEB_FACT_MEMORY = LocalBrainMemory(PROJECT_ROOT / "runtime" / "local_brain" / "web_fact_memory.json")
 
 # Questions that ask the agent to recall something about the USER (not ATANOR).
 _SELF_RECALL_KO = ("내 이름", "제 이름", "내가 누구", "내가 뭘 좋아", "내가 좋아하는", "나 뭐 좋아", "내 직업", "내가 어디", "나에 대해", "내 정보")
@@ -1993,6 +1996,49 @@ def _first_sentences(text: str, *, max_chars: int = 360) -> str:
     return (cut[: last + 1] if last > 60 else cut).strip()
 
 
+def _store_web_fact(question: str, title: str, answer: str, url: str) -> None:
+    """Retain a web-looked-up fact locally so re-asking is instant / offline-safe."""
+    try:
+        subject = (title or question).strip()[:80]
+        if subject and answer:
+            WEB_FACT_MEMORY.remember("knowledge", subject, answer, source="conversation", source_ref=f"web:{url}", confidence=0.7)
+    except Exception:  # pragma: no cover
+        pass
+
+
+def _recall_web_fact(question: str) -> dict[str, Any] | None:
+    """Return a previously looked-up web fact relevant to the question, if any."""
+    try:
+        hits = WEB_FACT_MEMORY.recall(question, limit=1)
+        if not hits:
+            return None
+        fact = hits[0]
+        # require a real topic overlap so we don't surface an unrelated cached fact
+        q_tokens = {t for t in re.split(r"\s+", re.sub(r"[?!.]", " ", question.lower())) if len(t) >= 3}
+        s_tokens = {t for t in re.split(r"\s+", fact.subject.lower()) if len(t) >= 2}
+        if not (q_tokens & s_tokens):
+            return None
+        url = fact.source_ref[4:] if fact.source_ref.startswith("web:") else ""
+        return {
+            "answer": fact.value,
+            "reasoning_certificate": {
+                "derivation_kind": "local_web_fact_recall",
+                "anchor_concept": {"id": fact.subject, "label": fact.subject, "match": "local_web_memory"},
+                "steps": [{"type": "remembered_web_fact", "source": url or "local_web_memory", "fact": fact.value[:160]}],
+                "evidence_concepts": [url] if url else [],
+                "confidence": 0.6,
+                "confidence_basis": "previously_looked_up_web_fact",
+                "guarantees": {"external_llm": False, "fabricated_facts": False, "from_earlier_lookup": True},
+            },
+            "confidence": 0.6,
+            "provider": "local_web_memory",
+            "source_url": url,
+            "source_title": fact.subject,
+        }
+    except Exception:  # pragma: no cover
+        return None
+
+
 _OPEN_BROWSER_KO = ("검색해", "검색 해", "찾아봐", "찾아 줘", "찾아줘", "띄워", "띄워줘", "열어줘", "보여줘", "브라우저")
 _OPEN_BROWSER_EN = ("search for", "look up", "look it up", "open the", "open a", "show me the", "browse", "pull up", "find online")
 
@@ -2090,6 +2136,11 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     # falls back to "static" when the live web could not be reached (offline /
     # rate-limited / down). Say so honestly instead of pasting fixtures.
     if provider in ("", "static"):
+        # Offline / unreachable: answer from a fact ATANOR looked up earlier, if it
+        # has one (the agent remembers what it learned from the web).
+        cached = _recall_web_fact(question)
+        if cached:
+            return cached
         return {
             "answer": (
                 "지금 인터넷에서 확인하지 못했어요 (웹 연결 또는 검색 불가). 로컬에 있는 지식 범위 안에서만 답할 수 있어요."
@@ -2170,7 +2221,9 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
             "confidence_basis": f"web_attribution:{provider}",
             "guarantees": {"external_llm": False, "fabricated_facts": False, "evidence_grounded": True, "source_cited": True},
         }
-        return {"answer": (attribution + suffix).strip(), "reasoning_certificate": cert, "confidence": 0.7, "provider": provider, "source_url": url, "source_title": title}
+        attribution_text = (attribution + suffix).strip()
+        _store_web_fact(question, title, attribution_text, url)
+        return {"answer": attribution_text, "reasoning_certificate": cert, "confidence": 0.7, "provider": provider, "source_url": url, "source_title": title}
 
     answer = _first_sentences(str(best.get("snippet") or ""), max_chars=420)
     if len(answer) < 40:
@@ -2186,8 +2239,10 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         "confidence_basis": f"web_retrieval:{provider}",
         "guarantees": {"external_llm": False, "fabricated_facts": False, "evidence_grounded": True, "source_cited": True},
     }
+    answer_text = (answer + suffix).strip()
+    _store_web_fact(question, title, answer_text, url)
     return {
-        "answer": (answer + suffix).strip(),
+        "answer": answer_text,
         "reasoning_certificate": certificate,
         "confidence": 0.72,
         "provider": provider,
@@ -2971,6 +3026,23 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["confidence"] = recall["confidence"]
         result["answer_kind"] = "local_brain_memory_recall"
         result["can_speak"] = True
+
+    # No local answer and not already grounded — surface a fact ATANOR looked up
+    # on the web earlier (it remembers what it learned, even with web search off).
+    if isinstance(response.get("result"), dict):
+        result = response["result"]
+        ans = str(result.get("answer") or "")
+        if (not ans or _answer_is_abstention(ans)) and result.get("answer_kind") not in (
+            "web_search_grounded", "web_unreachable", "local_brain_memory_recall", "atanor_self_sense"
+        ):
+            cached = _recall_web_fact(question)
+            if cached:
+                result["answer"] = cached["answer"]
+                result["reasoning_certificate"] = cached["reasoning_certificate"]
+                result["confidence"] = cached["confidence"]
+                result["answer_kind"] = "local_web_fact_recall"
+                result["web_search_provider"] = "local_web_memory"
+                result["can_speak"] = True
 
     # Explicit "search / open / show me X" → the agent opens the iframe stage of
     # its own accord (the dashboard auto-renders it; orb slides aside).
