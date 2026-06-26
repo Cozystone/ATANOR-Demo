@@ -151,6 +151,22 @@ def _normalize_lookup_query(query: str) -> str:
         cleaned,
         flags=re.IGNORECASE,
     )
+    # Strip question scaffolding around a fact so the ENTITY remains and the
+    # encyclopedia search hits the right page ("who invented the telephone" ->
+    # "the telephone"). English verbs + Korean equivalents.
+    cleaned = re.sub(
+        r"\b(who|when|where|which)\b\s*(was|were|is|are|did)?\s*"
+        r"(invented|discovered|made|created|founded|wrote|built|designed|painted|born|located|the\s+author\s+of|the\s+capital\s+of)?",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        "(누가\\s*(발명|발견|만든|지은|쓴|세운|그린)(한|했어|했나|했지)?|언제\\s*(발명|발견|만들|생겼)|"
+        "발명한|발견한|만든|지은|쓴|언제|어디(에|서|야)?|어느|수도(가|는)?)",
+        " ",
+        cleaned,
+    )
     cleaned = re.sub(
         r"(그건|그게|그거|그것|이건|이게|이거|이것|왜\s*그런가요|왜\s*그래|왜|이유|원리|어떻게|how|why)",
         " ",
