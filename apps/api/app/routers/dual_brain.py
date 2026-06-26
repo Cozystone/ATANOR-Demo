@@ -64,7 +64,7 @@ from packages.local_brain import LocalBrainMemory, extract_user_facts
 LOCAL_BRAIN = LocalBrainMemory(PROJECT_ROOT / "runtime" / "local_brain" / "local_memory.json")
 # Facts ATANOR has looked up on the web are retained locally, so re-asking is
 # instant and still works offline (the agent remembers what it learned).
-WEB_FACT_MEMORY = LocalBrainMemory(PROJECT_ROOT / "runtime" / "local_brain" / "web_fact_memory.json")
+WEB_FACT_MEMORY = LocalBrainMemory(PROJECT_ROOT / "runtime" / "local_brain" / "web_fact_memory.json", max_facts=1000)
 
 # Questions that ask the agent to recall something about the USER (not ATANOR).
 _SELF_RECALL_KO = ("내 이름", "제 이름", "내가 누구", "내가 뭘 좋아", "내가 좋아하는", "나 뭐 좋아", "내 직업", "내가 어디", "나에 대해", "내 정보")

@@ -66,3 +66,20 @@ def test_status_marks_private_and_no_cloud(tmp_path):
     assert status["private_on_device"] is True
     assert status["uploaded_to_cloud"] is False
     assert status["production_store_mutated"] is False
+
+
+def test_max_facts_evicts_oldest(tmp_path):
+    mem = LocalBrainMemory(tmp_path / "capped.json", max_facts=3)
+    for i in range(5):
+        mem.remember("knowledge", f"topic{i}", f"value{i}")
+    assert mem.status()["total_facts"] == 3
+    subjects = {f.subject for f in mem.all_facts()}
+    # the two oldest (topic0, topic1) were evicted; the newest remain
+    assert subjects == {"topic2", "topic3", "topic4"}
+
+
+def test_no_cap_keeps_everything(tmp_path):
+    mem = LocalBrainMemory(tmp_path / "uncapped.json")  # no max_facts
+    for i in range(10):
+        mem.remember("knowledge", f"t{i}", f"v{i}")
+    assert mem.status()["total_facts"] == 10

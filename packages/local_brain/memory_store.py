@@ -63,10 +63,20 @@ def _fact_id(kind: str, subject: str) -> str:
 class LocalBrainMemory:
     """Durable private store of user facts. JSON-backed, atomic writes."""
 
-    def __init__(self, store_path: Path | str | None = None) -> None:
+    def __init__(self, store_path: Path | str | None = None, *, max_facts: int | None = None) -> None:
         self.store_path = Path(store_path) if store_path else Path("runtime/local_brain/local_memory.json")
+        # Optional cap so a high-churn store (e.g. looked-up web facts) cannot grow
+        # without bound; the least-recently-updated facts are evicted first.
+        self.max_facts = int(max_facts) if max_facts else None
         self.facts: dict[str, LocalBrainFact] = {}
         self._load()
+
+    def _evict_if_over_cap(self) -> None:
+        if not self.max_facts or len(self.facts) <= self.max_facts:
+            return
+        ordered = sorted(self.facts.values(), key=lambda f: f.updated_at)
+        for fact in ordered[: len(self.facts) - self.max_facts]:
+            self.facts.pop(fact.fact_id, None)
 
     # ----- persistence -----------------------------------------------------------
 
@@ -130,6 +140,7 @@ class LocalBrainMemory:
                 confidence=float(confidence),
             )
             self.facts[fid] = fact
+            self._evict_if_over_cap()
         if save:
             self.save()
         return fact
