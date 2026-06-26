@@ -82,20 +82,44 @@ def _is_synthetic_proof_label(label: str) -> bool:
     return bool(_SYNTHETIC_PROOF_LABEL_RE.match(text)) or bool(HEX_HASH_RE.match(text))
 
 
+# Single-token extraction noise (months, days, stopwords) is not real knowledge.
+_NOISE_WORDS = {
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+    "january", "february", "march", "april", "june", "july", "august", "september", "october", "november", "december",
+    "mon", "tue", "wed", "thu", "fri", "sat", "sun", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "day", "days", "year", "years", "the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "has", "had",
+    "be", "is", "it", "its", "an", "of", "to", "in", "on", "by", "as", "at", "or", "not", "you", "your", "he", "she", "they",
+}
+
+
+def _is_noise_label(label: str) -> bool:
+    text = str(label or "").strip()
+    if not text:
+        return True
+    if " " in text:  # multi-word labels are likely real concepts
+        return False
+    low = text.lower()
+    return low in _NOISE_WORDS or len(text) <= 2
+
+
 def _classify_graph_nodes(nodes: list[dict[str, Any]]) -> dict[str, Any]:
-    real = synthetic = 0
+    real = synthetic = noise = 0
     for node in nodes or []:
         label = str((node or {}).get("label") or (node or {}).get("id") or "")
         if _is_synthetic_proof_label(label):
             synthetic += 1
+        elif _is_noise_label(label):
+            noise += 1
         else:
             real += 1
-    total = real + synthetic
+    total = real + synthetic + noise
+    not_real = synthetic + noise
     return {
         "sample_size": total,
         "real_knowledge": real,
         "synthetic_proof": synthetic,
-        "synthetic_ratio": round(synthetic / total, 3) if total else 0.0,
+        "extraction_noise": noise,
+        "synthetic_ratio": round(not_real / total, 3) if total else 0.0,
     }
 
 
@@ -1322,17 +1346,21 @@ def semantic_cloud_graph(
             store = _resolve_candidate_store_path()
             if store:
                 cand = candidate_cloud_graph(store, max_nodes=limit_nodes, max_edges=limit_edges)
-                cand_real = [n for n in (cand.get("nodes") or []) if not _is_synthetic_proof_label(str(n.get("label") or n.get("id") or ""))]
+                cand_real = [n for n in (cand.get("nodes") or []) if not (_is_synthetic_proof_label(str(n.get("label") or n.get("id") or "")) or _is_noise_label(str(n.get("label") or n.get("id") or "")))]
                 if len(cand_real) > prod_class["real_knowledge"]:
+                    keep = {str(n.get("id")) for n in cand_real}
+                    cand_edges = [e for e in (cand.get("edges") or []) if str(e.get("source")) in keep and str(e.get("target")) in keep]
                     return {
                         **cand,
+                        "nodes": cand_real,  # real learned concepts only — no proof/noise
+                        "edges": cand_edges,
                         "proof_store_only": True,
                         "old_mirror_snapshot_used": False,
                         # preserve the read-model contract keys the API exposes
                         "performance": graph.get("performance") or {"full_store_scan": False, "index_rebuild_during_request": False},
                         "graph_source": "web_learned_candidate_store",
                         "production_store_mutated": False,
-                        "knowledge_breakdown": _classify_graph_nodes(list(cand.get("nodes") or [])),
+                        "knowledge_breakdown": _classify_graph_nodes(cand_real),
                     }
         except Exception:  # pragma: no cover - overlay must never break the graph
             pass
@@ -1340,7 +1368,7 @@ def semantic_cloud_graph(
     # by proof artifacts, drop them (keeping edges valid) and label honestly.
     nodes = list(graph.get("nodes") or [])
     classification = _classify_graph_nodes(nodes)
-    real_nodes = [n for n in nodes if not _is_synthetic_proof_label(str(n.get("label") or n.get("id") or ""))]
+    real_nodes = [n for n in nodes if not (_is_synthetic_proof_label(str(n.get("label") or n.get("id") or "")) or _is_noise_label(str(n.get("label") or n.get("id") or "")))]
     if real_nodes and len(real_nodes) < len(nodes):
         keep_ids = {str(n.get("id")) for n in real_nodes}
         real_edges = [e for e in (graph.get("edges") or []) if str(e.get("source")) in keep_ids and str(e.get("target")) in keep_ids]

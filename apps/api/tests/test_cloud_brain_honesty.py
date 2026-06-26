@@ -32,3 +32,18 @@ def test_classify_graph_nodes_breakdown():
     assert out["real_knowledge"] == 2
     assert out["synthetic_proof"] == 2
     assert out["synthetic_ratio"] == 0.5
+
+
+def test_extraction_noise_is_separated_from_real_knowledge():
+    from app.routers.cloud_brain import _is_noise_label, _classify_graph_nodes
+    for noise in ("Apr", "May", "be", "It", "days", "the", "a"):
+        assert _is_noise_label(noise), noise
+    for real in ("Eiffel Tower", "Marie Curie", "Photosynthesis"):
+        assert not _is_noise_label(real), real
+    out = _classify_graph_nodes([
+        {"label": "Eiffel Tower"}, {"label": "Apr"}, {"label": "be"},
+        {"label": "AtanorSeedConcept001"},
+    ])
+    assert out["real_knowledge"] == 1
+    assert out["extraction_noise"] == 2
+    assert out["synthetic_proof"] == 1
