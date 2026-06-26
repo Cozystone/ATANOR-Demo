@@ -1525,3 +1525,24 @@ def test_answer_is_abstention_recognizes_base_brain_phrasings() -> None:
     assert dual_brain._answer_is_abstention("지금 확인된 근거가 부족해서 단정하기 어렵습니다.")
     assert dual_brain._answer_is_abstention("")  # empty == abstain
     assert not dual_brain._answer_is_abstention("The Eiffel Tower is a lattice tower in Paris, France.")
+
+
+def test_attribution_extracts_person_from_english_snippets() -> None:
+    snippets = [
+        "Who Really Invented the Telephone? Archived 2015.",
+        "The telephone was invented by Alexander Graham Bell, who patented it in 1876.",
+    ]
+    assert dual_brain._extract_attribution("Who invented the telephone?", snippets) == "Alexander Graham Bell"
+
+
+def test_attribution_extracts_person_from_korean_snippets() -> None:
+    snippets = ["전화는 알렉산더 그레이엄 벨에 의해 발명되었다."]
+    person = dual_brain._extract_attribution("누가 전화를 발명했어?", snippets)
+    assert person == "알렉산더 그레이엄 벨"
+
+
+def test_attribution_relation_only_for_who_questions() -> None:
+    # a definition question ("what is X invented for") must not trigger attribution
+    assert dual_brain._detect_attribution_relation("Who invented radio?") is not None
+    assert dual_brain._detect_attribution_relation("What is a telephone?") is None
+    assert dual_brain._extract_attribution("What is a telephone?", ["invented by Bell"]) is None

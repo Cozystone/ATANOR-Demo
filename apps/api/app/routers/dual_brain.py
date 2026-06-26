@@ -2016,6 +2016,63 @@ def _render_iframe_for_intent(question: str, language: str) -> dict[str, Any] | 
     return {"url": f"https://{host}/wiki/Special:Search?search={quote_plus(topic)}", "title": topic[:60]}
 
 
+# (relation_key, KO question markers, EN question markers, EN past-participle verb)
+_ATTRIBUTION_RELATIONS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], str], ...] = (
+    ("invented", ("발명",), ("invent",), "invented"),
+    ("discovered", ("발견",), ("discover",), "discovered"),
+    ("wrote", ("쓴", "저자", "지은"), ("wrote", "author of", "who wrote"), "written"),
+    ("founded", ("설립", "세운"), ("found", "establish"), "founded"),
+    ("painted", ("그린",), ("paint",), "painted"),
+    ("composed", ("작곡",), ("compose",), "composed"),
+    ("directed", ("감독",), ("direct",), "directed"),
+    ("built", ("지은", "건설"), ("built", "who built"), "built"),
+    ("created", ("만든", "창시"), ("creat", "develop"), "created"),
+)
+
+_PERSON_RE = r"([A-Z][\w.'\-]+(?:\s+(?:[A-Z][\w.'\-]+|of|von|van|de|der|da|al))*\s+[A-Z][\w.'\-]+)"
+
+
+def _detect_attribution_relation(question: str) -> tuple[str, str] | None:
+    raw = str(question or "")
+    lowered = raw.lower()
+    for key, ko_markers, en_markers, verb in _ATTRIBUTION_RELATIONS:
+        if any(m in raw for m in ko_markers) or any(m in lowered for m in en_markers):
+            # only treat as an attribution ("who …") question, not a definition
+            if "누가" in raw or "누구" in raw or re.search(r"\bwho\b", lowered) or any(m in raw for m in ko_markers):
+                return key, verb
+    return None
+
+
+def _extract_attribution(question: str, snippets: list[str]) -> str | None:
+    """Deterministically pull the PERSON credited for an action ('invented by
+    Alexander Graham Bell') from retrieved web snippets. No LLM. Returns a name."""
+    rel = _detect_attribution_relation(question)
+    if not rel:
+        return None
+    key, verb = rel
+    ko_markers = next((m for k, m, _e, _v in _ATTRIBUTION_RELATIONS if k == key), ())
+    en_patterns = [
+        re.compile(rf"\b{verb}\s+by\s+{_PERSON_RE}"),
+        re.compile(rf"\b(?:credited to|attributed to|invention of [^.]*?by)\s+{_PERSON_RE}", re.IGNORECASE),
+        re.compile(rf"{_PERSON_RE}\s+(?:{verb}|is credited with|is the inventor)"),
+    ]
+    ko_person = r"([가-힣]{2,6}(?:\s[가-힣]{2,6}){0,3})"
+    ko_patterns = [re.compile(rf"{ko_person}\s*(?:에\s*의해|이|가|은|는)?\s*(?:{m})") for m in ko_markers] + \
+                  [re.compile(rf"(?:{m})한?\s*(?:사람은|이는)?\s*{ko_person}") for m in ko_markers]
+    for snippet in snippets:
+        text = re.sub(r"\s+", " ", str(snippet or ""))
+        patterns = ko_patterns if re.search(r"[가-힣]", text) else en_patterns
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match:
+                name = match.group(1).strip(" .,")
+                # drop a trailing Korean postposition the greedy capture swallowed
+                name = re.sub(r"\s*(에\s*의해|에게|께서|에|이|가|은|는|을|를)$", "", name).strip()
+                if 2 <= len(name) <= 60 and name.split()[0] not in {"The", "A", "An", "It", "This", "He", "She", "그", "이", "그것"}:
+                    return name
+    return None
+
+
 async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] | None:
     """When the local engine has no answer and web search is ON, answer from a
     real web source (Wikipedia, or a configured provider) and cite it. This is
@@ -2024,7 +2081,7 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     try:
         from app.services.web_search import search_web
 
-        payload = await search_web(question, 4)
+        payload = await search_web(question, 5)
     except Exception:  # pragma: no cover - network/optional
         return None
     provider = str((payload or {}).get("provider") or "")
@@ -2056,13 +2113,24 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         }
     if provider == "microsoft-grounding":
         return None
+    def _is_citation_cruft(snippet: str) -> bool:
+        # bibliography / reference entries, not prose ("Lewis (1995). ... McFarland & Co.")
+        return bool(
+            re.match(r"^\s*([A-Z][\w.'\-]+,?\s+){1,3}\(\d{4}\)", snippet)
+            or re.match(r"^\s*(\d|pp\b|p\.|vol\b|archived|retrieved|ISBN)", snippet, re.IGNORECASE)
+            or re.search(r"\b(ISBN|McFarland|Press|Co\.|pp\.\s*\d|Archived|Retrieved)\b", snippet[:120])
+        )
+
     def _looks_like_definition(snippet: str) -> bool:
+        if _is_citation_cruft(snippet):
+            return False
         head = snippet[:80]
-        if re.match(r"^\s*(\d|pp\b|p\.|vol\b|archived|retrieved)", head, re.IGNORECASE):
-            return False  # citation / reference-list cruft, not a definition
         return bool(re.search(r"\b(is|was|are|were)\s+(a|an|the)\b", head) or re.search(r"(이다|입니다|[은는이가]\s)", head))
 
-    rows = [r for r in (payload.get("results") or []) if len(str(r.get("snippet") or "").strip()) >= 60]
+    rows = [
+        r for r in (payload.get("results") or [])
+        if len(str(r.get("snippet") or "").strip()) >= 60 and not _is_citation_cruft(str(r.get("snippet") or ""))
+    ]
     # prefer a definition-shaped snippet with the strongest term match; fall back
     # to the most term-relevant readable snippet.
     best = next((r for r in rows if _looks_like_definition(str(r.get("snippet") or ""))), None)
@@ -2070,13 +2138,43 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         best = max(rows, key=lambda r: int(r.get("query_terms_matched") or 0), default=None)
     if not best:
         return None
-    answer = _first_sentences(str(best.get("snippet") or ""), max_chars=420)
-    if len(answer) < 40:
-        return None
     title = str(best.get("title") or "")
     url = str(best.get("url") or "")
     is_ko = language == "ko"
     suffix = f" (출처: {title})" if is_ko and title else (f" (source: {title})" if title else "")
+
+    # Attribution questions ("who invented X?") get the PERSON, not just a
+    # definition — extracted deterministically from the retrieved snippets.
+    all_snippets = [str(r.get("snippet") or "") for r in (payload.get("results") or [])]
+    person = _extract_attribution(question, all_snippets)
+    if person:
+        rel = _detect_attribution_relation(question)
+        rel_key = rel[0] if rel else "created"
+        rel_phrase = rel[1] if rel else "attributed to"
+        topic = re.sub(r"^(the|a|an)\s+", "", _first_sentences(title, max_chars=60), flags=re.IGNORECASE) or (title or "It")
+        verb_ko = {
+            "invented": "발명한", "discovered": "발견한", "wrote": "쓴", "founded": "설립한",
+            "painted": "그린", "composed": "작곡한", "directed": "감독한", "built": "지은", "created": "만든",
+        }.get(rel_key, "만든")
+        attribution = (
+            f"{topic}을(를) {verb_ko} 사람은 {person}입니다."
+            if is_ko
+            else f"{title or topic} was {rel_phrase} {person}."
+        )
+        cert = {
+            "derivation_kind": "web_attribution_extraction",
+            "anchor_concept": {"id": person, "label": person, "match": "web_retrieval"},
+            "steps": [{"type": "web_attribution", "source": url or provider, "fact": f"{rel[1] if rel else 'attributed to'} {person}"}],
+            "evidence_concepts": [url] if url else [provider],
+            "confidence": 0.7,
+            "confidence_basis": f"web_attribution:{provider}",
+            "guarantees": {"external_llm": False, "fabricated_facts": False, "evidence_grounded": True, "source_cited": True},
+        }
+        return {"answer": (attribution + suffix).strip(), "reasoning_certificate": cert, "confidence": 0.7, "provider": provider, "source_url": url, "source_title": title}
+
+    answer = _first_sentences(str(best.get("snippet") or ""), max_chars=420)
+    if len(answer) < 40:
+        return None
     certificate = {
         "derivation_kind": "web_search_grounding",
         "anchor_concept": {"id": title or question[:60], "label": title or question[:60], "match": "web_retrieval"},
