@@ -8,7 +8,7 @@ from typing import Any
 from .models import PACK_PATH, BaseBrainPack
 from .pack_builder import build_base_brain_pack_v0
 
-BASE_PACK_CODE_VERSION = "0.1.2"
+BASE_PACK_CODE_VERSION = "0.1.5"
 TOKEN_STOPWORDS = {
     "a",
     "an",

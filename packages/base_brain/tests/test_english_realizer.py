@@ -318,3 +318,26 @@ def test_english_label_never_returns_hangul() -> None:
     resolved = _label(broken, "en")
     assert not _HANGUL.search(resolved), f"label leaked Hangul: {resolved!r}"
     assert resolved == "local brain"
+
+
+@pytest.mark.parametrize("query,needle", [
+    ("What is machine learning?", "pattern"),
+    ("What is a neural network?", "layer"),
+    ("What is HTTP?", "protocol"),
+    ("What is encryption?", "data"),
+])
+def test_expanded_seed_concepts_answer_in_english(query, needle, tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = answer_with_base_brain(query, language="en", audience_level="beginner")
+    assert result["confidence"] >= 0.5, f"{query!r} should be confident, got {result['answer']!r}"
+    assert needle in result["answer"].lower()
+    assert not _HANGUL.search(result["answer"])  # no Korean leak
+
+
+def test_expanded_seed_concepts_answer_in_clean_korean(tmp_path, monkeypatch) -> None:
+    import re as _re
+    monkeypatch.chdir(tmp_path)
+    for query in ("리눅스 설명해줘", "암호화가 뭐야", "파이썬이 뭐야"):
+        answer = answer_with_base_brain(query, language="ko", audience_level="beginner")["answer"]
+        # the Korean answer must not fall back to the English short_description
+        assert not _re.search(r"[A-Za-z]{4,}", answer), f"English leaked into KO answer: {answer!r}"
