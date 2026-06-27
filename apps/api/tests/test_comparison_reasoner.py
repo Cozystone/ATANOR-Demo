@@ -58,6 +58,29 @@ def test_answer_height_comparison(monkeypatch):
     assert out["reasoning_certificate"]["guarantees"]["multi_hop"] is True
 
 
+def test_extract_population_and_area():
+    assert cr._extract_population("서울의 인구는 약 950만 명이다.") == 9_500_000
+    assert cr._extract_population("New York has a population of 8,336,817 people.") == 8_336_817
+    assert cr._extract_area_km2("서울의 면적은 605.21 km²이다.") == 605.21
+    assert cr._extract_population("아무 숫자도 없는 도시 설명.") is None
+
+
+def test_answer_population_comparison(monkeypatch):
+    fixtures = {
+        "서울": {"title": "서울특별시", "snippet": "서울특별시는 대한민국의 수도로 인구는 약 950만 명이다.", "url": "u1"},
+        "부산": {"title": "부산광역시", "snippet": "부산광역시는 대한민국 제2의 도시로 인구는 약 330만 명이다.", "url": "u2"},
+    }
+    monkeypatch.setattr(cr, "wikipedia_search", lambda e, count=2: [fixtures[e]] if e in fixtures else [])
+    out = cr.answer_comparison("서울과 부산 중 어디가 인구가 더 많아?", "ko")
+    assert out is not None and "서울특별시" in out["answer"]
+    assert out["reasoning_certificate"]["steps"][2]["fact"].startswith("population")
+
+
+def test_area_cue_routes_to_area(monkeypatch):
+    plan = cr.detect_comparison("서울과 부산 중 어디가 면적이 더 넓어?")
+    assert plan and plan["attribute"] == "area_km2" and plan["direction"] == "max"
+
+
 def test_abstains_when_year_missing(monkeypatch):
     fixtures = {
         "A": {"title": "A", "snippet": "A is a thing with no dates mentioned here at all.", "url": "u"},

@@ -30,6 +30,12 @@ _HEIGHT_MIN = ("height_m", "min")   # lower / shorter
 _COMPARISON_CUES: tuple[tuple[str, tuple[str, str]], ...] = (
     (r"먼저\s*태어|나이\s*많|연상|더\s*나이|older|elder|born\s+first|born\s+earlier", _YEAR_MIN),
     (r"나중에\s*태어|나이\s*적|연하|더\s*어리|younger|born\s+later", _YEAR_MAX),
+    # population/area are checked before the generic height cue so "면적이 더 커"
+    # / "인구가 더 많" route correctly.
+    (r"인구\s*(?:가\s*)?(?:더\s*)?많|더\s*많은\s*인구|larger\s+population|more\s+populous", ("population", "max")),
+    (r"인구\s*(?:가\s*)?(?:더\s*)?적|fewer\s+people|smaller\s+population|less\s+populous", ("population", "min")),
+    (r"면적\s*(?:이\s*)?(?:더\s*)?넓|더\s*넓|larger\s+area|bigger\s+area", ("area_km2", "max")),
+    (r"면적\s*(?:이\s*)?(?:더\s*)?좁|더\s*좁|smaller\s+area", ("area_km2", "min")),
     (r"더\s*높|더\s*커|키\s*가?\s*(?:더\s*)?큰|taller|higher", _HEIGHT_MAX),
     (r"더\s*낮|더\s*작|shorter|lower", _HEIGHT_MIN),
 )
@@ -100,7 +106,39 @@ def _extract_height_m(summary: str) -> float | None:
     return max(vals) if vals else None
 
 
-_ATTRIBUTE_EXTRACTORS = {"birth_year": _extract_birth_year, "height_m": _extract_height_m}
+def _extract_population(summary: str) -> float | None:
+    """Population near an 인구/population mention, honoring Korean 만(1e4)/억(1e8)."""
+    for m in re.finditer(r"(?:인구|population)[^0-9]{0,15}(\d[\d,]*(?:\.\d+)?)\s*(억|만)?", str(summary or ""), re.IGNORECASE):
+        try:
+            num = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        unit = m.group(2)
+        num *= 1e8 if unit == "억" else 1e4 if unit == "만" else 1.0
+        if 100 <= num <= 2e9:
+            return num
+    return None
+
+
+def _extract_area_km2(summary: str) -> float | None:
+    """Area in km² ("면적은 605.21 km²", "1,234 km2")."""
+    vals: list[float] = []
+    for raw in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*(?:km²|km2|제곱\s*킬로미터|square\s+kilomet)", str(summary or ""), re.IGNORECASE):
+        try:
+            v = float(raw.replace(",", ""))
+        except ValueError:
+            continue
+        if 0.1 <= v <= 2e8:
+            vals.append(v)
+    return max(vals) if vals else None
+
+
+_ATTRIBUTE_EXTRACTORS = {
+    "birth_year": _extract_birth_year,
+    "height_m": _extract_height_m,
+    "population": _extract_population,
+    "area_km2": _extract_area_km2,
+}
 
 
 def _lookup(entity: str) -> dict[str, Any] | None:
@@ -161,6 +199,22 @@ def answer_comparison(question: str, language: str = "ko") -> dict[str, Any] | N
         else:
             rel = "higher" if plan["direction"] == "max" else "lower"
             answer = f"{win['title']} is {rel} ({win_val:g} m) than {lose['title']} ({lose_val:g} m). (sources: {win['title']}, {lose['title']} Wikipedia)"
+    elif plan["attribute"] in {"population", "area_km2"}:
+        is_pop = plan["attribute"] == "population"
+        if is_ko:
+            win_ga = _josa(win["title"], "이", "가")
+            win_eun = _josa(win["title"], "은", "는")
+            lose_eun = _josa(lose["title"], "은", "는")
+            if is_pop:
+                adj = "인구가 더 많아요" if plan["direction"] == "max" else "인구가 더 적어요"
+                answer = f"{win['title']}{win_ga} {adj} {win['title']}{win_eun} 약 {win_val:,.0f}명, {lose['title']}{lose_eun} 약 {lose_val:,.0f}명이에요. (출처: {win['title']}, {lose['title']} 위키백과)"
+            else:
+                adj = "면적이 더 넓어요" if plan["direction"] == "max" else "면적이 더 좁아요"
+                answer = f"{win['title']}{win_ga} {adj} {win['title']}{win_eun} {win_val:,.0f}km², {lose['title']}{lose_eun} {lose_val:,.0f}km²예요. (출처: {win['title']}, {lose['title']} 위키백과)"
+        else:
+            unit = "people" if is_pop else "km²"
+            rel = "more" if plan["direction"] == "max" else "fewer"
+            answer = f"{win['title']} has {rel} ({win_val:,.0f} {unit}) than {lose['title']} ({lose_val:,.0f} {unit}). (sources: {win['title']}, {lose['title']} Wikipedia)"
     else:  # pragma: no cover - unknown attribute
         return None
 
