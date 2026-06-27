@@ -1548,6 +1548,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   // Experimental answer-interface surface: a GeoGebra-like figure or formula card
   // the engine attaches to math/geometry answers (data-driven; see AnswerExperimentSurface).
   const [answerVisual, setAnswerVisual] = useState<AnswerVisual | null>(null);
+  // Self-layout: ATANOR reads the rendered dashboard and, if the answer card would
+  // cover the orb, slides the orb down just enough to clear it. Deterministic seam
+  // for "the AI sees its own screen and re-arranges so nothing overlaps."
+  const answerCardRef = useRef<HTMLDivElement | null>(null);
+  const [orbDodgeY, setOrbDodgeY] = useState(0);
+  const orbDodgeYRef = useRef(0);
   // Iframe content stage: ATANOR can surface a search box or a document/page in a
   // sandboxed iframe; the orb slides to the lower-right (scene_focus) to make room.
   const [iframeStage, setIframeStage] = useState<{ url: string; title: string } | null>(null);
@@ -1609,6 +1615,39 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       window.removeEventListener("mouseup", onUp);
     };
   }, [iframeBusy]);
+
+  // Overlap guard: when an answer card is shown, read the card's box and the orb's
+  // box; if they intersect, slide the orb down just enough to clear the card.
+  useEffect(() => {
+    if (!answerVisual) {
+      orbDodgeYRef.current = 0;
+      setOrbDodgeY(0);
+      return;
+    }
+    let raf = 0;
+    const measure = () => {
+      const card = answerCardRef.current?.getBoundingClientRect();
+      const orbEl = dashboardRef.current?.querySelector(".hologram-voice-orb") as HTMLElement | null;
+      const orb = orbEl?.getBoundingClientRect();
+      if (!card || !orb) return;
+      // Work from the orb's natural (un-dodged) position to avoid feedback.
+      const naturalTop = orb.top - orbDodgeYRef.current;
+      const hOverlap = Math.min(card.right, orb.right) - Math.max(card.left, orb.left);
+      const vGap = naturalTop - card.bottom; // >0 means orb already below the card
+      let dodge = 0;
+      if (hOverlap > 0 && vGap < 24) {
+        dodge = Math.max(0, Math.min(Math.round(card.bottom + 24 - naturalTop), 240));
+      }
+      orbDodgeYRef.current = dodge;
+      setOrbDodgeY(dodge);
+    };
+    raf = window.requestAnimationFrame(() => window.requestAnimationFrame(measure));
+    window.addEventListener("resize", measure);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+    };
+  }, [answerVisual]);
 
   // Reset to the docked default whenever a fresh stage opens (new question → new window).
   useEffect(() => {
@@ -2480,6 +2519,8 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     <section
       ref={dashboardRef}
       className="atanor-ai-dashboard"
+      data-answer-card={answerVisual && !foldScene && !iframeStage ? "true" : "false"}
+      style={{ ["--orb-dodge-y" as string]: `${orbDodgeY}px` } as CSSProperties}
       aria-label={language === "ko" ? "ATANOR \uC785\uC790 \uBCF8\uCCB4" : "ATANOR particle body"}
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
@@ -2817,7 +2858,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       </div>
       {/* Experimental answer interface: GeoGebra-like figure / formula card. */}
       {answerVisual && !foldScene && !iframeStage ? (
-        <div className="atanor-answer-experiment-stage" aria-live="polite">
+        <div className="atanor-answer-experiment-stage" aria-live="polite" ref={answerCardRef}>
           <AnswerExperimentSurface visual={answerVisual} />
         </div>
       ) : null}

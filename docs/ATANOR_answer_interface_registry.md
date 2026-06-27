@@ -50,6 +50,16 @@ Because both ends are small, declarative, and isolated, a future ATANOR can:
 No autonomous code execution is enabled here — this file documents the seam so
 that capability, when built, has a safe, reviewable surface to act on.
 
+## Self-layout (the AI reads its own screen)
+
+Surfaces must not collide. `AtanorUserStatusCard` measures the rendered boxes of
+the answer card and the orb (`getBoundingClientRect`) after paint and, if they
+intersect, slides the orb down by exactly the overlap (`--orb-dodge-y`) so nothing
+covers anything. This is the deterministic seam for "ATANOR sees its own dashboard
+and re-arranges": today a fixed rule (measure → dodge the orb); later the agent can
+choose *where* each surface goes (corner, side, shrink) from the same measured
+geometry, and propose new placement policies through the operator-gated flow.
+
 ## Adding a kind by hand (until then)
 
 1. In `reasoning_vm.py`, return `answer_visual` from your solver.

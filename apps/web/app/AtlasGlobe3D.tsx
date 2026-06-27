@@ -449,6 +449,17 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
   return (
     <div className="atanor-atlas-webgl" ref={hostRef} title={language === "ko" ? "마우스로 드래그해 지구를 회전할 수 있습니다." : "Drag to rotate Earth."}>
       <div className="atanor-atlas-fast-preview" aria-hidden="true">
+        {/* 3D globe silhouette (wireframe sphere) shown until the WebGL Earth is
+            ready — reads as a globe, not a flat disc. */}
+        <svg className="atanor-atlas-globe-wire" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+          <circle cx="50" cy="50" r="48" className="globe-rim" />
+          <line x1="50" y1="2" x2="50" y2="98" />
+          <ellipse cx="50" cy="50" rx="16" ry="48" />
+          <ellipse cx="50" cy="50" rx="32" ry="48" />
+          <line x1="2" y1="50" x2="98" y2="50" />
+          <ellipse cx="50" cy="50" rx="48" ry="16" />
+          <ellipse cx="50" cy="50" rx="48" ry="32" />
+        </svg>
         <i data-pin="hub" />
         <i data-pin="west" />
         <i data-pin="north" />
