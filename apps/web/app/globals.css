@@ -4781,6 +4781,26 @@ p {
   overflow: hidden;
   position: relative;
   border-radius: 15px 15px 0 0;
+  transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+/* When the transcript is answering on the home screen, the orb steps aside:
+   it shrinks and tucks into the bottom-left so the answer takes the stage. */
+.atanor-user-graph-stage[data-answering="true"] {
+  transform: scale(0.4);
+  transform-origin: 12% 88%;
+}
+
+/* Home orb (SPLATRA field) shrinks to the bottom-left while the transcript
+   answers. The chat bar / suggestions stay put. */
+.splatra-imagination-field {
+  transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+.atanor-user-shell[data-answering="true"] .splatra-imagination-field {
+  transform: scale(0.4);
+  transform-origin: 14% 84%;
 }
 
 .atanor-user-shell[data-section="home"] .atanor-user-graph-stage,

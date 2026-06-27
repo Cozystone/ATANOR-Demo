@@ -1256,6 +1256,16 @@ function shouldUseWebSearchForQuestion(question: string, webSearchEnabled: boole
   return true;
 }
 
+// A real, non-trivial question that deserves the transcript view (and the orb
+// stepping aside) rather than a one-line greeting. Used to auto-open the
+// conversation log on the home/orb screen so answers are always visible.
+function isSubstantiveQuestion(question: string) {
+  const t = question.trim();
+  if (t.length < 7) return false;
+  if (["hi", "hello", "hey", "yo", "안녕", "안녕하세요", "하이", "고마워", "감사", "감사합니다", "thanks"].includes(t.toLowerCase())) return false;
+  return true;
+}
+
 function signalTraceForQueryLegacy(query: string, graph: Rag3DGraph, result?: AnyRecord | null) {
   const memoryActiveNodes = (result?.memory_activation?.active_nodes ?? []) as AnyRecord[];
   const memoryActiveEdges = (result?.memory_activation?.active_edges ?? []) as AnyRecord[];
@@ -3196,6 +3206,12 @@ export default function BakeBoardPage() {
     if (learnComplete) setStageProgress("output", Math.max(8, labStageProgress.output));
     activateSignal(signalTraceForQuery(question, displayGraph3D), 4200);
     setChatMessages((messages) => [...messages, { role: "user", text: question }]);
+    // Auto-surface the conversation: a substantive question slides the transcript
+    // open (the answer renders there) and the orb steps aside to the bottom-left.
+    // The transcript records every turn regardless of whether it is open.
+    if (isSubstantiveQuestion(question)) {
+      setTranscriptOpen(true);
+    }
     const uiCommand = resolveAtanorUiCommand(question);
     if (uiCommand) {
       window.setTimeout(() => openMainSection(uiCommand.section), 120);
@@ -5123,7 +5139,7 @@ export default function BakeBoardPage() {
   }, [graphHubCatalog, graphHubCategoryFilter, graphHubSearch]);
 
   return (
-    <main className="atanor-user-shell" data-language={language} data-section={mainSection}>
+    <main className="atanor-user-shell" data-language={language} data-section={mainSection} data-answering={mainSection === "home" && transcriptOpen}>
       <aside className="atanor-user-sidebar">
         <div className="atanor-user-brand">
           <img
@@ -5915,7 +5931,7 @@ export default function BakeBoardPage() {
                 ))}
               </div>
             </div>
-            <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode}>
+            <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode} data-answering={usesStudioGraph && transcriptOpen}>
               {isCloudViewerSection && !visibleGraph3D.nodes.length ? (
                 <CloudBrainSphereScene
                   edgeOpacity={graphEdgeOpacity}
