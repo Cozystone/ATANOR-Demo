@@ -38,6 +38,26 @@ def test_answer_comparison_born_first(monkeypatch):
     assert len(out["sources"]) == 2
 
 
+def test_detect_and_extract_height():
+    plan = cr.detect_comparison("에베레스트와 K2 중 뭐가 더 높아?")
+    assert plan and plan["attribute"] == "height_m" and plan["direction"] == "max"
+    assert cr._extract_height_m("에베레스트는 해발 8,848 m의 산이다.") == 8848.0
+    assert cr._extract_height_m("Burj Khalifa is 828 m tall.") == 828.0
+    assert cr._extract_height_m("It was built in 1879 with no height given.") is None
+
+
+def test_answer_height_comparison(monkeypatch):
+    fixtures = {
+        "에베레스트": {"title": "에베레스트산", "snippet": "에베레스트산은 해발 8,848 m로 세계에서 가장 높은 산이다.", "url": "u1"},
+        "한라산": {"title": "한라산", "snippet": "한라산은 제주특별자치도에 있는 해발 1,947 m의 산으로 대한민국에서 가장 높은 산이다.", "url": "u2"},
+    }
+    monkeypatch.setattr(cr, "wikipedia_search", lambda e, count=2: [fixtures[e]] if e in fixtures else [])
+    out = cr.answer_comparison("에베레스트와 한라산 중 뭐가 더 높아?", "ko")
+    assert out is not None
+    assert "에베레스트산" in out["answer"] and "8848" in out["answer"].replace(",", "")
+    assert out["reasoning_certificate"]["guarantees"]["multi_hop"] is True
+
+
 def test_abstains_when_year_missing(monkeypatch):
     fixtures = {
         "A": {"title": "A", "snippet": "A is a thing with no dates mentioned here at all.", "url": "u"},

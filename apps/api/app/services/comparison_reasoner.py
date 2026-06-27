@@ -25,9 +25,13 @@ _SEP = r"(?:\s*(?:와|과|랑|이랑|하고|,|vs\.?|對|대)\s*|\s+or\s+|\s+vs\.
 # wins the superlative ("born first" → smaller year); "max" = larger wins.
 _YEAR_MIN = ("birth_year", "min")   # older / born first
 _YEAR_MAX = ("birth_year", "max")   # younger / born later
+_HEIGHT_MAX = ("height_m", "max")   # taller / higher (more metres)
+_HEIGHT_MIN = ("height_m", "min")   # lower / shorter
 _COMPARISON_CUES: tuple[tuple[str, tuple[str, str]], ...] = (
     (r"먼저\s*태어|나이\s*많|연상|더\s*나이|older|elder|born\s+first|born\s+earlier", _YEAR_MIN),
     (r"나중에\s*태어|나이\s*적|연하|더\s*어리|younger|born\s+later", _YEAR_MAX),
+    (r"더\s*높|더\s*커|키\s*가?\s*(?:더\s*)?큰|taller|higher", _HEIGHT_MAX),
+    (r"더\s*낮|더\s*작|shorter|lower", _HEIGHT_MIN),
 )
 
 # Which question-word range marks a comparison.
@@ -82,7 +86,21 @@ def _extract_birth_year(summary: str) -> int | None:
     return plausible[0] if plausible else None
 
 
-_ATTRIBUTE_EXTRACTORS = {"birth_year": _extract_birth_year}
+def _extract_height_m(summary: str) -> float | None:
+    """Largest metre value in the summary ("8,848 m", "828m", "높이 555미터")."""
+    head = str(summary or "")
+    vals: list[float] = []
+    for raw in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*(?:m|미터|meters?|metres?)(?![A-Za-z])", head, re.IGNORECASE):
+        try:
+            v = float(raw.replace(",", ""))
+        except ValueError:
+            continue
+        if 1 <= v <= 20000:  # mountains/buildings; excludes stray years (no "m" suffix anyway)
+            vals.append(v)
+    return max(vals) if vals else None
+
+
+_ATTRIBUTE_EXTRACTORS = {"birth_year": _extract_birth_year, "height_m": _extract_height_m}
 
 
 def _lookup(entity: str) -> dict[str, Any] | None:
@@ -130,7 +148,20 @@ def answer_comparison(question: str, language: str = "ko") -> dict[str, Any] | N
         else:
             rel = "earlier" if plan["direction"] == "min" else "later"
             answer = f"{win['title']} was born {rel} ({win_val}) than {lose['title']} ({lose_val}). (sources: {win['title']}, {lose['title']} Wikipedia)"
-    else:  # pragma: no cover - only birth_year wired in v1
+    elif plan["attribute"] == "height_m":
+        if is_ko:
+            win_ga = _josa(win["title"], "이", "가")
+            win_eun = _josa(win["title"], "은", "는")
+            lose_eun = _josa(lose["title"], "은", "는")
+            adj = "높아요" if plan["direction"] == "max" else "낮아요"
+            answer = (
+                f"{win['title']}{win_ga} 더 {adj} {win['title']}{win_eun} {win_val:g}m, "
+                f"{lose['title']}{lose_eun} {lose_val:g}m예요. (출처: {win['title']}, {lose['title']} 위키백과)"
+            )
+        else:
+            rel = "higher" if plan["direction"] == "max" else "lower"
+            answer = f"{win['title']} is {rel} ({win_val:g} m) than {lose['title']} ({lose_val:g} m). (sources: {win['title']}, {lose['title']} Wikipedia)"
+    else:  # pragma: no cover - unknown attribute
         return None
 
     certificate = {
