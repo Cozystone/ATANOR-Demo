@@ -65,8 +65,9 @@ def wordmark(c,x,y,size,col):
 def draw_logo(c,cx,cy,h,col):
     """Centered logo (laurel + ATANOR). h = laurel diameter-ish height."""
     if os.path.exists(LOGO):
-        img=ImageReader(LOGO); iw,ih=img.getSize(); w=h*2.6*(iw/ih)
-        c.drawImage(img, cx-w/2, cy-h*1.3/2, width=w, height=h*1.3, mask='auto'); return
+        img=ImageReader(LOGO); iw,ih=img.getSize()
+        tw=h*4.8; th=tw*(ih/iw)
+        c.drawImage(img, cx-tw/2, cy-th/2, width=tw, height=th, mask='auto'); return
     R=h*0.5
     laurel(c, cx-R*2.7, cy, R, col)
     wordmark(c, cx-R*1.4, cy-R*0.42, R*1.05, col)
