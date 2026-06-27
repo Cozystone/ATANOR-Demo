@@ -1616,6 +1616,30 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     };
   }, [iframeBusy]);
 
+  // Dev/preview-only automation hook: drives the REAL submit path (same as the
+  // quick-reply buttons) so harness verification doesn't fight React's controlled
+  // input. Never exposed in production. window.__atanorAsk("질문") submits;
+  // window.__atanorPeek() reports what surfaced (read from the DOM) for assertions.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return undefined;
+    const w = window as unknown as Record<string, unknown>;
+    w.__atanorAsk = (q: string) => {
+      setMessage(String(q ?? ""));
+      window.setTimeout(() => composerRef.current?.requestSubmit?.(), 120);
+      return `submitting: ${q}`;
+    };
+    w.__atanorPeek = () => ({
+      answerCardKind: document.querySelector(".atanor-answer-experiment")?.getAttribute("data-kind") ?? null,
+      answerCardFormula: document.querySelector(".atanor-answer-experiment-formula")?.textContent ?? null,
+      orbDodgeY: orbDodgeYRef.current,
+      dashboardAnswerCard: document.querySelector(".atanor-ai-dashboard")?.getAttribute("data-answer-card") ?? null,
+    });
+    return () => {
+      delete w.__atanorAsk;
+      delete w.__atanorPeek;
+    };
+  }, []);
+
   // Overlap guard: when an answer card is shown, read the card's box and the orb's
   // box; if they intersect, slide the orb down just enough to clear the card.
   useEffect(() => {
