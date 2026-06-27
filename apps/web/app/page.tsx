@@ -5,6 +5,7 @@ import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent }
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
+import SeismographChart from "./SeismographChart";
 import AutonomousAgentPanel from "./AutonomousAgentPanel";
 import OvernightBriefing from "./OvernightBriefing";
 import AtlasGlobe3D from "./AtlasGlobe3D";
@@ -1676,6 +1677,9 @@ export default function BakeBoardPage() {
     },
   ]);
   const [error, setError] = useState<string | null>(null);
+  // Conversation-log drawer: collapsed to a button by default; slides open
+  // left→right over the render area (ChatGPT-style).
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const localBackendConnected = localBackendStatus === "connected";
   const localBackendDisplay = localBackendDisplayMessage(localBackendMessage, localBackendStatus, language);
 
@@ -5151,7 +5155,7 @@ export default function BakeBoardPage() {
               </button>
             );
           })}
-          <button onClick={() => { window.location.href = "/chat"; }}>
+          <button data-active={transcriptOpen} onClick={() => setTranscriptOpen((value) => !value)}>
             <span aria-hidden="true"><MessageCircle size={17} strokeWidth={1.8} /></span>
             <strong>{language === "ko" ? "대화록" : "Transcript"}</strong>
           </button>
@@ -5165,6 +5169,42 @@ export default function BakeBoardPage() {
       </aside>
 
       <section className="atanor-user-main">
+        <button
+          type="button"
+          className="atanor-transcript-toggle"
+          data-open={transcriptOpen}
+          onClick={() => setTranscriptOpen((value) => !value)}
+          aria-label={language === "ko" ? (transcriptOpen ? "대화록 닫기" : "대화록 열기") : "Toggle transcript"}
+          title={language === "ko" ? "대화록" : "Transcript"}
+        >
+          <MessageCircle size={16} strokeWidth={1.9} />
+        </button>
+        {transcriptOpen ? (
+          <button
+            type="button"
+            className="atanor-transcript-backdrop"
+            aria-label={language === "ko" ? "대화록 닫기" : "Close transcript"}
+            onClick={() => setTranscriptOpen(false)}
+          />
+        ) : null}
+        <aside className="atanor-transcript-drawer" data-open={transcriptOpen} aria-hidden={!transcriptOpen}>
+          <div className="atanor-transcript-head">
+            <strong>{language === "ko" ? "대화록" : "Transcript"}</strong>
+            <button type="button" onClick={() => setTranscriptOpen(false)} aria-label={language === "ko" ? "닫기" : "Close"}>×</button>
+          </div>
+          <div className="atanor-transcript-body">
+            {chatMessages.length === 0 ? (
+              <p className="atanor-transcript-empty">{language === "ko" ? "아직 대화가 없어요." : "No conversation yet."}</p>
+            ) : (
+              chatMessages.map((message, index) => (
+                <div key={index} className="atanor-transcript-turn" data-role={message.role}>
+                  <span>{message.role === "user" ? (language === "ko" ? "나" : "You") : "ATANOR"}</span>
+                  <p>{message.text}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </aside>
         <header className="atanor-user-topbar">
           <div className="atanor-user-topbar-spacer" aria-hidden="true" />
           <div className="atanor-user-top-actions">
@@ -5736,20 +5776,26 @@ export default function BakeBoardPage() {
                   <h2>{language === "ko" ? "크레딧 플로우" : "Credit Flow"}</h2>
                   <p>{language === "ko" ? "공용 Fragment 작업 보상 추세" : "Public fragment reward trend"}</p>
                 </div>
-                <strong>{contributionCreditLatest.toFixed(1)}</strong>
+                <strong>{contributionIsActive ? contributionCreditLatest.toFixed(1) : "—"}</strong>
               </header>
-              <div className="atanor-credit-chart" data-active={contributionIsActive}>
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                  <polygon points={contributionCreditArea} />
-                  <polyline points={contributionCreditPolyline} />
-                  {contributionCreditTrend.map((point, index) => (
-                    <circle key={`${point.x}-${index}`} cx={point.x} cy={point.y} r={index === contributionCreditTrend.length - 1 ? 2.4 : 1.2} />
-                  ))}
-                </svg>
-                <div className="atanor-credit-chart-axis">
-                  <span>{language === "ko" ? "대기" : "Standby"}</span>
-                  <span>{language === "ko" ? "실시간" : "Live"}</span>
-                </div>
+              <div className="atanor-credit-chart" data-active={contributionIsActive} data-seismo="true" data-standby={!contributionIsActive}>
+                {contributionIsActive ? (
+                  <>
+                    <SeismographChart value={contributionCreditLatest} color="#ff7a1a" active={contributionIsActive} tickMs={600} />
+                    <div className="atanor-credit-chart-axis">
+                      <span>{language === "ko" ? "대기" : "Standby"}</span>
+                      <span>{language === "ko" ? "실시간" : "Live"}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="atanor-credit-standby">
+                    <span className="atanor-credit-standby-line" aria-hidden="true" />
+                    <div>
+                      <strong>{language === "ko" ? "연결 대기" : "Standby"}</strong>
+                      <p>{language === "ko" ? "Brain Link를 연결하면 크레딧 플로우가 실시간으로 그려집니다." : "Connect Brain Link to draw the live credit flow."}</p>
+                    </div>
+                  </div>
+                )}
               </div>
               <small className="atanor-credit-trend-meta">
                 {language === "ko"
