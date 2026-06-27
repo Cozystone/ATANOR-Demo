@@ -2201,6 +2201,57 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         r for r in (payload.get("results") or [])
         if len(str(r.get("snippet") or "").strip()) >= 60 and not _is_citation_cruft(str(r.get("snippet") or ""))
     ]
+    # RELEVANCE GATE (critical correctness): a full-text encyclopedia search can
+    # return a page that merely *mentions* the term in passing (e.g. asking
+    # "팔란티어가 뭐야?" surfaced a Miraculous Ladybug character-list page). Such a
+    # page is definition-shaped but NOT about the entity. We must never present an
+    # off-topic page as the answer, and never graft it into the brain. So require
+    # that the query's core entity term actually anchors the result — in the TITLE,
+    # or as the subject in the first sentence — before a row is eligible.
+    try:
+        from app.services.web_search import _lookup_terms, _normalize_lookup_query
+
+        _core_terms = [t for t in _lookup_terms(_normalize_lookup_query(question)) if len(t) >= 2]
+    except Exception:  # pragma: no cover - defensive
+        _core_terms = []
+
+    def _on_topic(row: dict[str, Any]) -> bool:
+        if not _core_terms:
+            return True  # nothing to anchor on; fall back to prior behaviour
+        title_l = str(row.get("title") or "").lower()
+        subject = str(row.get("snippet") or "")[:48].lower()
+        # Title anchor is the strongest signal the page is *about* the entity.
+        if any(term in title_l for term in _core_terms):
+            return True
+        # Otherwise the term must lead the snippet AND the search counted a hit.
+        return any(term in subject for term in _core_terms) and int(row.get("query_terms_matched") or 0) >= 1
+
+    on_topic_rows = [r for r in rows if _on_topic(r)]
+    if not on_topic_rows:
+        # No retrieved page is genuinely about the asked entity. Abstain honestly
+        # rather than answer from an unrelated page — and graft nothing.
+        return {
+            "answer": (
+                f"‘{question.strip()}’에 대해 확인된 근거가 있는 문서를 웹에서 찾지 못했어요. 추측해서 답하지 않을게요 — 질문을 조금 더 구체적으로 주시면 다시 찾아볼게요."
+                if is_ko
+                else f"I couldn't find a reliable source genuinely about “{question.strip()}.” I won't guess — give me a bit more detail and I'll look again."
+            ),
+            "reasoning_certificate": {
+                "derivation_kind": "web_no_relevant_source",
+                "anchor_concept": None,
+                "steps": [{"type": "web_relevance_gate", "fact": "retrieved pages did not anchor the asked entity (title/subject mismatch); abstained instead of answering off-topic"}],
+                "evidence_concepts": [],
+                "confidence": 0.15,
+                "confidence_basis": "no_relevant_source",
+                "guarantees": {"external_llm": False, "fabricated_facts": False, "off_topic_source_used": False, "grafted_to_brain": False},
+            },
+            "confidence": 0.15,
+            "provider": "web_no_match",
+            "source_url": "",
+            "source_title": "",
+            "web_no_relevant_source": True,
+        }
+    rows = on_topic_rows
     # prefer a definition-shaped snippet with the strongest term match; fall back
     # to the most term-relevant readable snippet.
     best = next((r for r in rows if _looks_like_definition(str(r.get("snippet") or ""))), None)
@@ -2216,7 +2267,9 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     # Graft the cited web result(s) into the Cloud Brain as real concept nodes,
     # ordering the answer's own source first, and hand the new nodes back so the
     # Local Brain graph can light them up as they are added.
-    ordered_rows = [best] + [r for r in (payload.get("results") or []) if r is not best]
+    # Only on-topic rows (the relevance-gated set) may be grafted — never the
+    # unrelated pages a full-text search may have returned alongside.
+    ordered_rows = [best] + [r for r in rows if r is not best]
     graft = _graft_web_nodes_to_cloud_brain(ordered_rows, language) if provider == "wikipedia" else {}
     grafted_nodes = graft.get("grafted_nodes") or []
     web_graft = {
@@ -2228,7 +2281,7 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
 
     # Attribution questions ("who invented X?") get the PERSON, not just a
     # definition — extracted deterministically from the retrieved snippets.
-    all_snippets = [str(r.get("snippet") or "") for r in (payload.get("results") or [])]
+    all_snippets = [str(r.get("snippet") or "") for r in rows]
     person = _extract_attribution(question, all_snippets)
     if person:
         rel = _detect_attribution_relation(question)
