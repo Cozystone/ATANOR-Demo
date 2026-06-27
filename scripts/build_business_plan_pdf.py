@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Build the ATANOR business-plan PDF (Korean, Malgun Gothic)."""
+"""Build the ATANOR / BELIFE business-plan PDF — Primer format, black & white."""
+import math
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -8,261 +9,262 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, HRFlowable, Flowable,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Flowable,
 )
 
-pdfmetrics.registerFont(TTFont("Malgun", r"C:\Windows\Fonts\malgun.ttf"))
-pdfmetrics.registerFont(TTFont("MalgunBd", r"C:\Windows\Fonts\malgunbd.ttf"))
+pdfmetrics.registerFont(TTFont("M", r"C:\Windows\Fonts\malgun.ttf"))
+pdfmetrics.registerFont(TTFont("MB", r"C:\Windows\Fonts\malgunbd.ttf"))
 
-INK = colors.HexColor("#14181f")
-BLUE = colors.HexColor("#3a63d8")
-BLUE_D = colors.HexColor("#22327a")
-GREY = colors.HexColor("#5a6478")
-LIGHT = colors.HexColor("#eef2fb")
-LINE = colors.HexColor("#d4dcf0")
+BLACK = colors.HexColor("#000000")
+INK = colors.HexColor("#111111")
+GREY = colors.HexColor("#666666")
+FAINT = colors.HexColor("#e8e8e8")
+ZEBRA = colors.HexColor("#f4f4f4")
 
-def S(name, size, leading, font="Malgun", color=INK, space_before=0, space_after=6, align=TA_LEFT, left=0):
-    return ParagraphStyle(name, fontName=font, fontSize=size, leading=leading, textColor=color,
-                          spaceBefore=space_before, spaceAfter=space_after, alignment=align, leftIndent=left)
+def S(n, sz, ld, f="M", c=INK, sb=0, sa=6, al=TA_LEFT, li=0):
+    return ParagraphStyle(n, fontName=f, fontSize=sz, leading=ld, textColor=c,
+                          spaceBefore=sb, spaceAfter=sa, alignment=al, leftIndent=li)
 
-st_title   = S("title", 30, 36, "MalgunBd", INK, align=TA_CENTER, space_after=4)
-st_sub     = S("sub", 13, 19, "Malgun", GREY, align=TA_CENTER, space_after=2)
-st_h1      = S("h1", 16, 21, "MalgunBd", BLUE_D, space_before=16, space_after=7)
-st_h2      = S("h2", 12.5, 17, "MalgunBd", INK, space_before=9, space_after=3)
-st_body    = S("body", 10.3, 16.2, "Malgun", INK, space_after=5)
-st_bullet  = S("bul", 10.3, 15.6, "Malgun", INK, space_after=3, left=12)
-st_small   = S("small", 8.6, 12.5, "Malgun", GREY, space_after=2)
-st_kicker  = S("kicker", 10.5, 14, "MalgunBd", BLUE, align=TA_CENTER, space_after=10)
-st_cell    = S("cell", 9.2, 12.6, "Malgun", INK)
-st_cellb   = S("cellb", 9.2, 12.6, "MalgunBd", INK)
-st_cellw   = S("cellw", 9.2, 12.6, "MalgunBd", colors.white)
+st_h1   = S("h1", 15, 20, "MB", BLACK, sb=14, sa=7)
+st_h2   = S("h2", 11.5, 16, "MB", INK, sb=8, sa=3)
+st_body = S("body", 10.2, 16, "M", INK, sa=5)
+st_bul  = S("bul", 10.2, 15.4, "M", INK, sa=3, li=11)
+st_small= S("sm", 8.6, 12.4, "M", GREY, sa=2)
+st_cell = S("cell", 9.1, 12.6, "M", INK)
+st_cellb= S("cellb", 9.1, 12.6, "MB", INK)
+st_cellw= S("cellw", 9.1, 12.6, "MB", colors.white)
+st_field= S("field", 9.6, 13.5, "MB", GREY, sa=1)
 
 def h1(t): return Paragraph(t, st_h1)
 def h2(t): return Paragraph(t, st_h2)
 def p(t): return Paragraph(t, st_body)
-def b(t): return Paragraph("• " + t, st_bullet)
+def b(t): return Paragraph("·&nbsp;" + t, st_bul)
 def sp(h=6): return Spacer(1, h)
 
 class Rule(Flowable):
-    def __init__(self, w, color=BLUE, thick=2.4):
-        super().__init__(); self.w=w; self.color=color; self.thick=thick
-    def wrap(self, *a): return (self.w, self.thick)
+    def __init__(self, w, c=BLACK, t=1.6): super().__init__(); self.w=w; self.c=c; self.t=t
+    def wrap(self,*a): return (self.w, self.t)
     def draw(self):
-        self.canv.setStrokeColor(self.color); self.canv.setLineWidth(self.thick)
-        self.canv.line(0, 0, self.w, 0)
+        self.canv.setStrokeColor(self.c); self.canv.setLineWidth(self.t); self.canv.line(0,0,self.w,0)
 
-def metric_table(rows, header):
-    data = [[Paragraph(header[0], st_cellw), Paragraph(header[1], st_cellw), Paragraph(header[2], st_cellw)]]
-    for r in rows:
-        data.append([Paragraph(r[0], st_cellb), Paragraph(r[1], st_cell), Paragraph(r[2], st_cell)])
-    t = Table(data, colWidths=[46*mm, 60*mm, 60*mm])
-    style = [
-        ("BACKGROUND", (0,0), (-1,0), BLUE_D),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, LIGHT]),
-        ("GRID", (0,0), (-1,-1), 0.5, LINE),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("LEFTPADDING", (0,0), (-1,-1), 7), ("RIGHTPADDING", (0,0), (-1,-1), 7),
-        ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-    ]
-    t.setStyle(TableStyle(style)); return t
+class Field(Flowable):
+    """Primer-form style label + value block."""
+    def __init__(self, label, value, w=170*mm):
+        super().__init__(); self.label=label; self.value=value; self.w=w
+        self.pl=Paragraph(value, S("fv",10,14.5,"M",INK))
+        _, self.vh = self.pl.wrap(w-2*mm, 1000)
+    def wrap(self,*a): return (self.w, self.vh+15)
+    def draw(self):
+        c=self.canv
+        c.setFont("MB",8.4); c.setFillColor(GREY); c.drawString(0, self.vh+5, self.label)
+        self.pl.drawOn(c, 0, 0)
+        c.setStrokeColor(FAINT); c.setLineWidth(0.6); c.line(0,-3,self.w,-3)
 
-def simple_table(rows, widths, header_bg=BLUE_D):
-    data = []
-    for i, r in enumerate(rows):
-        style_h = st_cellw if i == 0 else None
-        data.append([Paragraph(c, st_cellw if i==0 else (st_cellb if j==0 else st_cell)) for j, c in enumerate(r)])
-    t = Table(data, colWidths=widths)
+def laurel(c, cx, cy, R, col=colors.white):
+    """Draw an open laurel wreath (open at top) — two symmetric leafed branches."""
+    c.setFillColor(col); c.setStrokeColor(col)
+    for side in (-1, 1):
+        # branch arc from bottom (~ -95deg) up to top (~ 75deg)
+        a0, a1, n = -95, 78, 9
+        for i in range(n):
+            t = i/(n-1)
+            ang = math.radians(a0 + (a1-a0)*t) * 1  # base angle on the circle
+            # mirror by side: x mirrored
+            bx = cx + side * R*math.cos(ang)
+            by = cy + R*math.sin(ang)
+            # leaf: small ellipse pointing outward-tangent
+            c.saveState(); c.translate(bx, by)
+            lean = math.degrees(ang) + 90*side  # tangent-ish
+            c.rotate(lean)
+            lw = R*0.30; lh = R*0.12
+            c.ellipse(-lw*0.15, -lh/2, lw*0.85, lh/2, fill=1, stroke=0)
+            c.restoreState()
+        # stem line
+    # crossing stems at bottom
+    c.setLineWidth(max(1.0, R*0.03))
+    c.line(cx, cy-R*0.96, cx - R*0.34, cy - R*0.62)
+    c.line(cx, cy-R*0.96, cx + R*0.34, cy - R*0.62)
+
+def metric_table(rows, header, widths=(44*mm,60*mm,62*mm)):
+    data=[[Paragraph(h, st_cellw) for h in header]]
+    for r in rows: data.append([Paragraph(r[0],st_cellb)]+[Paragraph(x,st_cell) for x in r[1:]])
+    t=Table(data, colWidths=list(widths))
     t.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), header_bg),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, LIGHT]),
-        ("GRID", (0,0), (-1,-1), 0.5, LINE),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("LEFTPADDING", (0,0), (-1,-1), 7), ("RIGHTPADDING", (0,0), (-1,-1), 7),
-        ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("BACKGROUND",(0,0),(-1,0),BLACK),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,ZEBRA]),
+        ("GRID",(0,0),(-1,-1),0.5,FAINT),("BOX",(0,0),(-1,-1),0.8,INK),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("LEFTPADDING",(0,0),(-1,-1),7),("RIGHTPADDING",(0,0),(-1,-1),7),
+        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
     ])); return t
 
-story = []
+story=[]
+# blank flowables on cover (cover drawn in onFirstPage)
+story += [Spacer(1, 250*mm), PageBreak()]
 
-# ---------- COVER ----------
-story += [sp(120)]
-story += [Paragraph("ATANOR", st_title)]
-story += [Paragraph("그래프 네이티브 · 로컬 우선 · 환각하지 않는 AI", st_sub)]
-story += [sp(10)]
-story += [Paragraph("사업계획서 — Primer 배치 지원", S("c2", 14, 18, "MalgunBd", BLUE_D, align=TA_CENTER))]
-story += [sp(24)]
-story += [Paragraph("“외부 거대언어모델 없이, GPU 없이, 출처를 증명하며 답하는 AI”", S("tag", 12, 18, "Malgun", GREY, align=TA_CENTER))]
-story += [sp(60)]
-story += [Paragraph("작성일: 2026년 6월 · 본 문서의 성능 수치는 자체 실측값입니다 (부록 출처 참조)", st_small)]
-story += [Paragraph("팀/재무/투자요청 항목의 [   ] 는 창업자가 채울 자리입니다.", st_small)]
-story += [PageBreak()]
+# 1. 회사 및 제품 소개
+story += [Rule(170*mm), sp(3), h1("1. 회사 및 제품 소개")]
+story += [Field("회사이름", "ATANOR (아타노르) — <font color='#666666'>미설립, 가칭</font>")]
+story += [Field("회사형태", "사업자 없음 (연구·개발 단계)")]
+story += [Field("제품/서비스명", "ATANOR (엔진) · BELIFE (그 위의 개인 인텔리전스 서비스)")]
+story += [Field("한 줄 소개", "온톨로지 기반 <b>탈중앙화 뉴로모픽 하이브리드 AI, ATANOR</b> — 환각하지 않고, GPU 없이 돌며, 모든 답의 출처를 증명한다.")]
+story += [Field("서비스 URL", "https://github.com/Cozystone/ATANOR")]
+story += [Field("CEO 1분 영상", "https://  <font color='#666666'>[프라이머2026-ATANOR-김안석 제목으로 업로드 후 입력]</font>")]
+story += [sp(8)]
 
-# ---------- 1. EXEC SUMMARY ----------
-story += [Rule(170*mm), sp(3), h1("1. 한 줄 요약 (Executive Summary)")]
-story += [p("<b>ATANOR는 외부 거대언어모델(LLM)을 쓰지 않고, 명시적 지식 그래프와 실시간 검색으로 답하는 로컬 우선(local-first) AI입니다.</b> "
-            "답은 그래프에서 파생되거나 공개 웹(위키백과 등)에서 <b>그대로 인용</b>되며, 모든 답에 출처와 추론 증명서가 붙습니다. "
-            "근거가 없으면 지어내지 않고 “모르겠다”라고 합니다.")]
-story += [sp(4)]
-story += [h2("자체 실측 핵심 지표")]
+# 2. 창업자 / 팀
+story += [Rule(170*mm), sp(3), h1("2. 창업자 (Founder)")]
+story += [p("<b>김안석 (Kim Anseok) — 대표</b>")]
+story += [b("<b>넥스트챌린지스쿨</b> 재학 — 서울시교육청 인가 <b>국내 첫 창업 특화 대안 고등학교</b>. "
+            "AI·글로벌·창업 융합 커리큘럼, 글로벌 대학 교수·빅테크·스타트업 대표가 가르치며 Google·Intel·Thales 등과 협력하는 ‘테슬라 국제학교’.")]
+story += [b("<b>시나브로</b> (문학인을 위한 SNS 플랫폼) — <b>학생창업유망팀 U300+ 도약트랙 최종선발</b>")]
+story += [b("<b>WETHUS</b> (학생 창업 프로젝트 플랫폼) — <b>‘모두의 창업’ 1차 심사 통과</b>")]
+story += [b("현재 <b>ATANOR + BELIFE</b> 개발 — 온톨로지 기반 탈중앙화 AI와 개인 인텔리전스 서비스")]
+story += [sp(3), p("<b>왜 우리가 해낼 수 있는가 (Founder–Market Fit):</b> 시나브로(문학 커뮤니티)→WETHUS(창업 커뮤니티)→BELIFE까지, "
+                   "저는 일관되게 <b>‘사람의 생각을 구조화하고 사람을 더 잘 연결하는 플랫폼’</b>을 만들어 왔고, 매번 외부 인정(U300+, 모두의창업)으로 검증받았습니다. "
+                   "ATANOR는 그 플랫폼들이 진짜로 필요로 하던 <b>‘개인이 소유하는, 믿을 수 있는 AI’</b>를 직접 만드는 시도입니다.")]
+story += [sp(8)]
+
+# 3. 시장의 문제점과 기회
+story += [Rule(170*mm), sp(3), h1("3. 시장의 문제점과 기회")]
+story += [p("AI 시장은 빠르게 성장하지만, 대부분의 서비스는 <b>중앙집중형 클라우드 LLM</b>에 의존합니다. 강력하지만 네 가지 구조적 한계를 가집니다.")]
+story += [b("<b>비용·에너지</b> — 질문마다 GPU 추론(~0.3–3 Wh, 수백 W). 개인·소팀이 자기 AI를 장기 운영하기엔 부담.")]
+story += [b("<b>데이터 주권</b> — 더 좋은 답을 받으려면 개인·기업의 지식을 외부 클라우드로 보내야 함.")]
+story += [b("<b>장기 기억·개인화의 한계</b> — 사람처럼 ‘자라나는’ AI 구조가 부재.")]
+story += [b("<b>환각·출처 불투명</b> — 답이 어떤 근거에서 나왔는지 증명하기 어려움 (의료·법률·교육·연구에 치명적).")]
+story += [sp(3), p("<b>기회:</b> ATANOR는 이 문제를 ‘더 큰 모델’이 아니라 <b>‘다른 구조’</b>로 해결합니다. 개인 기억은 로컬에 보존하고, "
+                   "공용 지식은 검증 가능한 그래프로 관리하며, 후보 지식은 안전하게 학습한 뒤 검증을 거쳐 승격합니다. "
+                   "AI가 문장을 ‘생성’만 하는 게 아니라 지식을 <b>축적·발견·검증하며 로컬에서 성장</b>합니다.")]
+story += [h2("시장 규모 (출처 기반)")]
 story += [metric_table([
-    ("환각률(거짓 단정)", "~0% (존재하지 않는 개체 함정 0/N 날조)", "프런티어 LLM: ~1.5–6% (검색 시), 미검색 시 더 높음"),
-    ("출처/인용", "100% (모든 웹 답변에 실제 URL)", "기본 0%, RAG여도 <100%"),
-    ("답변 시 GPU", "0 (모델 추론 없음)", "수백 W의 GPU"),
-    ("질문당 에너지", "~0.001 Wh", "~0.3–3 Wh"),
-    ("모델 가중치 / VRAM", "0 GB / 0 VRAM", "2.4–40 GB 가중치 / 4–48 GB VRAM"),
-    ("설치 용량", "핵심 의존성 ~11 MB + 그래프", "torch/CUDA ~4–5 GB + 가중치"),
-    ("프라이버시", "로컬 우선 (사적 메모리 비업로드)", "클라우드 전송"),
-], ("지표", "ATANOR (실측)", "프런티어 LLM (공개 추정)"))]
-story += [sp(5), p("→ ATANOR는 <b>신뢰성(환각 0·완전 출처), 비용/에너지(GPU 0), 프라이버시(로컬), 설치 경량성</b>에서 구조적 우위를 가집니다. "
-                   "대가는 <b>지식 커버리지와 일반 추론 깊이</b>가 프런티어 LLM보다 낮다는 점이며, 이는 설계상의 정직한 트레이드오프입니다.")]
+    ("엣지/온디바이스 AI", "$11.8B (2025) → $56.8B (2030)", "CAGR 36.9% — ATANOR 엔진의 시장 (GPU 없이 도는 AI)"),
+    ("AI 컴패니언/개인 비서", "→ $242–318B (2030–33)", "CAGR 17–31% — BELIFE(개인 인텔리전스)의 시장"),
+], ("시장", "규모", "비고 / 출처: BCC·Grandview·Precedence Research"))]
+story += [sp(3), p("ATANOR는 ‘가장 똑똑한 모델’ 경쟁이 아니라 <b>‘틀리면 안 되고, 밖으로 나가면 안 되고, 싸게 돌아야 하는’</b> 세그먼트를 정조준합니다.")]
+story += [h2("초기 고객")]
+story += [b("자기 문서·코드·연구를 장기 기억으로 쌓고 싶은 <b>개발자·연구자</b>")]
+story += [b("내부 지식을 외부 서버에 노출하지 않고 AI로 쓰고 싶은 <b>소규모 팀·스타트업</b>")]
+story += [b("로컬-first·개인 지식주권·탈중앙 AI에 관심 있는 <b>고급 사용자·얼리어답터</b>")]
 story += [PageBreak()]
 
-# ---------- 2. PROBLEM ----------
-story += [Rule(170*mm), sp(3), h1("2. 문제 (Problem)")]
-story += [p("거대언어모델(LLM)은 강력하지만, 신뢰가 핵심인 현장에서는 네 가지 구조적 한계로 도입이 막힙니다.")]
-story += [b("<b>환각</b> — 그럴듯한 거짓을 자신 있게 만들어냅니다. 사실 검증이 중요한 업무에서 치명적입니다.")]
-story += [b("<b>비용·에너지</b> — 질문마다 GPU 추론(질문당 ~0.3–3 Wh, 수백 W). 대규모/엣지 배포에 부담입니다.")]
-story += [b("<b>프라이버시</b> — 프롬프트가 클라우드로 전송됩니다. 데이터 외부 유출이 금지된 산업에는 부적합합니다.")]
-story += [b("<b>감사 불가능</b> — “왜 그렇게 답했는가”를 증명할 출처·근거 사슬이 없습니다.")]
-story += [sp(5), p("결과적으로 <b>금융·의료·법률·공공·국방</b> 등 규제·고신뢰 영역과 <b>온디바이스/엣지·프라이버시 민감</b> 환경에서 "
-                   "LLM 도입의 결정적 장벽이 됩니다. 이 시장은 ‘똑똑함’보다 ‘틀리지 않음·증명 가능함·안전함’을 더 원합니다.")]
-story += [sp(6)]
+# 4. 제품 상세
+story += [Rule(170*mm), sp(3), h1("4. 제품/서비스 상세")]
+story += [h2("ATANOR — 로컬-first AI 운영체제 (엔진)")]
+story += [p("지식·기억·추론·표현·학습·검증을 모델 파라미터에 압축하지 않고 <b>분리된 모듈</b>로 구성합니다.")]
+story += [b("<b>Local Brain</b> — 개인 기억·문서·맥락·선호를 기기 안에만 보존하는 사적 계층 (자동 비전송 원칙)")]
+story += [b("<b>Cloud Brain</b> — 공개 지식 그래프. 후보(candidate)와 검증(verified)을 <b>분리</b>하고, 출처·중복·모순·품질 검사를 거쳐야 승격")]
+story += [b("<b>Surface Brain · CGSR · RHFC</b> — 그래프 지식을 자연어로 표현하는 표면화·생성·공명기억 계층")]
+story += [b("<b>Autonomy Kernel · Midnight Congress</b> — World/Self 모델의 결핍 신호로 ‘무엇이 부족한지’ 제안 (proposal-only, proof 단계)")]
+story += [b("<b>Tabularis Privacy Shield · Atlas Trust Router · Atlas Congress</b> — 프라이버시·신뢰 라우팅·P2P 지식 토론장의 초기 구조")]
+story += [sp(2), p("핵심: ATANOR는 챗봇이 아니라, 개인 컴퓨터 안에서 기억을 키우고 공개 지식을 검증·승격하며, 장차 여러 로컬 AI가 안전하게 연결되는 <b>개인 AI 운영체제</b>입니다.")]
+story += [sp(3), h2("BELIFE — 개인 인텔리전스 서비스 (ATANOR 위의 첫 제품)")]
+story += [p("ATANOR 엔진 위에서 <b>사용자의 생각·감정·가치관을 구조화</b>하고, 이를 <b>더 나은 인간 연결</b>로 확장하는 개인 인텔리전스 서비스. "
+            "창업자가 시나브로·WETHUS에서 이어온 ‘사람을 연결하는 플랫폼’의 다음 단계이자, ATANOR의 로컬·정직·프라이버시 가치가 가장 빛나는 소비자 진입점입니다.")]
+story += [sp(8)]
 
-# ---------- 3. SOLUTION / PRODUCT ----------
-story += [Rule(170*mm), sp(3), h1("3. 솔루션 & 제품 (Solution & Product)")]
-story += [p("ATANOR는 기억·출처·검색·복구·공개지식 교환을 하나의 원격 모델 호출 안에 숨기지 않고, <b>전부 명시적인 그래프 시스템</b>으로 둡니다.")]
-story += [h2("두뇌 구조")]
-story += [b("<b>베이스 브레인</b> — 사용자 데이터 없이도 기본 개념을 설명하는 로컬 시드 지식 그래프")]
-story += [b("<b>클라우드 브레인</b> — 공개 웹에서 검증된 개념을 누적 학습하는 공개 그래프 (개인정보 비업로드)")]
-story += [b("<b>로컬 브레인</b> — 대화에서 얻은 사용자 정보를 기기 안에만 쌓는 사적 메모리")]
-story += [b("<b>서피스 브레인</b> — 그래프의 근거를 자연스러운 문장으로 실현(realization)")]
-story += [b("<b>CGSR 라우팅·그라운딩</b> — 질문을 적절한 두뇌/검색으로 분기, 근거에 묶어 답 생성")]
-story += [h2("핵심 기능")]
-story += [b("<b>추출형 웹 그라운딩</b> — 근거가 없으면 공개 웹에서 검색해 문장을 인용하고 출처를 표시, 새 개념은 그래프에 누적")]
-story += [b("<b>결정론적 다단계 추론</b> — “A와 B 중 누가 먼저 태어났어?”(검색→검색→비교), “프랑스의 수도의 인구는?”(연쇄 2-hop) 등을 LLM 없이")]
-story += [b("<b>자기 모델</b> — 자신이 무엇이고 어떻게 작동하는지 일관되게 설명")]
-story += [b("<b>추론 증명서</b> — 모든 답이 근거·도출 방식·보증(외부 LLM 미사용 등)을 함께 출력 → 감사 가능")]
-story += [b("<b>살아있는 UI</b> — 파티클 ‘구슬’이 답하고, 출처 문서를 지니 효과로 띄우는 등 에이전트가 화면을 자율 제어")]
-story += [b("<b>자율 누적 학습 + AGORA</b> — 밤사이 공개 웹을 정직하게 학습하고, 에이전트 커뮤니티(AGORA)와 상호작용")]
+# 5. 차별점 (measured)
+story += [Rule(170*mm), sp(3), h1("5. 경쟁력 / 차별점 — 측정된 사실")]
+story += [p("기존 AI를 ‘더 큰 LLM’으로 이기는 게 아니라 <b>AI의 구조 자체를 다시 설계</b>합니다. 아래 수치는 마케팅이 아니라 <b>자체 실측값</b>입니다.")]
+story += [metric_table([
+    ("환각률(거짓 단정)", "~0%", "존재하지 않는 개체 함정 전부 abstain (날조 0)"),
+    ("출처/인용", "100%", "모든 웹 답변이 실제 출처 URL 보유"),
+    ("답변 시 GPU", "0", "모델 추론 없음 (LLM: 수백 W)"),
+    ("질문당 에너지", "~0.001 Wh", "LLM ~0.3–3 Wh → 100–1000배 적음"),
+    ("모델 가중치 / VRAM", "0 GB / 0", "LLM: 2.4–40 GB / 4–48 GB"),
+    ("설치 용량", "~11 MB + 그래프", "GPU 없는 기기에서도 구동"),
+    ("프라이버시", "로컬 우선", "사적 메모리 비업로드"),
+], ("지표", "ATANOR (실측)", "비교 / 의미"))]
+story += [sp(3)]
+story += [b("<b>로컬-first</b>: 개인 맥락이 외부 모델에 흡수되지 않고 기기 안에 남음")]
+story += [b("<b>온톨로지 그래프</b>: concept·relation·evidence·case-frame으로 구조화 → 추적 가능한 지식 경로")]
+story += [b("<b>candidate↔verified 분리</b>: 새 지식은 후보로만 쌓이고 검증 후 승격 → 환각·오염 차단")]
+story += [b("<b>결정론적 다단계 추론</b>: ‘A와 B 중 누가 먼저?’(비교), ‘프랑스의 수도의 인구?’(연쇄 2-hop)를 LLM 없이")]
+story += [sp(3), p("<font color='#666666' size=9>정직한 한계: 그래프+검색 구조라 지식 커버리지는 프런티어 LLM보다 좁고, 일반 추론 깊이는 아직 얕습니다. "
+                   "캐시되지 않은 사실엔 인터넷이 필요합니다 — 설계상의 트레이드오프입니다.</font>")]
 story += [PageBreak()]
 
-# ---------- 4. DIFFERENTIATION ----------
-story += [Rule(170*mm), sp(3), h1("4. 핵심 차별점 — 측정된 사실 (Why we are different)")]
-story += [p("아래는 마케팅 수사가 아니라 <b>실제 측정값</b>입니다 (자체 벤치마크 하니스 + 하드웨어 계측, 부록 참조).")]
-story += [sp(3), h2("정직성 & 신뢰")]
-story += [b("환각률 <b>~0%</b>: 존재하지 않는 가짜 개체로 함정을 깔아도 전부 ‘모른다’고 abstain (날조 0건)")]
-story += [b("인용 정밀도 <b>100%</b>: 모든 웹 답변이 답을 추출한 바로 그 출처 URL을 보유")]
-story += [b("완전한 출처추적: 모든 답에 추론 증명서 — LLM은 ‘왜’를 증명하지 못함")]
-story += [sp(3), h2("효율 & 배포")]
-story += [b("답변 시 <b>서버 GPU 0</b> · 질문당 <b>~0.001 Wh</b> (프런티어 LLM 대비 ~100–1000배 적은 에너지)")]
-story += [b("<b>모델 가중치 0 · VRAM 0 · 핵심 의존성 ~11 MB</b> → <b>GPU 없는 기기</b>에서도 구동")]
-story += [b("<b>로컬 우선</b> 프라이버시 — 사적 메모리는 기기 밖으로 나가지 않음")]
-story += [sp(4), p("<font color='#5a6478' size=9>정직한 한계: 그래프+검색 구조이므로 지식 커버리지가 프런티어 LLM보다 좁고, "
-                   "일반 다단계 추론 깊이가 아직 얕습니다(현재 비교·연쇄 추론 단계). 캐시되지 않은 사실은 인터넷이 필요합니다.</font>")]
-story += [sp(6)]
+# 6. 수익모델
+story += [Rule(170*mm), sp(3), h1("6. 수익모델")]
+story += [p("장기적으로 B2C·B2B를 함께 봅니다. 핵심: <b>추론에 GPU가 들지 않아 단위 운영비(COGS)가 극히 낮습니다.</b>")]
+story += [metric_table([
+    ("개인 로컬 AI OS 구독", "월 9,900–29,000원", "로컬 그래프 관리·백그라운드 학습·동기화 등 고급 기능"),
+    ("Pro (개발자·연구자)", "월 39,000–99,000원", "대규모 문서/코드 인덱싱·프로젝트 브레인·Answer Quality Lab"),
+    ("팀/기업 온프레미스", "구축+월유지+시트", "데이터 외부 노출 없이 사내에서 운영하는 지식 AI"),
+    ("Graph Cartridge 마켓", "수수료/구독", "도메인 지식 그래프(법률·의료·창업 등) 거래"),
+    ("Atlas Network(장기)", "기여 보상", "공개 지식 검증 기여자 credit·생태계 수익공유"),
+], ("모델", "가격(검토)", "내용"), widths=(40*mm,38*mm,88*mm))]
+story += [sp(3), p("초기에는 <b>개발자·연구자용 Pro</b>와 <b>팀용 온프레미스</b>로 검증 → 이후 BELIFE(B2C)와 Cartridge·Atlas로 확장.")]
+story += [sp(8)]
 
-# ---------- 5. MARKET ----------
-story += [Rule(170*mm), sp(3), h1("5. 시장 (Market)")]
-story += [h2("타깃 고객")]
-story += [b("<b>규제·고신뢰 산업</b>: 금융(컴플라이언스·리서치), 의료, 법률, 공공·국방 — 환각/유출이 허용되지 않는 영역")]
-story += [b("<b>온디바이스 / 엣지 AI</b>: GPU 없이 도는 경량 AI가 필요한 단말·임베디드·오프그리드")]
-story += [b("<b>프라이버시 우선 기업</b>: 데이터를 외부 LLM에 보낼 수 없는 조직 (온프레미스)")]
-story += [b("<b>저전력·저자원 환경</b>: 에너지/하드웨어 비용이 결정적인 시장")]
-story += [sp(3), h2("시장 규모 (방향성)")]
-story += [p("전 세계 엔터프라이즈 AI 시장은 빠르게 성장 중이며, 그 안에서 <b>프라이빗/온프레미스·신뢰가능 AI</b>와 <b>온디바이스 AI</b> "
-            "수요가 별도 축으로 커지고 있습니다. ATANOR는 ‘가장 똑똑한 모델’ 경쟁이 아니라 <b>‘틀리면 안 되고, 밖으로 나가면 안 되고, "
-            "싸게 돌아야 하는’ 세그먼트</b>를 정조준합니다. <font color='#5a6478' size=9>[구체 TAM/SAM/SOM 수치 및 출처 — 창업자 보강]</font>")]
-story += [PageBreak()]
+# 7. 경쟁 서비스
+story += [Rule(170*mm), sp(3), h1("7. 유사 / 경쟁 서비스")]
+story += [metric_table([
+    ("ChatGPT (OpenAI)", "범용 추론·도구", "중앙 클라우드 / 로컬 지식 소유·그래프 부재"),
+    ("Claude (Anthropic)", "긴 문맥·글쓰기", "외부 모델 호출 중심 / 후보·검증 그래프 구조 아님"),
+    ("Perplexity", "검색·출처 답변", "검색 응답 위주 / 온톨로지 축적·로컬 브레인 연결 아님"),
+], ("서비스", "강점", "ATANOR와의 차이"), widths=(40*mm,46*mm,80*mm))]
+story += [sp(3), p("ATANOR는 이들을 직접 대체하기보다, <b>개인 기억(로컬) + 검증 가능한 공용 그래프</b>를 분리 관리하는 개인 AI 운영체제로 포지셔닝합니다. "
+                   "해자는 단일 기능이 아니라 <b>‘정직성 + 경량성 + 프라이버시’의 결합</b>이며, LLM 진영이 따라오려면 근본 아키텍처를 바꿔야 합니다.")]
+story += [sp(8)]
 
-# ---------- 6. BUSINESS MODEL ----------
-story += [Rule(170*mm), sp(3), h1("6. 비즈니스 모델 (Business Model)")]
-story += [simple_table([
-    ["수익 모델", "대상", "근거/강점"],
-    ["온프레미스 라이선스", "규제산업 엔터프라이즈", "데이터 외부 유출 불가 요구를 정조준; 로컬 구동이 곧 제품 가치"],
-    ["per-seat / 사용량 SaaS", "팀·중소기업", "GPU 비용 0 → 낮은 운영비로 가격 경쟁력"],
-    ["임베디드/엣지 라이선스", "단말·하드웨어 제조사", "0 VRAM·~11MB로 기기 내장 가능"],
-    ["도메인 그래프 팩", "수직 산업(의료/법률 등)", "Graph Hub로 도메인 지식 큐레이션 판매"],
-    ["컨트리뷰터 클라우드(AGORA)", "장기·네트워크 효과", "다수 사용자 PC에 거주하는 에이전트 공용 학습"],
-], [40*mm, 48*mm, 78*mm])]
-story += [sp(5), p("핵심: <b>추론에 GPU가 들지 않아 단위 운영비(COGS)가 극히 낮습니다.</b> 이는 가격·마진·엣지 배포 모두에서 구조적 이점입니다.")]
-story += [sp(6)]
+# 8. 성과/지표
+story += [Rule(170*mm), sp(3), h1("8. 성과 / 지표 (개발 단계)")]
+story += [p("매출·고객 단계가 아니므로 정량 매출 지표는 없습니다. 대신 <b>기술 검증 지표</b>가 실제 코드로 재현됩니다.")]
+story += [b("최근 6개월: 아이디어 → 작동하는 <b>로컬-first AI 프로토타입</b> (GitHub 모노레포, FastAPI + Next.js + Python 패키지)")]
+story += [b("공개 코퍼스 기반 <b>10k·100k candidate-only 검증</b> 완료 (100k run: 100,000 payload 처리, 66,304 승인)")]
+story += [b("<b>persistent candidate learning daemon</b>로 6h 완료, 24h run 진행 — 학습 중 production·Local Brain 불변")]
+story += [b("Production verified store(예): ~8,060 concepts · 33,032 relations · 8,364 evidence · 8,281 case-frames")]
+story += [b("안전 불변조건 유지: production_store_mutated=false · local_brain_write=false · external_llm_used=false · mock_growth=false")]
+story += [b("<b>측정 벤치마크</b>: 67문항 하니스 — 환각 0% · 인용 100% / 에너지·footprint 하드웨어 실측(GPU 0, ~0.001Wh, 가중치 0)")]
+story += [sp(8)]
 
-# ---------- 7. MOAT ----------
-story += [Rule(170*mm), sp(3), h1("7. 경쟁 우위 / 해자 (Competition & Moat)")]
-story += [simple_table([
-    ["경쟁군", "그들의 강점", "ATANOR의 우위"],
-    ["프런티어 LLM\n(OpenAI·Anthropic·Google)", "지식·일반 추론 폭", "환각 0·완전 출처·감사·프라이버시·에너지/비용"],
-    ["로컬 LLM (Llama·ollama)", "오프라인·소유권", "환각(소형도 발생)·수GB 가중치·VRAM 필요 → 우리는 0"],
-    ["RAG/검색 벤더", "검색+생성 결합", "외부 LLM 의존 제거 → 비용·프라이버시·인용 정밀도"],
-], [44*mm, 50*mm, 72*mm])]
-story += [sp(5), p("해자는 단일 기능이 아니라 <b>‘정직성 + 경량성 + 프라이버시’의 결합</b>입니다. LLM 진영이 이를 따라오려면 "
-                   "근본 아키텍처(생성형 가중치 모델)를 바꿔야 합니다. 더불어 <b>도메인 그래프 자산</b>과 <b>AGORA 네트워크 효과</b>가 "
-                   "시간이 지날수록 누적 방어력을 만듭니다.")]
-story += [sp(6)]
+# 9. 재무 및 기타
+story += [Rule(170*mm), sp(3), h1("9. 재무 및 기타")]
+story += [Field("외부투자 현황", "없음")]
+story += [Field("회사 부채", "없음")]
+story += [Field("분쟁/소송", "없음")]
+story += [Field("투자 요청", "현재 없음 (연구·개발 단계) — 프라이머를 통해 기술 실험을 실제 제품·사업으로 발전시키고자 함")]
+story += [sp(2), h2("기타 하고 싶은 이야기")]
+story += [p("저는 고등학생 창업자입니다. 시나브로로 사람의 글을, WETHUS로 사람의 도전을 연결해왔고, 그때마다 부딪힌 질문은 같았습니다 — "
+            "<b>‘이 사람들의 생각과 기억은 결국 누구의 것인가.’</b> 지금의 AI는 편리하지만 그 답을 거대 클라우드에 맡깁니다. "
+            "ATANOR는 그 답을 사용자에게 돌려주려는, 작지만 끝까지 파고든 실제 코드입니다. ‘더 큰 모델’이 아니라 <b>‘더 인간다운 기억 구조’</b>로요. "
+            "아직 사업 경험은 부족하지만, 저는 이걸 아이디어가 아니라 <b>작동하는 시스템</b>으로 만들어 측정 가능한 사실(환각 0·GPU 0)까지 확인했습니다.")]
+story += [sp(8), Rule(170*mm, GREY, 0.7), sp(3)]
+story += [Paragraph("부록 — 측정 출처: factual_qa_benchmark.py(67문항) · ATANOR_ENERGY_EFFICIENCY.md · ATANOR_FOOTPRINT.md · "
+                    "ATANOR_VS_LLMS_NUMBERS.md · comparison_reasoner.py · chained_reasoner.py. "
+                    "※ 비교 LLM 수치는 공개 리더보드(Vectara HHEM·ALCE·MMLU 등) 추정값으로 서로 다른 테스트셋이므로 방향성 비교입니다.", st_small)]
 
-# ---------- 8. ROADMAP ----------
-story += [Rule(170*mm), sp(3), h1("8. 로드맵 & 비전 (Roadmap)")]
-story += [h2("단기 (0–6개월)")]
-story += [b("작동 프로토타입 → 클로즈드 베타; 규제산업 1–2곳 PoC")]
-story += [b("공개 벤치마크 100문항 + 에너지/footprint 백서 공개 (신뢰 마케팅)")]
-story += [h2("중기 (6–18개월)")]
-story += [b("추론 코어 심화 — PHFE(위상 홀로그래픽 폴딩: 파동간섭 + 결정론적 폴딩)로 일반 다단계 추론 강화")]
-story += [b("도메인 그래프 팩(의료·법률·금융) 상용화; 온프레미스 배포 패키지")]
-story += [b("분산 컨트리뷰터 클라우드(AGORA) v1 — 다수 노드 공용 학습")]
-story += [h2("장기 비전")]
-story += [p("<b>‘프로그램 안에 사는 정직한 생명체’</b> — 모든 기기에서 GPU 없이 돌고, 환각하지 않으며, 모든 답을 증명하는 "
-            "<b>신뢰 가능한 AI 인프라</b>. LLM이 ‘가장 똑똑한 답’을 겨룰 때, ATANOR는 ‘가장 믿을 수 있고 가장 가벼운 답’의 표준이 됩니다.")]
-story += [PageBreak()]
-
-# ---------- 9. TRACTION ----------
-story += [Rule(170*mm), sp(3), h1("9. 현재 상태 / 트랙션 (Traction)")]
-story += [b("작동하는 풀스택 프로토타입: 대시보드 UI + FastAPI 엔진 + 5개 두뇌 + 자율 학습 루프")]
-story += [b("결정론적 다단계 추론(비교·연쇄) 구현 및 단위테스트 통과")]
-story += [b("자체 측정 벤치마크 하니스(67문항) — 환각 0%·인용 100% 재현")]
-story += [b("에너지·footprint 하드웨어 실측 백서 (GPU 0, ~0.001 Wh/질문, 가중치 0)")]
-story += [sp(4), p("<font color='#5a6478' size=9>단계: 프로토타입/시드. 매출·계약·파일럿 등 정량 트랙션은 창업자가 보강 — [   ]</font>")]
-story += [sp(6)]
-
-# ---------- 10. TEAM ----------
-story += [Rule(170*mm), sp(3), h1("10. 팀 (Team)")]
-story += [p("<font color='#5a6478'>[창업자/공동창업자 이름 · 역할 · 핵심 이력 · 왜 우리가 이걸 해낼 수 있는가(Founder-Market Fit)를 채워주세요.]</font>")]
-story += [b("[대표 — 성명 / 배경 / 강점]")]
-story += [b("[기술 — 성명 / 배경 / 강점]")]
-story += [b("[자문·초기 멤버 — 있다면]")]
-story += [sp(6)]
-
-# ---------- 11. ASK ----------
-story += [Rule(170*mm), sp(3), h1("11. 투자 요청 & 자금 사용 (The Ask)")]
-story += [p("<font color='#5a6478'>[라운드/금액/밸류 및 자금 사용처를 채워주세요. 아래는 참고용 골격입니다.]</font>")]
-story += [simple_table([
-    ["사용처", "비중(예시)", "목적"],
-    ["제품·엔지니어링", "[ % ]", "추론 코어·온프레미스 패키지·도메인 그래프"],
-    ["GTM·파일럿", "[ % ]", "규제산업 PoC·초기 고객 확보"],
-    ["인프라·운영", "[ % ]", "벤치마크 공개·보안/컴플라이언스 인증"],
-], [50*mm, 30*mm, 86*mm])]
-story += [sp(5), p("목표(예시): [ ]개월 내 [ ]개 유료 파일럿 / 베타 사용자 [ ]명 / 벤치마크 공개로 신뢰 포지셔닝 확립.")]
-story += [sp(8), Rule(170*mm, GREY, 0.8), sp(3)]
-
-# ---------- APPENDIX ----------
-story += [h1("부록 — 측정 출처 (Appendix)")]
-story += [p("본 문서의 모든 성능 수치는 자체 코드/계측에서 재현 가능합니다:")]
-story += [b("벤치마크 하니스: packages/answer_quality/factual_qa_benchmark.py (67문항, 환각·인용·정답·지연)")]
-story += [b("벤치마크 비교: docs/ATANOR_BENCHMARK_COMPARISON.md · docs/ATANOR_VS_LLMS_NUMBERS.md")]
-story += [b("에너지: docs/ATANOR_ENERGY_EFFICIENCY.md (RTX 5080 계측)")]
-story += [b("설치 용량: docs/ATANOR_FOOTPRINT.md (가중치 0·VRAM 0·~11MB)")]
-story += [b("추론 코어: comparison_reasoner.py · chained_reasoner.py")]
-story += [sp(6), p("<font color='#5a6478' size=8.5>※ 프런티어/로컬 LLM 수치는 공개 모델카드·리더보드(MMLU·GSM8K·Vectara HHEM·ALCE·TruthfulQA) "
-                   "추정값으로, 서로 다른 테스트셋이므로 방향성 비교입니다. 외부 모델을 동일 셋으로 직접 구동하지 않았습니다(설계상 외부 LLM 미사용).</font>")]
+def cover(canvas, doc):
+    canvas.saveState()
+    canvas.setFillColor(BLACK); canvas.rect(0, 0, A4[0], A4[1], fill=1, stroke=0)
+    cx = A4[0]/2
+    laurel(canvas, cx-34*mm, A4[1]-118*mm, 12*mm, colors.white)
+    canvas.setFillColor(colors.white); canvas.setFont("MB", 30)
+    canvas.drawString(cx-16*mm, A4[1]-122*mm, "ATANOR")
+    canvas.setFont("M", 12); canvas.setFillColor(colors.HexColor("#cccccc"))
+    canvas.drawCentredString(cx, A4[1]-140*mm, "탈중앙화 뉴로모픽 하이브리드 AI")
+    canvas.setFont("MB", 13); canvas.setFillColor(colors.white)
+    canvas.drawCentredString(cx, A4[1]-162*mm, "사업계획서 · Primer 2026 배치 지원")
+    canvas.setStrokeColor(colors.HexColor("#444444")); canvas.setLineWidth(0.6)
+    canvas.line(cx-30*mm, A4[1]-170*mm, cx+30*mm, A4[1]-170*mm)
+    canvas.setFont("M", 11); canvas.setFillColor(colors.HexColor("#aaaaaa"))
+    canvas.drawCentredString(cx, A4[1]-182*mm, "“환각하지 않고, GPU 없이, 출처를 증명하며 답하는 AI”")
+    canvas.setFont("M", 9.5); canvas.setFillColor(colors.HexColor("#888888"))
+    canvas.drawCentredString(cx, 40*mm, "대표 김안석 · 넥스트챌린지스쿨 · 2026.06")
+    canvas.drawCentredString(cx, 33*mm, "성능 수치는 자체 실측값입니다 (부록 참조). 팀/재무 [   ]는 보강 예정.")
+    canvas.restoreState()
 
 def footer(canvas, doc):
     canvas.saveState()
-    canvas.setFont("Malgun", 8); canvas.setFillColor(GREY)
-    canvas.drawString(20*mm, 12*mm, "ATANOR · 사업계획서 (Confidential)")
-    canvas.drawRightString(190*mm, 12*mm, "%d" % doc.page)
-    canvas.setStrokeColor(LINE); canvas.setLineWidth(0.5); canvas.line(20*mm, 15*mm, 190*mm, 15*mm)
+    canvas.setFont("M", 8); canvas.setFillColor(GREY)
+    laurel(canvas, 22*mm, 13*mm, 2.6*mm, GREY)
+    canvas.drawString(28*mm, 11.6*mm, "ATANOR · 사업계획서 (Confidential)")
+    canvas.drawRightString(190*mm, 11.6*mm, "%d" % (doc.page-1))
+    canvas.setStrokeColor(FAINT); canvas.setLineWidth(0.5); canvas.line(20*mm, 16*mm, 190*mm, 16*mm)
     canvas.restoreState()
 
 out = r"C:\0.ASKIM ALL-VIN\ATANOR-live-selfhood-scheduler\ATANOR_사업계획서.pdf"
-doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm, topMargin=18*mm, bottomMargin=20*mm,
-                        title="ATANOR 사업계획서", author="ATANOR")
-doc.build(story, onFirstPage=lambda c, d: None, onLaterPages=footer)
+doc = SimpleDocTemplate(out, pagesize=A4, leftMargin=20*mm, rightMargin=20*mm,
+                        topMargin=18*mm, bottomMargin=20*mm, title="ATANOR 사업계획서", author="김안석")
+doc.build(story, onFirstPage=cover, onLaterPages=footer)
 print("WROTE", out)
