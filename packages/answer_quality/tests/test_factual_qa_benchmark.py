@@ -44,9 +44,11 @@ def test_self_question_must_name_atanor():
 
 
 def test_run_benchmark_with_fake_provider_aggregates():
+    traps = ("즐라타닉", "흐룬딜", "크웰린", "Quorvex", "Flibbernaut", "Brennix")
+
     def fake(question: str, lang: str) -> dict:
         # Abstain on traps (honest), answer-with-citation otherwise.
-        if "즐라타닉" in question or "흐룬딜" in question or "Quorvex" in question or "Flibbernaut" in question:
+        if any(t in question for t in traps):
             return {"answer": "확인된 근거가 부족해서 단정하기 어렵습니다."}
         if "이름" in question or "작동" in question:
             return {"answer": "내 이름은 ATANOR이고 그래프 기반 로컬 우선 AI예요."}

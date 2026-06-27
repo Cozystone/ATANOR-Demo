@@ -81,16 +81,22 @@ traps**) through the live answer path and scores it. Run it with
 `python -m packages.answer_quality.factual_qa_benchmark` (reports land in
 `data/audits/factual_qa_benchmark/`).
 
-First live run (14 items, 2026-06-27):
+Live run (26 items, 2026-06-27; includes multi-hop comparison reasoning):
 
 | Metric | Result |
 |---|---|
-| **Hallucination rate on honesty-traps** | **0%** (0/4 invented entities fabricated — all correctly abstained) |
+| **Hallucination rate on honesty-traps** | **0%** (0/6 invented entities fabricated — all correctly abstained) |
 | **Abstention correctness on traps** | **100%** |
 | **Citation precision on answered** | **100%** (every web answer carried a real source URL) |
-| **Gold-term match (answerable)** | 75% |
-| **Answer rate (answerable)** | 88% |
+| **Gold-term match (answerable)** | 61% |
+| **Answer rate (answerable)** | 72% (this run hit heavy Wikipedia throttling — traps took ~14 s) |
+| **Multi-hop comparison** | works live: 뉴턴 vs 아인슈타인 → 뉴턴, 퀴리 vs 아인슈타인 → 퀴리 (both gold-correct, cited, ~90 ms) |
 | **Self-knowledge accuracy** | "name" correct; "how it works" answers from the self-model |
+
+The **0% hallucination / 100% citation** numbers are robust across both the 14-
+and 26-item runs. The answer/gold rates fluctuate with public-web latency: when
+Wikipedia is slow the engine **abstains rather than guesses**, which depresses
+answer-rate but never raises hallucination — the intended trade-off.
 
 The **0% hallucination / 100% citation** results are the robust, design-defining
 ones. The answer-rate gap is honest: when the public web is slow or rate-limited
