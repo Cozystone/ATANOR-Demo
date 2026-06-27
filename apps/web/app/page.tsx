@@ -3235,21 +3235,36 @@ export default function BakeBoardPage() {
     }
     try {
       const shouldUseWebSearch = shouldUseWebSearchForQuestion(question, webSearchEnabled);
-      const result = await apiJson<AnyRecord>("/api/chat/atanor", {
-        method: "POST",
-        body: JSON.stringify({
+      const chatBody = (web: boolean) =>
+        JSON.stringify({
           question,
-          web_search: shouldUseWebSearch,
+          web_search: web,
           brain_mode: mainSection === "local" ? "local" : mainSection === "cloud" ? "cloud" : "unified",
           language,
           audience_level: "beginner",
           tone: "clear",
           mode: "default",
           include_trace: true,
-        }),
-      });
+        });
+      let result = await apiJson<AnyRecord>("/api/chat/atanor", { method: "POST", body: chatBody(shouldUseWebSearch) });
+      let apiResult = result?.result;
+      // Auto-retry with web search if the local engine abstained on a real
+      // factual question. The backend only abstains ("근거가 부족") when web is
+      // off, so a substantive question should never silently dead-end.
+      const firstAnswer = String(apiResult?.answer ?? "");
+      const abstained = /근거가\s*부족|단정하기\s*어렵|don'?t have enough|couldn'?t reach|i don'?t know|모르겠/i.test(firstAnswer);
+      if (abstained && !shouldUseWebSearch && isSubstantiveQuestion(question)) {
+        try {
+          const retry = await apiJson<AnyRecord>("/api/chat/atanor", { method: "POST", body: chatBody(true) });
+          if (retry?.result?.answer) {
+            result = retry;
+            apiResult = retry.result;
+          }
+        } catch {
+          /* keep the first answer */
+        }
+      }
       setGraphRag(result);
-      const apiResult = result?.result;
       const answerKind = String(apiResult?.answer_kind ?? "");
       const isConversationResult =
         apiResult?.method === "atanor-conversation-router-v1" || ["greeting", "thanks", "conversation"].includes(answerKind);
