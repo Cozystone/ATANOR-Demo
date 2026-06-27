@@ -3234,7 +3234,10 @@ export default function BakeBoardPage() {
       return;
     }
     try {
-      const shouldUseWebSearch = shouldUseWebSearchForQuestion(question, webSearchEnabled);
+      // Substantive factual questions always reach for the web on the first try
+      // (the local graph abstains without grounding). The toggle/heuristic only
+      // governs greetings and chit-chat. This is why "엔비디아 알려줘" must not abstain.
+      const shouldUseWebSearch = isSubstantiveQuestion(question) || shouldUseWebSearchForQuestion(question, webSearchEnabled);
       const chatBody = (web: boolean) =>
         JSON.stringify({
           question,

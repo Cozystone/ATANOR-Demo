@@ -4394,8 +4394,7 @@ p {
 .atanor-transcript-drawer {
   background: linear-gradient(180deg, rgba(10, 12, 16, 0.985), rgba(6, 7, 10, 0.985));
   border-right: 1px solid var(--atanor-line);
-  /* leave the bottom strip free so the chat composer stays usable (GPT-like). */
-  bottom: 104px;
+  bottom: 0;
   box-shadow: 20px 0 56px rgba(0, 0, 0, 0.5);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -4410,6 +4409,20 @@ p {
 }
 .atanor-transcript-drawer[data-open="true"] {
   transform: translateX(0);
+}
+
+/* When the transcript answers, the home layer (orb + input bar) stays ON TOP
+   and docks to the bottom-right, shrunk — the conversation fills behind it. */
+.atanor-ai-dashboard {
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+  transform-origin: 100% 100%;
+}
+.atanor-user-shell[data-answering="true"] .atanor-ai-dashboard {
+  border-radius: 16px;
+  box-shadow: -22px -10px 60px rgba(0, 0, 0, 0.6);
+  position: relative;
+  transform: scale(0.34);
+  z-index: 30;
 }
 .atanor-transcript-head {
   align-items: center;
