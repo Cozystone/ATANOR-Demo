@@ -3047,6 +3047,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # lookups + a deterministic compare, no LLM. None when not a comparison or when
     # it can't extract both values (abstains, never guesses).
     comparison = None
+    chained = None
     if request.web_search and not (self_state or self_knowledge or recall):
         try:
             from app.services.comparison_reasoner import answer_comparison
@@ -3054,6 +3055,13 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             comparison = answer_comparison(question, language)
         except Exception:  # pragma: no cover - reasoner must never break chat
             comparison = None
+        if not comparison:
+            try:
+                from app.services.chained_reasoner import answer_chain
+
+                chained = answer_chain(question, language)
+            except Exception:  # pragma: no cover - reasoner must never break chat
+                chained = None
 
     response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
     response = _attach_holographic_fold_trace(response, request)
@@ -3087,10 +3095,21 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         if comparison.get("source_url"):
             result["render_iframe"] = {"url": comparison["source_url"], "title": comparison.get("source_title") or question[:60]}
 
+    # Chained (2-hop) reasoning answer — authoritative over the single-fact engine.
+    if chained and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = chained["answer"]
+        result["reasoning_certificate"] = chained["reasoning_certificate"]
+        result["confidence"] = chained["confidence"]
+        result["answer_kind"] = "chained_reasoning"
+        result["can_speak"] = True
+        if chained.get("source_url"):
+            result["render_iframe"] = {"url": chained["source_url"], "title": chained.get("source_title") or question[:60]}
+
     # Web-grounded rescue (outermost): if web search is on and the final answer is
     # still an abstention from ANY internal path, answer from a real cited web
     # source. RAG grounding — answer is the retrieved evidence, attributed.
-    if request.web_search and not (self_state or self_knowledge or comparison or recall) and isinstance(response.get("result"), dict):
+    if request.web_search and not (self_state or self_knowledge or comparison or chained or recall) and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):
