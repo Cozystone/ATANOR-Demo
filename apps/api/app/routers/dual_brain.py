@@ -3046,9 +3046,20 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Deterministic multi-hop comparison ("A와 B 중 누가 먼저 태어났어?"): two real
     # lookups + a deterministic compare, no LLM. None when not a comparison or when
     # it can't extract both values (abstains, never guesses).
+    # Deterministic Reasoning VM (arithmetic / counting word problems) — fully
+    # offline: no LLM, no GPU, no web. Highest-priority reasoner; runs even when
+    # web search is off, and pre-empts the web-dependent reasoners below.
+    reasoning_vm = None
+    if not (self_state or self_knowledge or recall):
+        try:
+            from app.services.reasoning_vm import solve_reasoning
+
+            reasoning_vm = solve_reasoning(question, language)
+        except Exception:  # pragma: no cover - reasoner must never break chat
+            reasoning_vm = None
     comparison = None
     chained = None
-    if request.web_search and not (self_state or self_knowledge or recall):
+    if request.web_search and not (self_state or self_knowledge or recall or reasoning_vm):
         try:
             from app.services.comparison_reasoner import answer_comparison
 
@@ -3084,6 +3095,16 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "atanor_self_knowledge"
         result["can_speak"] = True
 
+    # Reasoning VM answer (math / counting word problem) — authoritative,
+    # deterministic, offline. Highest priority over the web-grounded engine.
+    if reasoning_vm and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = reasoning_vm["answer"]
+        result["reasoning_certificate"] = reasoning_vm["reasoning_certificate"]
+        result["confidence"] = reasoning_vm["confidence"]
+        result["answer_kind"] = "reasoning_vm"
+        result["can_speak"] = True
+
     # Multi-hop comparison answer — authoritative over the single-fact engine.
     if comparison and isinstance(response.get("result"), dict):
         result = response["result"]
@@ -3109,7 +3130,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Web-grounded rescue (outermost): if web search is on and the final answer is
     # still an abstention from ANY internal path, answer from a real cited web
     # source. RAG grounding — answer is the retrieved evidence, attributed.
-    if request.web_search and not (self_state or self_knowledge or comparison or chained or recall) and isinstance(response.get("result"), dict):
+    if request.web_search and not (self_state or self_knowledge or comparison or chained or recall or reasoning_vm) and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):
