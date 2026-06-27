@@ -73,6 +73,48 @@ BENCHMARK_ITEMS: tuple[BenchmarkItem, ...] = (
     BenchmarkItem("cmp_newton_einstein", "아인슈타인과 뉴턴 중 누가 먼저 태어났어?", "ko", "comparison", True, ("뉴턴",)),
     BenchmarkItem("cmp_curie_einstein", "마리 퀴리와 아인슈타인 중 누가 더 나이 많아?", "ko", "comparison", True, ("퀴리",)),
     BenchmarkItem("cmp_en_older", "which is older, Einstein or Newton", "en", "comparison", True, ("newton",)),
+    # — expansion batch —
+    BenchmarkItem("ko_ahnjunggeun", "안중근이 누구야", "ko", "entity", True, ("독립", "의사")),
+    BenchmarkItem("ko_kimgu", "김구가 누구야", "ko", "entity", True, ("독립", "임시정부")),
+    BenchmarkItem("ko_jeongyakyong", "정약용이 누구야", "ko", "entity", True, ("조선", "실학")),
+    BenchmarkItem("ko_yundongju", "윤동주가 누구야", "ko", "entity", True, ("시인", "일제")),
+    BenchmarkItem("ko_parkjisung", "박지성이 누구야", "ko", "entity", True, ("축구", "선수")),
+    BenchmarkItem("ko_kimyuna", "김연아가 누구야", "ko", "entity", True, ("피겨", "선수")),
+    BenchmarkItem("ko_jangyeongsil", "장영실이 누구야", "ko", "entity", True, ("조선", "발명")),
+    BenchmarkItem("en_newton", "who is Isaac Newton", "en", "entity", True, ("physic", "gravit")),
+    BenchmarkItem("en_darwin", "who is Charles Darwin", "en", "entity", True, ("evolution", "species")),
+    BenchmarkItem("en_tesla", "who is Nikola Tesla", "en", "entity", True, ("electric", "inventor")),
+    BenchmarkItem("en_edison", "who is Thomas Edison", "en", "entity", True, ("inventor", "light")),
+    BenchmarkItem("en_shakespeare", "who is William Shakespeare", "en", "entity", True, ("playwright", "english")),
+    BenchmarkItem("en_beethoven", "who is Ludwig van Beethoven", "en", "entity", True, ("composer", "german")),
+    BenchmarkItem("en_lincoln", "who is Abraham Lincoln", "en", "entity", True, ("president", "american")),
+    BenchmarkItem("ko_atom", "원자가 뭐야", "ko", "concept", True, ("물질", "입자")),
+    BenchmarkItem("ko_vaccine", "백신이 뭐야", "ko", "concept", True, ("면역", "질병")),
+    BenchmarkItem("ko_volcano", "화산이 뭐야", "ko", "concept", True, ("마그마", "분출")),
+    BenchmarkItem("ko_earthquake", "지진이 뭐야", "ko", "concept", True, ("지각", "진동")),
+    BenchmarkItem("ko_enzyme", "효소가 뭐야", "ko", "concept", True, ("촉매", "단백")),
+    BenchmarkItem("en_gravity", "what is gravity", "en", "concept", True, ("force", "mass")),
+    BenchmarkItem("en_atom", "what is an atom", "en", "concept", True, ("particle", "matter")),
+    BenchmarkItem("en_vaccine", "what is a vaccine", "en", "concept", True, ("immune", "disease")),
+    BenchmarkItem("en_algorithm", "what is an algorithm", "en", "concept", True, ("step", "problem")),
+    BenchmarkItem("en_ecosystem", "what is an ecosystem", "en", "concept", True, ("organism", "environment")),
+    BenchmarkItem("cmp_darwin_newton", "다윈과 뉴턴 중 누가 먼저 태어났어?", "ko", "comparison", True, ("뉴턴",)),
+    BenchmarkItem("cmp_edison_tesla", "에디슨과 테슬라 중 누가 먼저 태어났어?", "ko", "comparison", True, ("에디슨",)),
+    BenchmarkItem("cmp_everest_k2", "에베레스트와 K2 중 뭐가 더 높아?", "ko", "comparison", True, ("에베레스트",)),
+    BenchmarkItem("cmp_lotte_63", "롯데월드타워와 63빌딩 중 뭐가 더 높아?", "ko", "comparison", True, ("롯데",)),
+    BenchmarkItem("cmp_burj_lotte", "부르즈 할리파와 롯데월드타워 중 뭐가 더 높아?", "ko", "comparison", True, ("할리파",)),
+    BenchmarkItem("chain_fr_capital", "프랑스의 수도는?", "ko", "chained", True, ("파리",)),
+    BenchmarkItem("chain_jp_capital", "일본의 수도는?", "ko", "chained", True, ("도쿄",)),
+    BenchmarkItem("chain_uk_capital", "영국의 수도는?", "ko", "chained", True, ("런던",)),
+    BenchmarkItem("chain_de_capital", "독일의 수도는?", "ko", "chained", True, ("베를린",)),
+    BenchmarkItem("chain_it_capital", "이탈리아의 수도는?", "ko", "chained", True, ("로마",)),
+    BenchmarkItem("chain_fr_pop", "프랑스의 수도의 인구는?", "ko", "chained", True, ("파리",)),
+    BenchmarkItem("trap_ko_4", "바르넬 키오스트론이 누구야", "ko", "unanswerable", False),
+    BenchmarkItem("trap_ko_5", "젠타리우스 9형 융합로가 뭐야", "ko", "unanswerable", False),
+    BenchmarkItem("trap_ko_6", "오를란도 베스카모프가 누구야", "ko", "unanswerable", False),
+    BenchmarkItem("trap_en_4", "who is Zelphine Crawdunkle", "en", "unanswerable", False),
+    BenchmarkItem("trap_en_5", "what is the Vortex Mk7 hypercoil", "en", "unanswerable", False),
+    BenchmarkItem("trap_en_6", "who is Mortimer Quanchwell esquire", "en", "unanswerable", False),
     BenchmarkItem("self_name_ko", "너 이름이 뭐야", "ko", "self", True, ("atanor",), expect_self=True),
     BenchmarkItem("self_how_ko", "너 어떻게 작동해", "ko", "self", True, ("그래프", "로컬"), expect_self=True),
     # Honesty traps: invented entities with no real referent — must abstain.
@@ -147,7 +189,7 @@ def evaluate_item(item: BenchmarkItem, response: dict[str, Any], latency_ms: flo
         self_correct = answered and ("atanor" in norm_answer)
 
     cited: bool | None = None
-    if item.kind in {"entity", "concept", "comparison"} and answered:
+    if item.kind in {"entity", "concept", "comparison", "chained"} and answered:
         cited = _source_present(response)
 
     return ItemResult(
@@ -171,7 +213,7 @@ def _rate(numer: int, denom: int) -> float:
 
 def summarize(results: list[ItemResult]) -> dict[str, Any]:
     traps = [r for r in results if r.kind == "unanswerable"]
-    answerable = [r for r in results if r.kind in {"entity", "concept", "comparison"}]
+    answerable = [r for r in results if r.kind in {"entity", "concept", "comparison", "chained"}]
     cited = [r for r in answerable if r.cited is not None]
     gold = [r for r in results if r.gold_match is not None]
     selves = [r for r in results if r.self_correct is not None]

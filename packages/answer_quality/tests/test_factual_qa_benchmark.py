@@ -44,7 +44,10 @@ def test_self_question_must_name_atanor():
 
 
 def test_run_benchmark_with_fake_provider_aggregates():
-    traps = ("즐라타닉", "흐룬딜", "크웰린", "Quorvex", "Flibbernaut", "Brennix")
+    traps = (
+        "즐라타닉", "흐룬딜", "크웰린", "Quorvex", "Flibbernaut", "Brennix",
+        "바르넬", "젠타리우스", "베스카모프", "Zelphine", "hypercoil", "Quanchwell",
+    )
 
     def fake(question: str, lang: str) -> dict:
         # Abstain on traps (honest), answer-with-citation otherwise.
