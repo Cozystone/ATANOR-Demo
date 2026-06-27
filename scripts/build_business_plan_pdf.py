@@ -85,8 +85,7 @@ def overview():
     rows=[("회사명","ATANOR (아타노르) · 미설립 가칭"),("형태","사업자 없음 — 연구·개발 단계"),
           ("제품/서비스","ATANOR — 온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI"),
           ("한 줄 소개","환각하지 않고, GPU 없이 돌며, 모든 답의 출처를 증명하는 개인 소유 AI"),
-          ("대표","김안석 (단독 창업)"),("URL","github.com/Cozystone/ATANOR"),
-          ("CEO 1분 영상","추후 제출 (제목: 프라이머2026-ATANOR-김안석)")]
+          ("대표","김안석 (단독 창업)"),("URL","github.com/Cozystone/ATANOR")]
     data=[[Paragraph(k,st_cellb),Paragraph(v,st_cell)] for k,v in rows]
     t=Table(data,colWidths=[34*mm,136*mm])
     t.setStyle(TableStyle([("LINEBELOW",(0,0),(-1,-1),0.4,FAINT),("VALIGN",(0,0),(-1,-1),"MIDDLE"),
