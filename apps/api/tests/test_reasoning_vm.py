@@ -29,6 +29,14 @@ def test_add_sub_mul_div_word_problems():
     assert _val("사탕 12개를 4명이 똑같이 나누면 한 명당 몇 개야?") == 3
 
 
+def test_distributive_each_is_multiplication():
+    # Regression: "N개씩 M명" is distributive -> N × M, not N + M. The add-cue
+    # "사" must also NOT false-match 사과(apple)/샀(bought verb is fine).
+    assert _val("한 명당 사과 3개씩 4명에게 주려면 사과가 몇 개 필요해?") == 12
+    assert _val("상자마다 6개씩 5상자가 있어. 모두 몇 개야?") == 30
+    assert _val("사과 4개를 샀어. 원래 3개 있었으면 모두 몇 개?") == 7
+
+
 def test_bare_arithmetic_expression():
     assert _val("17 곱하기 23은?") == 391
     assert _val("3 + 5 * 2 는 얼마야?") == 13

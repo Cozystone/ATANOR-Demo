@@ -46,7 +46,11 @@ _COUNT_CUE = re.compile(
 # Operation lexicon. Each cue maps to one of: add / sub / mul / div.
 # Order matters only within a class; we search the trailing window of each number.
 _OP_CUES: tuple[tuple[str, str], ...] = (
-    # multiply / divide first (more specific)
+    # distributive "each / per" → multiply ("한 명당 3개씩 4명" = 3 × 4). Must come
+    # first: "씩/마다/당" is a strong, specific signal that two quantities combine
+    # multiplicatively, not additively.
+    (r"씩|마다|each\b|apiece|per\s", "mul"),
+    # multiply / divide (more specific than add/sub)
     (r"곱하|곱한|×|\*|times\b|multipli|product\s+of", "mul"),
     (r"배(?:로|를|만큼|\s|$)", "mul"),
     (r"나누|나눠|나눈|÷|/|divid|split", "div"),
@@ -54,8 +58,10 @@ _OP_CUES: tuple[tuple[str, str], ...] = (
     (r"먹|팔|잃|훔|뺏|빼앗|뺀|빼|덜|줄(?:어|여|이)|쓰|사용|소비|없어|버(?:려|린)|"
      r"가져가|가져간|떼|차감|제외|줬|주(?:었|고|면)|도둑|훔쳐|eat|ate|sold|sell|los[te]|"
      r"stole|stolen|spend|spent|gave\s+away|remove|drop|minus|fewer|less|took\s+away", "sub"),
-    # add (last — most generic)
-    (r"사|샀|산\b|구매|더(?:\s|했|한|하)|추가|받|생기|얻|보태|합|들어와|더해|모(?:으|아|은)|"
+    # add (last — most generic). NOTE: "buy" must be matched as a real verb form
+    # (샀/산/사다/사서/사고/사면…), never as a bare "사", or it false-matches
+    # 사과(apple)/사람(person)/회사(company).
+    (r"샀|산\b|사(?:다|서|고|면|려|자|는다|ㄴ다|들|왔|온)|구매|더(?:\s|했|한|하)|추가|받|생기|얻|보태|합|들어와|더해|모(?:으|아|은)|"
      r"buy|bought|add|added|get|got|gain|receiv|gave\s+me|find|found|plus|more\b|total", "add"),
 )
 
