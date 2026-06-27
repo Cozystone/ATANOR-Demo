@@ -63,10 +63,10 @@ const mainSectionSurface = {
   "memory-approval": "advanced",
   selfhood: "lab",
   "live-scheduler": "lab",
-  graphhub: "lab",
+  graphhub: "product",
 } satisfies Record<MainSectionId, SurfaceClass>;
 
-const internalMainSections = new Set<MainSectionId>(["agent-os", "autonomous", "selfhood", "live-scheduler", "memory-approval", "graphhub"]);
+const internalMainSections = new Set<MainSectionId>(["agent-os", "autonomous", "selfhood", "live-scheduler", "memory-approval"]);
 
 const MAIN_COPY: Record<Language, {
   nav: Array<{ id: MainSectionId; key: string; label: string }>;
