@@ -16,7 +16,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.services.web_search import wikipedia_search
+from urllib.parse import quote
+
+from app.services.web_search import wikipedia_search, _wiki_get_json
 
 # Separators between the two compared entities.
 _SEP = r"(?:\s*(?:와|과|랑|이랑|하고|,|vs\.?|對|대)\s*|\s+or\s+|\s+vs\.?\s+)"
@@ -120,15 +122,28 @@ def _extract_population(summary: str) -> float | None:
     return None
 
 
+def _ko_to_float(raw: str) -> float | None:
+    """Parse a number that may use the Korean 만(1e4) myriad: "37만 7,973" ->
+    377973, "605.21" -> 605.21."""
+    s = str(raw or "").replace(",", "").strip()
+    m = re.match(r"(\d+(?:\.\d+)?)\s*만\s*(\d+)?$", s)
+    if m:
+        val = float(m.group(1)) * 1e4
+        if m.group(2):
+            val += float(m.group(2))
+        return val
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def _extract_area_km2(summary: str) -> float | None:
-    """Area in km² ("면적은 605.21 km²", "1,234 km2")."""
+    """Area in km² ("면적은 605.21 km²", "37만 7,973km²", "1,234 km2")."""
     vals: list[float] = []
-    for raw in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*(?:km²|km2|제곱\s*킬로미터|square\s+kilomet)", str(summary or ""), re.IGNORECASE):
-        try:
-            v = float(raw.replace(",", ""))
-        except ValueError:
-            continue
-        if 0.1 <= v <= 2e8:
+    for raw in re.findall(r"((?:\d[\d,]*\s*만\s*)?\d[\d,]*(?:\.\d+)?)\s*(?:km²|km2|제곱\s*킬로미터|square\s+kilomet)", str(summary or ""), re.IGNORECASE):
+        v = _ko_to_float(raw)
+        if v is not None and 0.1 <= v <= 2e8:
             vals.append(v)
     return max(vals) if vals else None
 
@@ -141,7 +156,27 @@ _ATTRIBUTE_EXTRACTORS = {
 }
 
 
-def _lookup(entity: str) -> dict[str, Any] | None:
+def _rich_extract(title: str, language: str) -> str:
+    """Bounded full-article plaintext (lead + early sections) where prose facts
+    like 면적/인구 live — richer than the one-sentence search snippet."""
+    host = "ko.wikipedia.org" if language == "ko" else "en.wikipedia.org"
+    slug = quote(title.replace(" ", "_"), safe="")
+    url = (
+        f"https://{host}/w/api.php?action=query&prop=extracts&explaintext=1&exintro=0"
+        f"&format=json&redirects=1&titles={slug}"
+    )
+    try:
+        body = _wiki_get_json(url)
+    except Exception:  # pragma: no cover - network
+        return ""
+    for page in ((body.get("query", {}) or {}).get("pages", {}) or {}).values():
+        extract = str(page.get("extract") or "").strip()
+        if extract:
+            return extract[:2400]
+    return ""
+
+
+def _lookup(entity: str, language: str = "ko") -> dict[str, Any] | None:
     try:
         rows = wikipedia_search(entity, count=2)
     except Exception:  # pragma: no cover - network
@@ -149,7 +184,11 @@ def _lookup(entity: str) -> dict[str, Any] | None:
     for row in rows or []:
         snippet = str(row.get("snippet") or "")
         if len(snippet) >= 30:
-            return {"title": str(row.get("title") or entity), "snippet": snippet, "url": str(row.get("url") or "")}
+            title = str(row.get("title") or entity)
+            # Prefer the richer article prose for attribute extraction; fall back
+            # to the short snippet if the fetch yields nothing.
+            text = _rich_extract(title, language) or snippet
+            return {"title": title, "snippet": text, "url": str(row.get("url") or "")}
     return None
 
 
@@ -161,7 +200,7 @@ def answer_comparison(question: str, language: str = "ko") -> dict[str, Any] | N
     extractor = _ATTRIBUTE_EXTRACTORS.get(plan["attribute"])
     if not extractor:
         return None
-    src_a, src_b = _lookup(plan["a"]), _lookup(plan["b"])
+    src_a, src_b = _lookup(plan["a"], language), _lookup(plan["b"], language)
     if not src_a or not src_b:
         return None
     val_a, val_b = extractor(src_a["snippet"]), extractor(src_b["snippet"])
