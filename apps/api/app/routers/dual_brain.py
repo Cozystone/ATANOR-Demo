@@ -3127,10 +3127,12 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         if chained.get("source_url"):
             result["render_iframe"] = {"url": chained["source_url"], "title": chained.get("source_title") or question[:60]}
 
-    # Web-grounded rescue (outermost): if web search is on and the final answer is
-    # still an abstention from ANY internal path, answer from a real cited web
-    # source. RAG grounding — answer is the retrieved evidence, attributed.
-    if request.web_search and not (self_state or self_knowledge or comparison or chained or recall or reasoning_vm) and isinstance(response.get("result"), dict):
+    # Web-grounded rescue (outermost): if the final answer is still an abstention
+    # from ANY internal path, ground it from a real cited web source — regardless
+    # of the web_search toggle. A factual question must not dead-end on "근거가
+    # 부족" just because the client forgot to flip a switch; genuinely unanswerable
+    # questions still abstain (the rescue returns None and the abstention stays).
+    if not (self_state or self_knowledge or comparison or chained or recall or reasoning_vm) and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):

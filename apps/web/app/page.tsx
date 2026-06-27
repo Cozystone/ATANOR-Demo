@@ -898,7 +898,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function normalizeLocalBackendUrl(value: string) {
   const trimmed = value.trim().replace(/\/+$/, "");
-  return trimmed || "http://127.0.0.1:8500";
+  return trimmed || "http://127.0.0.1:8502";
 }
 
 function edgeStatusApiPath(baseUrl: string) {
@@ -1632,7 +1632,7 @@ export default function BakeBoardPage() {
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [benchmark, setBenchmark] = useState<AnyRecord | null>(null);
-  const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8500");
+  const [localBackendUrl, setLocalBackendUrl] = useState("http://127.0.0.1:8502");
   const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
   const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
   const [language, setLanguage] = useState<Language>("en");
@@ -1705,7 +1705,7 @@ export default function BakeBoardPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.has("api") || params.has("backend")) return;
     const savedUrl = readBrowserStorage("atanor.localFastApiUrl");
-    const targetUrl = savedUrl || "http://127.0.0.1:8500";
+    const targetUrl = savedUrl || "http://127.0.0.1:8502";
     const requestedSection = params.get("section");
     const shouldWarmBrainGraph = requestedSection === "home" || requestedSection === "local" || requestedSection === "cloud";
     if (savedUrl) setLocalBackendUrl(savedUrl);
@@ -5674,7 +5674,7 @@ export default function BakeBoardPage() {
               <div className="atanor-settings-actions">
                 <button onClick={() => runAction(() => connectLocalBackend(localBackendUrl))}>{language === "ko" ? "재연결" : "Reconnect"}</button>
                 <button onClick={() => {
-                  const defaultUrl = "http://127.0.0.1:8500";
+                  const defaultUrl = "http://127.0.0.1:8502";
                   setLocalBackendUrl(defaultUrl);
                   void runAction(() => connectLocalBackend(defaultUrl));
                 }}>{language === "ko" ? "기본값" : "Default"}</button>
