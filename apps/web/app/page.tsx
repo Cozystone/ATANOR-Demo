@@ -5189,10 +5189,6 @@ export default function BakeBoardPage() {
               </button>
             );
           })}
-          <button data-active={transcriptOpen} onClick={() => setTranscriptOpen((value) => !value)}>
-            <span aria-hidden="true"><MessageCircle size={17} strokeWidth={1.8} /></span>
-            <strong>{language === "ko" ? "대화록" : "Transcript"}</strong>
-          </button>
         </nav>
         <div className="atanor-user-connection">
           <span><i data-tone="green" />{copy.localBrain}</span>

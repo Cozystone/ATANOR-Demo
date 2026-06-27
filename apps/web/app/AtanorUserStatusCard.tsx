@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
-import HologramVoiceOrb, { HologramVoiceOrbState } from "./HologramVoiceOrb";
+import HologramVoiceOrb, { HologramVoiceOrbState, ORB_BENCHMARK_MAX_PARTICLES } from "./HologramVoiceOrb";
 import SplatraImaginationField from "./SplatraImaginationField";
 import PhaseHolographicFoldScene, { type FoldScene } from "./PhaseHolographicFoldScene";
 
@@ -1510,6 +1510,30 @@ function splatraControlsForLayout(emotionControls: Record<string, any> | null, t
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
+  // Particle render budget. Draft = live slider thumb; applied = what the orb
+  // actually rebuilds at (committed on release, since a rebuild is heavy).
+  const [orbDensityDraft, setOrbDensityDraft] = useState(1);
+  const [orbDensityApplied, setOrbDensityApplied] = useState(1);
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem("atanor.orbDensity"));
+      if (Number.isFinite(saved) && saved >= 0.18 && saved <= 1) {
+        setOrbDensityDraft(saved);
+        setOrbDensityApplied(saved);
+      }
+    } catch {
+      /* localStorage unavailable — keep full density */
+    }
+  }, []);
+  const commitOrbDensity = useCallback((value: number) => {
+    const clamped = Math.min(1, Math.max(0.18, value));
+    setOrbDensityApplied(clamped);
+    try {
+      window.localStorage.setItem("atanor.orbDensity", String(clamped));
+    } catch {
+      /* ignore persistence failure */
+    }
+  }, []);
   const [voiceMode, setVoiceMode] = useState(false);
   const [speechLine, setSpeechLine] = useState("");
   const [voiceNotice, setVoiceNotice] = useState("");
@@ -1526,6 +1550,66 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   // Browser-style tabs: the orb can open the answer's source plus related pages.
   const [iframeTabs, setIframeTabs] = useState<{ url: string; title: string }[]>([]);
   const [iframeQuery, setIframeQuery] = useState("");
+  // Floating-window position/size: like a free Google tab inside the dashboard.
+  // null = use the default docked CSS box; once dragged/resized it becomes pinned.
+  const [iframeBox, setIframeBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [iframeBusy, setIframeBusy] = useState(false); // true while drag/resize: shield the iframe from swallowing pointer events
+  const iframeWinRef = useRef<HTMLDivElement | null>(null);
+  const iframeDragRef = useRef<{ mode: "move" | "resize"; px: number; py: number; box: { x: number; y: number; w: number; h: number } } | null>(null);
+
+  const beginIframeGesture = useCallback(
+    (mode: "move" | "resize") => (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      if (mode === "move") {
+        // Don't hijack clicks on the search box, tabs, links, or close button.
+        const t = e.target as HTMLElement;
+        if (t.closest("input, button, a, textarea, select")) return;
+      }
+      const el = iframeWinRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      // Convert to coordinates relative to the offset parent (the dashboard stage).
+      const parent = el.offsetParent as HTMLElement | null;
+      const pr = parent?.getBoundingClientRect() ?? { left: 0, top: 0 } as DOMRect;
+      const start = { x: r.left - pr.left, y: r.top - pr.top, w: r.width, h: r.height };
+      iframeDragRef.current = { mode, px: e.clientX, py: e.clientY, box: start };
+      setIframeBox(start);
+      setIframeBusy(true);
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!iframeBusy) return;
+    const onMove = (e: MouseEvent) => {
+      const d = iframeDragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.px;
+      const dy = e.clientY - d.py;
+      if (d.mode === "move") {
+        setIframeBox({ ...d.box, x: Math.max(0, d.box.x + dx), y: Math.max(0, d.box.y + dy) });
+      } else {
+        setIframeBox({ ...d.box, w: Math.max(320, d.box.w + dx), h: Math.max(220, d.box.h + dy) });
+      }
+    };
+    const onUp = () => {
+      iframeDragRef.current = null;
+      setIframeBusy(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [iframeBusy]);
+
+  // Reset to the docked default whenever a fresh stage opens (new question → new window).
+  useEffect(() => {
+    if (!iframeStage) setIframeBox(null);
+  }, [iframeStage]);
   // Nodes the agent just fetched from the web, added to the Cloud Brain, and
   // grafted onto the Local Brain to answer. Rendered glowing as they emerge.
   const [graftedNodes, setGraftedNodes] = useState<GraftedNode[]>([]);
@@ -2564,8 +2648,17 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       {iframeStage ? (
         <>
         <div className="atanor-iframe-backdrop" onClick={() => { setIframeStage(null); setIframeTabs([]); setStageLayout("conversation"); }} aria-hidden="true" />
-        <div key={iframeTabs[0]?.url ?? iframeStage.url} className="atanor-iframe-window">
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid #1c2230", background: "rgba(14,18,28,0.95)" }}>
+        <div
+          key={iframeTabs[0]?.url ?? iframeStage.url}
+          ref={iframeWinRef}
+          className={`atanor-iframe-window${iframeBox ? " is-floating" : ""}${iframeBusy ? " is-dragging" : ""}`}
+          style={iframeBox ? { left: iframeBox.x, top: iframeBox.y, width: iframeBox.w, height: iframeBox.h, right: "auto", bottom: "auto" } : undefined}
+        >
+          <div
+            onMouseDown={beginIframeGesture("move")}
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid #1c2230", background: "rgba(14,18,28,0.95)", cursor: "move", userSelect: "none" }}
+          >
+            <span aria-hidden="true" style={{ color: "#46506a", fontSize: 13, letterSpacing: 1, marginRight: -2 }}>⠿</span>
             {iframeTabs.length > 1 ? (
               <div className="atanor-iframe-tabs">
                 {iframeTabs.map((tab) => (
@@ -2634,6 +2727,31 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           <div style={{ padding: "5px 12px", borderTop: "1px solid #1c2230", color: "#5a6478", fontSize: 10.5 }}>
             {language === "ko" ? "일부 사이트는 임베드를 차단합니다 — 그럴 땐 ‘새 탭 ↗’을 누르세요. (표시 전용 · 입력 정보 없음)" : "Some sites block embedding — use ‘open ↗’ then. (display-only · no data entered)"}
           </div>
+          {/* Transparent shield: while dragging/resizing the iframe must not eat mouse moves. */}
+          {iframeBusy ? <div style={{ position: "absolute", inset: 0, zIndex: 5, cursor: iframeDragRef.current?.mode === "resize" ? "nwse-resize" : "move" }} /> : null}
+          {/* Bottom-right resize grip — larger hit area so it's easy to grab. */}
+          <div
+            onMouseDown={beginIframeGesture("resize")}
+            aria-hidden="true"
+            title={language === "ko" ? "크기 조절" : "Resize"}
+            style={{
+              position: "absolute",
+              right: 0,
+              bottom: 0,
+              width: 26,
+              height: 26,
+              cursor: "nwse-resize",
+              zIndex: 7,
+              color: "#9bb4ff",
+              fontSize: 13,
+              lineHeight: "30px",
+              textAlign: "center",
+              borderTopLeftRadius: 10,
+              background: "linear-gradient(135deg, transparent 46%, rgba(120,160,255,0.32) 46%)",
+            }}
+          >
+            <span style={{ position: "absolute", right: 3, bottom: 1 }}>◢</span>
+          </div>
         </div>
         </>
       ) : null}
@@ -2674,7 +2792,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
         </div>
       ) : null}
       <div className="atanor-hologram-stage">
-        <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} />
+        <HologramVoiceOrb state={orbState} onActivate={startVoiceMode} onCancel={cancelVoiceMode} density={orbDensityApplied} />
         {typedSelfNarration ? (
           <p ref={selfNarrationRef} className="atanor-hologram-self-narration" aria-live="polite">
             {typedSelfNarration}
@@ -2690,6 +2808,29 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
             {voiceNotice}
           </p>
         ) : null}
+      </div>
+      {/* Particle render budget — bottom-left. Max = benchmark-run full count. */}
+      <div className="atanor-orb-density" data-iframe-hidden={iframeStage ? "true" : "false"}>
+        <span className="atanor-orb-density-label">
+          {language === "ko" ? "파티클 렌더링" : "Particle render"}
+        </span>
+        <input
+          type="range"
+          min={18}
+          max={100}
+          step={1}
+          value={Math.round(orbDensityDraft * 100)}
+          onChange={(e) => setOrbDensityDraft(Number(e.target.value) / 100)}
+          onPointerUp={() => commitOrbDensity(orbDensityDraft)}
+          onMouseUp={() => commitOrbDensity(orbDensityDraft)}
+          onTouchEnd={() => commitOrbDensity(orbDensityDraft)}
+          onKeyUp={() => commitOrbDensity(orbDensityDraft)}
+          aria-label={language === "ko" ? "파티클 렌더링 밀도" : "Particle render density"}
+        />
+        <span className="atanor-orb-density-count">
+          {(Math.round(ORB_BENCHMARK_MAX_PARTICLES * orbDensityDraft / 100) / 10).toFixed(1)}k
+          {orbDensityDraft >= 0.999 ? (language === "ko" ? " · 최대" : " · max") : ""}
+        </span>
       </div>
       {!message && !foldScene && !iframeStage ? (
         <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", zIndex: 6, display: "flex", justifyContent: "center", gap: 8, pointerEvents: "auto" }}>

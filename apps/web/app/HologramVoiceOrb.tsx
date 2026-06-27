@@ -16,11 +16,16 @@ type HologramVoiceOrbProps = {
   state: HologramVoiceOrbState;
   onActivate: () => void;
   onCancel: () => void;
+  /** Particle density 0..1. 1 = full benchmark count (~43.2k pts). Lower = lighter render. */
+  density?: number;
 };
 
+// Benchmark-run maximum: the orb was profiled smooth at this full count on the
+// reference machine, so it is the slider's ceiling. Density scales down from here.
 const RIBBON_PARTICLES = 24000;
 const SHELL_PARTICLES = 14000;
 const AURA_PARTICLES = 5200;
+export const ORB_BENCHMARK_MAX_PARTICLES = RIBBON_PARTICLES + SHELL_PARTICLES + AURA_PARTICLES;
 const SHAPE_COUNT = 7;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const PALETTE = [
@@ -56,13 +61,13 @@ function siriRibbonPoint(shape: number, t: number, seed: number): THREE.Vector3 
   return point;
 }
 
-function buildRibbonGeometry() {
-  const positions = new Float32Array(RIBBON_PARTICLES * 3);
-  const colors = new Float32Array(RIBBON_PARTICLES * 3);
-  const morphs = Array.from({ length: SHAPE_COUNT }, () => new Float32Array(RIBBON_PARTICLES * 3));
+function buildRibbonGeometry(ribbonCount: number) {
+  const positions = new Float32Array(ribbonCount * 3);
+  const colors = new Float32Array(ribbonCount * 3);
+  const morphs = Array.from({ length: SHAPE_COUNT }, () => new Float32Array(ribbonCount * 3));
 
-  for (let i = 0; i < RIBBON_PARTICLES; i += 1) {
-    const t = i / RIBBON_PARTICLES;
+  for (let i = 0; i < ribbonCount; i += 1) {
+    const t = i / ribbonCount;
     const seed = seeded(i);
     const band = Math.min(2, Math.floor(seed * 3));
     const color = PALETTE[band].clone().lerp(PALETTE[band + 1], 0.18 + seeded(i, 4) * 0.32);
@@ -121,13 +126,13 @@ function buildShellGeometry(count: number, radius: number, opacityBias = 0) {
   return geometry;
 }
 
-function buildAuraGeometry() {
-  const positions = new Float32Array(AURA_PARTICLES * 3);
-  const colors = new Float32Array(AURA_PARTICLES * 3);
+function buildAuraGeometry(auraCount: number) {
+  const positions = new Float32Array(auraCount * 3);
+  const colors = new Float32Array(auraCount * 3);
   const cyan = new THREE.Color("#18e8ff");
   const rose = new THREE.Color("#ff3d85");
 
-  for (let i = 0; i < AURA_PARTICLES; i += 1) {
+  for (let i = 0; i < auraCount; i += 1) {
     const u = seeded(i, 2);
     const v = seeded(i, 3);
     const theta = Math.PI * 2 * u;
@@ -148,7 +153,7 @@ function buildAuraGeometry() {
   return geometry;
 }
 
-export default function HologramVoiceOrb({ state, onActivate, onCancel }: HologramVoiceOrbProps) {
+export default function HologramVoiceOrb({ state, onActivate, onCancel, density = 1 }: HologramVoiceOrbProps) {
   const hostRef = useRef<HTMLButtonElement | null>(null);
   const clickGuardRef = useRef({ dragged: false, x: 0, y: 0 });
   const stateRef = useRef(state);
@@ -161,6 +166,14 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const host = hostRef.current;
     if (!host) return undefined;
     const activeHost = host;
+
+    // Density scales every cloud down from the benchmark ceiling. Floors keep the
+    // orb legible even at the lowest setting.
+    const d = Math.min(1, Math.max(0.18, density));
+    const ribbonCount = Math.max(4200, Math.round(RIBBON_PARTICLES * d));
+    const shellCount = Math.max(2600, Math.round(SHELL_PARTICLES * d));
+    const auraCount = Math.max(1100, Math.round(AURA_PARTICLES * d));
+    const coreCount = Math.max(600, Math.round(1800 * d));
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
@@ -176,7 +189,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const root = new THREE.Group();
     scene.add(root);
 
-    const auraGeometry = buildAuraGeometry();
+    const auraGeometry = buildAuraGeometry(auraCount);
     const auraMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -189,7 +202,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const aura = new THREE.Points(auraGeometry, auraMaterial);
     root.add(aura);
 
-    const shellGeometry = buildShellGeometry(SHELL_PARTICLES, 1.72, 0.06);
+    const shellGeometry = buildShellGeometry(shellCount, 1.72, 0.06);
     const shellMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -202,7 +215,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const shell = new THREE.Points(shellGeometry, shellMaterial);
     root.add(shell);
 
-    const rimGeometry = buildShellGeometry(Math.floor(SHELL_PARTICLES * 0.38), 1.76, 0.15);
+    const rimGeometry = buildShellGeometry(Math.floor(shellCount * 0.38), 1.76, 0.15);
     const rimMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -215,7 +228,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const rim = new THREE.Points(rimGeometry, rimMaterial);
     root.add(rim);
 
-    const { geometry: ribbonGeometry, morphs } = buildRibbonGeometry();
+    const { geometry: ribbonGeometry, morphs } = buildRibbonGeometry(ribbonCount);
     const ribbonMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -228,7 +241,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
     const ribbons = new THREE.Points(ribbonGeometry, ribbonMaterial);
     root.add(ribbons);
 
-    const coreGeometry = buildShellGeometry(1800, 0.16, 0.5);
+    const coreGeometry = buildShellGeometry(coreCount, 0.16, 0.5);
     const coreMaterial = new THREE.PointsMaterial({
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -284,7 +297,7 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
       const pulse = state === "listening" ? 1.08 : state === "speaking" ? 1.12 : state === "thinking" ? 1.055 : 1;
       const fluid = Math.sin(elapsed * 1.6) * 0.028;
 
-      for (let i = 0; i < RIBBON_PARTICLES * 3; i += 3) {
+      for (let i = 0; i < ribbonCount * 3; i += 3) {
         const wave = Math.sin(elapsed * 1.35 + i * 0.0009) * fluid;
         positions.array[i] = (from[i] + (to[i] - from[i]) * ease) * pulse;
         positions.array[i + 1] = (from[i + 1] + (to[i + 1] - from[i + 1]) * ease + wave) * pulse;
@@ -383,7 +396,8 @@ export default function HologramVoiceOrb({ state, onActivate, onCancel }: Hologr
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, []);
+    // density change tears down + rebuilds the scene at the new particle count.
+  }, [density]);
 
   return (
     <button

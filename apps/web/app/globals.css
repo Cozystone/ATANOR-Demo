@@ -4417,12 +4417,105 @@ p {
   transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
   transform-origin: 100% 100%;
 }
-.atanor-user-shell[data-answering="true"] .atanor-ai-dashboard {
-  border-radius: 16px;
-  box-shadow: -22px -10px 60px rgba(0, 0, 0, 0.6);
-  position: relative;
-  transform: scale(0.34);
-  z-index: 30;
+/* Transcript (GPT-style log) open: ONLY the particle orb shrinks and docks to the
+   lower-right. The chat bar stays full-size on top; answers read in the log. */
+.atanor-user-shell[data-answering="true"] .atanor-hologram-stage {
+  z-index: 40;
+  pointer-events: none;
+}
+.atanor-user-shell[data-answering="true"] .hologram-voice-orb {
+  position: fixed;
+  left: auto !important;
+  top: auto !important;
+  right: clamp(20px, 3.4vw, 54px) !important;
+  bottom: clamp(20px, 3.8vh, 54px) !important;
+  width: clamp(104px, 13vmin, 150px) !important;
+  height: clamp(104px, 13vmin, 150px) !important;
+  min-width: clamp(104px, 13vmin, 150px) !important;
+  min-height: clamp(104px, 13vmin, 150px) !important;
+  transform: none !important;
+  pointer-events: auto;
+  z-index: 41;
+  transition: right 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), bottom 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.5s ease, height 0.5s ease;
+}
+/* Chat bar + density slider ride above the full-screen transcript so the user
+   keeps typing and tuning while the log is open. */
+.atanor-user-shell[data-answering="true"] .atanor-hologram-composer {
+  position: fixed;
+  z-index: 42;
+}
+.atanor-user-shell[data-answering="true"] .atanor-orb-density {
+  position: fixed;
+  z-index: 42;
+}
+
+/* Lower-left particle-budget slider: lets the user trade fidelity for FPS. */
+.atanor-orb-density {
+  position: absolute;
+  left: clamp(16px, 2.2vw, 30px);
+  bottom: clamp(16px, 3vh, 30px);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(12, 16, 25, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+  opacity: 0.62;
+  transition: opacity 0.25s ease;
+}
+.atanor-orb-density:hover {
+  opacity: 1;
+}
+.atanor-orb-density[data-iframe-hidden="true"] {
+  opacity: 0;
+  pointer-events: none;
+}
+.atanor-orb-density-label {
+  color: #9fb0cf;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.atanor-orb-density-count {
+  color: #cfe0ff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 46px;
+  text-align: right;
+  white-space: nowrap;
+}
+.atanor-orb-density input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: clamp(90px, 11vw, 150px);
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2a6cff, #59b6ff);
+  outline: none;
+  cursor: pointer;
+}
+.atanor-orb-density input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #eaf3ff;
+  border: 1px solid #2a6cff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.atanor-orb-density input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #eaf3ff;
+  border: 1px solid #2a6cff;
 }
 .atanor-transcript-head {
   align-items: center;
@@ -8813,6 +8906,26 @@ p {
   58% { transform: translate(-3%, 8%) scale(0.66, 0.92); filter: blur(0); border-radius: 28px 28px 18px 18px; }
   82% { transform: translate(0, -1%) scale(1.014, 1.016); border-radius: 16px; }
   100% { opacity: 1; transform: translate(0, 0) scale(1, 1); border-radius: 16px; }
+}
+
+/* Once the user grabs the title bar or resize grip, the window becomes a free
+   floating tab: inline left/top/width/height drive it, genie animation is dropped,
+   and we add a smooth glide except while actively dragging. */
+.atanor-iframe-window.is-floating {
+  animation: none;
+  transform: none;
+  transition: left 0.12s ease, top 0.12s ease, width 0.12s ease, height 0.12s ease;
+  min-width: 320px;
+  min-height: 220px;
+  max-width: calc(100% - 16px);
+}
+.atanor-iframe-window.is-dragging {
+  transition: none;
+  will-change: left, top, width, height;
+  box-shadow:
+    0 40px 110px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(150, 185, 255, 0.32),
+    0 0 56px rgba(80, 120, 235, 0.3);
 }
 
 /* When a document is open, the orb tucks to the lower-LEFT (genie origin) and the
