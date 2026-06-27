@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+import app.services.comparison_reasoner as cr
+
+
+def test_detect_korean_comparison():
+    plan = cr.detect_comparison("아인슈타인과 뉴턴 중 누가 먼저 태어났어?")
+    assert plan and plan["a"] == "아인슈타인" and plan["b"] == "뉴턴"
+    assert plan["attribute"] == "birth_year" and plan["direction"] == "min"
+
+
+def test_detect_english_comparison():
+    plan = cr.detect_comparison("which is older, Einstein or Newton")
+    assert plan and plan["attribute"] == "birth_year" and plan["direction"] == "min"
+    assert {plan["a"].lower(), plan["b"].lower()} == {"einstein", "newton"}
+
+
+def test_non_comparison_returns_none():
+    assert cr.detect_comparison("아인슈타인이 누구야") is None
+    assert cr.detect_comparison("중력이 뭐야") is None
+
+
+def test_birth_year_extraction():
+    assert cr._extract_birth_year("아인슈타인(1879년 3월 14일 ~ 1955년)은 물리학자이다.") == 1879
+    assert cr._extract_birth_year("Isaac Newton (4 January 1643 – 31 March 1727) was a physicist.") == 1643
+
+
+def test_answer_comparison_born_first(monkeypatch):
+    fixtures = {
+        "아인슈타인": {"title": "알베르트 아인슈타인", "snippet": "알베르트 아인슈타인(1879년 3월 14일~1955년)은 이론물리학자이다.", "url": "https://ko.wikipedia.org/wiki/x"},
+        "뉴턴": {"title": "아이작 뉴턴", "snippet": "아이작 뉴턴(1643년 1월 4일~1727년)은 물리학자이다.", "url": "https://ko.wikipedia.org/wiki/y"},
+    }
+    monkeypatch.setattr(cr, "wikipedia_search", lambda e, count=2: [fixtures[e]] if e in fixtures else [])
+    out = cr.answer_comparison("아인슈타인과 뉴턴 중 누가 먼저 태어났어?", "ko")
+    assert out is not None
+    assert "뉴턴" in out["answer"] and "1643" in out["answer"]
+    assert out["reasoning_certificate"]["guarantees"]["multi_hop"] is True
+    assert len(out["sources"]) == 2
+
+
+def test_abstains_when_year_missing(monkeypatch):
+    fixtures = {
+        "A": {"title": "A", "snippet": "A is a thing with no dates mentioned here at all.", "url": "u"},
+        "B": {"title": "B", "snippet": "B (1900년) is a person.", "url": "v"},
+    }
+    monkeypatch.setattr(cr, "wikipedia_search", lambda e, count=2: [fixtures[e]] if e in fixtures else [])
+    assert cr.answer_comparison("A와 B 중 누가 먼저 태어났어?", "ko") is None

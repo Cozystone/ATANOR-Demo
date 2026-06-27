@@ -3043,6 +3043,17 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Self-model: who ATANOR is and how it works, answered from a stable curated
     # self-knowledge base (not the web). "너 이름이 뭐야" / "어떻게 작동해" land here.
     self_knowledge = answer_self_question(question, language) if not self_state else None
+    # Deterministic multi-hop comparison ("A와 B 중 누가 먼저 태어났어?"): two real
+    # lookups + a deterministic compare, no LLM. None when not a comparison or when
+    # it can't extract both values (abstains, never guesses).
+    comparison = None
+    if request.web_search and not (self_state or self_knowledge or recall):
+        try:
+            from app.services.comparison_reasoner import answer_comparison
+
+            comparison = answer_comparison(question, language)
+        except Exception:  # pragma: no cover - reasoner must never break chat
+            comparison = None
 
     response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
     response = _attach_holographic_fold_trace(response, request)
@@ -3065,10 +3076,21 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "atanor_self_knowledge"
         result["can_speak"] = True
 
+    # Multi-hop comparison answer — authoritative over the single-fact engine.
+    if comparison and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = comparison["answer"]
+        result["reasoning_certificate"] = comparison["reasoning_certificate"]
+        result["confidence"] = comparison["confidence"]
+        result["answer_kind"] = "comparison_reasoning"
+        result["can_speak"] = True
+        if comparison.get("source_url"):
+            result["render_iframe"] = {"url": comparison["source_url"], "title": comparison.get("source_title") or question[:60]}
+
     # Web-grounded rescue (outermost): if web search is on and the final answer is
     # still an abstention from ANY internal path, answer from a real cited web
     # source. RAG grounding — answer is the retrieved evidence, attributed.
-    if request.web_search and not (self_state or self_knowledge or recall) and isinstance(response.get("result"), dict):
+    if request.web_search and not (self_state or self_knowledge or comparison or recall) and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):

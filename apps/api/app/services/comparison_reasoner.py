@@ -1,0 +1,156 @@
+"""Deterministic multi-hop comparison reasoning — no LLM.
+
+A first step beyond single-fact grounding: questions like "아인슈타인과 뉴턴 중
+누가 먼저 태어났어?" require retrieve(A) → retrieve(B) → compare. This module
+detects such comparisons, pulls each entity's public summary (Wikipedia), extracts
+a comparable number, and decides deterministically — citing both sources. If it
+cannot extract a comparable value for both, it returns None (abstains), never a
+guess.
+
+v1 supports YEAR-based comparisons (born first / older / younger / 먼저 태어남 /
+나이), which have the cleanest extraction. The attribute table is extensible.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from app.services.web_search import wikipedia_search
+
+# Separators between the two compared entities.
+_SEP = r"(?:\s*(?:와|과|랑|이랑|하고|,|vs\.?|對|대)\s*|\s+or\s+|\s+vs\.?\s+)"
+
+# Comparison cue → (attribute, direction). direction "min" = the smaller number
+# wins the superlative ("born first" → smaller year); "max" = larger wins.
+_YEAR_MIN = ("birth_year", "min")   # older / born first
+_YEAR_MAX = ("birth_year", "max")   # younger / born later
+_COMPARISON_CUES: tuple[tuple[str, tuple[str, str]], ...] = (
+    (r"먼저\s*태어|나이\s*많|연상|더\s*나이|older|elder|born\s+first|born\s+earlier", _YEAR_MIN),
+    (r"나중에\s*태어|나이\s*적|연하|더\s*어리|younger|born\s+later", _YEAR_MAX),
+)
+
+# Which question-word range marks a comparison.
+_COMPARE_QWORD = r"(누가|누구가|뭐가|무엇이|어느\s*것이|어느\s*게|which|who)"
+
+
+def _strip(s: str) -> str:
+    return re.sub(r"\s+", " ", str(s or "")).strip().strip("?!.。")
+
+
+def _josa(word: str, with_batchim: str, without_batchim: str) -> str:
+    """Pick the right Korean particle by whether ``word`` ends in a final consonant."""
+    word = str(word or "")
+    if not word:
+        return without_batchim
+    last = word[-1]
+    if "가" <= last <= "힣":
+        return with_batchim if (ord(last) - 0xAC00) % 28 else without_batchim
+    return without_batchim  # non-Hangul tail → default to the no-batchim form
+
+
+def detect_comparison(question: str) -> dict[str, Any] | None:
+    """Return {a, b, attribute, direction} for a two-entity comparison, or None."""
+    q = _strip(question)
+    cue = next((attr for pat, attr in _COMPARISON_CUES if re.search(pat, q, re.IGNORECASE)), None)
+    if not cue:
+        return None
+    attribute, direction = cue
+    # "A<sep>B 중 ... 누가 더 ..."  (Korean) — entities precede "중".
+    ko = re.search(r"^(.*?)" + _SEP + r"(.+?)\s*중(?:에서|에)?\b", q)
+    if ko:
+        a, b = _strip(ko.group(1)), _strip(ko.group(2))
+        if a and b and a.lower() != b.lower():
+            return {"a": a, "b": b, "attribute": attribute, "direction": direction}
+    # "which is older, A or B" / "is A or B older" (English) — entities after qword/or.
+    en = re.search(r"(?:which|who)\b.*?[,:]?\s*([A-Za-z][\w .'-]+?)\s+or\s+([A-Za-z][\w .'-]+)$", q, re.IGNORECASE)
+    if en:
+        a, b = _strip(en.group(1)), _strip(en.group(2))
+        if a and b and a.lower() != b.lower():
+            return {"a": a, "b": b, "attribute": attribute, "direction": direction}
+    return None
+
+
+def _extract_birth_year(summary: str) -> int | None:
+    """First plausible year in a bio lead is the birth year ("…(1879년 3월…", "…(14
+    March 1879 –…")."""
+    head = str(summary or "")[:240]
+    # Digit-boundary (not \b): a year is often followed by Korean "년", which is a
+    # word char, so \b would fail to match "1879년".
+    years = [int(y) for y in re.findall(r"(?<!\d)(1\d{3}|20\d{2})(?!\d)", head)]
+    plausible = [y for y in years if 1000 <= y <= 2100]
+    return plausible[0] if plausible else None
+
+
+_ATTRIBUTE_EXTRACTORS = {"birth_year": _extract_birth_year}
+
+
+def _lookup(entity: str) -> dict[str, Any] | None:
+    try:
+        rows = wikipedia_search(entity, count=2)
+    except Exception:  # pragma: no cover - network
+        return None
+    for row in rows or []:
+        snippet = str(row.get("snippet") or "")
+        if len(snippet) >= 30:
+            return {"title": str(row.get("title") or entity), "snippet": snippet, "url": str(row.get("url") or "")}
+    return None
+
+
+def answer_comparison(question: str, language: str = "ko") -> dict[str, Any] | None:
+    """Answer a two-entity comparison from two real lookups, or None (abstain)."""
+    plan = detect_comparison(question)
+    if not plan:
+        return None
+    extractor = _ATTRIBUTE_EXTRACTORS.get(plan["attribute"])
+    if not extractor:
+        return None
+    src_a, src_b = _lookup(plan["a"]), _lookup(plan["b"])
+    if not src_a or not src_b:
+        return None
+    val_a, val_b = extractor(src_a["snippet"]), extractor(src_b["snippet"])
+    if val_a is None or val_b is None or val_a == val_b:
+        return None  # can't compare → abstain, never guess
+
+    winner_is_a = (val_a < val_b) if plan["direction"] == "min" else (val_a > val_b)
+    win, lose = (src_a, src_b) if winner_is_a else (src_b, src_a)
+    win_val, lose_val = (val_a, val_b) if winner_is_a else (val_b, val_a)
+    is_ko = language == "ko"
+
+    if plan["attribute"] == "birth_year":
+        if is_ko:
+            win_ga = _josa(win["title"], "이", "가")
+            win_eun = _josa(win["title"], "은", "는")
+            lose_eun = _josa(lose["title"], "은", "는")
+            when_phrase = "먼저예요" if plan["direction"] == "min" else "나중이에요"
+            answer = (
+                f"{win['title']}{win_ga} 더 {when_phrase} {win['title']}{win_eun} {win_val}년생, "
+                f"{lose['title']}{lose_eun} {lose_val}년생이에요. (출처: {win['title']}, {lose['title']} 위키백과)"
+            )
+        else:
+            rel = "earlier" if plan["direction"] == "min" else "later"
+            answer = f"{win['title']} was born {rel} ({win_val}) than {lose['title']} ({lose_val}). (sources: {win['title']}, {lose['title']} Wikipedia)"
+    else:  # pragma: no cover - only birth_year wired in v1
+        return None
+
+    certificate = {
+        "derivation_kind": "deterministic_comparison_reasoning",
+        "anchor_concept": {"id": win["title"], "label": win["title"], "match": "comparison"},
+        "steps": [
+            {"type": "retrieve", "source": src_a["url"], "fact": f"{src_a['title']}: {plan['attribute']}={val_a}"},
+            {"type": "retrieve", "source": src_b["url"], "fact": f"{src_b['title']}: {plan['attribute']}={val_b}"},
+            {"type": "compare", "fact": f"{plan['attribute']} {plan['direction']} → {win['title']}"},
+        ],
+        "evidence_concepts": [src_a["url"], src_b["url"]],
+        "confidence": 0.8,
+        "confidence_basis": "two_source_deterministic_compare",
+        "guarantees": {"external_llm": False, "fabricated_facts": False, "evidence_grounded": True, "multi_hop": True},
+    }
+    return {
+        "answer": answer,
+        "reasoning_certificate": certificate,
+        "confidence": 0.8,
+        "sources": [src_a["url"], src_b["url"]],
+        "source_url": win["url"],
+        "source_title": win["title"],
+    }
