@@ -10,6 +10,30 @@ def _write_payloads(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
 
 
+def test_feeder_discovers_web_producer_subdir_and_excludes_rejected(tmp_path: Path) -> None:
+    # The web producer writes approved payloads into approved_payloads/web_feeds/;
+    # the consumer must look there (else cumulative learning never sees them) but
+    # never consume approved_payloads/rejected/.
+    src = tmp_path / "approved_payloads"
+    (src / "web_feeds").mkdir(parents=True)
+    (src / "rejected").mkdir(parents=True)
+    _write_payloads(
+        src / "web_feeds" / "approved_payloads_x.jsonl",
+        [{"source_id": "wf-1", "source_type": "local_public_corpus_shard", "text": "Paris is the capital of France.", "language": "en", "license_hint": "CC BY-SA 4.0", "target_store": "verified_store_v0_candidate"}],
+    )
+    _write_payloads(
+        src / "rejected" / "approved_payloads_bad.jsonl",
+        [{"source_id": "rej-1", "text": "must never be consumed", "is_private": True}],
+    )
+    feeder = VerifiedPayloadFeeder(source_dir=src)
+    discovered = [str(p) for p in feeder._discovery_paths()]
+    assert any("web_feeds" in p for p in discovered)
+    assert not any("rejected" in p.casefold() for p in discovered)
+    result = feeder.run_once()
+    assert result.state == "payloads_available"
+    assert result.approved_payloads_available >= 1
+
+
 def test_feeder_reports_no_source_without_faking_payloads(tmp_path: Path) -> None:
     feeder = VerifiedPayloadFeeder(source_dir=tmp_path / "missing")
     result = feeder.run_once()

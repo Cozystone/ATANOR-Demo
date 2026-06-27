@@ -229,9 +229,15 @@ class VerifiedPayloadFeeder:
     def _discovery_paths(self) -> list[Path]:
         paths = list(self.source_paths)
         if self.source_dir.exists():
-            paths.extend(sorted(self.source_dir.glob("*.jsonl")))
-            paths.extend(sorted(self.source_dir.glob("*.json")))
-        return paths
+            for pattern in ("*.jsonl", "*.json"):
+                # top-level approved payloads...
+                paths.extend(sorted(self.source_dir.glob(pattern)))
+                # ...plus the web producer's output subdir (web_approved_payload_feeder
+                # writes to approved_payloads/web_feeds/). Without this the consumer
+                # never sees produced payloads -> perpetual no_approved_payload_source.
+                paths.extend(sorted(self.source_dir.glob(f"web_feeds/{pattern}")))
+        # never consume rejected payloads (approved_payloads/rejected/).
+        return [p for p in paths if "rejected" not in {part.casefold() for part in p.parts}]
 
     def run_once(self, *, dry_run: bool = False) -> FeederRunResult:
         """Discover a bounded batch without fabricating rows."""

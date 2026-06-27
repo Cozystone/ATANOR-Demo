@@ -964,8 +964,16 @@ def _learning_loop_for_request(request: CloudLearningRunRequest | None = None) -
     policy = PayloadSourcePolicy(target_store="verified_store_v0" if request.promote_to_verified else "verified_store_v0_candidate")
     feeder = VerifiedPayloadFeeder(policy=policy, max_payloads_per_tick=request.max_payloads_per_tick)
     kwargs: dict[str, Any] = {}
-    if request.candidate_store_root:
-        kwargs["candidate_store_root"] = request.candidate_store_root
+    # Write into the SAME live candidate store the read model / UI surfaces, so
+    # cumulative learning actually accumulates where it is displayed. Without this
+    # the loop grew the bare default store while the UI read the live web-learning
+    # run — learning "didn't work" because it was invisible. (production promotion
+    # paths still use their own explicit root.)
+    store_root = request.candidate_store_root
+    if not store_root and not request.promote_to_verified:
+        store_root = _resolve_candidate_store_path()
+    if store_root:
+        kwargs["candidate_store_root"] = store_root
     return CloudSurfaceLearningLoop(
         feeder=feeder,
         promote_to_verified=request.promote_to_verified,
