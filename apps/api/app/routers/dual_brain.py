@@ -3176,6 +3176,9 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["confidence"] = reasoning_vm["confidence"]
         result["answer_kind"] = "reasoning_vm"
         result["can_speak"] = True
+        # Experimental answer-interface surface (formula / GeoGebra-like figure).
+        if reasoning_vm.get("answer_visual"):
+            result["answer_visual"] = reasoning_vm["answer_visual"]
 
     # Multi-hop comparison answer — authoritative over the single-fact engine.
     if comparison and isinstance(response.get("result"), dict):

@@ -4450,6 +4450,73 @@ p {
   z-index: 42;
 }
 
+/* Experimental answer interface — GeoGebra-like figure / formula card. Floats in
+   the upper-center of the stage when the engine attaches an answer_visual. */
+.atanor-answer-experiment-stage {
+  position: absolute;
+  top: clamp(64px, 11vh, 120px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  pointer-events: auto;
+  animation: atanor-answer-experiment-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes atanor-answer-experiment-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+.atanor-answer-experiment {
+  min-width: 240px;
+  max-width: 340px;
+  padding: 14px 16px 16px;
+  border-radius: 16px;
+  background: rgba(11, 15, 24, 0.9);
+  border: 1px solid rgba(125, 180, 255, 0.28);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(125, 180, 255, 0.1);
+  backdrop-filter: blur(16px);
+}
+.atanor-answer-experiment-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9fb4d8;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+}
+.atanor-answer-experiment-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7db4ff;
+  box-shadow: 0 0 8px #7db4ff;
+}
+.atanor-answer-experiment-hint {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: #5a6b8c;
+  background: rgba(125, 180, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+.atanor-answer-experiment-formula {
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(125, 180, 255, 0.08);
+  border: 1px solid rgba(125, 180, 255, 0.16);
+  color: #eaf2ff;
+  font-size: 14.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+.atanor-user-shell[data-answering="true"] .atanor-answer-experiment-stage {
+  position: fixed;
+  top: clamp(20px, 4vh, 56px);
+  z-index: 41;
+}
+
 /* Lower-left particle-budget slider: lets the user trade fidelity for FPS. */
 .atanor-orb-density {
   position: absolute;

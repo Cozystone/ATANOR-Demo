@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
 import HologramVoiceOrb, { HologramVoiceOrbState, ORB_BENCHMARK_MAX_PARTICLES } from "./HologramVoiceOrb";
+import AnswerExperimentSurface, { AnswerVisual } from "./AnswerExperimentSurface";
 import SplatraImaginationField from "./SplatraImaginationField";
 import PhaseHolographicFoldScene, { type FoldScene } from "./PhaseHolographicFoldScene";
 
@@ -1544,6 +1545,9 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   // internal Live Selfhood lab panels; this only suppresses the user-facing narration.)
   const SHOW_RULE_BASED_SELF_NARRATION = false;
   const [foldScene, setFoldScene] = useState<FoldScene | null>(null);
+  // Experimental answer-interface surface: a GeoGebra-like figure or formula card
+  // the engine attaches to math/geometry answers (data-driven; see AnswerExperimentSurface).
+  const [answerVisual, setAnswerVisual] = useState<AnswerVisual | null>(null);
   // Iframe content stage: ATANOR can surface a search box or a document/page in a
   // sandboxed iframe; the orb slides to the lower-right (scene_focus) to make room.
   const [iframeStage, setIframeStage] = useState<{ url: string; title: string } | null>(null);
@@ -2181,6 +2185,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     const trimmed = message.trim();
     if (!trimmed) return;
     setFoldScene(null); // clear any prior fold; a fold request re-attaches it
+    setAnswerVisual(null); // clear any prior figure/formula; re-attached if present
 
     if (onMessageSubmit?.(trimmed)) {
       setMessage("");
@@ -2268,6 +2273,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       if (!answer || !isAsmConversationPayload(payload)) {
         throw new Error("conversation surface unavailable");
       }
+      setAnswerVisual((payload?.result?.answer_visual as AnswerVisual | undefined) ?? null);
       // New web→Cloud Brain→Local Brain nodes for this answer: light them up.
       const newGrafted = (payload?.result?.web_grafted_nodes as GraftedNode[] | undefined) ?? [];
       if (Array.isArray(newGrafted) && newGrafted.length > 0) {
@@ -2809,6 +2815,12 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           </p>
         ) : null}
       </div>
+      {/* Experimental answer interface: GeoGebra-like figure / formula card. */}
+      {answerVisual && !foldScene && !iframeStage ? (
+        <div className="atanor-answer-experiment-stage" aria-live="polite">
+          <AnswerExperimentSurface visual={answerVisual} />
+        </div>
+      ) : null}
       {/* Particle render budget — bottom-left. Max = benchmark-run full count. */}
       <div className="atanor-orb-density" data-iframe-hidden={iframeStage ? "true" : "false"}>
         <span className="atanor-orb-density-label">

@@ -142,6 +142,12 @@ _OP_WORDS = [
 def _to_expr(text: str) -> str | None:
     """Rewrite a worded arithmetic question into a bare expression, or None."""
     s = text
+    # Phrasal Korean arithmetic where the operator is a verb between two numbers:
+    # "100에서 37을 빼면" / "5에 3을 더하면" / "6에 4를 곱하면" / "12를 4로 나누면".
+    s = re.sub(r"(\d[\d,]*)\s*에서\s*(\d[\d,]*)\s*(?:을|를)?\s*(?:빼|뺀|덜)", r"\1 - \2", s)
+    s = re.sub(r"(\d[\d,]*)\s*에\s*(\d[\d,]*)\s*(?:을|를)?\s*(?:더|추가|보태)", r"\1 + \2", s)
+    s = re.sub(r"(\d[\d,]*)\s*에\s*(\d[\d,]*)\s*(?:을|를)?\s*곱", r"\1 * \2", s)
+    s = re.sub(r"(\d[\d,]*)\s*(?:을|를)\s*(\d[\d,]*)\s*(?:으로|로)\s*나누", r"\1 / \2", s)
     has_word_op = False
     for pat, sym in _OP_WORDS:
         if re.search(pat, s, re.IGNORECASE):
@@ -268,6 +274,11 @@ def _solve_expression(q: str, language: str) -> dict[str, Any] | None:
         "reasoning_certificate": _certificate(steps, "deterministic_arithmetic"),
         "confidence": 0.97,
         "result_value": value,
+        "answer_visual": _formula_visual(
+            "계산" if language != "en" else "Calculation",
+            f"{pretty} = {_fmt(value)}",
+            registry_hint="arithmetic_expression",
+        ),
     }
 
 
@@ -325,24 +336,174 @@ def _solve_word_problem(q: str, language: str) -> dict[str, Any] | None:
     else:
         chain = " → ".join(s["fact"] for s in steps)
         answer = f"답은 {_fmt(result)}이에요. {chain} 순서로, 외부 LLM 없이 단계별로 계산했어요."
+    formula = " ; ".join(s["fact"] for s in steps if s.get("type") != "base") or f"= {_fmt(result)}"
     return {
         "answer": answer,
         "reasoning_certificate": _certificate(steps, "deterministic_word_problem"),
         "confidence": 0.95,
         "result_value": result,
+        "answer_visual": _formula_visual(
+            "단계별 계산" if language != "en" else "Step-by-step",
+            formula,
+            registry_hint="word_problem_steps",
+        ),
     }
 
 
-def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | None:
-    """Answer an arithmetic / counting word problem deterministically, or None.
+# ── experimental answer-interface surface ─────────────────────────────────────
+# A structured spec the dashboard renders as a GeoGebra-like figure or a formula
+# card. It is DATA, not code, on purpose: the mapping "this kind of question →
+# this interface" is a registry ATANOR can later extend on its own. Each solver
+# emits an `answer_visual`; the frontend has one renderer per `kind`.
+def _formula_visual(title: str, formula: str, *, registry_hint: str) -> dict[str, Any]:
+    return {"kind": "formula", "title": title, "formula": formula, "registry_hint": registry_hint}
 
-    Tries a bare-arithmetic path first ("17 곱하기 23"), then a multi-step word
-    problem ("사과 3개 중 1개를 먹고 2개를 더 사면…"). Abstains on anything it
-    cannot compile into an unambiguous plan.
+
+# ── exponent: "2의 10제곱", "5세제곱", "7제곱" ─────────────────────────────────
+_EXP_POW_RE = re.compile(r"(\d+(?:\.\d+)?)\s*의\s*(\d+)\s*제곱")
+_EXP_CUBE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*세제곱(?!미터|센티|킬로)")
+_EXP_SQ_RE = re.compile(r"(\d+(?:\.\d+)?)\s*제곱(?!미터|센티|킬로|\s*미)")
+_EXP_EN_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:\^|\*\*|to the power of)\s*(\d+)", re.IGNORECASE)
+
+
+def _solve_exponent(q: str, language: str) -> dict[str, Any] | None:
+    base = exp = None
+    m = _EXP_POW_RE.search(q) or _EXP_EN_RE.search(q)
+    if m:
+        base, exp = float(m.group(1)), int(m.group(2))
+    elif _EXP_CUBE_RE.search(q):
+        base, exp = float(_EXP_CUBE_RE.search(q).group(1)), 3
+    elif _EXP_SQ_RE.search(q):
+        base, exp = float(_EXP_SQ_RE.search(q).group(1)), 2
+    if base is None or exp is None or exp > 64:  # bound the work
+        return None
+    value = base ** exp
+    formula = f"{_fmt(base)}^{exp} = {_fmt(value)}"
+    if language == "en":
+        answer = f"{_fmt(base)} to the power of {exp} = {_fmt(value)}. (deterministic, no LLM)"
+    else:
+        answer = f"{_fmt(base)}의 {exp}제곱은 {_fmt(value)}입니다. (외부 LLM 없이 결정론적으로 계산했어요)"
+    steps = [{"type": "power", "fact": formula}]
+    return {
+        "answer": answer,
+        "reasoning_certificate": _certificate(steps, "deterministic_exponent"),
+        "confidence": 0.97,
+        "result_value": value,
+        "answer_visual": _formula_visual("거듭제곱" if language != "en" else "Exponent", formula, registry_hint="arithmetic_power"),
+    }
+
+
+# ── geometry: square / rectangle / circle / triangle → number + a figure ──────
+_PI = 3.141592653589793
+
+
+def _nums_only(q: str) -> list[float]:
+    # Geometry uses digit measurements only — never spelled-out determiners like
+    # "한 변"(a side, 한→1) which would be mistaken for an operand.
+    out: list[float] = []
+    for m in re.finditer(r"(?<![\w.])(\d[\d,]*(?:\.\d+)?)", q):
+        try:
+            out.append(float(m.group(1).replace(",", "")))
+        except ValueError:
+            continue
+    return out
+
+
+def _solve_geometry(q: str, language: str) -> dict[str, Any] | None:
+    ko = language != "en"
+    wants_area = bool(re.search(r"넓이|면적|area", q, re.IGNORECASE))
+    wants_perim = bool(re.search(r"둘레|perimeter|circumference", q, re.IGNORECASE))
+    if not (wants_area or wants_perim):
+        return None
+    nums = _nums_only(q)
+
+    def pack(shape, params, metric, value, formula, answer):
+        return {
+            "answer": answer,
+            "reasoning_certificate": _certificate([{"type": "geometry", "fact": formula}], "deterministic_geometry"),
+            "confidence": 0.96,
+            "result_value": value,
+            "answer_visual": {
+                "kind": "geometry_figure",
+                "title": ("도형" if ko else "Figure"),
+                "shape": shape,
+                "params": params,
+                "metric": metric,
+                "result": value,
+                "formula": formula,
+                "registry_hint": f"geometry_{shape}_{metric}",
+            },
+        }
+
+    # square ── 정사각형 (one side)
+    if re.search(r"정사각형|square", q, re.IGNORECASE) and nums:
+        s = nums[0]
+        if wants_perim:
+            v = 4 * s
+            f = f"둘레 = 4 × {_fmt(s)} = {_fmt(v)}" if ko else f"perimeter = 4 × {_fmt(s)} = {_fmt(v)}"
+            a = (f"정사각형 둘레는 {_fmt(v)}입니다. (한 변 {_fmt(s)})" if ko else f"The square's perimeter is {_fmt(v)} (side {_fmt(s)}).")
+            return pack("square", {"side": s}, "perimeter", v, f, a)
+        v = s * s
+        f = f"넓이 = {_fmt(s)}² = {_fmt(v)}" if ko else f"area = {_fmt(s)}² = {_fmt(v)}"
+        a = (f"정사각형 넓이는 {_fmt(v)}입니다. (한 변 {_fmt(s)})" if ko else f"The square's area is {_fmt(v)} (side {_fmt(s)}).")
+        return pack("square", {"side": s}, "area", v, f, a)
+
+    # rectangle ── 직사각형 (width, height)
+    if re.search(r"직사각형|rectangle", q, re.IGNORECASE) and len(nums) >= 2:
+        w, h = nums[0], nums[1]
+        if wants_perim:
+            v = 2 * (w + h)
+            f = f"둘레 = 2 × ({_fmt(w)} + {_fmt(h)}) = {_fmt(v)}" if ko else f"perimeter = 2 × ({_fmt(w)} + {_fmt(h)}) = {_fmt(v)}"
+            a = (f"직사각형 둘레는 {_fmt(v)}입니다." if ko else f"The rectangle's perimeter is {_fmt(v)}.")
+            return pack("rectangle", {"width": w, "height": h}, "perimeter", v, f, a)
+        v = w * h
+        f = f"넓이 = {_fmt(w)} × {_fmt(h)} = {_fmt(v)}" if ko else f"area = {_fmt(w)} × {_fmt(h)} = {_fmt(v)}"
+        a = (f"직사각형 넓이는 {_fmt(v)}입니다." if ko else f"The rectangle's area is {_fmt(v)}.")
+        return pack("rectangle", {"width": w, "height": h}, "area", v, f, a)
+
+    # circle ── 원 (radius; or 지름/diameter → r = d/2)
+    if re.search(r"\b원\b|원의|원\s|circle", q, re.IGNORECASE) and nums:
+        r = nums[0]
+        # 반지름 = radius (use as-is); 지름/diameter = halve. Don't let "반지름"
+        # match the "지름" branch.
+        if re.search(r"(?<!반)지름|diameter", q, re.IGNORECASE) and not re.search(r"반지름", q):
+            r = r / 2
+        if wants_perim:
+            v = 2 * _PI * r
+            f = f"둘레 = 2 × π × {_fmt(r)} ≈ {_fmt(round(v, 2))}" if ko else f"circumference = 2πr ≈ {_fmt(round(v, 2))}"
+            a = (f"원 둘레는 약 {_fmt(round(v, 2))}입니다. (반지름 {_fmt(r)})" if ko else f"The circle's circumference is ≈ {_fmt(round(v, 2))} (radius {_fmt(r)}).")
+            return pack("circle", {"radius": r}, "perimeter", round(v, 4), f, a)
+        v = _PI * r * r
+        f = f"넓이 = π × {_fmt(r)}² ≈ {_fmt(round(v, 2))}" if ko else f"area = πr² ≈ {_fmt(round(v, 2))}"
+        a = (f"원 넓이는 약 {_fmt(round(v, 2))}입니다. (반지름 {_fmt(r)})" if ko else f"The circle's area is ≈ {_fmt(round(v, 2))} (radius {_fmt(r)}).")
+        return pack("circle", {"radius": r}, "area", round(v, 4), f, a)
+
+    # triangle ── 삼각형 area = ½·base·height
+    if re.search(r"삼각형|triangle", q, re.IGNORECASE) and wants_area and len(nums) >= 2:
+        b, h = nums[0], nums[1]
+        v = 0.5 * b * h
+        f = f"넓이 = ½ × {_fmt(b)} × {_fmt(h)} = {_fmt(v)}" if ko else f"area = ½ × {_fmt(b)} × {_fmt(h)} = {_fmt(v)}"
+        a = (f"삼각형 넓이는 {_fmt(v)}입니다. (밑변 {_fmt(b)}, 높이 {_fmt(h)})" if ko else f"The triangle's area is {_fmt(v)} (base {_fmt(b)}, height {_fmt(h)}).")
+        return pack("triangle", {"base": b, "height": h}, "area", v, f, a)
+
+    return None
+
+
+def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | None:
+    """Answer an arithmetic / geometry / counting problem deterministically, or None.
+
+    Order: geometry (most specific) → exponent → bare arithmetic expression →
+    multi-step counting word problem. Abstains on anything it cannot compile into
+    an unambiguous plan. Each math answer may carry an `answer_visual` the
+    dashboard renders as a figure or formula card.
     """
     q = _normalize(question)
     if not q or not re.search(r"\d|" + "|".join(map(re.escape, _WORD_NUM)), q):
         return None
-    # A bare expression (has operator symbols/words) is evaluated with correct
-    # precedence first; otherwise fall to the left-to-right word-problem machine.
-    return _solve_expression(q, language) or _solve_word_problem(q, language)
+    result = (
+        _solve_geometry(q, language)
+        or _solve_exponent(q, language)
+        or _solve_expression(q, language)
+        or _solve_word_problem(q, language)
+    )
+    return result

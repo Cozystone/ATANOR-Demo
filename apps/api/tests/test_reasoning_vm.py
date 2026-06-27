@@ -29,6 +29,26 @@ def test_add_sub_mul_div_word_problems():
     assert _val("사탕 12개를 4명이 똑같이 나누면 한 명당 몇 개야?") == 3
 
 
+def test_exponent_subtraction_and_geometry():
+    from app.services.reasoning_vm import solve_reasoning
+
+    assert _val("2의 10제곱은?") == 1024
+    assert _val("100에서 37을 빼면?") == 63
+    assert _val("정사각형 한 변이 7이면 둘레는?") == 28  # "한" must not be read as side=1
+    assert _val("직사각형 가로 4 세로 6의 넓이는?") == 24
+    assert _val("밑변 6 높이 4인 삼각형의 넓이는?") == 12
+
+    # geometry answers carry a renderable figure spec for the dashboard
+    geo = solve_reasoning("정사각형 한 변이 7이면 둘레는?", "ko")
+    assert geo and geo["answer_visual"]["kind"] == "geometry_figure"
+    assert geo["answer_visual"]["shape"] == "square"
+    assert geo["answer_visual"]["params"]["side"] == 7
+
+    # 반지름(radius) must not be halved like 지름(diameter)
+    circ = solve_reasoning("반지름이 5인 원의 넓이는?", "ko")
+    assert circ and abs(circ["result_value"] - (3.141592653589793 * 25)) < 0.05  # display-rounded
+
+
 def test_distributive_each_is_multiplication():
     # Regression: "N개씩 M명" is distributive -> N × M, not N + M. The add-cue
     # "사" must also NOT false-match 사과(apple)/샀(bought verb is fine).
