@@ -153,6 +153,10 @@ def _to_expr(text: str) -> str | None:
         if re.search(pat, s, re.IGNORECASE):
             has_word_op = True
         s = re.sub(pat, f" {sym} ", s, flags=re.IGNORECASE)
+    # A standalone function variable (x) means this is a function/plot, not bare
+    # arithmetic — don't strip it to digits and miscompute (e.g. "x^2+1" → "2+1").
+    if re.search(r"(?<![a-z0-9])x(?![a-z0-9])", s, re.IGNORECASE):
+        return None
     # keep only digits, operators, parentheses, dots, spaces
     s = re.sub(r"[^0-9+\-*/().\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
@@ -489,6 +493,133 @@ def _solve_geometry(q: str, language: str) -> dict[str, Any] | None:
     return None
 
 
+# ── function plot: "y = x^2 + 1 그려줘" → sampled points for a GeoGebra-like graph ─
+import ast
+import math as _math
+
+_PLOT_CUE_RE = re.compile(r"그려|그래프|plot|graph|곡선", re.IGNORECASE)
+_PLOT_FUNCS = {
+    "sin": _math.sin, "cos": _math.cos, "tan": _math.tan, "sqrt": _math.sqrt,
+    "abs": abs, "exp": _math.exp, "log": _math.log, "ln": _math.log,
+}
+_PLOT_CONSTS = {"pi": _math.pi, "e": _math.e}
+
+
+def _safe_fx(node: ast.AST, x: float) -> float:
+    """Evaluate a whitelisted arithmetic AST in one variable x. Raises on anything
+    outside the whitelist — never a general eval."""
+    if isinstance(node, ast.Expression):
+        return _safe_fx(node.body, x)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return float(node.value)
+    if isinstance(node, ast.Name):
+        if node.id == "x":
+            return x
+        if node.id in _PLOT_CONSTS:
+            return _PLOT_CONSTS[node.id]
+        raise ValueError(f"name {node.id}")
+    if isinstance(node, ast.BinOp):
+        a, b = _safe_fx(node.left, x), _safe_fx(node.right, x)
+        if isinstance(node.op, ast.Add):
+            return a + b
+        if isinstance(node.op, ast.Sub):
+            return a - b
+        if isinstance(node.op, ast.Mult):
+            return a * b
+        if isinstance(node.op, ast.Div):
+            return a / b
+        if isinstance(node.op, ast.Pow):
+            return a ** b
+        if isinstance(node.op, ast.Mod):
+            return a % b
+        raise ValueError("op")
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        v = _safe_fx(node.operand, x)
+        return -v if isinstance(node.op, ast.USub) else v
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _PLOT_FUNCS:
+        return float(_PLOT_FUNCS[node.func.id](*[_safe_fx(a, x) for a in node.args]))
+    raise ValueError("unsupported node")
+
+
+def _extract_plot_expr(q: str) -> str | None:
+    s = q
+    s = _PLOT_CUE_RE.sub(" ", s)
+    # Strip the domain phrase first so its numbers don't leak into the function
+    # ("구간 -3 ~ 3" must not become part of x**2).
+    s = re.sub(r"(구간|범위)\s*-?\d+(?:\.\d+)?\s*(?:~|에서|to|,|부터)\s*-?\d+(?:\.\d+)?\s*(?:까지)?", " ", s, flags=re.IGNORECASE)
+    s = re.sub(r"-?\d+(?:\.\d+)?\s*(?:~|에서|부터)\s*-?\d+(?:\.\d+)?\s*까지?", " ", s)
+    s = re.sub(r"(을|를|좀|해\s*줘|해|주세요|보여\s*줘|보여|의|함수|구간|범위|까지)", " ", s)
+    s = re.sub(r"^\s*y\s*=\s*", " ", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bf\s*\(\s*x\s*\)\s*=\s*", " ", s, flags=re.IGNORECASE)
+    s = s.replace("^", "**")
+    # keep only math-expression characters in one variable x
+    s = re.sub(r"[^0-9xX+\-*/().\s a-z]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if not s or "x" not in s.lower():
+        return None
+    return s
+
+
+def _solve_function_plot(q: str, language: str) -> dict[str, Any] | None:
+    if not _PLOT_CUE_RE.search(q):
+        return None
+    raw = _extract_plot_expr(q)
+    if not raw:
+        return None
+    try:
+        tree = ast.parse(raw, mode="eval")
+    except SyntaxError:
+        return None
+    # validate by sampling; abstain if the expression isn't a clean function of x
+    try:
+        _safe_fx(tree, 1.0)
+    except Exception:
+        return None
+    lo, hi = -5.0, 5.0
+    rng = re.search(r"(-?\d+(?:\.\d+)?)\s*(?:~|에서|to|,)\s*(-?\d+(?:\.\d+)?)", q)
+    if rng:
+        lo, hi = float(rng.group(1)), float(rng.group(2))
+        if hi <= lo:
+            lo, hi = -5.0, 5.0
+    n = 80
+    points: list[list[float]] = []
+    for i in range(n + 1):
+        xv = lo + (hi - lo) * i / n
+        try:
+            yv = _safe_fx(tree, xv)
+        except Exception:
+            continue
+        if isinstance(yv, complex) or yv != yv or yv in (float("inf"), float("-inf")):
+            continue
+        if abs(yv) > 1e6:
+            continue
+        points.append([round(xv, 4), round(yv, 4)])
+    if len(points) < 5:
+        return None
+    display = raw.replace("**", "^")
+    if language == "en":
+        answer = f"Plotted y = {display} on [{_fmt(lo)}, {_fmt(hi)}]. (deterministic, no LLM)"
+    else:
+        answer = f"y = {display} 그래프를 구간 [{_fmt(lo)}, {_fmt(hi)}]에서 그렸어요. (외부 LLM 없이)"
+    return {
+        "answer": answer,
+        "reasoning_certificate": _certificate(
+            [{"type": "plot", "fact": f"y = {display} on [{_fmt(lo)}, {_fmt(hi)}], {len(points)} pts"}],
+            "deterministic_function_plot",
+        ),
+        "confidence": 0.93,
+        "answer_visual": {
+            "kind": "function_plot",
+            "title": "함수 그래프" if language != "en" else "Function plot",
+            "expr": display,
+            "formula": f"y = {display}",
+            "domain": [lo, hi],
+            "points": points,
+            "registry_hint": "function_plot",
+        },
+    }
+
+
 def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | None:
     """Answer an arithmetic / geometry / counting problem deterministically, or None.
 
@@ -498,7 +629,14 @@ def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | Non
     dashboard renders as a figure or formula card.
     """
     q = _normalize(question)
-    if not q or not re.search(r"\d|" + "|".join(map(re.escape, _WORD_NUM)), q):
+    if not q:
+        return None
+    # Function plots can be digit-less ("sin(x) 그려줘"), so try them before the
+    # numeric gate that the arithmetic paths rely on.
+    plot = _solve_function_plot(q, language)
+    if plot:
+        return plot
+    if not re.search(r"\d|" + "|".join(map(re.escape, _WORD_NUM)), q):
         return None
     result = (
         _solve_geometry(q, language)

@@ -49,6 +49,26 @@ def test_exponent_subtraction_and_geometry():
     assert circ and abs(circ["result_value"] - (3.141592653589793 * 25)) < 0.05  # display-rounded
 
 
+def test_function_plot_surface():
+    from app.services.reasoning_vm import solve_reasoning
+
+    r = solve_reasoning("y = x^2 + 1 그려줘", "ko")
+    assert r and r["answer_visual"]["kind"] == "function_plot"
+    av = r["answer_visual"]
+    assert av["domain"] == [-5.0, 5.0]
+    assert len(av["points"]) >= 5
+    # x^2+1 at x=-5 is 26
+    assert any(abs(x - (-5.0)) < 1e-9 and abs(y - 26.0) < 1e-6 for x, y in av["points"])
+
+    # digit-less plots work; custom domain is parsed, not folded into the expr
+    assert solve_reasoning("sin(x) 그래프 그려줘", "ko")["answer_visual"]["kind"] == "function_plot"
+    rd = solve_reasoning("x^2 그려줘 구간 -3 ~ 3", "ko")
+    assert rd["answer_visual"]["domain"] == [-3.0, 3.0]
+
+    # a plot request must NOT be miscomputed as bare arithmetic
+    assert "answer_visual" in solve_reasoning("x^2+1 그려줘", "ko")
+
+
 def test_distributive_each_is_multiplication():
     # Regression: "N개씩 M명" is distributive -> N × M, not N + M. The add-cue
     # "사" must also NOT false-match 사과(apple)/샀(bought verb is fine).

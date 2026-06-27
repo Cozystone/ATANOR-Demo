@@ -12,7 +12,7 @@
  */
 
 export type AnswerVisual = {
-  kind: "formula" | "geometry_figure" | string;
+  kind: "formula" | "geometry_figure" | "function_plot" | string;
   title?: string;
   formula?: string;
   registry_hint?: string;
@@ -21,6 +21,10 @@ export type AnswerVisual = {
   params?: Record<string, number>;
   metric?: "perimeter" | "area" | string;
   result?: number;
+  // function_plot only:
+  expr?: string;
+  domain?: [number, number];
+  points?: [number, number][];
 };
 
 const ACCENT = "#7db4ff";
@@ -93,16 +97,55 @@ function GeometryFigure({ v }: { v: AnswerVisual }) {
   );
 }
 
+function FunctionPlot({ v }: { v: AnswerVisual }) {
+  const pts = v.points ?? [];
+  const W = 300;
+  const H = 200;
+  const pad = 24;
+  if (pts.length < 2) return null;
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const xmin = Math.min(...xs);
+  const xmax = Math.max(...xs);
+  let ymin = Math.min(...ys);
+  let ymax = Math.max(...ys);
+  if (ymin === ymax) { ymin -= 1; ymax += 1; }
+  const sx = (x: number) => pad + ((x - xmin) / (xmax - xmin || 1)) * (W - 2 * pad);
+  const sy = (y: number) => H - pad - ((y - ymin) / (ymax - ymin || 1)) * (H - 2 * pad);
+  const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${sx(p[0]).toFixed(1)},${sy(p[1]).toFixed(1)}`).join(" ");
+  const x0 = xmin <= 0 && xmax >= 0 ? sx(0) : null; // y-axis if 0 in domain
+  const y0 = ymin <= 0 && ymax >= 0 ? sy(0) : null; // x-axis if 0 in range
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: 320, display: "block", margin: "0 auto" }}>
+      <rect x={pad} y={pad} width={W - 2 * pad} height={H - 2 * pad} fill="none" stroke="rgba(125,180,255,0.14)" />
+      {[0.25, 0.5, 0.75].map((t) => (
+        <line key={`gx${t}`} x1={pad + t * (W - 2 * pad)} y1={pad} x2={pad + t * (W - 2 * pad)} y2={H - pad} stroke="rgba(125,180,255,0.07)" />
+      ))}
+      {[0.25, 0.5, 0.75].map((t) => (
+        <line key={`gy${t}`} x1={pad} y1={pad + t * (H - 2 * pad)} x2={W - pad} y2={pad + t * (H - 2 * pad)} stroke="rgba(125,180,255,0.07)" />
+      ))}
+      {y0 !== null ? <line x1={pad} y1={y0} x2={W - pad} y2={y0} stroke={DIM} strokeWidth={1} /> : null}
+      {x0 !== null ? <line x1={x0} y1={pad} x2={x0} y2={H - pad} stroke={DIM} strokeWidth={1} /> : null}
+      <path d={path} fill="none" stroke={ACCENT} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      <text x={pad} y={H - 6} fill={DIM} fontSize={10}>{fmt(xmin)}</text>
+      <text x={W - pad} y={H - 6} fill={DIM} fontSize={10} textAnchor="end">{fmt(xmax)}</text>
+    </svg>
+  );
+}
+
 export default function AnswerExperimentSurface({ visual }: { visual: AnswerVisual }) {
   const isGeo = visual.kind === "geometry_figure";
+  const isPlot = visual.kind === "function_plot";
+  const fallbackTitle = isGeo ? "도형" : isPlot ? "함수 그래프" : "수식";
   return (
     <div className="atanor-answer-experiment" data-kind={visual.kind}>
       <div className="atanor-answer-experiment-head">
         <span className="atanor-answer-experiment-dot" />
-        <span>{visual.title || (isGeo ? "도형" : "수식")}</span>
+        <span>{visual.title || fallbackTitle}</span>
         {visual.registry_hint ? <code className="atanor-answer-experiment-hint">{visual.registry_hint}</code> : null}
       </div>
       {isGeo ? <GeometryFigure v={visual} /> : null}
+      {isPlot ? <FunctionPlot v={visual} /> : null}
       {visual.formula ? <div className="atanor-answer-experiment-formula">{visual.formula}</div> : null}
     </div>
   );
