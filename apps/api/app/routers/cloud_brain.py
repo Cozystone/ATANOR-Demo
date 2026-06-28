@@ -54,6 +54,7 @@ from packages.cloud_brain.candidate_read_model import (
     DEFAULT_CANDIDATE_STORE,
     candidate_cloud_graph,
     candidate_cloud_status,
+    candidate_surface_graph,
 )
 from packages.cloud_brain.verified_payload_feeder import PayloadSourcePolicy, VerifiedPayloadFeeder, payload_from_mapping
 from rag_engine.ghost_graph import GhostTopology
@@ -1308,6 +1309,22 @@ def cloud_brain_candidate_graph(
     max_edges: int = Query(default=400, ge=0, le=2400),
 ) -> dict[str, Any]:
     return candidate_cloud_graph(candidate_store_path or _resolve_candidate_store_path(), max_nodes=max_nodes, max_edges=max_edges)
+
+
+@router.get("/surface-graph/graph")
+def cloud_brain_surface_graph(
+    candidate_store_path: str | None = Query(default=None, max_length=800),
+    max_nodes: int = Query(default=400, ge=1, le=1200),
+    max_edges: int = Query(default=700, ge=0, le=2400),
+) -> dict[str, Any]:
+    """The SURFACE (construction / sentence) knowledge graph: each accumulated
+    case frame as a node, linked to others that share a concept head. This is the
+    graph that makes language cumulative-learning legible — the sentences connect."""
+    return candidate_surface_graph(
+        candidate_store_path or _resolve_candidate_store_path(),
+        max_nodes=max_nodes,
+        max_edges=max_edges,
+    )
 
 
 @router.get("/identity")

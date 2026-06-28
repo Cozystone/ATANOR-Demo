@@ -151,6 +151,126 @@ def candidate_cloud_status(candidate_store_path: str | Path | None = None) -> di
     }
 
 
+def _realize_case_frame(row: dict[str, Any]) -> str:
+    """Render a stored case frame as a short readable construction string.
+
+    e.g. roles SUBJ='Marie Curie', OBJ='chemist', predicate='be'
+        -> "Marie Curie · be · chemist". This is the surface (sentence) form,
+    built from the graph-bound roles — not a canned template."""
+
+    roles = row.get("case_roles") or []
+    subj = next((str(r.get("head")) for r in roles if str(r.get("role")) == "SUBJ" and r.get("head")), "")
+    obj = next((str(r.get("head")) for r in roles if str(r.get("role")) == "OBJ" and r.get("head")), "")
+    predicate = str(row.get("predicate") or "")
+    parts = [part for part in (subj, predicate, obj) if part]
+    if parts:
+        return " · ".join(parts)
+    return str(row.get("canonical_form") or row.get("frame_id") or "construction")
+
+
+def candidate_surface_graph(
+    candidate_store_path: str | Path | None = None,
+    *,
+    max_nodes: int = 400,
+    max_edges: int = 700,
+) -> dict[str, Any]:
+    """Materialize the SURFACE (construction / sentence) graph from the candidate
+    store's verified case frames.
+
+    Nodes are constructions (one per case frame); edges link two constructions
+    that share a participating concept head (co-reference), so the accumulated
+    language actually forms a connected graph instead of a flat pile. Read-only,
+    candidate-tagged, never promoted by this function."""
+
+    status = candidate_cloud_status(candidate_store_path)
+    if not status["candidate_available"] or not status["candidate_store_path"]:
+        return {
+            "nodes": [],
+            "edges": [],
+            "metadata": {
+                **status,
+                "surface_graph_available": False,
+                "graph_pending_reason": status.get("reason") or "candidate_store_missing",
+            },
+        }
+    root = Path(str(status["candidate_store_path"]))
+    frame_rows = _load_jsonl(root / "case_frames.jsonl", limit=max_nodes)
+    nodes: list[dict[str, Any]] = []
+    head_index: dict[str, list[str]] = {}
+    for row in frame_rows:
+        frame_id = str(row.get("frame_id") or "")
+        if not frame_id:
+            continue
+        provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+        nodes.append(
+            {
+                "id": frame_id,
+                "label": _realize_case_frame(row),
+                "type": "surface_construction",
+                "predicate": str(row.get("predicate") or ""),
+                "language": row.get("language"),
+                "document": (provenance or {}).get("document_id") or (provenance or {}).get("url"),
+                "candidate": True,
+                "source_store": "candidate",
+                "verification_status": "candidate_review",
+                "is_verified_production": False,
+                "style": {"color": "#22d3ee", "halo": "dashed"},
+            }
+        )
+        for role in row.get("case_roles") or []:
+            head = str(role.get("head") or "").strip().lower()
+            if head:
+                head_index.setdefault(head, []).append(frame_id)
+
+    edges: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    # Link constructions that share a concept head. Chain (not clique) and cap per
+    # head so a very common entity doesn't explode the edge set.
+    for head, frame_ids in sorted(head_index.items()):
+        unique_ids = list(dict.fromkeys(frame_ids))
+        if len(unique_ids) < 2:
+            continue
+        for source, target in zip(unique_ids[:8], unique_ids[1:8]):
+            if source == target:
+                continue
+            key = (source, target) if source < target else (target, source)
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append(
+                {
+                    "id": f"surf:{source}:{target}",
+                    "source": source,
+                    "target": target,
+                    "relation": "shares_concept",
+                    "concept": head,
+                    "candidate": True,
+                    "source_store": "candidate",
+                    "verification_status": "candidate_review",
+                    "is_verified_production": False,
+                    "style": {"stroke": "#22d3ee", "dash": True},
+                }
+            )
+            if len(edges) >= max_edges:
+                break
+        if len(edges) >= max_edges:
+            break
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "metadata": {
+            **status,
+            "surface_graph_available": True,
+            "materialized_surface_nodes": len(nodes),
+            "materialized_surface_edges": len(edges),
+            "distinct_concepts_linked": sum(1 for ids in head_index.values() if len(set(ids)) > 1),
+            "total_constructions": status["candidate_case_frames"],
+            "full_store_scan": False,
+        },
+    }
+
+
 def candidate_cloud_graph(
     candidate_store_path: str | Path | None = None,
     *,

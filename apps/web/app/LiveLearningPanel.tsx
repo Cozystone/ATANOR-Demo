@@ -28,9 +28,22 @@ type Metrics = {
 
 type View = "concept" | "surface";
 
-export default function LiveLearningPanel({ apiBase = "" }: { apiBase?: string }) {
+export default function LiveLearningPanel({
+  apiBase = "",
+  view: controlledView,
+  onViewChange,
+}: {
+  apiBase?: string;
+  view?: View;
+  onViewChange?: (view: View) => void;
+}) {
   const [m, setM] = useState<Metrics | null>(null);
-  const [view, setView] = useState<View>("concept");
+  const [internalView, setInternalView] = useState<View>("concept");
+  const view = controlledView ?? internalView;
+  const setView = (next: View) => {
+    setInternalView(next);
+    onViewChange?.(next);
+  };
   const [series, setSeries] = useState<number[]>([]);
   const [loadPct, setLoadPct] = useState<number | null>(null);
   const prevRef = useRef<number>(0);

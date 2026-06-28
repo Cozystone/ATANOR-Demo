@@ -1665,6 +1665,8 @@ function FullApp() {
   const [brainGraphCloud, setBrainGraphCloud] = useState<AnyRecord | null>(null);
   const [cloudArrivals, setCloudArrivals] = useState<CloudArrival[]>([]);
   const cloudArrivalPrevRef = useRef<number | null>(null);
+  const [cloudGraphView, setCloudGraphView] = useState<"concept" | "surface">("concept");
+  const [surfaceGraphData, setSurfaceGraphData] = useState<AnyRecord | null>(null);
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
   const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base", "seed"]);
@@ -3838,6 +3840,66 @@ function FullApp() {
     () => (mainSection === "cloud" ? appendCloudArrivals(userSceneGraph3D, cloudArrivals) : userSceneGraph3D),
     [mainSection, userSceneGraph3D, cloudArrivals],
   );
+
+  // Fetch the SURFACE (construction / sentence) knowledge graph when its view is
+  // selected in the Cloud Brain tab. Refresh periodically so newly-learned
+  // constructions show up.
+  useEffect(() => {
+    if (mainSection !== "cloud" || cloudGraphView !== "surface") return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/cloud-brain/surface-graph/graph?max_nodes=520&max_edges=900", { cache: "no-store" });
+        const data = (await res.json()) as AnyRecord;
+        if (alive) setSurfaceGraphData(data);
+      } catch {
+        /* keep last */
+      }
+    };
+    load();
+    const id = setInterval(load, 8000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [mainSection, cloudGraphView]);
+
+  const surfaceSceneGraph3D = useMemo<Rag3DGraph>(() => {
+    const rawNodes = Array.isArray(surfaceGraphData?.nodes) ? (surfaceGraphData!.nodes as AnyRecord[]) : [];
+    const rawEdges = Array.isArray(surfaceGraphData?.edges) ? (surfaceGraphData!.edges as AnyRecord[]) : [];
+    if (!rawNodes.length) return { nodes: [], edges: [], traversal_path: [] };
+    const count = rawNodes.length;
+    return {
+      nodes: rawNodes.map((node, index) => {
+        // Spread constructions across a spherical shell (golden-angle) so the
+        // graph is legible immediately — uses the same source-coordinate path as
+        // the concept cloud (no force layout / no collapse).
+        const y = 1 - ((index + 0.5) / count) * 2;
+        const radial = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = index * 2.399963229728653;
+        const shell = 9 + (index % 9) * 0.5 + stableUnit(String(node.id), 7) * 0.6;
+        return {
+          id: String(node.id),
+          label: String(node.label ?? node.id),
+          type: String(node.type ?? "surface_construction"),
+          x: Math.cos(theta) * radial * shell,
+          y: y * shell,
+          z: Math.sin(theta) * radial * shell,
+          source_type: "surface_construction",
+        };
+      }),
+      edges: rawEdges.map((edge) => ({
+        source: String(edge.source),
+        target: String(edge.target),
+        relation: String(edge.relation ?? "shares_concept"),
+        weight: 0.6,
+        source_type: "surface_construction",
+      })),
+      traversal_path: [],
+    };
+  }, [surfaceGraphData]);
+
+  const cloudShowsSurface = mainSection === "cloud" && cloudGraphView === "surface" && surfaceSceneGraph3D.nodes.length > 0;
 
   // Drive "arrival" nodes from the REAL continuous-learning metrics. Each tick we
   // read how many concepts/relations were just learned and spawn that many fresh
@@ -6094,7 +6156,7 @@ function FullApp() {
               </div>
             </div>
             <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode} data-answering={usesStudioGraph && transcriptOpen}>
-              {mainSection === "cloud" ? <LiveLearningPanel /> : null}
+              {mainSection === "cloud" ? <LiveLearningPanel view={cloudGraphView} onViewChange={setCloudGraphView} /> : null}
               {isCloudViewerSection && !visibleGraph3D.nodes.length ? (
                 <CloudBrainSphereScene
                   edgeOpacity={graphEdgeOpacity}
@@ -6106,7 +6168,7 @@ function FullApp() {
                   key={usesStudioGraph ? "atanor-home-studio-graph" : `atanor-${mainSection}-${graphPresentationMode}-sphere-graph`}
                   activeEdgeKeys={activeSignalEdgeKeys}
                   activeNodeIds={activeSignalNodeIds}
-                  graph={cloudSceneGraph3D}
+                  graph={cloudShowsSurface ? surfaceSceneGraph3D : cloudSceneGraph3D}
                   control={rag3dControl}
                   preserveSourceCoordinates={usesStudioGraph || usesSphereGraph}
                   theme="dark"
