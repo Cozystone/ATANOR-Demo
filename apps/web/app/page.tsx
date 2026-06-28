@@ -5187,7 +5187,7 @@ function FullApp() {
       <aside className="atanor-user-sidebar">
         <div className="atanor-user-brand">
           <img
-            src="/atanor-logo-wide.png"
+            src="/atanor-logo-white-cropped.png"
             alt="ATANOR"
             onError={(event) => {
               event.currentTarget.style.display = "none";
