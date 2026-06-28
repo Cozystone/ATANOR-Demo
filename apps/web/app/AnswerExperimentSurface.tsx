@@ -46,13 +46,13 @@ function GeometryFigure({ v, pal }: { v: AnswerVisual; pal: Palette }) {
   const { accent: ACCENT, ink: INK, dim: DIM, fill: FILL } = pal;
   const p = v.params ?? {};
   const W = 260;
-  const H = 180;
+  const H = 210; // extra vertical room so the top dimension label isn't clipped
   let svg: React.ReactNode = null;
 
   if (v.shape === "square" || v.shape === "rectangle") {
     const w = p.side ?? p.width ?? 1;
     const h = p.side ?? p.height ?? w;
-    const scale = Math.min(150 / Math.max(w, h), 60);
+    const scale = Math.min(130 / Math.max(w, h), 50);
     const bw = Math.max(40, w * scale);
     const bh = Math.max(30, h * scale);
     const x = (W - bw) / 2;
