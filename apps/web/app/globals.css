@@ -4562,6 +4562,43 @@ p {
 .atanor-demo-composer button:disabled { background: #c3cbe0; cursor: default; }
 .atanor-demo-foot { text-align: center; font-size: 11px; color: #9aa1b2; padding: 4px 0 12px; }
 
+/* ── DEMO profile: same orb UI, but a light dashboard space + DEMO badge ───────
+   The particle orb uses additive blending (designed for black), so a flat white
+   would erase it. We keep a soft dark halo behind the orb on an otherwise light
+   field — the orb stays legible, the space reads white/neutral for general use. */
+.atanor-user-brand span[data-demo-badge="true"] {
+  color: #ff8a3d;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.atanor-user-shell[data-demo="true"] .atanor-user-main {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(5, 8, 16, 0.94) 0%, rgba(9, 14, 24, 0.6) 15%, rgba(236, 240, 247, 0) 33%),
+    #eef1f7;
+}
+/* keep the composer + density slider readable on the light field */
+.atanor-user-shell[data-demo="true"] .atanor-hologram-composer {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(20, 30, 60, 0.12);
+  box-shadow: 0 18px 50px rgba(30, 50, 110, 0.14);
+}
+.atanor-user-shell[data-demo="true"] .atanor-hologram-composer input,
+.atanor-user-shell[data-demo="true"] .atanor-hologram-composer textarea {
+  color: #1d2330;
+}
+.atanor-user-shell[data-demo="true"] .atanor-hologram-composer input::placeholder,
+.atanor-user-shell[data-demo="true"] .atanor-hologram-composer textarea::placeholder {
+  color: #7a8295;
+}
+.atanor-user-shell[data-demo="true"] .atanor-orb-density {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(20, 30, 60, 0.12);
+}
+.atanor-user-shell[data-demo="true"] .atanor-orb-density-label,
+.atanor-user-shell[data-demo="true"] .atanor-orb-density-count {
+  color: #3a4254;
+}
+
 /* Self-layout dodge: when an answer card would cover the orb, the measured
    overlap slides the orb down by --orb-dodge-y so nothing overlaps. Suppressed in
    transcript-dock mode (the answering rule pins the orb with !important). */
