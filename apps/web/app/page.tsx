@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
+import DemoApp from "./DemoApp";
+import { isDemo } from "./lib/profile";
 import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
 import SeismographChart from "./SeismographChart";
 import AutonomousAgentPanel from "./AutonomousAgentPanel";
@@ -1541,7 +1543,12 @@ function makeMemoryEdges(graph: AnyRecord | null, nodes: MemoryNode[]): MemoryEd
     }));
 }
 
-export default function BakeBoardPage() {
+export default function Page() {
+  // Demo profile renders the lean GPT-style chat; full renders New ATANOR (orb/3D).
+  return isDemo ? <DemoApp /> : <FullApp />;
+}
+
+function FullApp() {
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("split");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("lab");
   const [rightMode, setRightMode] = useState<RightMode>("process");

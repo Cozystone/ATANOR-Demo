@@ -4467,6 +4467,101 @@ p {
   z-index: 42;
 }
 
+/* ───────────────────────── DEMO PROFILE (white, GPT-style) ───────────────── */
+.atanor-demo {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 264px 1fr;
+  background: #ffffff;
+  color: #1d2330;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+}
+.atanor-demo-orb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background:
+    radial-gradient(circle at 34% 30%, #ffffff 0 8%, transparent 9%),
+    conic-gradient(from 210deg, #20f4ff, #3aa8ff, #bd6dff, #ff4f9d, #20f4ff);
+  box-shadow: 0 0 0 1px rgba(120, 140, 200, 0.18), 0 2px 8px rgba(80, 120, 235, 0.28);
+  animation: atanor-demo-orb-spin 7s linear infinite;
+}
+@keyframes atanor-demo-orb-spin { to { filter: hue-rotate(360deg); } }
+
+/* left rail */
+.atanor-demo-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 12px;
+  background: #f7f8fa;
+  border-right: 1px solid #ececf1;
+  min-height: 0;
+}
+.atanor-demo-brand { display: flex; align-items: center; gap: 9px; padding: 4px 6px 8px; }
+.atanor-demo-brand strong { font-size: 16px; letter-spacing: 0.02em; }
+.atanor-demo-badge {
+  font-size: 10px; color: #6b7280; background: #eceef3; border-radius: 6px; padding: 1px 6px; margin-left: auto;
+}
+.atanor-demo-new {
+  text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid #e2e4ea;
+  background: #fff; color: #1d2330; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.atanor-demo-new:hover { background: #f0f2f6; }
+.atanor-demo-history { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; min-height: 0; }
+.atanor-demo-history-item {
+  text-align: left; padding: 8px 10px; border-radius: 8px; border: 0; background: none; color: #3a4150;
+  font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.atanor-demo-history-item:hover { background: #eceef3; }
+.atanor-demo-history-item.is-active { background: #e6eaf2; font-weight: 600; }
+.atanor-demo-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; border-top: 1px solid #ececf1; padding-top: 10px; }
+.atanor-demo-panel {
+  font-size: 11.5px; color: #8089a0; background: none; border: 0; padding: 6px 4px; border-radius: 7px; text-align: left; cursor: not-allowed;
+}
+
+/* main chat */
+.atanor-demo-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.atanor-demo-thread { flex: 1; overflow-y: auto; padding: 28px 0 12px; }
+.atanor-demo-empty {
+  max-width: 720px; margin: 12vh auto 0; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.atanor-demo-empty h1 { font-size: 24px; font-weight: 700; }
+.atanor-demo-empty p { color: #6b7280; font-size: 14px; margin: -4px 0 6px; }
+.atanor-demo-suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.atanor-demo-suggest button {
+  font-size: 13px; padding: 9px 14px; border-radius: 12px; border: 1px solid #e2e4ea; background: #fff; color: #2a3142; cursor: pointer;
+}
+.atanor-demo-suggest button:hover { background: #f0f2f6; }
+.atanor-demo-msg { max-width: 760px; margin: 0 auto; padding: 12px 24px; display: flex; gap: 12px; align-items: flex-start; }
+.atanor-demo-msg.is-user { justify-content: flex-end; }
+.atanor-demo-msg.is-user .atanor-demo-bubble { background: #2563eb; color: #fff; border-radius: 16px 16px 4px 16px; }
+.atanor-demo-bubble {
+  background: #f4f5f8; border-radius: 16px 16px 16px 4px; padding: 12px 15px; font-size: 15px; line-height: 1.62; max-width: 88%;
+}
+.atanor-demo-text { white-space: pre-wrap; word-break: break-word; }
+.atanor-demo-visual { margin-top: 10px; }
+.atanor-demo-cert { margin-top: 9px; font-size: 11.5px; color: #6b7280; border-top: 1px solid #e6e8ee; padding-top: 7px; }
+.atanor-demo-msg.is-user .atanor-demo-cert { color: #cfe0ff; border-color: rgba(255,255,255,0.2); }
+.atanor-demo-typing { display: inline-flex; gap: 4px; padding: 2px 0; }
+.atanor-demo-typing i { width: 7px; height: 7px; border-radius: 50%; background: #b3bac9; animation: atanor-demo-bounce 1.2s infinite; }
+.atanor-demo-typing i:nth-child(2) { animation-delay: 0.15s; }
+.atanor-demo-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes atanor-demo-bounce { 0%, 60%, 100% { opacity: 0.35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+
+.atanor-demo-composer { max-width: 760px; width: 100%; margin: 0 auto; padding: 8px 24px; display: flex; gap: 8px; }
+.atanor-demo-composer input {
+  flex: 1; min-width: 0; font-size: 15px; padding: 13px 16px; border-radius: 14px; border: 1px solid #d9dce4; background: #fff; color: #1d2330; outline: none;
+}
+.atanor-demo-composer input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+.atanor-demo-composer button {
+  width: 46px; border-radius: 14px; border: 0; background: #2563eb; color: #fff; font-size: 18px; cursor: pointer;
+}
+.atanor-demo-composer button:disabled { background: #c3cbe0; cursor: default; }
+.atanor-demo-foot { text-align: center; font-size: 11px; color: #9aa1b2; padding: 4px 0 12px; }
+
 /* Self-layout dodge: when an answer card would cover the orb, the measured
    overlap slides the orb down by --orb-dodge-y so nothing overlaps. Suppressed in
    transcript-dock mode (the answering rule pins the orb with !important). */
