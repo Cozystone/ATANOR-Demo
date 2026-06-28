@@ -699,15 +699,16 @@ function buildSphericalTopologyGraph(graph: Rag3DGraph, mode: GraphPresentationM
       }
       const cluster = cloudClusters[Math.abs(Math.floor((rank * 5 + index) % cloudClusters.length))];
       const clusterIndex = cloudClusters.indexOf(cluster);
-      const clusterAngle = (clusterIndex / cloudClusters.length) * Math.PI * 2 + 0.38;
-      const clusterRadius = 3.8 + (clusterIndex % 3) * 0.68;
-      const centerX = Math.cos(clusterAngle) * clusterRadius * 1.32;
-      const centerY = Math.sin(clusterAngle) * clusterRadius * 0.72;
-      const centerZ = stableUnit(cluster, 829) * 2.2;
-      const nodeRadius = rank < 36 ? 0.58 : 1.0 + scatter * 0.92;
-      x = centerX + Math.cos(theta) * nodeRadius * 1.18;
-      y = centerY + Math.sin(theta) * nodeRadius;
-      z = centerZ + stableUnit(node.id, 823) * 2.5;
+      // Spherical envelope: latitude by node rank, longitude by golden angle, so
+      // the cloud reads as a round sphere (like the surface graph); the cluster
+      // index adds a gentle longitudinal grouping + slight radial band.
+      const lat = 1 - ((rank + 0.5) / Math.max(1, nodeCount)) * 2;
+      const latRadial = Math.sqrt(Math.max(0.02, 1 - lat * lat));
+      const lon = rank * 2.399963229728653 + clusterIndex * 0.62 + stableUnit(node.id, 811) * 0.22;
+      const sphereRadius = 5.6 + (rank < 36 ? 0 : scatter * 1.05) + (clusterIndex % 3) * 0.34;
+      x = Math.cos(lon) * latRadial * sphereRadius;
+      y = lat * sphereRadius;
+      z = Math.sin(lon) * latRadial * sphereRadius;
       sourceType = rank % 41 === 0 ? "representative_sample_edge_consumer" : rank % 5 === 0 ? "cloud_fragment" : "cloud_brain";
       clusterId = `cloud:${cluster}`;
     } else {
@@ -4726,8 +4727,11 @@ function FullApp() {
     : {};
   const graphHeaderStats = mainSection === "cloud"
     ? [
-      { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount).toLocaleString() },
-      { label: language === "ko" ? "Stored relations" : "Stored relations", value: Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount).toLocaleString() },
+      // Verified projection is fixed (it only grows on promotion); the live
+      // cumulative learning lands in the candidate store. Show verified + live
+      // candidates so the count actually climbs as the brain learns.
+      { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: Number((Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount) || 0) + (Number(cloudCandidateStatus?.candidate_concepts ?? 0) || 0)).toLocaleString() },
+      { label: language === "ko" ? "Stored relations" : "Stored relations", value: Number((Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount) || 0) + (Number(cloudCandidateStatus?.candidate_relations ?? 0) || 0)).toLocaleString() },
       { label: language === "ko" ? "Materialized" : "Materialized", value: Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
       { label: language === "ko" ? "Rendered edges" : "Rendered edges", value: Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
     ]
