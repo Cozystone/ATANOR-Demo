@@ -2073,7 +2073,7 @@ _ATTRIBUTION_RELATIONS: tuple[tuple[str, tuple[str, ...], tuple[str, ...], str],
     ("invented", ("발명",), ("invent",), "invented"),
     ("discovered", ("발견",), ("discover",), "discovered"),
     ("wrote", ("쓴", "저자", "지은"), ("wrote", "author of", "who wrote"), "written"),
-    ("founded", ("설립", "세운"), ("found", "establish"), "founded"),
+    ("founded", ("설립", "세운", "창립", "창업", "설립자", "창립자", "창업자", "공동창업"), ("found", "establish", "co-found"), "founded"),
     ("painted", ("그린",), ("paint",), "painted"),
     ("composed", ("작곡",), ("compose",), "composed"),
     ("directed", ("감독",), ("direct",), "directed"),
@@ -2108,19 +2108,57 @@ def _extract_attribution(question: str, snippets: list[str]) -> str | None:
         re.compile(rf"\b(?:credited to|attributed to|invention of [^.]*?by)\s+{_PERSON_RE}", re.IGNORECASE),
         re.compile(rf"{_PERSON_RE}\s+(?:{verb}|is credited with|is the inventor)"),
     ]
-    ko_person = r"([가-힣]{2,6}(?:\s[가-힣]{2,6}){0,3})"
-    ko_patterns = [re.compile(rf"{ko_person}\s*(?:에\s*의해|이|가|은|는)?\s*(?:{m})") for m in ko_markers] + \
-                  [re.compile(rf"(?:{m})한?\s*(?:사람은|이는)?\s*{ko_person}") for m in ko_markers]
+    # Korean is SOV ("벨이 전화기를 발명했다"): the subject (name) and the verb are
+    # separated by the object, so we capture a NON-GREEDY name run, keep the
+    # subject particle OUTSIDE the capture, and allow one object phrase before the
+    # verb. A comma/middot list captures co-founders ("젠슨 황, 크리스 …, 커티스 …").
+    # A single name is ≤3 space-separated Hangul tokens ("레오나르도 다 빈치"); bounding
+    # it stops the non-greedy capture from swallowing preceding descriptors
+    # ("16세기 르네상스 시대에 …"). A comma list captures co-founders.
+    NAME_SINGLE = r"[가-힣]{2,8}(?:\s[가-힣]{1,8}){0,2}"
+    NAME_LIST = rf"({NAME_SINGLE}(?:\s*[,·]\s*{NAME_SINGLE}){{0,4}})"
+    NAME = rf"({NAME_SINGLE})"
+    ko_patterns = []
+    for m in ko_markers:
+        # year-anchored founders (list-aware): "1993년 4월 5일 NAME, NAME, NAME이 설립"
+        ko_patterns.append(re.compile(rf"\d{{4}}년[\s\d월일.~-]*{NAME_LIST}(?:이|가|은|는|등이|등은)\s*(?:[가-힣]+(?:을|를)\s+)?(?:{m})"))
+        # "NAME, NAME가 설립/창립한" — list-aware, no year
+        ko_patterns.append(re.compile(rf"{NAME_LIST}(?:이|가|은|는|등이|등은)\s*(?:{m})하"))
+        # "NAME가 (OBJECT를) VERB" — single person, SOV (covers 발명/그린/만든)
+        ko_patterns.append(re.compile(rf"{NAME}(?:이|가|은|는)\s+(?:[가-힣]+(?:을|를|에)\s+)?(?:{m})"))
+        # "VERB한 사람은 NAME" — require an explicit head noun so "그린 초상화" is not a name
+        ko_patterns.append(re.compile(rf"(?:{m})한?\s*(?:사람은|사람이|이는|장본인은)\s*{NAME}(?:이|가|은|는|\.|,)"))
+    # Definitional fragments that must never be returned as a "name".
+    _bad_name_bits = (
+        "초상화", "그림", "작품", "회사", "기업", "본사", "현재", "당시", "미국", "한국", "프랑스",
+        "파리", "영어", "데이터", "기술", "컴퓨", "박물관", "대학", "정부", "도시", "지역", "세계",
+        "사람", "이름", "누구", "수도", "영화", "소설", "전화", "신호", "음성", "이론", "세기", "시대", "르네상스",
+    )
+
+    def _clean_ko_name(raw: str) -> str:
+        n = raw.strip(" .,·")
+        n = re.sub(r"^(?:일|월|은|는|이|가|을|를|도|와|과|의)\s+", "", n)  # stray leading particle/date
+        n = re.sub(r"\s*(?:에\s*의해|에게|께서|이|가|은|는|을|를|등)$", "", n)
+        return n.strip(" .,·")
+
+    def _valid_ko_name(n: str) -> bool:
+        return bool(n) and not any(b in n for b in _bad_name_bits) and not re.search(r"[0-9]", n) and 2 <= len(n) <= 50
+
     for snippet in snippets:
         text = re.sub(r"\s+", " ", str(snippet or ""))
-        patterns = ko_patterns if re.search(r"[가-힣]", text) else en_patterns
+        is_ko_text = bool(re.search(r"[가-힣]", text))
+        patterns = ko_patterns if is_ko_text else en_patterns
         for pattern in patterns:
             match = pattern.search(text)
-            if match:
+            if not match:
+                continue
+            if is_ko_text:
+                name = _clean_ko_name(match.group(1))
+                if _valid_ko_name(name):
+                    return name
+            else:
                 name = match.group(1).strip(" .,")
-                # drop a trailing Korean postposition the greedy capture swallowed
-                name = re.sub(r"\s*(에\s*의해|에게|께서|에|이|가|은|는|을|를)$", "", name).strip()
-                if 2 <= len(name) <= 60 and name.split()[0] not in {"The", "A", "An", "It", "This", "He", "She", "그", "이", "그것"}:
+                if name.split()[0] not in {"The", "A", "An", "It", "This", "He", "She"} and 2 <= len(name) <= 60:
                     return name
     return None
 
@@ -2283,6 +2321,30 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     # definition — extracted deterministically from the retrieved snippets.
     all_snippets = [str(r.get("snippet") or "") for r in rows]
     person = _extract_attribution(question, all_snippets)
+    # The intro extract often omits the founder/inventor (it's deeper in the
+    # article). If this is an attribution question and the short snippets didn't
+    # yield a person, fetch the full article text once and scan that.
+    _rel_now = _detect_attribution_relation(question)
+    if not person and _rel_now and "wikipedia.org" in str(url):
+        host = "ko.wikipedia.org" if "ko.wikipedia.org" in str(url) else "en.wikipedia.org"
+        # Use the CANONICAL page title from the URL path ("엔비디아"), not the search
+        # display title ("엔비디아 코퍼레이션") which may not resolve in the API.
+        from urllib.parse import unquote
+
+        page_title = unquote(str(url).split("/wiki/")[-1].split("?")[0]).replace("_", " ") or title
+        try:
+            from app.services.web_search import _wikipedia_extract_for_page, wikipedia_infobox_people
+
+            # 1) deeper prose (inventors/authors often appear below the intro)
+            if "ko.wikipedia.org" in str(url):
+                full_extract = _wikipedia_extract_for_page(page_title)
+                if full_extract:
+                    person = _extract_attribution(question, [full_extract])
+            # 2) the infobox (founders/inventors that live only in the 설립자 field)
+            if not person:
+                person = wikipedia_infobox_people(page_title, host=host, relation_key=_rel_now[0])
+        except Exception:  # pragma: no cover - network/optional
+            person = person
     if person:
         rel = _detect_attribution_relation(question)
         rel_key = rel[0] if rel else "created"
@@ -2292,8 +2354,13 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
             "invented": "발명한", "discovered": "발견한", "wrote": "쓴", "founded": "설립한",
             "painted": "그린", "composed": "작곡한", "directed": "감독한", "built": "지은", "created": "만든",
         }.get(rel_key, "만든")
+        # Pick the correct object particle (을/를) by whether the topic ends in a
+        # consonant (받침), so it reads "엔비디아를" not "엔비디아을(를)".
+        _last = topic[-1] if topic else ""
+        _has_batchim = bool(_last) and "가" <= _last <= "힣" and (ord(_last) - 0xAC00) % 28 != 0
+        _obj_josa = "을" if _has_batchim else "를"
         attribution = (
-            f"{topic}을(를) {verb_ko} 사람은 {person}입니다."
+            f"{topic}{_obj_josa} {verb_ko} 사람은 {person}입니다."
             if is_ko
             else f"{title or topic} was {rel_phrase} {person}."
         )
@@ -3146,6 +3213,20 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             except Exception:  # pragma: no cover - reasoner must never break chat
                 chained = None
 
+    # Attribution intercept: "누가 X를 발명/창립했어?" must answer with the PERSON, not
+    # a definition. The grounded-conversation path can't do this, so route confirmed
+    # attribution questions through the rescue's deterministic person extraction
+    # (prose + infobox). Only overrides when a real name is found; else the normal
+    # answer (definition) stands.
+    attribution_answer = None
+    if request.web_search and not (self_state or self_knowledge or recall or reasoning_vm) and _detect_attribution_relation(question):
+        try:
+            _attrib = await _web_grounded_rescue(web_query, language)
+            if _attrib and _attrib.get("reasoning_certificate", {}).get("derivation_kind") == "web_attribution_extraction":
+                attribution_answer = _attrib
+        except Exception:  # pragma: no cover - network/optional
+            attribution_answer = None
+
     response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
     response = _attach_holographic_fold_trace(response, request)
 
@@ -3179,6 +3260,19 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         # Experimental answer-interface surface (formula / GeoGebra-like figure).
         if reasoning_vm.get("answer_visual"):
             result["answer_visual"] = reasoning_vm["answer_visual"]
+
+    # Attribution answer (who founded/invented/painted X) — authoritative over a
+    # definition for a "who" question.
+    if attribution_answer and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = attribution_answer["answer"]
+        result["reasoning_certificate"] = attribution_answer["reasoning_certificate"]
+        result["confidence"] = attribution_answer["confidence"]
+        result["answer_kind"] = "web_attribution"
+        result["can_speak"] = True
+        if attribution_answer.get("source_url"):
+            result["source_url"] = attribution_answer["source_url"]
+            result["source_title"] = attribution_answer.get("source_title")
 
     # Multi-hop comparison answer — authoritative over the single-fact engine.
     if comparison and isinstance(response.get("result"), dict):

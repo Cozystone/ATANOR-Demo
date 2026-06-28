@@ -199,6 +199,21 @@ def _normalize_lookup_query(query: str) -> str:
         " ",
         cleaned,
     )
+    # Strip attribution nouns so an attribution question ("엔비디아 창립자가 누구야")
+    # searches the ENTITY ("엔비디아"), landing on the main article — not a tangential
+    # page like "엔비디아 GTC" that merely shares the term.
+    cleaned = re.sub(
+        r"(창립자|설립자|창업자|공동\s*창업자|발명자|발견자|저자|작곡가|작가|감독|창시자|설계자|개발자)\s*(은|는|이|가|를|을)?",
+        " ",
+        cleaned,
+    )
+    # attribution verbs + the generic head noun ("그린 사람", "설립한 사람", "이름")
+    cleaned = re.sub(
+        r"(그린|세운|설립한|창립한|창업한|작곡한|감독한|건설한|개발한|창시한|설계한)\b",
+        " ",
+        cleaned,
+    )
+    cleaned = re.sub(r"\s(사람|인물|이름)\b", " ", cleaned)
     cleaned = re.sub(
         r"(그건|그게|그거|그것|이건|이게|이거|이것|왜\s*그런가요|왜\s*그래|왜|이유|원리|어떻게|how|why)",
         " ",
@@ -286,6 +301,42 @@ def _wikipedia_extract_for_page(title: str) -> str:
         if extract:
             return extract
     return ""
+
+
+_INFOBOX_FIELDS = {
+    "founded": ("설립자", "창립자", "창업자", "공동 창립자", "공동창립자", "founder", "founders", "founded by"),
+    "invented": ("발명자", "발명가", "inventor", "inventors"),
+    "directed": ("감독", "director"),
+    "composed": ("작곡", "작곡가", "composer"),
+}
+
+
+def wikipedia_infobox_people(title: str, *, host: str, relation_key: str) -> str | None:
+    """Read the named people from an article's infobox (e.g. a company's 설립자
+    field) via the parse API. The extracts API strips infoboxes, so founders that
+    live only in the infobox are invisible to prose scraping — this recovers them.
+    Returns a comma-joined name string, or None. Deterministic, no LLM."""
+    fields = _INFOBOX_FIELDS.get(relation_key)
+    if not fields:
+        return None
+    api = f"https://{host}/w/api.php?action=parse&format=json&prop=wikitext&redirects=1&page={quote(title, safe='')}"
+    body = _wiki_get_json(api)
+    parse = (body or {}).get("parse", {}) or {}
+    wikitext = parse.get("wikitext", {})
+    wt = wikitext.get("*", "") if isinstance(wikitext, dict) else str(wikitext or "")
+    if not wt:
+        return None
+    for field in fields:
+        m = re.search(rf"\|\s*{re.escape(field)}\s*=\s*(.+)", wt)
+        if not m:
+            continue
+        value = m.group(1)
+        # Prefer [[wikilink]] display names; reject ref/citation noise.
+        names = [n.split("|")[0].strip() for n in re.findall(r"\[\[([^\]]+)\]\]", value)]
+        names = [n for n in names if n and "=" not in n and "{" not in n and 2 <= len(n) <= 24 and not re.search(r"\d", n)]
+        if names:
+            return ", ".join(dict.fromkeys(names[:5]))  # de-dup, cap at 5
+    return None
 
 
 def _wikipedia_visual_event_results(base_results: list[dict[str, Any]], *, limit: int = 2) -> list[dict[str, Any]]:
