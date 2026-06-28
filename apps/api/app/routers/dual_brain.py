@@ -2362,7 +2362,7 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         attribution = (
             f"{topic}{_obj_josa} {verb_ko} 사람은 {person}입니다."
             if is_ko
-            else f"{title or topic} was {rel_phrase} {person}."
+            else f"{title or topic} was {rel_phrase} by {person}."
         )
         cert = {
             "derivation_kind": "web_attribution_extraction",

@@ -77,7 +77,7 @@ _TOPIC_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (r"철학|원칙|믿는|가치|philosophy|principle", ("philosophy", "nature")),
     (
-        r"넌?\s*뭐|너는\s*뭐|뭐하는|무엇|정체|what\s+are\s+you|who\s+are\s+you|introduce\s+yourself|자기소개|소개해",
+        r"넌?\s*뭐|너는\s*뭐|뭐하는|무엇|정체|누구|누군|whoare|what\s+are\s+you|who\s+are\s+you|introduce\s+yourself|자기소개|소개해",
         ("name", "nature", "philosophy"),
     ),
     (r"클라우드\s*브레인|cloud\s*brain", ("cloud_brain",)),
@@ -87,7 +87,11 @@ _TOPIC_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 _SELF_REFERENCE_RE = re.compile(
-    r"(너|넌|네|너의|니|니가|네가|당신|당신의|atanor|아타노르)\b|^(이름|뭐|뭐야|뭐하|정체|자기소개|소개)",
+    # Korean pronoun + an optional attached particle, so "너는/너를/너의" match (a bare
+    # "너\b" fails because Hangul + 는 has no word boundary between them).
+    r"(?:너|넌|네|니|당신|atanor|아타노르)(?:의|는|은|이|가|를|을|야|니|랑|와|과|도|만|에게|에)?\b"
+    r"|\byou\b|\byour\b|yourself"
+    r"|^(?:이름|뭐|뭐야|뭐하|정체|자기소개|소개)",
     re.IGNORECASE,
 )
 
