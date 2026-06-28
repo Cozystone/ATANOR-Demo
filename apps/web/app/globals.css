@@ -4521,14 +4521,15 @@ p {
   /* Centered column (max-width) rather than full-bleed white: the dark mat now
      frames it on BOTH sides as well as top/bottom, so the white takes up a
      smaller, more balanced share of the dashboard. */
+  /* Match the Local/Cloud Brain tab framing: same left/right/bottom insets as the
+     graph card+rail content rectangle, full content width (no narrow centering). */
   top: 22px;
-  bottom: 22px;
-  left: calc(clamp(196px, 12.2vw, 226px) + 18px);
-  right: 18px;
+  bottom: 30px;
+  left: calc(clamp(196px, 12.2vw, 226px) + 30px);
+  right: 30px;
   width: auto;
-  max-width: 1240px;
-  margin-left: auto;
-  margin-right: auto;
+  max-width: none;
+  margin: 0;
   display: flex;
   flex-direction: column;
   background: #f7f8fb; /* off-white, gentler than pure #fff */
