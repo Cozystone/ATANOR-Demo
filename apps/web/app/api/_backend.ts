@@ -23,13 +23,22 @@ export function backendBaseCandidates() {
 export async function proxyJson(path: string, init?: RequestInit) {
   const bases = backendBaseCandidates();
 
+  // Fail fast per-candidate: a backend whose port is open but unresponsive (e.g.
+  // wedged mid hot-reload) would otherwise hang the request forever and never let
+  // us fail over to a healthy companion or the static fallback. Abort after a
+  // short budget so the next candidate / fallback is reached promptly.
+  const PER_TRY_MS = Number(process.env.ATANOR_PROXY_TIMEOUT_MS ?? 3500);
+
   let lastError: unknown = null;
   for (const baseUrl of bases) {
     if (!baseUrl) continue;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PER_TRY_MS);
     try {
       const response = await fetch(`${baseUrl}${path}`, {
         ...init,
         cache: "no-store",
+        signal: ctrl.signal,
       });
       if (response.status === 404 || response.status === 405) {
         continue;
@@ -40,6 +49,8 @@ export async function proxyJson(path: string, init?: RequestInit) {
       };
     } catch (error) {
       lastError = error;
+    } finally {
+      clearTimeout(timer);
     }
   }
   if (lastError) {

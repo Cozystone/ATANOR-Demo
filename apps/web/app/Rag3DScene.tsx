@@ -1335,8 +1335,9 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       const freeze = THREE.MathUtils.clamp((arrivalAge - NEW_NODE_GLOW_SECONDS) / NEW_NODE_FREEZE_SECONDS, 0, 1);
       // Stay vivid orange: only fade toward the base edge near the very end, and
       // keep a low base-edge mix so the colour reads saturated, not washed.
-      const lit = THREE.MathUtils.lerp(2.0 + freshGlow * 1.3, 1.0, freeze);
-      tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze * 0.7).multiplyScalar(lit);
+      // Deepened: brighter peak + slower wash so the active tendril reads dense.
+      const lit = THREE.MathUtils.lerp(2.7 + freshGlow * 1.7, 1.0, freeze);
+      tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze * 0.5).multiplyScalar(lit);
     } else {
       const base = edge.active || weight >= 0.82
         ? nearActiveEdgeColor
@@ -1347,11 +1348,11 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       if (weight > 0.62) {
         tempColor.lerp(strongEdgeColor, THREE.MathUtils.clamp((weight - 0.62) * 0.48, 0, 0.28));
       }
-      tempColor.lerp(neonOrangeColor, Math.max(signal, freshGlow * 0.9));
+      tempColor.lerp(neonOrangeColor, Math.min(1, Math.max(signal, freshGlow * 0.9) * 1.25));
       const edgeDepthCue = THREE.MathUtils.clamp(0.5 + ((sz + tz) * 0.5) / Math.max(10, state.camera.position.z * 0.28), 0.2, 1);
       tempColor.multiplyScalar(0.58 + edgeDepthCue * 0.46);
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.08);
-      if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 1.8);
+      if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 2.3);
     }
     // Sky-blue activation gradient: bright at each end by that node's activation,
     // dimmer at the midpoint — so the line glows toward the nodes (synapse look).
@@ -1363,9 +1364,9 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       if (si !== undefined) sa = act[si];
       if (ti !== undefined) ta = act[ti];
     }
-    const K = 2.6; // vivid sky-blue
+    const K = 3.6; // deep, saturated sky-blue when active
     const baseR = tempColor.r, baseG = tempColor.g, baseB = tempColor.b;
-    const midAct = (sa + ta) * 0.5 * 0.3; // middle markedly dimmer
+    const midAct = (sa + ta) * 0.5 * 0.42; // fuller middle, still U-shaped
     const ca = state.edgeColorArray!;
     // A (near source node)
     ca[vertexIndex] = baseR + skyBlueColor.r * sa * K;

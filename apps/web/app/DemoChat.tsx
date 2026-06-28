@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import AnswerExperimentSurface, { AnswerVisual } from "./AnswerExperimentSurface";
+import PluginKitPanel from "./PluginKitPanel";
 
 /**
  * Demo chat surface — a GPT/Gemini-style thread that REPLACES the central orb in
@@ -65,6 +66,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
   const [busy, setBusy] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentId, setCurrentId] = useState<string>(() => `s-${Date.now()}`);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -209,6 +211,14 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
           )}
         </div>
         <form className="atanor-demochat-composer" onSubmit={send}>
+          <button
+            type="button"
+            className="atanor-demochat-plugins"
+            onClick={() => setPluginsOpen(true)}
+            aria-label={ko ? "플러그인 키트 열기" : "Open Plugin Kit"}
+            title={ko ? "플러그인 키트 — 문장수집·권한" : "Plugin Kit"}
+            style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 17, padding: "0 6px", color: "#6b7280" }}
+          >🧩</button>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -217,6 +227,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
           />
           <button type="submit" disabled={busy || !input.trim()} aria-label="send">{busy ? "…" : "↑"}</button>
         </form>
+        <PluginKitPanel open={pluginsOpen} onClose={() => setPluginsOpen(false)} language={language} />
         <div className="atanor-demochat-foot">{ko ? "로컬 엔진 · 외부 LLM 없음 · 출처를 갖춘 답변, 불확실하면 보류" : "Local engine · no external LLM · grounded, abstains when unsure"}</div>
       </div>
     </section>
