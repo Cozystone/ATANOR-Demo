@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
-import DemoApp from "./DemoApp";
+import DemoChat from "./DemoChat";
 import { isDemo } from "./lib/profile";
 import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
 import SeismographChart from "./SeismographChart";
@@ -1544,9 +1544,10 @@ function makeMemoryEdges(graph: AnyRecord | null, nodes: MemoryNode[]): MemoryEd
 }
 
 export default function Page() {
-  // Demo profile = the lean GPT-style white chat (DemoApp). Full = New ATANOR
-  // (orb / particles / 3D), shipped once New ATANOR is complete.
-  return isDemo ? <DemoApp /> : <FullApp />;
+  // Demo and full share the SAME ATANOR frame (sidebar / branding / panels). The
+  // demo only swaps the central home: a GPT-style chat instead of the orb. New
+  // ATANOR (orb / 3D) ships when complete.
+  return <FullApp />;
 }
 
 function FullApp() {
@@ -1644,6 +1645,14 @@ function FullApp() {
   const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
   const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
   const [language, setLanguage] = useState<Language>("en");
+  // Demo home (GPT-style chat in place of the orb) = build profile OR ?profile=demo
+  // for local preview without a second dev server.
+  const [demoView, setDemoView] = useState<boolean>(isDemo);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("profile");
+    if (p === "demo") setDemoView(true);
+    else if (p === "full") setDemoView(false);
+  }, []);
   const [mainSection, setMainSection] = useState<MainSectionId>("home");
   const [labSurfaceVisible, setLabSurfaceVisible] = useState(false);
   const [contributionEnabled, setContributionEnabled] = useState(() => readBrowserStorage("atanor.contribution.enabled") === "true");
@@ -5282,8 +5291,14 @@ function FullApp() {
           </p>
         ) : null}
 
-        {mainSection === "home" ? <OvernightBriefing language={language} /> : null}
-        {mainSection === "home" ? <AtanorUserStatusCard language={language} onMessageSubmit={handleHologramMessage} /> : null}
+        {mainSection === "home" && !demoView ? <OvernightBriefing language={language} /> : null}
+        {mainSection === "home" ? (
+          demoView ? (
+            <DemoChat language={language} />
+          ) : (
+            <AtanorUserStatusCard language={language} onMessageSubmit={handleHologramMessage} />
+          )
+        ) : null}
 
         {mainSection === "atlas" ? (
           <section className="atanor-atlas-grid">
