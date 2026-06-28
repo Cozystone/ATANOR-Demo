@@ -61,6 +61,14 @@ docker run --rm -v atanor-data:/app/data -v "$PWD":/in alpine \
 docker compose -f deploy/docker-compose.yml restart atanor-cloud
 ```
 
+## Validated
+The minimal dependency set was verified in a **clean virtualenv** (only
+`requirements-cloud.txt`, `HOMAGE_DISABLE_BGE_M3=1`): `app.main` imports cleanly
+and the server answers `/api/cloud-brain/learning/continuous/metrics`,
+`/surface-graph/graph`, and `/candidate/status` — so the Docker image builds and
+serves without torch / sentence_transformers. (Full `docker build` still depends
+on your Docker daemon being up.)
+
 ## Notes
 - Only **public** (Wikipedia-derived) knowledge lives in the cloud brain — no
   private/local data is sent here, by design.
