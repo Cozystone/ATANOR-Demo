@@ -31,6 +31,7 @@ function certSummary(cert: unknown): string | null {
     web_no_relevant_source: "관련 근거 없음 → 정직하게 보류",
     web_unreachable: "웹 확인 불가 → 보류",
     atanor_self_knowledge: "자기 모델 (큐레이션)",
+    atanor_self_model_realized: "자기 모델 · 표면 실현 (질문에 맞춰 구성)",
   };
   return map[kind] || (kind ? kind.replace(/_/g, " ") : null);
 }
