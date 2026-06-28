@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
+import DemoApp from "./DemoApp";
 import { isDemo } from "./lib/profile";
 import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
 import SeismographChart from "./SeismographChart";
@@ -1543,9 +1544,9 @@ function makeMemoryEdges(graph: AnyRecord | null, nodes: MemoryNode[]): MemoryEd
 }
 
 export default function Page() {
-  // Demo and full share the SAME orb UI (the demo keeps our identity); the demo
-  // profile only differs by the "DEMO" badge and a light dashboard theme.
-  return <FullApp />;
+  // Demo profile = the lean GPT-style white chat (DemoApp). Full = New ATANOR
+  // (orb / particles / 3D), shipped once New ATANOR is complete.
+  return isDemo ? <DemoApp /> : <FullApp />;
 }
 
 function FullApp() {
@@ -1643,14 +1644,6 @@ function FullApp() {
   const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
   const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
   const [language, setLanguage] = useState<Language>("en");
-  // Demo view = the build profile, OR ?profile=demo for local preview without a
-  // second dev server (Next 16 locks one dev server per project dir).
-  const [demoView, setDemoView] = useState<boolean>(isDemo);
-  useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("profile");
-    if (p === "demo") setDemoView(true);
-    else if (p === "full") setDemoView(false);
-  }, []);
   const [mainSection, setMainSection] = useState<MainSectionId>("home");
   const [labSurfaceVisible, setLabSurfaceVisible] = useState(false);
   const [contributionEnabled, setContributionEnabled] = useState(() => readBrowserStorage("atanor.contribution.enabled") === "true");
@@ -5172,7 +5165,7 @@ function FullApp() {
   }, [graphHubCatalog, graphHubCategoryFilter, graphHubSearch]);
 
   return (
-    <main className="atanor-user-shell" data-language={language} data-section={mainSection} data-demo={demoView ? "true" : "false"} data-answering={mainSection === "home" && transcriptOpen}>
+    <main className="atanor-user-shell" data-language={language} data-section={mainSection} data-answering={mainSection === "home" && transcriptOpen}>
       <aside className="atanor-user-sidebar">
         <div className="atanor-user-brand">
           <img
@@ -5182,7 +5175,7 @@ function FullApp() {
               event.currentTarget.style.display = "none";
             }}
           />
-          <span data-demo-badge={demoView ? "true" : "false"}>{demoView ? "DEMO" : "0.1.2"}</span>
+          <span>0.1.2</span>
         </div>
         <nav className="atanor-user-nav" aria-label="ATANOR sections">
           {visibleMainNav.map((item) => {

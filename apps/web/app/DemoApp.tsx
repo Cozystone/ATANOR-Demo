@@ -182,7 +182,7 @@ export default function DemoApp() {
                       <div className="atanor-demo-text">{m.text}</div>
                       {m.visual ? (
                         <div className="atanor-demo-visual">
-                          <AnswerExperimentSurface visual={m.visual} />
+                          <AnswerExperimentSurface visual={m.visual} theme="light" />
                         </div>
                       ) : null}
                       {m.cert ? <div className="atanor-demo-cert">🔒 {m.cert}</div> : null}

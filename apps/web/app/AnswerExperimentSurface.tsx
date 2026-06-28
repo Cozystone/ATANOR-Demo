@@ -27,17 +27,23 @@ export type AnswerVisual = {
   points?: [number, number][];
 };
 
-const ACCENT = "#7db4ff";
-const INK = "#dbe6ff";
-const DIM = "#8aa0c8";
-const FILL = "rgba(125, 180, 255, 0.12)";
+export type SurfaceTheme = "dark" | "light";
+
+type Palette = { accent: string; ink: string; dim: string; fill: string; grid: string };
+
+function palette(theme: SurfaceTheme): Palette {
+  return theme === "light"
+    ? { accent: "#2563eb", ink: "#1d2330", dim: "#6b7280", fill: "rgba(37, 99, 235, 0.08)", grid: "rgba(37, 99, 235, 0.12)" }
+    : { accent: "#7db4ff", ink: "#dbe6ff", dim: "#8aa0c8", fill: "rgba(125, 180, 255, 0.12)", grid: "rgba(125, 180, 255, 0.14)" };
+}
 
 function fmt(n: number | undefined): string {
   if (n === undefined || Number.isNaN(n)) return "";
   return Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n)) : String(Math.round(n * 100) / 100);
 }
 
-function GeometryFigure({ v }: { v: AnswerVisual }) {
+function GeometryFigure({ v, pal }: { v: AnswerVisual; pal: Palette }) {
+  const { accent: ACCENT, ink: INK, dim: DIM, fill: FILL } = pal;
   const p = v.params ?? {};
   const W = 260;
   const H = 180;
@@ -97,7 +103,8 @@ function GeometryFigure({ v }: { v: AnswerVisual }) {
   );
 }
 
-function FunctionPlot({ v }: { v: AnswerVisual }) {
+function FunctionPlot({ v, pal }: { v: AnswerVisual; pal: Palette }) {
+  const { accent: ACCENT, dim: DIM, grid: GRID } = pal;
   const pts = v.points ?? [];
   const W = 300;
   const H = 200;
@@ -117,12 +124,12 @@ function FunctionPlot({ v }: { v: AnswerVisual }) {
   const y0 = ymin <= 0 && ymax >= 0 ? sy(0) : null; // x-axis if 0 in range
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: 320, display: "block", margin: "0 auto" }}>
-      <rect x={pad} y={pad} width={W - 2 * pad} height={H - 2 * pad} fill="none" stroke="rgba(125,180,255,0.14)" />
+      <rect x={pad} y={pad} width={W - 2 * pad} height={H - 2 * pad} fill="none" stroke={GRID} />
       {[0.25, 0.5, 0.75].map((t) => (
-        <line key={`gx${t}`} x1={pad + t * (W - 2 * pad)} y1={pad} x2={pad + t * (W - 2 * pad)} y2={H - pad} stroke="rgba(125,180,255,0.07)" />
+        <line key={`gx${t}`} x1={pad + t * (W - 2 * pad)} y1={pad} x2={pad + t * (W - 2 * pad)} y2={H - pad} stroke={GRID} opacity={0.5} />
       ))}
       {[0.25, 0.5, 0.75].map((t) => (
-        <line key={`gy${t}`} x1={pad} y1={pad + t * (H - 2 * pad)} x2={W - pad} y2={pad + t * (H - 2 * pad)} stroke="rgba(125,180,255,0.07)" />
+        <line key={`gy${t}`} x1={pad} y1={pad + t * (H - 2 * pad)} x2={W - pad} y2={pad + t * (H - 2 * pad)} stroke={GRID} opacity={0.5} />
       ))}
       {y0 !== null ? <line x1={pad} y1={y0} x2={W - pad} y2={y0} stroke={DIM} strokeWidth={1} /> : null}
       {x0 !== null ? <line x1={x0} y1={pad} x2={x0} y2={H - pad} stroke={DIM} strokeWidth={1} /> : null}
@@ -133,19 +140,20 @@ function FunctionPlot({ v }: { v: AnswerVisual }) {
   );
 }
 
-export default function AnswerExperimentSurface({ visual }: { visual: AnswerVisual }) {
+export default function AnswerExperimentSurface({ visual, theme = "dark" }: { visual: AnswerVisual; theme?: SurfaceTheme }) {
   const isGeo = visual.kind === "geometry_figure";
   const isPlot = visual.kind === "function_plot";
   const fallbackTitle = isGeo ? "도형" : isPlot ? "함수 그래프" : "수식";
+  const pal = palette(theme);
   return (
-    <div className="atanor-answer-experiment" data-kind={visual.kind}>
+    <div className="atanor-answer-experiment" data-kind={visual.kind} data-theme={theme}>
       <div className="atanor-answer-experiment-head">
         <span className="atanor-answer-experiment-dot" />
         <span>{visual.title || fallbackTitle}</span>
         {visual.registry_hint ? <code className="atanor-answer-experiment-hint">{visual.registry_hint}</code> : null}
       </div>
-      {isGeo ? <GeometryFigure v={visual} /> : null}
-      {isPlot ? <FunctionPlot v={visual} /> : null}
+      {isGeo ? <GeometryFigure v={visual} pal={pal} /> : null}
+      {isPlot ? <FunctionPlot v={visual} pal={pal} /> : null}
       {visual.formula ? <div className="atanor-answer-experiment-formula">{visual.formula}</div> : null}
     </div>
   );
