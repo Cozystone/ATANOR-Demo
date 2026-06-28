@@ -146,7 +146,7 @@ type SceneState = {
   synapsePosArray: Float32Array | null;
   synapseColorArray: Float32Array | null;
   synapseCapacity: number;
-  synapseItems: { a: number; b: number; born: number }[];
+  synapseItems: { nodes: number[]; born: number }[];
   synapseSpawnAccum: number;
   synapsesPerSecond: number;
   renderer: THREE.WebGLRenderer;
@@ -1473,48 +1473,80 @@ function ensureSynapseBuffers(state: SceneState, segmentCount: number) {
   }
 }
 
-// "Synapse firing": each second the engine activates random node pairs across the
-// whole sphere; we draw those activations as short-lived sky-blue lines that flash
-// and fade — the graph looks alive and continuously cross-linking.
+// Build a short signal PATH: start at a random node, then hop to the nearest of a
+// small random candidate set each step, so the path snakes coherently through the
+// graph (like a signal travelling a route) rather than one straight chord.
+function buildSynapsePath(np: Float32Array, nodeCount: number, hops: number): number[] {
+  const path: number[] = [(Math.random() * nodeCount) | 0];
+  for (let h = 0; h < hops; h += 1) {
+    const cur = path[path.length - 1];
+    const cx = np[cur * 3], cy = np[cur * 3 + 1], cz = np[cur * 3 + 2];
+    let best = -1;
+    let bestD = Infinity;
+    for (let s = 0; s < 12; s += 1) {
+      const cand = (Math.random() * nodeCount) | 0;
+      if (path.includes(cand)) continue;
+      const dx = np[cand * 3] - cx, dy = np[cand * 3 + 1] - cy, dz = np[cand * 3 + 2] - cz;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < bestD) { bestD = d; best = cand; }
+    }
+    if (best < 0) break;
+    path.push(best);
+  }
+  return path;
+}
+
+// "Synapse firing": the engine activates routes across the sphere — drawn as
+// short-lived sky-blue PATHS (a signal travelling node→node→node) that flash and
+// fade, so it reads like a brain firing along connected pathways.
 function updateSynapses(state: SceneState, elapsed: number, dt: number) {
   const nodeCount = state.nodePositionById.size > 0 ? state.graphNodes.length : 0;
   state.synapseItems = state.synapseItems.filter((s) => elapsed - s.born < SYNAPSE_LIFE_SECONDS);
   const rate = state.synapsesPerSecond;
-  if (rate > 0 && nodeCount > 2 && state.nodePositionArray) {
-    state.synapseSpawnAccum += rate * Math.min(0.1, dt);
+  if (rate > 0 && nodeCount > 4 && state.nodePositionArray) {
+    // Each spawned "synapse" is a multi-hop path, so divide the pair-rate down.
+    state.synapseSpawnAccum += rate * 0.42 * Math.min(0.1, dt);
     let toSpawn = Math.floor(state.synapseSpawnAccum);
     state.synapseSpawnAccum -= toSpawn;
     toSpawn = Math.min(toSpawn, SYNAPSE_MAX - state.synapseItems.length);
     for (let i = 0; i < toSpawn; i += 1) {
-      const a = (Math.random() * nodeCount) | 0;
-      let b = (Math.random() * nodeCount) | 0;
-      if (b === a) b = (b + 1) % nodeCount;
-      state.synapseItems.push({ a, b, born: elapsed });
+      const hops = 3 + ((Math.random() * 4) | 0); // 3..6 hops => 4..7 nodes
+      state.synapseItems.push({ nodes: buildSynapsePath(state.nodePositionArray, nodeCount, hops), born: elapsed });
     }
   }
   const items = state.synapseItems;
-  ensureSynapseBuffers(state, items.length);
+  let totalSegments = 0;
+  for (let i = 0; i < items.length; i += 1) totalSegments += Math.max(0, items[i].nodes.length - 1);
+  ensureSynapseBuffers(state, totalSegments);
   if (!state.synapseLines || !state.synapsePosArray || !state.synapseColorArray || !state.nodePositionArray || !state.synapseGeometry) return;
   const pos = state.synapsePosArray;
   const col = state.synapseColorArray;
   const np = state.nodePositionArray;
+  let seg = 0;
   for (let i = 0; i < items.length; i += 1) {
     const s = items[i];
-    const v = i * 6;
-    const ai = s.a * 3;
-    const bi = s.b * 3;
-    pos[v] = np[ai]; pos[v + 1] = np[ai + 1]; pos[v + 2] = np[ai + 2];
-    pos[v + 3] = np[bi]; pos[v + 4] = np[bi + 1]; pos[v + 5] = np[bi + 2];
     const t = THREE.MathUtils.clamp((elapsed - s.born) / SYNAPSE_LIFE_SECONDS, 0, 1);
-    const flash = Math.sin(t * Math.PI); // 0 -> 1 -> 0
-    const bright = flash * 1.05; // softer sky-blue
-    const r = skyBlueColor.r * bright;
-    const g = skyBlueColor.g * bright;
-    const bch = skyBlueColor.b * bright;
-    col[v] = r; col[v + 1] = g; col[v + 2] = bch;
-    col[v + 3] = r; col[v + 4] = g; col[v + 5] = bch;
+    const envelope = Math.sin(t * Math.PI); // 0 -> 1 -> 0 overall fade
+    const segCount = s.nodes.length - 1;
+    // A bright pulse travels along the path over its life.
+    const head = t * segCount;
+    for (let j = 0; j < segCount; j += 1) {
+      const a = s.nodes[j] * 3;
+      const b = s.nodes[j + 1] * 3;
+      const v = seg * 6;
+      pos[v] = np[a]; pos[v + 1] = np[a + 1]; pos[v + 2] = np[a + 2];
+      pos[v + 3] = np[b]; pos[v + 4] = np[b + 1]; pos[v + 5] = np[b + 2];
+      const pulse = Math.max(0, 1 - Math.abs(j + 0.5 - head) * 0.85);
+      const bright = (0.32 + 0.68 * pulse) * envelope * 1.05; // softer
+      const r = skyBlueColor.r * bright;
+      const g = skyBlueColor.g * bright;
+      const bch = skyBlueColor.b * bright;
+      col[v] = r; col[v + 1] = g; col[v + 2] = bch;
+      col[v + 3] = r; col[v + 4] = g; col[v + 5] = bch;
+      seg += 1;
+    }
   }
-  state.synapseGeometry.setDrawRange(0, items.length * 2);
+  state.synapseGeometry.setDrawRange(0, seg * 2);
   (state.synapseGeometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
   (state.synapseGeometry.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
 }

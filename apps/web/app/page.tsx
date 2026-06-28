@@ -478,7 +478,7 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
   };
 }
 
-type CloudArrival = { id: string; label: string; born: number; anchorSeed: number };
+type CloudArrival = { id: string; label: string; born: number; anchorSeed: number; seq: number };
 
 /**
  * Inject newly-learned "arrival" nodes onto the OUTER shell of the (otherwise
@@ -501,9 +501,14 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
   const extraNodes: Rag3DNode[] = [];
   const extraEdges: Rag3DEdge[] = [];
   arrivals.forEach((arrival) => {
-    // Spawn uniformly over the WHOLE sphere surface (360°), not clustered in one
-    // region — the direction is a stable per-id point on the unit sphere.
-    const dir = stableDirection(arrival.id);
+    // Even spread over the WHOLE sphere via a low-discrepancy (golden-ratio)
+    // sequence keyed by a monotonic seq — so consecutive arrivals are maximally
+    // separated and no side of the ball gets a denser cluster.
+    const seq = arrival.seq;
+    const zLat = 1 - 2 * (((seq + 0.5) * 0.6180339887498949) % 1);
+    const zRad = Math.sqrt(Math.max(0.0001, 1 - zLat * zLat));
+    const theta = seq * 2.399963229728653;
+    const dir = { x: Math.cos(theta) * zRad, y: zLat, z: Math.sin(theta) * zRad };
     const reach = radius * (1.04 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.05);
     const ax = cx + dir.x * reach;
     const ay = cy + dir.y * reach;
@@ -1677,6 +1682,7 @@ function FullApp() {
   const [surfaceArrivals, setSurfaceArrivals] = useState<CloudArrival[]>([]);
   const surfaceArrivalPrevRef = useRef<number | null>(null);
   const [synapseRate, setSynapseRate] = useState(0);
+  const arrivalSeqRef = useRef(0);
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
   const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base", "seed"]);
@@ -3959,6 +3965,7 @@ function FullApp() {
             label: titles.length ? titles[i % titles.length] : "새 개념",
             born: now,
             anchorSeed: Math.floor(Math.random() * 1_000_000_000),
+            seq: arrivalSeqRef.current++,
           }));
           return [...live, ...fresh].slice(-180);
         });
@@ -3979,6 +3986,7 @@ function FullApp() {
               label: titles.length ? titles[i % titles.length] : "새 문장",
               born: now,
               anchorSeed: Math.floor(Math.random() * 1_000_000_000),
+              seq: arrivalSeqRef.current++,
             }));
             return [...live, ...fresh].slice(-180);
           });
