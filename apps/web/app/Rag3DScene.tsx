@@ -1333,8 +1333,10 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
         : state.nodeBornAt.get(edge.target);
       const arrivalAge = typeof arrivalBorn === "number" ? elapsed - arrivalBorn : 0;
       const freeze = THREE.MathUtils.clamp((arrivalAge - NEW_NODE_GLOW_SECONDS) / NEW_NODE_FREEZE_SECONDS, 0, 1);
-      const lit = THREE.MathUtils.lerp(1.05 + freshGlow * 0.85, 0.62, freeze); // brighter
-      tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze).multiplyScalar(lit);
+      // Stay vivid orange: only fade toward the base edge near the very end, and
+      // keep a low base-edge mix so the colour reads saturated, not washed.
+      const lit = THREE.MathUtils.lerp(2.0 + freshGlow * 1.3, 1.0, freeze);
+      tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze * 0.7).multiplyScalar(lit);
     } else {
       const base = edge.active || weight >= 0.82
         ? nearActiveEdgeColor
@@ -1361,7 +1363,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       if (si !== undefined) sa = act[si];
       if (ti !== undefined) ta = act[ti];
     }
-    const K = 1.5; // brighter sky-blue
+    const K = 2.6; // vivid sky-blue
     const baseR = tempColor.r, baseG = tempColor.g, baseB = tempColor.b;
     const midAct = (sa + ta) * 0.5 * 0.3; // middle markedly dimmer
     const ca = state.edgeColorArray!;

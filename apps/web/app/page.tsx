@@ -669,6 +669,16 @@ function buildSphericalTopologyGraph(graph: Rag3DGraph, mode: GraphPresentationM
       .sort((left, right) => (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0))
       .map((node, index) => [node.id, index]),
   );
+  // Balanced placement order: a stable HASH of the id (not degree-rank), so
+  // high-degree hubs are scattered evenly over the sphere instead of clustering
+  // at one pole — this keeps the EDGE density uniform (no top-heavy clump). It
+  // re-derives every time the graph changes, so it self-balances on growth.
+  const balancedSeq = new Map(
+    graph.nodes
+      .map((node) => ({ id: node.id, h: stableUnit(node.id, 953) }))
+      .sort((left, right) => left.h - right.h)
+      .map((entry, index) => [entry.id, index]),
+  );
   const nodeCount = graph.nodes.length;
   const localClusters = ["user_knowledge", "project_memory", "saved_conversations", "documents", "payload_vault", "ghost_shell", "local_evidence"];
   const cloudClusters = ["world_knowledge", "public_ontology", "source_cluster", "live_fragment", "trust_provenance", "freshness"];
@@ -722,13 +732,13 @@ function buildSphericalTopologyGraph(graph: Rag3DGraph, mode: GraphPresentationM
       }
       const cluster = cloudClusters[Math.abs(Math.floor((rank * 5 + index) % cloudClusters.length))];
       const clusterIndex = cloudClusters.indexOf(cluster);
-      // Spherical envelope: latitude by node rank, longitude by golden angle, so
-      // the cloud reads as a round sphere (like the surface graph); the cluster
-      // index adds a gentle longitudinal grouping + slight radial band.
-      const lat = 1 - ((rank + 0.5) / Math.max(1, nodeCount)) * 2;
+      // Spherical envelope by the BALANCED hash sequence (latitude + golden-angle
+      // longitude) — even node + edge density, no degree-driven top clump.
+      const seq = balancedSeq.get(node.id) ?? index;
+      const lat = 1 - ((seq + 0.5) / Math.max(1, nodeCount)) * 2;
       const latRadial = Math.sqrt(Math.max(0.02, 1 - lat * lat));
-      const lon = rank * 2.399963229728653 + clusterIndex * 0.62 + stableUnit(node.id, 811) * 0.22;
-      const sphereRadius = 5.6 + (rank < 36 ? 0 : scatter * 1.05) + (clusterIndex % 3) * 0.34;
+      const lon = seq * 2.399963229728653 + stableUnit(node.id, 811) * 0.22;
+      const sphereRadius = 5.7 + scatter * 0.9;
       x = Math.cos(lon) * latRadial * sphereRadius;
       y = lat * sphereRadius;
       z = Math.sin(lon) * latRadial * sphereRadius;
