@@ -376,6 +376,61 @@ def _make_candidate(text: str, frame: ConstructionFrame, context: dict[str, Any]
     )
 
 
+# ── consistent voice ─────────────────────────────────────────────────────────
+# The canned dialogue corpus is 반말. Rather than force one register, ATANOR
+# MIRRORS the user: a polite/neutral message gets a warm 존댓말 reply (consistent
+# with the self-model and reasoning surfaces, which are already polite); a clearly
+# casual 반말 message keeps the casual reply. Deterministic, no LLM.
+_POLITE_LEAD = {
+    "안녕하세요": "안녕하세요", "안녕": "안녕하세요", "반가워요": "반가워요", "반가워": "반가워요",
+    "하이": "안녕하세요", "응": "네", "좋아요": "좋아요", "좋아": "좋아요", "맞아요": "맞아요", "맞아": "맞아요",
+}
+_POLITE_END = [
+    ("말해줘", "말해주세요"), ("알려줘", "알려드릴게요"), ("보여줘", "보여드릴게요"), ("줘", "주세요"),
+    ("조정할게", "조정할게요"), ("반영해볼게", "반영해볼게요"), ("유지할게", "유지할게요"), ("볼게", "볼게요"), ("할게", "할게요"),
+    ("볼까", "볼까요"), ("돼", "돼요"), ("중이야", "중이에요"), ("이야", "이에요"), ("됐어", "됐어요"),
+    ("있어", "있어요"), ("관찰해", "관찰해요"), ("이다", "이에요"), ("본다", "봐요"), ("둔다", "둬요"),
+    ("않는다", "않아요"), ("있다", "있어요"), ("진행한다", "진행해요"), ("한다", "해요"),
+]
+
+
+def _user_prefers_polite(text: str) -> bool:
+    t = (text or "").strip()
+    if re.search(r"(요|니다|세요|십니까|까요|나요|인가요|습니까|주세요)[?!.\s]*$", t):
+        return True
+    # a clear casual ending → mirror casual; otherwise default to the polite voice
+    if re.search(r"(어|아|야|지|니|래|자|줘|해|냐)[?!.\s]*$", t):
+        return False
+    return True
+
+
+def _voice_polish(text: str, input_text: str) -> str:
+    if not text:
+        return text
+    if not _user_prefers_polite(input_text):
+        return re.sub(r"\s{2,}", " ", text).strip()
+    # Split into [clause, delim, clause, delim, …]; rewrite clauses only, keep the
+    # original delimiters and spacing so punctuation is never lost.
+    parts = re.split(r"([.?!]+)", text)
+    out: list[str] = []
+    for i, part in enumerate(parts):
+        if i % 2 == 1 or not part.strip():
+            out.append(part)
+            continue
+        lead_ws = part[: len(part) - len(part.lstrip())]
+        seg = part.strip()
+        for lead, rep in _POLITE_LEAD.items():
+            if seg.startswith(lead):
+                seg = rep + seg[len(lead):]
+                break
+        for pat, rep in _POLITE_END:
+            if seg.endswith(pat):
+                seg = seg[: -len(pat)] + rep
+                break
+        out.append(lead_ws + seg)
+    return re.sub(r"\s{2,}", " ", "".join(out)).strip()
+
+
 def generate_surface(input_text: str, context: dict[str, Any] | None = None) -> ASMSurfaceResult:
     """Generate a local construction-conditioned conversation surface."""
 
@@ -428,7 +483,7 @@ def generate_surface(input_text: str, context: dict[str, Any] | None = None) -> 
     else:
         ranked = ranked_all
     return ASMSurfaceResult(
-        answer=selected.text if selected else None,
+        answer=_voice_polish(selected.text, input_text) if selected else None,
         candidates=ranked[:8],
         selected_construction=selected.construction_id if selected else None,
         safety_flags=_safe_flags(),
