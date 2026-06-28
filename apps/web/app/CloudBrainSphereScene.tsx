@@ -45,6 +45,19 @@ async function apiJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+type Spark = { x: number; y: number; z: number; born: number };
+const SPARK_LIFETIME_MS = 3600;
+const SPARK_MAX = 600; // cap concurrent sparks
+
+function randomSurfacePoint(): { x: number; y: number; z: number } {
+  const u = Math.random();
+  const v = Math.random();
+  const theta = 2 * Math.PI * u;
+  const phi = Math.acos(2 * v - 1);
+  const r = 1.0;
+  return { x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.cos(phi), z: r * Math.sin(phi) * Math.sin(theta) };
+}
+
 export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = false, onStats }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<{
@@ -54,6 +67,8 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
     shell: THREE.Points;
     nodes: THREE.Points;
     edges: THREE.LineSegments;
+    fresh: THREE.Points;
+    sparks: Spark[];
     animation: number;
     rotation: number;
   } | null>(null);
@@ -143,7 +158,21 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
     );
     scene.add(edges);
 
-    const state = { renderer, scene, camera, shell, nodes, edges, animation: 0, rotation: 0 };
+    // Live "fresh node" layer — newly learned nodes pop in from outside the shell
+    // and flash green, then fade. Driven by the real cumulative-learning rate.
+    const fresh = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({
+        vertexColors: true,
+        size: 0.055,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    scene.add(fresh);
+
+    const state = { renderer, scene, camera, shell, nodes, edges, fresh, sparks: [] as Spark[], animation: 0, rotation: 0 };
     sceneRef.current = state;
 
     const resize = () => {
@@ -192,6 +221,38 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
       shell.rotation.y = state.rotation;
       nodes.rotation.y = state.rotation;
       edges.rotation.y = state.rotation;
+      // Fresh-node sparks: each newly learned node flies in from outside the shell,
+      // flashes green, then fades (additive → black = invisible).
+      const sparks = state.sparks;
+      if (sparks.length) {
+        const pos = new Float32Array(sparks.length * 3);
+        const col = new Float32Array(sparks.length * 3);
+        const alive: Spark[] = [];
+        let n = 0;
+        for (const s of sparks) {
+          const age = now - s.born;
+          if (age > SPARK_LIFETIME_MS) continue;
+          const t = age / SPARK_LIFETIME_MS;
+          const flyT = Math.min(1, t / 0.25);
+          const rad = 1.45 - 0.45 * (flyT * (2 - flyT)); // ease-in from r=1.45 → 1.0
+          pos[n * 3] = s.x * rad;
+          pos[n * 3 + 1] = s.y * rad;
+          pos[n * 3 + 2] = s.z * rad;
+          const fade = 1 - t;
+          col[n * 3] = Math.min(1, 0.25 + 0.75 * t) * fade; // shift to orange as it settles
+          col[n * 3 + 1] = fade;                             // green strong while fresh
+          col[n * 3 + 2] = 0.35 * fade;
+          alive.push(s);
+          n += 1;
+        }
+        state.sparks = alive;
+        const fg = new THREE.BufferGeometry();
+        fg.setAttribute("position", new THREE.BufferAttribute(pos.subarray(0, n * 3), 3));
+        fg.setAttribute("color", new THREE.BufferAttribute(col.subarray(0, n * 3), 3));
+        state.fresh.geometry.dispose();
+        state.fresh.geometry = fg;
+      }
+      state.fresh.rotation.y = state.rotation;
       renderer.render(scene, camera);
     };
     resize();
@@ -209,6 +270,8 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
       (nodes.material as THREE.Material).dispose();
       (edges.geometry as THREE.BufferGeometry).dispose();
       (edges.material as THREE.Material).dispose();
+      (fresh.geometry as THREE.BufferGeometry).dispose();
+      (fresh.material as THREE.Material).dispose();
       renderer.domElement.remove();
       sceneRef.current = null;
     };
@@ -260,6 +323,41 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
       actualNodeMode: String(materialized?.render_mode ?? "") === "actual_nodes",
     });
   }, [budgets.edges, budgets.nodes, edgeOpacity, manifest, materialized, onStats, zoomLevel]);
+
+  // Poll the live cumulative-learning metrics; spawn a fresh-node spark for every
+  // newly learned concept/relation so growth is visible on the sphere per second.
+  useEffect(() => {
+    let alive = true;
+    let last = -1;
+    const poll = async () => {
+      try {
+        const d = await apiJson<AnyRecord>("/api/cloud-brain/learning/continuous/metrics");
+        if (!alive) return;
+        const total = Number(d.concepts_added ?? 0) + Number(d.relations_added ?? 0);
+        if (last >= 0) {
+          const delta = Math.max(0, Math.min(120, total - last));
+          const state = sceneRef.current;
+          if (state && delta > 0) {
+            const now = performance.now();
+            for (let i = 0; i < delta; i += 1) {
+              const p = randomSurfacePoint();
+              state.sparks.push({ ...p, born: now + i * 60 }); // slight stagger
+            }
+            if (state.sparks.length > SPARK_MAX) state.sparks.splice(0, state.sparks.length - SPARK_MAX);
+          }
+        }
+        last = total;
+      } catch {
+        /* keep last */
+      }
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
 
   return (
     <div

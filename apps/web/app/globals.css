@@ -3843,6 +3843,47 @@ p {
   opacity: 0;
 }
 
+/* Centered loading bar shown until the WebGL Earth is ready. */
+.atanor-atlas-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+.atanor-atlas-webgl[data-ready="true"] .atanor-atlas-loading {
+  opacity: 0;
+}
+.atanor-atlas-loading-label {
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+  color: rgba(180, 200, 240, 0.7);
+}
+.atanor-atlas-loading-bar {
+  width: clamp(160px, 22vw, 260px);
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(120, 160, 255, 0.14);
+  overflow: hidden;
+}
+.atanor-atlas-loading-bar i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #5a8cff, #7db4ff, transparent);
+  animation: atanor-atlas-loading-slide 1.15s ease-in-out infinite;
+}
+@keyframes atanor-atlas-loading-slide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(360%); }
+}
+
 .atanor-atlas-webgl[data-dragging="true"] {
   cursor: grabbing;
 }
