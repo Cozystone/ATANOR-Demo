@@ -199,6 +199,8 @@ const arrivalGlowColor = new THREE.Color(0xff6a1a);
 // activation lines that flicker across the graph each second.
 const SYNAPSE_COLOR = 0x4ec9ff;
 const skyBlueColor = new THREE.Color(SYNAPSE_COLOR);
+// An activated node momentarily turns deep/vivid pink.
+const activationPinkColor = new THREE.Color(0xff1f8f);
 const SYNAPSE_LIFE_SECONDS = 0.55;
 const SYNAPSE_MAX = 700;
 const constructionColor = new THREE.Color(0x22d3ee);
@@ -1228,12 +1230,11 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
       tempColor.multiplyScalar(0.66 + depthCue * 0.42);
       tempColor.lerp(depthWhiteColor, depthCue * 0.1);
     }
-    // Activation pop: a firing node flares sky-blue, then decays.
+    // Activation pop: a firing node momentarily turns deep pink, then decays.
     const activation = state.nodeActivation ? state.nodeActivation[index] : 0;
     if (activation > 0.01) {
-      tempColor.r += skyBlueColor.r * activation * 1.9;
-      tempColor.g += skyBlueColor.g * activation * 1.9;
-      tempColor.b += skyBlueColor.b * activation * 1.9;
+      tempColor.lerp(activationPinkColor, Math.min(1, activation * 1.3));
+      tempColor.multiplyScalar(1 + activation * 1.1);
     }
     state.nodeColorArray![index * 3] = tempColor.r;
     state.nodeColorArray![index * 3 + 1] = tempColor.g;
@@ -1327,7 +1328,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
         : state.nodeBornAt.get(edge.target);
       const arrivalAge = typeof arrivalBorn === "number" ? elapsed - arrivalBorn : 0;
       const freeze = THREE.MathUtils.clamp((arrivalAge - NEW_NODE_GLOW_SECONDS) / NEW_NODE_FREEZE_SECONDS, 0, 1);
-      const lit = THREE.MathUtils.lerp(1.05 + freshGlow * 0.95, 0.72, freeze);
+      const lit = THREE.MathUtils.lerp(0.55 + freshGlow * 0.5, 0.4, freeze); // ~50% softer
       tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze).multiplyScalar(lit);
     } else {
       const base = edge.active || weight >= 0.82
@@ -1355,12 +1356,12 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       if (si !== undefined) sa = act[si];
       if (ti !== undefined) ta = act[ti];
     }
-    state.edgeColorArray![vertexIndex] = tempColor.r + skyBlueColor.r * sa * 1.5;
-    state.edgeColorArray![vertexIndex + 1] = tempColor.g + skyBlueColor.g * sa * 1.5;
-    state.edgeColorArray![vertexIndex + 2] = tempColor.b + skyBlueColor.b * sa * 1.5;
-    state.edgeColorArray![vertexIndex + 3] = tempColor.r + skyBlueColor.r * ta * 1.5;
-    state.edgeColorArray![vertexIndex + 4] = tempColor.g + skyBlueColor.g * ta * 1.5;
-    state.edgeColorArray![vertexIndex + 5] = tempColor.b + skyBlueColor.b * ta * 1.5;
+    state.edgeColorArray![vertexIndex] = tempColor.r + skyBlueColor.r * sa * 0.75;
+    state.edgeColorArray![vertexIndex + 1] = tempColor.g + skyBlueColor.g * sa * 0.75;
+    state.edgeColorArray![vertexIndex + 2] = tempColor.b + skyBlueColor.b * sa * 0.75;
+    state.edgeColorArray![vertexIndex + 3] = tempColor.r + skyBlueColor.r * ta * 0.75;
+    state.edgeColorArray![vertexIndex + 4] = tempColor.g + skyBlueColor.g * ta * 0.75;
+    state.edgeColorArray![vertexIndex + 5] = tempColor.b + skyBlueColor.b * ta * 0.75;
   });
 
   if (positionBufferChanged) {

@@ -494,10 +494,10 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
   base.nodes.forEach((node) => { cx += node.x; cy += node.y; cz += node.z; });
   const count = base.nodes.length;
   cx /= count; cy /= count; cz /= count;
-  let radius = 2;
-  base.nodes.forEach((node) => {
-    radius = Math.max(radius, Math.hypot(node.x - cx, node.y - cy, node.z - cz));
-  });
+  // Robust radius = 90th-percentile distance (NOT max), so a stray base outlier
+  // can't inflate it and fling arrivals far out.
+  const dists = base.nodes.map((node) => Math.hypot(node.x - cx, node.y - cy, node.z - cz)).sort((a, b) => a - b);
+  const radius = Math.max(2, dists[Math.floor(dists.length * 0.9)] ?? dists[dists.length - 1] ?? 2);
   const extraNodes: Rag3DNode[] = [];
   const extraEdges: Rag3DEdge[] = [];
   arrivals.forEach((arrival) => {
@@ -509,7 +509,8 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
     const zRad = Math.sqrt(Math.max(0.0001, 1 - zLat * zLat));
     const theta = seq * 2.399963229728653;
     const dir = { x: Math.cos(theta) * zRad, y: zLat, z: Math.sin(theta) * zRad };
-    const reach = radius * (1.04 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.05);
+    // Sit ON the shell (embedded), not protruding, so arrivals don't dangle out.
+    const reach = radius * (0.97 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.04);
     const ax = cx + dir.x * reach;
     const ay = cy + dir.y * reach;
     const az = cz + dir.z * reach;
@@ -527,7 +528,7 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
     // the far side — so the orange tendrils are long and far-reaching, not timid
     // local stubs (related content can live anywhere in the graph). Deterministic
     // per id so the edges stay put.
-    const linkCount = 6 + (arrival.anchorSeed % 6); // 6..11
+    const linkCount = 4 + (arrival.anchorSeed % 4); // 4..7
     const picks = new Set<number>();
     for (let k = 0; picks.size < linkCount && k < linkCount * 4; k += 1) {
       const idx = Math.floor(((stableUnit(arrival.id, 100 + k) + 1) / 2) * base.nodes.length) % base.nodes.length;
@@ -541,8 +542,20 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
       extraEdges.push({ source: arrival.id, target: node.id, relation: "newly_learned", weight: 0.72, source_type: "cloud_fragment" });
     });
   });
+  // Clamp ANY node (base or arrival) that sits beyond the ball into the shell, so
+  // there are no extreme dangling outliers.
+  const maxR = radius * 1.15;
+  const clamp = (node: Rag3DNode): Rag3DNode => {
+    const dx = node.x - cx, dy = node.y - cy, dz = node.z - cz;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > maxR && d > 0.0001) {
+      const s = maxR / d;
+      return { ...node, x: cx + dx * s, y: cy + dy * s, z: cz + dz * s };
+    }
+    return node;
+  };
   return {
-    nodes: [...base.nodes, ...extraNodes],
+    nodes: [...base.nodes, ...extraNodes].map(clamp),
     edges: [...base.edges, ...extraEdges],
     traversal_path: base.traversal_path,
   };
@@ -1716,9 +1729,9 @@ function FullApp() {
   const [cloudBudgetStatus, setCloudBudgetStatus] = useState<AnyRecord | null>(null);
   const [atlasStatus, setAtlasStatus] = useState<AnyRecord | null>(null);
   const [graphSourceMode, setGraphSourceMode] = useState<"build" | "memory">("memory");
-  // Slider is re-scaled so its MIDDLE (50%) lands on opacity 0.16 — the line
-  // brightness the user liked when the old bar read "16%". Range 0.04..0.28.
-  const [graphEdgeOpacity, setGraphEdgeOpacity] = useState(0.16);
+  // Slider re-scaled so its MIDDLE (50%) lands on opacity 0.076 — the dimmer line
+  // brightness the old bar gave at ~15%. Range 0.03..0.122.
+  const [graphEdgeOpacity, setGraphEdgeOpacity] = useState(0.076);
   const [workbenchInfoOpen, setWorkbenchInfoOpen] = useState(false);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
@@ -3879,13 +3892,15 @@ function FullApp() {
   // selected in the Cloud Brain tab. Refresh periodically so newly-learned
   // constructions show up.
   useEffect(() => {
-    if (mainSection !== "cloud" || cloudGraphView !== "surface") return;
+    // Prefetch the surface graph whenever the Cloud tab is open (not only when the
+    // surface view is selected), so switching to it is instant and reliable.
+    if (mainSection !== "cloud") return;
     let alive = true;
     const load = async () => {
       try {
         const res = await fetch("/api/cloud-brain/surface-graph/graph?max_nodes=520&max_edges=900", { cache: "no-store" });
         const data = (await res.json()) as AnyRecord;
-        if (alive) setSurfaceGraphData(data);
+        if (alive && Array.isArray(data?.nodes) && data.nodes.length) setSurfaceGraphData(data);
       } catch {
         /* keep last */
       }
@@ -3896,7 +3911,7 @@ function FullApp() {
       alive = false;
       clearInterval(id);
     };
-  }, [mainSection, cloudGraphView]);
+  }, [mainSection]);
 
   const surfaceSceneGraph3D = useMemo<Rag3DGraph>(() => {
     const rawNodes = Array.isArray(surfaceGraphData?.nodes) ? (surfaceGraphData!.nodes as AnyRecord[]) : [];
@@ -6305,14 +6320,14 @@ function FullApp() {
                     <span>{language === "ko" ? "연결선" : "Lines"}</span>
                     <input
                       aria-label={language === "ko" ? "연결선 선명도" : "Line clarity"}
-                      max="0.28"
-                      min="0.04"
-                      step="0.005"
+                      max="0.122"
+                      min="0.03"
+                      step="0.002"
                       type="range"
                       value={graphEdgeOpacity}
                       onChange={(event) => setGraphEdgeOpacity(Number(event.target.value))}
                     />
-                    <strong>{Math.round(((graphEdgeOpacity - 0.04) / 0.24) * 100)}%</strong>
+                    <strong>{Math.round(((graphEdgeOpacity - 0.03) / 0.092) * 100)}%</strong>
                   </label>
                 ) : null}
                 {mainSection === "local" ? (
