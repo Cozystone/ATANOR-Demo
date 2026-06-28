@@ -32,7 +32,25 @@ export default function LiveLearningPanel({ apiBase = "" }: { apiBase?: string }
   const [m, setM] = useState<Metrics | null>(null);
   const [view, setView] = useState<View>("concept");
   const [series, setSeries] = useState<number[]>([]);
+  const [loadPct, setLoadPct] = useState<number | null>(null);
   const prevRef = useRef<number>(0);
+
+  // A determinate 0→100% bar that only appears while a *new* panel view is being
+  // brought up (initial mount or a 개념↔Surface switch) — once it fills it hides,
+  // so steady state shows no bar. Covers any blank gap on first paint.
+  useEffect(() => {
+    setLoadPct(0);
+    let p = 0;
+    const id = setInterval(() => {
+      p = Math.min(100, p + 16 + Math.random() * 16);
+      setLoadPct(p);
+      if (p >= 100) {
+        clearInterval(id);
+        window.setTimeout(() => setLoadPct(null), 170);
+      }
+    }, 45);
+    return () => clearInterval(id);
+  }, [view]);
 
   useEffect(() => {
     let alive = true;
@@ -75,6 +93,12 @@ export default function LiveLearningPanel({ apiBase = "" }: { apiBase?: string }
           <button data-active={view === "surface"} onClick={() => setView("surface")}>Surface 그래프</button>
         </div>
       </div>
+
+      {loadPct !== null ? (
+        <div className="atanor-livelearn-load" role="progressbar" aria-valuenow={Math.round(loadPct)} aria-valuemin={0} aria-valuemax={100} aria-label={`${view === "concept" ? "개념 그래프" : "Surface 그래프"} 로딩 ${Math.round(loadPct)}%`}>
+          <i style={{ width: `${loadPct}%` }} />
+        </div>
+      ) : null}
 
       <div className="atanor-livelearn-big">
         <span className="atanor-livelearn-num">{primary.toLocaleString()}</span>

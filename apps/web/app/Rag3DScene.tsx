@@ -162,6 +162,11 @@ const NEON_ORANGE = 0xffa028;
 const COLD_LABEL = "#eef3f8";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const NEW_NODE_ANIMATION_SECONDS = 1.0;
+// How long a freshly-arrived node keeps its identifiable orange flash after it
+// settles into place, and how long the orange connecting edge takes to "grow"
+// outward from the existing node to the new one.
+const NEW_NODE_GLOW_SECONDS = 4.6;
+const NEW_EDGE_GROW_SECONDS = 1.1;
 const MAX_SHELL_RENDER_CHUNKS = 384;
 const DEFAULT_GRAPH_TILT_X = -0.22;
 const DEFAULT_GRAPH_TILT_Y = 0.34;
@@ -171,6 +176,10 @@ const weakEdgeColor = new THREE.Color(BASE_EDGE_WEAK);
 const nearActiveEdgeColor = new THREE.Color(BASE_EDGE_ACTIVE_NEAR);
 const strongEdgeColor = new THREE.Color(STRONG_EDGE_COLOR);
 const neonOrangeColor = new THREE.Color(NEON_ORANGE);
+// Deep red-orange for live arrivals. Low green channel so it stays unmistakably
+// orange even when brightened on the additive field (a high-green orange clips to
+// yellow-white).
+const arrivalGlowColor = new THREE.Color(0xff5410);
 const localMemoryColor = new THREE.Color(0xffffff);
 const representativeNodeColor = new THREE.Color(0xa7b7d1);
 const cloudBrainColor = new THREE.Color(0x6fb0ff);
@@ -917,6 +926,7 @@ function syncGraph(
   const stillPresent = new Set<string>();
   const targetMap = new Map<string, THREE.Vector3>();
 
+  const freshlyAdded: string[] = [];
   graph.nodes.forEach((node, index) => {
     const target = targets[index];
     nextKnownNodeIds.add(node.id);
@@ -929,9 +939,16 @@ function syncGraph(
         ? findSpawnPositionForNode(node.id, graph.edges, state.nodePositionById, target)
         : target.clone();
       state.nodePositionById.set(node.id, spawn);
-      state.nodeBornAt.set(node.id, elapsed);
+      freshlyAdded.push(node.id);
     }
   });
+
+  // Only treat new ids as flashing "arrivals" when a modest number appear. The
+  // first population, or a bulk re-sample where most ids changed, is a reload —
+  // flashing the whole field orange would be noise, so we backdate those.
+  const bulkReload = state.knownNodeIds.size === 0
+    || freshlyAdded.length > Math.max(48, graph.nodes.length * 0.4);
+  freshlyAdded.forEach((id) => state.nodeBornAt.set(id, bulkReload ? -999 : elapsed));
 
   for (const id of Array.from(state.nodePositionById.keys())) {
     if (!stillPresent.has(id)) {
@@ -949,8 +966,13 @@ function syncGraph(
   state.frozenPositionSnapshot = null;
   state.coordinateMutationWarned = false;
 
-  const fitDistance = fitDistanceForPositions(targets, state.camera, !state.preserveSourceCoordinates) * state.fitScale;
-  const graphExpanded = graph.nodes.length > state.lastGraphNodeCount;
+  // Exclude transient arrival nodes from the camera fit so spawning/expiring
+  // outer nodes never jitter or re-zoom the view.
+  const fitTargets = targets.filter((_, index) => !graph.nodes[index].id.startsWith("cloud-arrival"));
+  const fitDistance = fitDistanceForPositions(fitTargets.length ? fitTargets : targets, state.camera, !state.preserveSourceCoordinates) * state.fitScale;
+  // Ignore small node-count wobble (live arrivals spawning/expiring) so the
+  // camera doesn't re-fit and jitter every couple of seconds.
+  const graphExpanded = graph.nodes.length > state.lastGraphNodeCount + 40;
   const userControllingCamera = state.frame < state.userCameraControlUntilFrame;
   if (!userControllingCamera && (graphExpanded || fitDistance > state.lastFitDistance || fitDistance > state.camera.position.z)) {
     state.camera.position.z = Math.max(state.camera.position.z, fitDistance);
@@ -1076,7 +1098,24 @@ function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number)
   const hop = state.activationHops.get(node.id);
   const bornAt = state.nodeBornAt.get(node.id);
   const newAge = typeof bornAt === "number" ? elapsed - bornAt : Number.POSITIVE_INFINITY;
-  const newPulse = coordinateAnimationAllowed(state.visualState) && (state.newNodeIds.has(node.id) || newAge < NEW_NODE_ANIMATION_SECONDS);
+  // Injected "arrival" nodes are highlighted the entire (short) time they exist
+  // — they're removed after a few seconds upstream, so this IS the "glows for a
+  // while" window. Keyed by id so it never depends on frame-timing math.
+  if (node.id.startsWith("cloud-arrival") && state.visualState !== "low_memory_viewer") {
+    const twinkle = 0.6 + 0.4 * Math.abs(Math.sin(elapsed * 7.5 + hash01(node.id, 53) * Math.PI * 2));
+    return THREE.MathUtils.clamp(0.5 + twinkle * 0.5, 0, 1);
+  }
+  // Arrivals flash even when the overall graph has "settled" (idle) — a new node
+  // landing on a calm field is exactly when the flash matters most.
+  const fresh = state.visualState !== "low_memory_viewer" && (state.newNodeIds.has(node.id) || newAge < NEW_NODE_GLOW_SECONDS);
+  // A brand-new node twinkles bright orange for a few seconds so it is easy to
+  // spot, then decays back into the field — this wins over the active/hop glow
+  // below so arrivals always read as arrivals.
+  if (fresh) {
+    const decay = THREE.MathUtils.clamp(1 - newAge / NEW_NODE_GLOW_SECONDS, 0, 1);
+    const twinkle = 0.58 + 0.42 * Math.abs(Math.sin(elapsed * 7.5 + hash01(node.id, 53) * Math.PI * 2));
+    return THREE.MathUtils.clamp(0.35 + decay * twinkle, 0, 1);
+  }
   if (state.visualState === "low_memory_viewer") return active ? 0.42 : 0;
   if (active) {
     const amplitude = state.visualState === "completed" ? 0.012 : 0.12;
@@ -1089,7 +1128,6 @@ function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number)
     const pulseBase = state.visualState === "completed" ? 0.08 : 0.28;
     return THREE.MathUtils.clamp(base * (pulseBase + Math.sin(elapsed * 8 + hash01(node.id, 37) * Math.PI * 2) * pulseAmplitude), 0.004, 0.16);
   }
-  if (newPulse) return THREE.MathUtils.clamp(1 - newAge / NEW_NODE_ANIMATION_SECONDS, 0, 1);
   return 0;
 }
 
@@ -1153,10 +1191,16 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
     state.nodePositionArray![index * 3 + 2] = position.z;
 
     const signal = nodeSignalStrength(state, node, elapsed);
-    tempColor.copy(nodeBaseColor(node)).lerp(neonOrangeColor, signal);
+    const isArrival = node.id.startsWith("cloud-arrival");
+    tempColor.copy(isArrival ? arrivalGlowColor : nodeBaseColor(node)).lerp(isArrival ? arrivalGlowColor : neonOrangeColor, signal);
     const depthCue = THREE.MathUtils.clamp(0.5 + position.z / Math.max(10, state.camera.position.z * 0.28), 0.18, 1);
-    tempColor.multiplyScalar(0.66 + depthCue * 0.42);
-    tempColor.lerp(depthWhiteColor, depthCue * 0.1);
+    if (isArrival) {
+      // Keep arrivals bright regardless of depth, and don't whiten them.
+      tempColor.multiplyScalar(1.15 + signal * 0.5);
+    } else {
+      tempColor.multiplyScalar(0.66 + depthCue * 0.42);
+      tempColor.lerp(depthWhiteColor, depthCue * 0.1);
+    }
     state.nodeColorArray![index * 3] = tempColor.r;
     state.nodeColorArray![index * 3 + 1] = tempColor.g;
     state.nodeColorArray![index * 3 + 2] = tempColor.b;
@@ -1175,35 +1219,82 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
   if (!state.edgePositionArray || !state.edgeColorArray || !state.edgeGeometry) return;
   const positionAttribute = state.edgeGeometry.getAttribute("position") as THREE.BufferAttribute;
   const colorAttribute = state.edgeGeometry.getAttribute("color") as THREE.BufferAttribute;
-  const positionBufferChanged = state.edgePositionBufferDirty || coordinateAnimationAllowed(state.visualState);
+  let positionBufferChanged = state.edgePositionBufferDirty || coordinateAnimationAllowed(state.visualState);
 
   state.visibleEdges.forEach((edge, edgeIndex) => {
     const source = state.nodePositionById.get(edge.source);
     const target = state.nodePositionById.get(edge.target);
     if (!source || !target) return;
+
+    // Fresh-edge "growing tendril": when one endpoint is a newly-arrived node,
+    // draw the line as if it sprouts from the older (existing) node and reaches
+    // out to the new one, flashing orange while it is young.
+    let sx = source.x, sy = source.y, sz = source.z;
+    let tx = target.x, ty = target.y, tz = target.z;
+    let freshGlow = 0;
+    if (state.visualState !== "low_memory_viewer") {
+      const sourceArrival = edge.source.startsWith("cloud-arrival");
+      const targetArrival = edge.target.startsWith("cloud-arrival");
+      const sourceBorn = state.nodeBornAt.get(edge.source);
+      const targetBorn = state.nodeBornAt.get(edge.target);
+      const sourceAge = typeof sourceBorn === "number" ? elapsed - sourceBorn : Number.POSITIVE_INFINITY;
+      const targetAge = typeof targetBorn === "number" ? elapsed - targetBorn : Number.POSITIVE_INFINITY;
+      // An edge touching an arrival node is always a fresh tendril (keyed by id);
+      // otherwise fall back to the age window for ordinary new nodes.
+      const newEndpointAge = targetArrival ? targetAge : sourceArrival ? sourceAge : Math.min(sourceAge, targetAge);
+      const isArrivalEdge = sourceArrival || targetArrival;
+      if (isArrivalEdge || newEndpointAge < NEW_NODE_GLOW_SECONDS) {
+        // While any tendril is still growing/glowing we must keep re-uploading
+        // edge positions even on an otherwise-static (idle) graph.
+        positionBufferChanged = true;
+        const grow = THREE.MathUtils.clamp(newEndpointAge / NEW_EDGE_GROW_SECONDS, 0, 1);
+        if (grow < 1) {
+          // The newer endpoint grows outward from the existing one.
+          if (targetArrival || (!sourceArrival && sourceAge > targetAge)) {
+            tx = source.x + (target.x - source.x) * grow;
+            ty = source.y + (target.y - source.y) * grow;
+            tz = source.z + (target.z - source.z) * grow;
+          } else {
+            sx = target.x + (source.x - target.x) * grow;
+            sy = target.y + (source.y - target.y) * grow;
+            sz = target.z + (source.z - target.z) * grow;
+          }
+        }
+        const twinkle = 0.64 + 0.36 * Math.abs(Math.sin(elapsed * 8 + hash01(edge.source + edge.target, 23) * Math.PI * 2));
+        freshGlow = isArrivalEdge ? twinkle : THREE.MathUtils.clamp(1 - newEndpointAge / NEW_NODE_GLOW_SECONDS, 0, 1) * twinkle;
+      }
+    }
+
     const vertexIndex = edgeIndex * 6;
-    state.edgePositionArray![vertexIndex] = source.x;
-    state.edgePositionArray![vertexIndex + 1] = source.y;
-    state.edgePositionArray![vertexIndex + 2] = source.z;
-    state.edgePositionArray![vertexIndex + 3] = target.x;
-    state.edgePositionArray![vertexIndex + 4] = target.y;
-    state.edgePositionArray![vertexIndex + 5] = target.z;
+    state.edgePositionArray![vertexIndex] = sx;
+    state.edgePositionArray![vertexIndex + 1] = sy;
+    state.edgePositionArray![vertexIndex + 2] = sz;
+    state.edgePositionArray![vertexIndex + 3] = tx;
+    state.edgePositionArray![vertexIndex + 4] = ty;
+    state.edgePositionArray![vertexIndex + 5] = tz;
 
     const signal = edgeSignalStrength(state, edge, elapsed);
     const weight = edgeWeight(edge);
-    const base = edge.active || weight >= 0.82
-      ? nearActiveEdgeColor
-      : weight < 0.34
-        ? weakEdgeColor
-        : baseEdgeColor;
-    tempColor.copy(base);
-    if (weight > 0.62) {
-      tempColor.lerp(strongEdgeColor, THREE.MathUtils.clamp((weight - 0.62) * 0.48, 0, 0.28));
+    if (edge.source.startsWith("cloud-arrival") || edge.target.startsWith("cloud-arrival")) {
+      // Pure deep-orange tendril — no base-edge mixing, no whitening — so it stays
+      // orange against both the dark margin and the bright core.
+      tempColor.copy(arrivalGlowColor).multiplyScalar(0.8 + freshGlow * 0.7);
+    } else {
+      const base = edge.active || weight >= 0.82
+        ? nearActiveEdgeColor
+        : weight < 0.34
+          ? weakEdgeColor
+          : baseEdgeColor;
+      tempColor.copy(base);
+      if (weight > 0.62) {
+        tempColor.lerp(strongEdgeColor, THREE.MathUtils.clamp((weight - 0.62) * 0.48, 0, 0.28));
+      }
+      tempColor.lerp(neonOrangeColor, Math.max(signal, freshGlow * 0.9));
+      const edgeDepthCue = THREE.MathUtils.clamp(0.5 + ((sz + tz) * 0.5) / Math.max(10, state.camera.position.z * 0.28), 0.2, 1);
+      tempColor.multiplyScalar(0.58 + edgeDepthCue * 0.46);
+      tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.08);
+      if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 1.8);
     }
-    tempColor.lerp(neonOrangeColor, signal);
-    const edgeDepthCue = THREE.MathUtils.clamp(0.5 + ((source.z + target.z) * 0.5) / Math.max(10, state.camera.position.z * 0.28), 0.2, 1);
-    tempColor.multiplyScalar(0.58 + edgeDepthCue * 0.46);
-    tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.08);
     state.edgeColorArray![vertexIndex] = tempColor.r;
     state.edgeColorArray![vertexIndex + 1] = tempColor.g;
     state.edgeColorArray![vertexIndex + 2] = tempColor.b;

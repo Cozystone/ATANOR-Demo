@@ -478,6 +478,65 @@ function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = N
   };
 }
 
+type CloudArrival = { id: string; label: string; born: number; anchorSeed: number };
+
+/**
+ * Inject newly-learned "arrival" nodes onto the OUTER shell of the (otherwise
+ * fixed) cloud graph. The count comes from the REAL continuous-learning metrics
+ * delta — N concepts/relations learned → N arrivals spawn outside, each wired to
+ * an existing node by an edge. Rag3DScene then flashes them (born-at) and grows
+ * the orange tendril out to them; the poller drops them after a few seconds so
+ * they fade back into the field instead of accumulating.
+ */
+function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DGraph {
+  if (!arrivals.length || !base.nodes.length) return base;
+  let cx = 0, cy = 0, cz = 0;
+  base.nodes.forEach((node) => { cx += node.x; cy += node.y; cz += node.z; });
+  const count = base.nodes.length;
+  cx /= count; cy /= count; cz /= count;
+  let radius = 2;
+  base.nodes.forEach((node) => {
+    radius = Math.max(radius, Math.hypot(node.x - cx, node.y - cy, node.z - cz));
+  });
+  // Anchor each arrival to an OUTER node (top of the radius distribution) and
+  // place the new node just beyond it. That keeps the orange "growing" tendril
+  // out in the dark periphery — visible — instead of buried in the bright core.
+  const ranked = base.nodes
+    .map((node) => ({ node, r: Math.hypot(node.x - cx, node.y - cy, node.z - cz) }))
+    .sort((a, b) => b.r - a.r);
+  const outerPool = ranked.slice(0, Math.max(12, Math.floor(ranked.length * 0.32)));
+  const extraNodes: Rag3DNode[] = [];
+  const extraEdges: Rag3DEdge[] = [];
+  arrivals.forEach((arrival) => {
+    const anchorPick = outerPool[arrival.anchorSeed % outerPool.length] ?? ranked[0];
+    const anchor = anchorPick.node;
+    const ar = Math.max(0.001, anchorPick.r);
+    // Direction from center through the anchor, nudged so arrivals don't overlap.
+    const jx = (anchor.x - cx) / ar + stableUnit(arrival.id, 5) * 0.16;
+    const jy = (anchor.y - cy) / ar + stableUnit(arrival.id, 9) * 0.16;
+    const jz = (anchor.z - cz) / ar + stableUnit(arrival.id, 13) * 0.16;
+    // Land the new node clearly OUTSIDE the dense core (in dark space) so its
+    // glow and the orange tendril reaching it are unmistakable.
+    const reach = radius * (1.28 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.22);
+    extraNodes.push({
+      id: arrival.id,
+      label: arrival.label,
+      type: "cloud_arrival",
+      x: cx + jx * reach,
+      y: cy + jy * reach,
+      z: cz + jz * reach,
+      confidence: 0.72,
+      source_type: "cloud_fragment",
+    });
+    extraEdges.push({ source: anchor.id, target: arrival.id, relation: "newly_learned", weight: 0.72, source_type: "cloud_fragment" });
+  });
+  return {
+    nodes: [...base.nodes, ...extraNodes],
+    edges: [...base.edges, ...extraEdges],
+    traversal_path: base.traversal_path,
+  };
+}
+
 function buildStudioTopologyGraph(graph: Rag3DGraph): Rag3DGraph {
   if (!graph.nodes.length) return graph;
   const degree = new Map<string, number>();
@@ -1604,6 +1663,8 @@ function FullApp() {
   const [cloudAttachmentError, setCloudAttachmentError] = useState<string | null>(null);
   const [brainGraphLocal, setBrainGraphLocal] = useState<AnyRecord | null>(null);
   const [brainGraphCloud, setBrainGraphCloud] = useState<AnyRecord | null>(null);
+  const [cloudArrivals, setCloudArrivals] = useState<CloudArrival[]>([]);
+  const cloudArrivalPrevRef = useRef<number | null>(null);
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
   const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base", "seed"]);
@@ -3773,6 +3834,60 @@ function FullApp() {
   const usesStudioGraph = mainSection === "home";
   const usesSphereGraph = mainSection === "graph" || mainSection === "local" || mainSection === "cloud" || mainSection === "chat";
   const userSceneGraph3D = usesStudioGraph ? studioGraph3D : usesSphereGraph ? sphereGraph3D : studioGraph3D;
+  const cloudSceneGraph3D = useMemo(
+    () => (mainSection === "cloud" ? appendCloudArrivals(userSceneGraph3D, cloudArrivals) : userSceneGraph3D),
+    [mainSection, userSceneGraph3D, cloudArrivals],
+  );
+
+  // Drive "arrival" nodes from the REAL continuous-learning metrics. Each tick we
+  // read how many concepts/relations were just learned and spawn that many fresh
+  // nodes on the cloud's outer shell (capped per tick), then expire them after a
+  // few seconds so they flash, connect, and fade rather than pile up.
+  useEffect(() => {
+    if (mainSection !== "cloud") {
+      cloudArrivalPrevRef.current = null;
+      setCloudArrivals((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    let alive = true;
+    const ARRIVAL_TTL = 6800;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/cloud-brain/learning/continuous/metrics", { cache: "no-store" });
+        const data = (await res.json()) as AnyRecord;
+        if (!alive) return;
+        const total = (Number(data.concepts_added) || 0) + (Number(data.relations_added) || 0);
+        const titles = Array.isArray(data.last_titles) ? (data.last_titles as unknown[]).map(String) : [];
+        const now = Date.now();
+        if (cloudArrivalPrevRef.current === null) {
+          cloudArrivalPrevRef.current = total;
+          return;
+        }
+        const delta = Math.max(0, total - cloudArrivalPrevRef.current);
+        cloudArrivalPrevRef.current = total;
+        setCloudArrivals((prev) => {
+          const live = prev.filter((arrival) => now - arrival.born < ARRIVAL_TTL);
+          if (delta <= 0) return live.length === prev.length ? prev : live;
+          const spawnCount = Math.min(delta, 16);
+          const fresh: CloudArrival[] = Array.from({ length: spawnCount }, (_, i) => ({
+            id: `cloud-arrival-${now}-${i}`,
+            label: titles.length ? titles[i % titles.length] : "새 개념",
+            born: now,
+            anchorSeed: Math.floor(Math.random() * 1_000_000_000),
+          }));
+          return [...live, ...fresh].slice(-96);
+        });
+      } catch {
+        /* keep last */
+      }
+    };
+    poll();
+    const id = setInterval(poll, 2200);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [mainSection]);
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const ramSoftGb = stability?.runtime_envelope?.ram_soft_gb ?? 23;
@@ -4334,7 +4449,7 @@ function FullApp() {
     : graphPresentationMode === "local_private_memory"
       ? 1.58
       : graphPresentationMode === "cloud_world_knowledge"
-        ? 1.2
+        ? 1.5
         : 1.34;
   const activeTaskProgress = continuousLearningActive || learningDaemon?.worker_alive
     ? 100
@@ -5991,7 +6106,7 @@ function FullApp() {
                   key={usesStudioGraph ? "atanor-home-studio-graph" : `atanor-${mainSection}-${graphPresentationMode}-sphere-graph`}
                   activeEdgeKeys={activeSignalEdgeKeys}
                   activeNodeIds={activeSignalNodeIds}
-                  graph={userSceneGraph3D}
+                  graph={cloudSceneGraph3D}
                   control={rag3dControl}
                   preserveSourceCoordinates={usesStudioGraph || usesSphereGraph}
                   theme="dark"
