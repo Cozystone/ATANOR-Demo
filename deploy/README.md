@@ -25,11 +25,29 @@ Docker volume, so it survives restarts and redeploys — the brain only grows.
 
 1. **Get a small VPS** (1–2 GB RAM is plenty: Hetzner, DigitalOcean, Vultr, Fly.io
    machine, etc.) and install Docker + the compose plugin.
-2. **Copy this repo** to the VPS (or at minimum `apps/api/`, `packages/`, `deploy/`).
-3. **Start it:**
+2. **One-line setup** — SSH into the VM and paste:
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/main/deploy/setup-vm.sh | bash
+   ```
+   (installs Docker, pulls the public repo, builds + starts the brain). Or do it
+   manually: copy the repo and run
    ```sh
    docker compose -f deploy/docker-compose.yml up -d --build
    ```
+
+## Free always-on hosts
+
+The learning loop must run 24/7, so **serverless free tiers that sleep when idle
+(Render free, Cloud Run, Koyeb free) won't work** — the brain would stop growing.
+Use a real always-on free VM:
+
+- **Oracle Cloud "Always Free"** — free *forever* VM (AMD micro 1 GB, or ARM
+  Ampere if available). Best truly-free option. Signup needs a card for identity
+  verification only (not charged within free limits).
+- **Google Cloud free tier** — one `e2-micro` VM free per month in US regions.
+  Card required for verification.
+
+1 GB RAM is enough for this image (FastAPI + numpy; no torch).
    The brain begins learning immediately. Check it:
    ```sh
    curl http://localhost:8500/api/cloud-brain/learning/continuous/metrics
