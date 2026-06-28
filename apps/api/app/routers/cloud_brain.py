@@ -1065,6 +1065,159 @@ def cloud_brain_learning_run_capped(request: CloudLearningRunCappedRequest) -> d
     return result.to_dict()
 
 
+# ── continuous (infinite) cumulative learning loop ────────────────────────────
+# A background worker that paces real public sentences (random Wikipedia articles)
+# into the SAME learning loop the tick endpoint uses, forever. It accumulates the
+# REAL per-tick added counts (concepts/relations/surface) from run_once results —
+# so growth is measurable without depending on which store a status read picks.
+# Honest by construction: real cited sentences only, the loop's own fact-shape
+# filter rejects non-facts, no mock growth, paced to respect rate limits.
+import threading as _threading
+import time as _time
+import urllib.parse as _uparse
+import urllib.request as _urequest
+
+_CONT_LOCK = _threading.Lock()
+_CONT: dict[str, Any] = {
+    "running": False,
+    "started_at": None,
+    "ticks": 0,
+    "sentences_fed": 0,
+    "sentences_accepted": 0,
+    "concepts_added": 0,
+    "relations_added": 0,
+    "surface_added": 0,
+    "last_titles": [],
+    "last_error": None,
+    "backoff_until": 0.0,
+}
+_CONT_THREAD: _threading.Thread | None = None
+
+
+def _wiki_random_sentences(host: str, n_titles: int = 3) -> list[tuple[str, str]]:
+    def _get(url: str) -> Any:
+        req = _urequest.Request(url, headers={"User-Agent": "ATANOR-learn/0.1 (cumulative-learning)"})
+        with _urequest.urlopen(req, timeout=10) as resp:  # nosec B310 - bounded public API
+            return json.loads(resp.read().decode("utf-8"))
+
+    body = _get(f"https://{host}/w/api.php?action=query&list=random&rnnamespace=0&rnlimit={n_titles}&format=json")
+    titles = [t["title"] for t in (body.get("query", {}) or {}).get("random", [])]
+    out: list[tuple[str, str]] = []
+    for title in titles:
+        slug = _uparse.quote(title.replace(" ", "_"), safe="")
+        try:
+            summary = _get(f"https://{host}/api/rest_v1/page/summary/{slug}")
+        except Exception:
+            continue
+        extract = str(summary.get("extract") or "")
+        for raw in re.split(r"(?<=[.!?。])\s+|(?<=다\.)\s+", extract):
+            seg = re.sub(r"\s+", " ", raw).strip()
+            if 18 <= len(seg) <= 1800:
+                out.append((title, seg))
+    return out
+
+
+def _continuous_worker() -> None:
+    hosts = ("en.wikipedia.org", "ko.wikipedia.org")
+    hi = 0
+    while True:
+        with _CONT_LOCK:
+            if not _CONT["running"]:
+                break
+            backoff = _CONT["backoff_until"]
+        if _time.time() < backoff:
+            _time.sleep(0.5)
+            continue
+        host = hosts[hi % 2]
+        hi += 1
+        try:
+            batch = _wiki_random_sentences(host)
+        except Exception as exc:  # rate limit / network — back off, keep looping
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"fetch: {type(exc).__name__}"
+                _CONT["backoff_until"] = _time.time() + 8.0
+            continue
+        if not batch:
+            _time.sleep(1.0)
+            continue
+        rows = [
+            {
+                "source_type": "local_public_corpus_shard",
+                "source_id": f"wiki:{host}:{int(_time.time()*1000)}:{i}",
+                "text": seg,
+                "language": "ko" if host.startswith("ko") else "en",
+                "license_hint": "CC BY-SA 4.0",
+                "source_url_or_path": f"https://{host}/wiki/{_uparse.quote(title.replace(' ', '_'), safe='')}",
+            }
+            for i, (title, seg) in enumerate(batch)
+        ]
+        try:
+            payloads = [payload_from_mapping(r) for r in rows]
+            result = _learning_loop_for_request().run_once(payloads=payloads, max_accepted_per_run=len(payloads), dry_run=False)
+            d = result.to_dict()
+            sem = d.get("semantic", {}) or {}
+            surf = d.get("surface", {}) or {}
+            with _CONT_LOCK:
+                _CONT["ticks"] += 1
+                _CONT["sentences_fed"] += len(payloads)
+                _CONT["sentences_accepted"] += int(sem.get("payloads_accepted") or 0)
+                _CONT["concepts_added"] += int(sem.get("concepts_added") or 0)
+                _CONT["relations_added"] += int(sem.get("relations_added") or 0)
+                _CONT["surface_added"] += int(surf.get("surface_candidates_created") or 0)
+                _CONT["last_titles"] = [t for t, _ in batch][:5]
+                _CONT["last_error"] = None
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"ingest: {type(exc).__name__}: {exc}"[:160]
+        # pace to respect public API rate limits (sustained, not bursty)
+        _time.sleep(1.2)
+
+
+@router.post("/learning/continuous/start")
+def cloud_brain_continuous_start() -> dict[str, Any]:
+    global _CONT_THREAD
+    with _CONT_LOCK:
+        if _CONT["running"]:
+            return {"running": True, "already_running": True}
+        _CONT.update({"running": True, "started_at": _time.time(), "last_error": None, "backoff_until": 0.0})
+    _CONT_THREAD = _threading.Thread(target=_continuous_worker, name="atanor-continuous-learn", daemon=True)
+    _CONT_THREAD.start()
+    return {"running": True, "started": True}
+
+
+@router.post("/learning/continuous/stop")
+def cloud_brain_continuous_stop() -> dict[str, Any]:
+    with _CONT_LOCK:
+        _CONT["running"] = False
+    return {"running": False, "stopped": True}
+
+
+@router.get("/learning/continuous/metrics")
+def cloud_brain_continuous_metrics() -> dict[str, Any]:
+    with _CONT_LOCK:
+        snap = dict(_CONT)
+    started = snap.get("started_at")
+    uptime = (_time.time() - started) if started else 0.0
+    fed = snap["sentences_fed"]
+    return {
+        "running": snap["running"],
+        "uptime_seconds": round(uptime, 1),
+        "ticks": snap["ticks"],
+        "sentences_fed": fed,
+        "sentences_accepted": snap["sentences_accepted"],
+        "concepts_added": snap["concepts_added"],
+        "relations_added": snap["relations_added"],
+        "surface_added": snap["surface_added"],
+        "sentences_per_second": round(fed / uptime, 2) if uptime > 0 else 0.0,
+        "concepts_per_minute": round(snap["concepts_added"] / uptime * 60, 1) if uptime > 0 else 0.0,
+        "accept_rate": round(snap["sentences_accepted"] / fed, 3) if fed else 0.0,
+        "last_titles": snap["last_titles"],
+        "last_error": snap["last_error"],
+        "mock_growth": False,
+        "source": "wikipedia_random_public_extract",
+    }
+
+
 @router.get("/surface-graph/status")
 def cloud_brain_surface_graph_status() -> dict[str, Any]:
     semantic = get_semantic_cloud_growth_status()

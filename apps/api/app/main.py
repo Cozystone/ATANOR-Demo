@@ -122,6 +122,15 @@ async def lifespan(_app: FastAPI):
     cleaned_directory_watcher.start()
     if os.getenv("ATANOR_AUTO_START_DAEMON", os.getenv("ATANOR_AUTOSTART_DAEMON", os.getenv("HOMAGE_AUTO_START_DAEMON"))) == "1":
         start_daemon(interval_seconds=30, resume=True)
+    # Infinite cumulative learning loop — on by default so the cloud/surface graph
+    # keeps growing from real public sentences. Disable with ATANOR_AUTO_LEARN=0.
+    if os.getenv("ATANOR_AUTO_LEARN", "1") != "0":
+        try:
+            from app.routers.cloud_brain import cloud_brain_continuous_start
+
+            cloud_brain_continuous_start()
+        except Exception:  # pragma: no cover - never block startup
+            pass
     await graph_event_hub.publish_snapshot(event_type="graph_snapshot", trigger="api_startup", limit=5000)
     try:
         yield
