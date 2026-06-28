@@ -4477,15 +4477,21 @@ p {
    the existing ATANOR sidebar (the frame stays). Replaces the orb on home. ──── */
 .atanor-demochat {
   position: fixed;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  left: clamp(196px, 12.2vw, 226px); /* exact width of .atanor-user-sidebar column */
+  /* Inset as a rounded panel so a thin dark "mat" frames it — this softens the
+     hard dark-sidebar / white-chat boundary instead of a full-bleed white. */
+  top: 12px;
+  bottom: 12px;
+  right: 12px;
+  left: calc(clamp(196px, 12.2vw, 226px) + 12px);
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: #f7f8fb; /* off-white, gentler than pure #fff */
   color: #1d2330;
   z-index: 4;
+  border: 1px solid rgba(120, 140, 180, 0.16);
+  border-radius: 18px;
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.34);
+  overflow: hidden; /* clip the thread to the rounded corners */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
 }
 .atanor-demochat-orb {
