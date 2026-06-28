@@ -24,6 +24,11 @@ type Metrics = {
   last_titles: string[];
   last_error: string | null;
   source: string;
+  firehose_per_second?: number;
+  firehose_processed?: number;
+  firehose_unique?: number;
+  firehose_sources?: number;
+  relation_checks_per_second?: number;
 };
 
 type View = "concept" | "surface";
@@ -130,8 +135,14 @@ export default function LiveLearningPanel({
         <div><b>{m?.relations_added.toLocaleString() ?? 0}</b><span>관계 추가</span></div>
         <div><b>{m?.sentences_per_second ?? 0}</b><span>문장/초</span></div>
       </div>
+      <div className="atanor-livelearn-firehose">
+        <span>발화 파이어호스</span>
+        <b>{(m?.firehose_unique ?? 0).toLocaleString()}문장</b>
+        <i>{m?.firehose_per_second ? `${m.firehose_per_second.toLocaleString()}/초` : "코퍼스 대기"}</i>
+        <em>{(m?.relation_checks_per_second ?? 0).toLocaleString()} 검증/초</em>
+      </div>
       <div className="atanor-livelearn-foot">
-        실제 공개 위키 문장 · 가짜 성장 없음{m?.last_error ? ` · ${m.last_error}` : ""}
+        수집(발화)≠이해(개념) 분리 · 실제 공개 문장 · 가짜 성장 없음{m?.last_error ? ` · ${m.last_error}` : ""}
       </div>
     </div>
   );

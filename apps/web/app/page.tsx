@@ -3989,8 +3989,8 @@ function FullApp() {
         const titles = Array.isArray(data.last_titles) ? (data.last_titles as unknown[]).map(String) : [];
         const now = Date.now();
         // Drive the sky-blue synapse density from the REAL relation-check rate the
-        // backend reports (random concept pairs verified per second).
-        setSynapseRate(Math.min(140, Math.round(Number(data.relation_checks_per_second) || 0)));
+        // backend reports — a faster sweep now (capped for render sanity).
+        setSynapseRate(Math.min(300, Math.round((Number(data.relation_checks_per_second) || 0) * 0.18)));
         if (cloudArrivalPrevRef.current === null) {
           cloudArrivalPrevRef.current = total;
           return;

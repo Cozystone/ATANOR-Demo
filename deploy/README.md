@@ -87,6 +87,28 @@ and the server answers `/api/cloud-brain/learning/continuous/metrics`,
 serves without torch / sentence_transformers. (Full `docker build` still depends
 on your Docker daemon being up.)
 
+## Firehose — fast bulk ingest (the "거대 발화그래프")
+
+The cloud brain has a **firehose** that streams sentences from local corpora at
+disk speed and counts unique utterances — separate from (and far faster than) the
+slow concept/relation extraction. Out of the box it ingests a small **diverse seed**
+(formal docs + casual speech + slang, EN + KO). For sustained **~10k sentences/sec**,
+drop large public corpora into a directory and point the firehose at it:
+
+```sh
+# in docker-compose.yml, add to the atanor-cloud service:
+#   environment:
+#     - ATANOR_CORPORA_DIR=/app/data/corpora
+#   (and put *.txt / *.jsonl corpora into the atanor-data volume's corpora/ dir)
+```
+
+Good diverse public sources (download once into the corpora dir): a Wikipedia
+sentence dump (formal), OpenSubtitles (dialogue/slang), a tweets/Reddit dump
+(colloquial), Korean colloquial sets (e.g. NSMC). Note: scraping Instagram etc.
+is **not** done — that violates their ToS and needs auth; use legitimately public
+corpora. The UI shows ingest rate (fast) vs concepts (slow) separately — "본 문장"
+is not claimed as "이해한 개념".
+
 ## Notes
 - Only **public** (Wikipedia-derived) knowledge lives in the cloud brain — no
   private/local data is sent here, by design.

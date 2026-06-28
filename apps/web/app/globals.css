@@ -4755,6 +4755,15 @@ p {
 .atanor-livelearn-grid div { text-align: center; }
 .atanor-livelearn-grid b { display: block; font-size: 15px; color: #dbe6ff; font-variant-numeric: tabular-nums; }
 .atanor-livelearn-grid span { font-size: 10px; color: #7d889c; }
+.atanor-livelearn-firehose {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 10.5px; color: #8aa0c8;
+}
+.atanor-livelearn-firehose span { color: #7d889c; }
+.atanor-livelearn-firehose b { color: #dbe6ff; font-variant-numeric: tabular-nums; }
+.atanor-livelearn-firehose i { color: #7dffc0; font-style: normal; }
+.atanor-livelearn-firehose em { margin-left: auto; color: #4ec9ff; font-style: normal; }
 .atanor-livelearn-foot { margin-top: 9px; font-size: 10px; color: #5a6478; text-align: center; }
 
 /* Self-layout dodge: when an answer card would cover the orb, the measured

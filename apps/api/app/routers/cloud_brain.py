@@ -1160,7 +1160,7 @@ def _relation_discovery_worker() -> None:
             _time.sleep(1.0)
             continue
         n = len(concepts)
-        batch = 60
+        batch = 200  # faster verification sweep
         fired: list[tuple[str, str]] = []
         for _ in range(batch):
             a = concepts[_random.randrange(n)]
@@ -1196,7 +1196,7 @@ def _relation_discovery_worker() -> None:
                 _RELDISC["checks_per_second"] = round((_RELDISC["checks"] - _RELDISC["last_checks"]) / dt, 1)
                 _RELDISC["last_checks"] = _RELDISC["checks"]
                 _RELDISC["last_rate_at"] = now
-        _time.sleep(0.25)
+        _time.sleep(0.1)
 
 
 def cloud_brain_relation_discovery_start() -> dict[str, Any]:
@@ -1207,6 +1207,125 @@ def cloud_brain_relation_discovery_start() -> dict[str, Any]:
         _RELDISC.update({"running": True, "started_at": _time.time(), "last_rate_at": _time.time()})
     _RELDISC_THREAD = _threading.Thread(target=_relation_discovery_worker, name="atanor-relation-discovery", daemon=True)
     _RELDISC_THREAD.start()
+    return {"running": True, "started": True}
+
+
+# --- Firehose: ultra-light bulk sentence ingest (the "거대 발화그래프" raw layer) ---
+# Streams sentences from local corpora at disk speed, dedups, and appends a bounded
+# sample to an utterance log. This is the FAST "sentences SEEN" layer; concept /
+# relation understanding is the slower downstream pipeline — never conflated.
+_FIREHOSE_LOCK = _threading.Lock()
+_FIREHOSE: dict[str, Any] = {
+    "running": False,
+    "started_at": None,
+    "processed": 0,
+    "unique": 0,
+    "per_second": 0.0,
+    "last_rate_at": 0.0,
+    "last_processed": 0,
+    "sources": 0,
+}
+_FIREHOSE_THREAD: _threading.Thread | None = None
+
+
+def _firehose_corpus_files() -> list[Path]:
+    files: list[Path] = []
+    seed = _CLOUD_BRAIN_WORKTREE_ROOT / "packages" / "cloud_brain" / "seed_corpus"
+    if seed.is_dir():
+        files.extend(sorted(seed.glob("*.txt")))
+    extra = os.environ.get("ATANOR_CORPORA_DIR")
+    if extra and Path(extra).is_dir():
+        for pattern in ("*.txt", "*.jsonl"):
+            files.extend(sorted(Path(extra).glob(pattern)))
+    return files
+
+
+def _firehose_iter_sentences(path: Path):
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as fh:
+            is_jsonl = path.suffix == ".jsonl"
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if is_jsonl:
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    line = str(obj.get("text") or obj.get("sentence") or "").strip()
+                if 8 <= len(line) <= 2000:
+                    yield line
+    except Exception:
+        return
+
+
+def _firehose_tick_rate() -> None:
+    now = _time.time()
+    with _FIREHOSE_LOCK:
+        dt = now - (_FIREHOSE["last_rate_at"] or now)
+        if dt >= 1.0:
+            _FIREHOSE["per_second"] = round((_FIREHOSE["processed"] - _FIREHOSE["last_processed"]) / dt, 1)
+            _FIREHOSE["last_processed"] = _FIREHOSE["processed"]
+            _FIREHOSE["last_rate_at"] = now
+
+
+def _firehose_worker() -> None:
+    seen: set[int] = set()
+    store = _resolve_candidate_store_path()
+    utter_log = (Path(store) / "utterances.jsonl") if store else None
+    while True:
+        with _FIREHOSE_LOCK:
+            if not _FIREHOSE["running"]:
+                break
+        files = _firehose_corpus_files()
+        with _FIREHOSE_LOCK:
+            _FIREHOSE["sources"] = len(files)
+        if not files:
+            _time.sleep(2.0)
+            continue
+        new_this_pass = 0
+        for f in files:
+            batch_new: list[str] = []
+            count = 0
+            for sentence in _firehose_iter_sentences(f):
+                count += 1
+                h = hash(sentence)
+                if h not in seen:
+                    if len(seen) < 3_000_000:
+                        seen.add(h)
+                    new_this_pass += 1
+                    if len(batch_new) < 4000:
+                        batch_new.append(sentence)
+                if count % 2000 == 0:
+                    with _FIREHOSE_LOCK:
+                        _FIREHOSE["processed"] += 2000
+                    _firehose_tick_rate()
+            with _FIREHOSE_LOCK:
+                _FIREHOSE["processed"] += count % 2000
+                _FIREHOSE["unique"] += len(batch_new)
+            if utter_log and batch_new:
+                try:
+                    with utter_log.open("a", encoding="utf-8") as fh:
+                        for sentence in batch_new[:2000]:
+                            fh.write(json.dumps({"t": sentence}, ensure_ascii=False) + "\n")
+                except Exception:
+                    pass
+            _firehose_tick_rate()
+        # A full pass with no new uniques means we've exhausted the local corpora
+        # (e.g. only the small seed) — idle so we don't peg CPU re-reading dupes.
+        # Drop big public corpora into ATANOR_CORPORA_DIR for sustained 10k/sec.
+        _time.sleep(3.0 if new_this_pass == 0 else 0.02)
+
+
+def cloud_brain_firehose_start() -> dict[str, Any]:
+    global _FIREHOSE_THREAD
+    with _FIREHOSE_LOCK:
+        if _FIREHOSE["running"]:
+            return {"running": True, "already_running": True}
+        _FIREHOSE.update({"running": True, "started_at": _time.time(), "last_rate_at": _time.time()})
+    _FIREHOSE_THREAD = _threading.Thread(target=_firehose_worker, name="atanor-firehose", daemon=True)
+    _FIREHOSE_THREAD.start()
     return {"running": True, "started": True}
 
 
@@ -1302,6 +1421,10 @@ def cloud_brain_continuous_start() -> dict[str, Any]:
         cloud_brain_relation_discovery_start()
     except Exception:
         pass
+    try:
+        cloud_brain_firehose_start()
+    except Exception:
+        pass
     return {"running": True, "started": True}
 
 
@@ -1318,6 +1441,8 @@ def cloud_brain_continuous_metrics() -> dict[str, Any]:
         snap = dict(_CONT)
     with _RELDISC_LOCK:
         rel = dict(_RELDISC)
+    with _FIREHOSE_LOCK:
+        fh = dict(_FIREHOSE)
     started = snap.get("started_at")
     uptime = (_time.time() - started) if started else 0.0
     fed = snap["sentences_fed"]
@@ -1326,6 +1451,10 @@ def cloud_brain_continuous_metrics() -> dict[str, Any]:
         "relation_checks_total": rel.get("checks", 0),
         "relations_linked": rel.get("linked", 0),
         "relation_recent": rel.get("recent", []),
+        "firehose_per_second": fh.get("per_second", 0.0),
+        "firehose_processed": fh.get("processed", 0),
+        "firehose_unique": fh.get("unique", 0),
+        "firehose_sources": fh.get("sources", 0),
         "running": snap["running"],
         "uptime_seconds": round(uptime, 1),
         "ticks": snap["ticks"],
