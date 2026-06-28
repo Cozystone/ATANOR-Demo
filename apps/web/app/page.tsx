@@ -3988,9 +3988,9 @@ function FullApp() {
         const total = (Number(data.concepts_added) || 0) + (Number(data.relations_added) || 0);
         const titles = Array.isArray(data.last_titles) ? (data.last_titles as unknown[]).map(String) : [];
         const now = Date.now();
-        // Drive the sky-blue synapse density from the REAL relation-check rate the
-        // backend reports — a faster sweep now (capped for render sanity).
-        setSynapseRate(Math.min(300, Math.round((Number(data.relation_checks_per_second) || 0) * 0.18)));
+        // Drive the sky-blue activation density from the REAL relation-check rate
+        // (scaled up so the sweep reads as a fast, lively verification pass).
+        setSynapseRate(Math.min(280, Math.round((Number(data.relation_checks_per_second) || 0) * 1.8)));
         if (cloudArrivalPrevRef.current === null) {
           cloudArrivalPrevRef.current = total;
           return;
