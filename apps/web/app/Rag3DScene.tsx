@@ -73,6 +73,7 @@ type Rag3DSceneProps = {
   fitScale?: number;
   showLabels?: boolean;
   edgeOpacity?: number;
+  synapsesPerSecond?: number;
 };
 
 type VisibleEdge = Rag3DEdge & {
@@ -140,6 +141,14 @@ type SceneState = {
   pulseCapacity: number;
   pulseItems: EdgePulse[];
   pulseMesh: THREE.InstancedMesh | null;
+  synapseLines: THREE.LineSegments | null;
+  synapseGeometry: THREE.BufferGeometry | null;
+  synapsePosArray: Float32Array | null;
+  synapseColorArray: Float32Array | null;
+  synapseCapacity: number;
+  synapseItems: { a: number; b: number; born: number }[];
+  synapseSpawnAccum: number;
+  synapsesPerSecond: number;
   renderer: THREE.WebGLRenderer;
   scaleChunks: Rag3DScaleChunk[];
   scene: THREE.Scene;
@@ -183,6 +192,13 @@ const neonOrangeColor = new THREE.Color(NEON_ORANGE);
 // orange even when brightened on the additive field (a high-green orange clips to
 // yellow-white).
 const arrivalGlowColor = new THREE.Color(0xff6a1a);
+// Sky-blue = complement of the arrival orange. Used for the "synapse firing"
+// activation lines that flicker across the graph each second.
+const SYNAPSE_COLOR = 0x4ec9ff;
+const skyBlueColor = new THREE.Color(SYNAPSE_COLOR);
+const SYNAPSE_LIFE_SECONDS = 0.55;
+const SYNAPSE_MAX = 700;
+const constructionColor = new THREE.Color(0x22d3ee);
 const localMemoryColor = new THREE.Color(0xffffff);
 const representativeNodeColor = new THREE.Color(0xa7b7d1);
 const cloudBrainColor = new THREE.Color(0x6fb0ff);
@@ -206,32 +222,19 @@ function getNodePointTexture() {
   canvas.height = 64;
   const context = canvas.getContext("2d");
   if (context) {
+    // A clean solid dot with a soft glow falloff — NO dark center, so the vertex
+    // colour shows as a coloured point (not a black sphere with a halo).
     context.clearRect(0, 0, canvas.width, canvas.height);
-    const glow = context.createRadialGradient(30, 27, 4, 32, 32, 31);
-    glow.addColorStop(0, "rgba(255,255,255,1)");
-    glow.addColorStop(0.4, "rgba(255,255,255,0.62)");
-    glow.addColorStop(0.76, "rgba(255,255,255,0.22)");
-    glow.addColorStop(1, "rgba(255,255,255,0)");
-    context.fillStyle = glow;
+    const dot = context.createRadialGradient(32, 32, 0, 32, 32, 32);
+    dot.addColorStop(0, "rgba(255,255,255,1)");
+    dot.addColorStop(0.32, "rgba(255,255,255,0.98)");
+    dot.addColorStop(0.55, "rgba(255,255,255,0.55)");
+    dot.addColorStop(0.78, "rgba(255,255,255,0.16)");
+    dot.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = dot;
     context.beginPath();
-    context.arc(32, 32, 31, 0, Math.PI * 2);
+    context.arc(32, 32, 32, 0, Math.PI * 2);
     context.fill();
-
-    const sphere = context.createRadialGradient(24, 21, 1, 32, 32, 13.5);
-    sphere.addColorStop(0, "rgba(255,255,255,1)");
-    sphere.addColorStop(0.42, "rgba(238,243,248,0.96)");
-    sphere.addColorStop(0.72, "rgba(128,148,170,0.84)");
-    sphere.addColorStop(1, "rgba(22,28,36,0.96)");
-    context.fillStyle = sphere;
-    context.beginPath();
-    context.arc(32, 32, 13.2, 0, Math.PI * 2);
-    context.fill();
-
-    context.strokeStyle = "rgba(255,255,255,0.72)";
-    context.lineWidth = 1.1;
-    context.beginPath();
-    context.arc(32, 32, 12.8, 0, Math.PI * 2);
-    context.stroke();
   }
   nodePointTexture = new THREE.CanvasTexture(canvas);
   nodePointTexture.colorSpace = THREE.SRGBColorSpace;
@@ -290,6 +293,7 @@ function positionCentroid(positions: THREE.Vector3[], indices?: number[]) {
 function nodeBaseColor(node: Rag3DNode) {
   const sourceType = nodeSourceType(node);
   const nodeKind = `${node.type ?? ""} ${sourceType ?? ""}`.toLowerCase();
+  if (/construction|surface/.test(nodeKind)) return constructionColor;
   if (/contributor|brain[_-]?link|public[_-]?fragment|fragment/.test(nodeKind)) return contributorFragmentColor;
   if (/working|working[_-]?memory|session|temporary/.test(nodeKind)) return workingMemoryColor;
   if (/seed|schema|root|ontology[_-]?schema/.test(nodeKind)) return seedSchemaColor;
@@ -1437,6 +1441,84 @@ function updateShellMesh(state: SceneState, elapsed: number) {
   state.shellMesh.instanceMatrix.needsUpdate = true;
 }
 
+function ensureSynapseBuffers(state: SceneState, segmentCount: number) {
+  const vertexCount = Math.max(1, segmentCount) * 2;
+  if (state.synapseLines && state.synapseGeometry && state.synapseCapacity >= vertexCount) {
+    state.synapseGeometry.setDrawRange(0, segmentCount * 2);
+    return;
+  }
+  const nextCap = nextCapacity(vertexCount, 1024);
+  state.synapseCapacity = nextCap;
+  state.synapsePosArray = expandedFloatBuffer(state.synapsePosArray, nextCap * 3);
+  state.synapseColorArray = expandedFloatBuffer(state.synapseColorArray, nextCap * 3);
+  if (!state.synapseGeometry) state.synapseGeometry = new THREE.BufferGeometry();
+  state.synapseGeometry.setAttribute("position", new THREE.BufferAttribute(state.synapsePosArray, 3).setUsage(THREE.DynamicDrawUsage));
+  state.synapseGeometry.setAttribute("color", new THREE.BufferAttribute(state.synapseColorArray, 3).setUsage(THREE.DynamicDrawUsage));
+  state.synapseGeometry.setDrawRange(0, segmentCount * 2);
+  if (!state.synapseLines) {
+    const material = new THREE.LineBasicMaterial({
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      opacity: 0.92,
+      transparent: true,
+      vertexColors: true,
+    });
+    state.synapseLines = new THREE.LineSegments(state.synapseGeometry, material);
+    state.synapseLines.renderOrder = 3;
+    state.synapseLines.frustumCulled = false;
+    state.group.add(state.synapseLines);
+  } else {
+    state.synapseLines.geometry = state.synapseGeometry;
+  }
+}
+
+// "Synapse firing": each second the engine activates random node pairs across the
+// whole sphere; we draw those activations as short-lived sky-blue lines that flash
+// and fade — the graph looks alive and continuously cross-linking.
+function updateSynapses(state: SceneState, elapsed: number, dt: number) {
+  const nodeCount = state.nodePositionById.size > 0 ? state.graphNodes.length : 0;
+  state.synapseItems = state.synapseItems.filter((s) => elapsed - s.born < SYNAPSE_LIFE_SECONDS);
+  const rate = state.synapsesPerSecond;
+  if (rate > 0 && nodeCount > 2 && state.nodePositionArray) {
+    state.synapseSpawnAccum += rate * Math.min(0.1, dt);
+    let toSpawn = Math.floor(state.synapseSpawnAccum);
+    state.synapseSpawnAccum -= toSpawn;
+    toSpawn = Math.min(toSpawn, SYNAPSE_MAX - state.synapseItems.length);
+    for (let i = 0; i < toSpawn; i += 1) {
+      const a = (Math.random() * nodeCount) | 0;
+      let b = (Math.random() * nodeCount) | 0;
+      if (b === a) b = (b + 1) % nodeCount;
+      state.synapseItems.push({ a, b, born: elapsed });
+    }
+  }
+  const items = state.synapseItems;
+  ensureSynapseBuffers(state, items.length);
+  if (!state.synapseLines || !state.synapsePosArray || !state.synapseColorArray || !state.nodePositionArray || !state.synapseGeometry) return;
+  const pos = state.synapsePosArray;
+  const col = state.synapseColorArray;
+  const np = state.nodePositionArray;
+  for (let i = 0; i < items.length; i += 1) {
+    const s = items[i];
+    const v = i * 6;
+    const ai = s.a * 3;
+    const bi = s.b * 3;
+    pos[v] = np[ai]; pos[v + 1] = np[ai + 1]; pos[v + 2] = np[ai + 2];
+    pos[v + 3] = np[bi]; pos[v + 4] = np[bi + 1]; pos[v + 5] = np[bi + 2];
+    const t = THREE.MathUtils.clamp((elapsed - s.born) / SYNAPSE_LIFE_SECONDS, 0, 1);
+    const flash = Math.sin(t * Math.PI); // 0 -> 1 -> 0
+    const bright = flash * 1.9;
+    const r = skyBlueColor.r * bright;
+    const g = skyBlueColor.g * bright;
+    const bch = skyBlueColor.b * bright;
+    col[v] = r; col[v + 1] = g; col[v + 2] = bch;
+    col[v + 3] = r; col[v + 4] = g; col[v + 5] = bch;
+  }
+  state.synapseGeometry.setDrawRange(0, items.length * 2);
+  (state.synapseGeometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+  (state.synapseGeometry.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
+}
+
 export default function Rag3DScene({
   graph,
   activeEdgeKeys = [],
@@ -1451,11 +1533,13 @@ export default function Rag3DScene({
   fitScale = 1,
   showLabels = true,
   edgeOpacity = 0.34,
+  synapsesPerSecond = 0,
 }: Rag3DSceneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
   const viewportChangeRef = useRef(onViewportChange);
   const sceneStateRef = useRef<SceneState | null>(null);
+  const synapseRateRef = useRef(synapsesPerSecond);
   const activeEdgeRef = useRef(new Set(activeEdgeKeys));
   const activeNodeRef = useRef(new Set(activeNodeIds));
   const newNodeRef = useRef(new Set(newNodeIds));
@@ -1496,6 +1580,12 @@ export default function Rag3DScene({
       material.needsUpdate = true;
     }
   }, [edgeOpacity]);
+
+  useEffect(() => {
+    synapseRateRef.current = synapsesPerSecond;
+    const state = sceneStateRef.current;
+    if (state) state.synapsesPerSecond = synapsesPerSecond;
+  }, [synapsesPerSecond]);
 
   useEffect(() => {
     const state = sceneStateRef.current;
@@ -1637,6 +1727,14 @@ export default function Rag3DScene({
       pulseCapacity: 0,
       pulseItems: [],
       pulseMesh: null,
+      synapseLines: null,
+      synapseGeometry: null,
+      synapsePosArray: null,
+      synapseColorArray: null,
+      synapseCapacity: 0,
+      synapseItems: [],
+      synapseSpawnAccum: 0,
+      synapsesPerSecond: synapseRateRef.current,
       renderer,
       scaleChunks: [],
       scene,
@@ -1715,6 +1813,7 @@ export default function Rag3DScene({
     let memorySafeMode = false;
     let lastMemoryProbeAt = 0;
     let lastRenderedAt = 0;
+    let lastSynapseElapsed = 0;
     function handleVisibilityChange() {
       visibilityPaused = document.hidden;
       lastRenderedAt = 0;
@@ -1755,6 +1854,8 @@ export default function Rag3DScene({
       lastRenderedAt = now;
       state.frame += 1;
       const elapsed = (performance.now() - state.startedAt) / 1000;
+      const synapseDt = lastSynapseElapsed > 0 ? elapsed - lastSynapseElapsed : 0;
+      lastSynapseElapsed = elapsed;
       if (!drag.active && coordinateAnimationAllowed(state.visualState)) group.rotation.y += 0.00125;
 
       updateNodeBuffers(state, elapsed);
@@ -1762,6 +1863,7 @@ export default function Rag3DScene({
       updateShellMesh(state, elapsed);
       updateHaloMesh(state, elapsed);
       updatePulseMesh(state, elapsed);
+      updateSynapses(state, elapsed, synapseDt);
 
       container.dataset.cameraZ = camera.position.z.toFixed(1);
       container.dataset.maxZoom = maxZoomDistanceForNodeCount(totalNodes).toFixed(1);
@@ -1817,6 +1919,10 @@ export default function Rag3DScene({
       if (state.pulseMesh) {
         state.group.remove(state.pulseMesh);
         disposeObject(state.pulseMesh);
+      }
+      if (state.synapseLines) {
+        state.group.remove(state.synapseLines);
+        disposeObject(state.synapseLines);
       }
       disposeObject(grid);
       renderer.dispose();

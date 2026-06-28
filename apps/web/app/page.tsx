@@ -3875,69 +3875,26 @@ function FullApp() {
     const rawNodes = Array.isArray(surfaceGraphData?.nodes) ? (surfaceGraphData!.nodes as AnyRecord[]) : [];
     const rawEdges = Array.isArray(surfaceGraphData?.edges) ? (surfaceGraphData!.edges as AnyRecord[]) : [];
     if (!rawNodes.length) return { nodes: [], edges: [], traversal_path: [] };
-    // Cluster constructions that share a concept (connected via shares_concept
-    // edges) so semantic groups sit together instead of a flat index sphere.
-    const idIndex = new Map(rawNodes.map((node, index) => [String(node.id), index]));
-    const parent = rawNodes.map((_, index) => index);
-    const find = (x: number): number => {
-      let root = x;
-      while (parent[root] !== root) root = parent[root];
-      while (parent[x] !== root) {
-        const next = parent[x];
-        parent[x] = root;
-        x = next;
-      }
-      return root;
-    };
-    rawEdges.forEach((edge) => {
-      const a = idIndex.get(String(edge.source));
-      const b = idIndex.get(String(edge.target));
-      if (a !== undefined && b !== undefined) {
-        const ra = find(a);
-        const rb = find(b);
-        if (ra !== rb) parent[ra] = rb;
-      }
-    });
-    const components = new Map<number, number[]>();
-    rawNodes.forEach((_, index) => {
-      const root = find(index);
-      const list = components.get(root);
-      if (list) list.push(index);
-      else components.set(root, [index]);
-    });
-    const compList = [...components.values()].sort((a, b) => b.length - a.length);
-    const positions = new Array<{ x: number; y: number; z: number }>(rawNodes.length);
-    const clusterShell = 11;
-    compList.forEach((members, ci) => {
-      const cy = 1 - ((ci + 0.5) / compList.length) * 2;
-      const cradial = Math.sqrt(Math.max(0, 1 - cy * cy));
-      const ctheta = ci * 2.399963229728653;
-      const centerX = Math.cos(ctheta) * cradial * clusterShell;
-      const centerY = cy * clusterShell;
-      const centerZ = Math.sin(ctheta) * cradial * clusterShell;
-      const localR = 0.5 + Math.cbrt(members.length) * 0.7;
-      members.forEach((mi, k) => {
-        const ly = members.length > 1 ? 1 - ((k + 0.5) / members.length) * 2 : 0;
-        const lradial = Math.sqrt(Math.max(0, 1 - ly * ly));
-        const ltheta = k * 2.399963229728653;
-        positions[mi] = {
-          x: centerX + Math.cos(ltheta) * lradial * localR + stableUnit(String(rawNodes[mi].id), 7) * 0.2,
-          y: centerY + ly * localR * 0.85,
-          z: centerZ + Math.sin(ltheta) * lradial * localR,
-        };
-      });
-    });
+    // Spherical layout (latitude by index, golden-angle longitude) — a clean
+    // round ball like the concept graph, instead of scattered clusters.
+    const count = rawNodes.length;
+    const sphereR = 9.5;
     const clustered: Rag3DGraph = {
-      nodes: rawNodes.map((node, index) => ({
-        id: String(node.id),
-        label: String(node.label ?? node.id),
-        type: String(node.type ?? "surface_construction"),
-        x: positions[index]?.x ?? 0,
-        y: positions[index]?.y ?? 0,
-        z: positions[index]?.z ?? 0,
-        source_type: "surface_construction",
-        cluster_id: `surface-cluster-${find(index)}`,
-      })),
+      nodes: rawNodes.map((node, index) => {
+        const lat = 1 - ((index + 0.5) / count) * 2;
+        const latRadial = Math.sqrt(Math.max(0.02, 1 - lat * lat));
+        const lon = index * 2.399963229728653 + stableUnit(String(node.id), 811) * 0.2;
+        const r = sphereR + stableUnit(String(node.id), 7) * 0.7;
+        return {
+          id: String(node.id),
+          label: String(node.label ?? node.id),
+          type: String(node.type ?? "surface_construction"),
+          x: Math.cos(lon) * latRadial * r,
+          y: lat * r,
+          z: Math.sin(lon) * latRadial * r,
+          source_type: "surface_construction",
+        };
+      }),
       edges: rawEdges.map((edge) => ({
         source: String(edge.source),
         target: String(edge.target),
@@ -6272,6 +6229,7 @@ function FullApp() {
                   fitScale={graphFitScale}
                   showLabels={mainSection !== "local"}
                   edgeOpacity={graphEdgeOpacity}
+                  synapsesPerSecond={mainSection === "cloud" ? 75 : 0}
                   onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
                 />
               ) : (
