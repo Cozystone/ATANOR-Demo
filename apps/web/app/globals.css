@@ -4479,10 +4479,10 @@ p {
   position: fixed;
   /* Inset as a rounded panel so a thin dark "mat" frames it — this softens the
      hard dark-sidebar / white-chat boundary instead of a full-bleed white. */
-  top: 12px;
-  bottom: 12px;
-  right: 12px;
-  left: calc(clamp(196px, 12.2vw, 226px) + 12px);
+  top: 18px;
+  bottom: 18px;
+  right: 18px;
+  left: calc(clamp(196px, 12.2vw, 226px) + 18px);
   display: flex;
   flex-direction: column;
   background: #f7f8fb; /* off-white, gentler than pure #fff */
