@@ -1,0 +1,42 @@
+# ATANOR Cloud Brain — always-on stack for a VPS.
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# - atanor-cloud: the Python engine (learns 24/7, serves /api).
+# - caddy (optional): automatic HTTPS reverse proxy in front of it. Set DOMAIN
+#   and remove the comment markers to enable it.
+
+services:
+  atanor-cloud:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: atanor-cloud:latest
+    restart: always
+    environment:
+      - ATANOR_AUTO_LEARN=1
+    volumes:
+      - atanor-data:/app/data
+    # Expose directly for a quick test; for production, front it with Caddy below
+    # (HTTPS) and remove this ports block.
+    ports:
+      - "8500:8500"
+
+  # --- Optional: automatic HTTPS (needs a domain pointing at this VPS) ---
+  # caddy:
+  #   image: caddy:2
+  #   restart: always
+  #   depends_on: [atanor-cloud]
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   environment:
+  #     - DOMAIN=cloud.yourdomain.com
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy-data:/data
+  #     - caddy-config:/config
+
+volumes:
+  atanor-data:
+  # caddy-data:
+  # caddy-config:
