@@ -46,8 +46,11 @@ async function apiJson<T>(path: string): Promise<T> {
 }
 
 type Spark = { x: number; y: number; z: number; born: number };
-const SPARK_LIFETIME_MS = 3600;
-const SPARK_MAX = 600; // cap concurrent sparks
+// Frontier model: a new node is born flashing on the OUTER shell, settles, then
+// slowly sinks inward (toward the dense lower-LOD interior) and dims — so the outer
+// surface is always the freshest-learning frontier. Onion-skin: newest = outermost.
+const SPARK_LIFETIME_MS = 26000;
+const SPARK_MAX = 900; // cap concurrent frontier nodes
 
 function randomSurfacePoint(): { x: number; y: number; z: number } {
   const u = Math.random();
@@ -232,16 +235,26 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
         for (const s of sparks) {
           const age = now - s.born;
           if (age > SPARK_LIFETIME_MS) continue;
-          const t = age / SPARK_LIFETIME_MS;
-          const flyT = Math.min(1, t / 0.25);
-          const rad = 1.45 - 0.45 * (flyT * (2 - flyT)); // ease-in from r=1.45 → 1.0
+          const t = age / SPARK_LIFETIME_MS; // 0..1 over the node's frontier lifetime
+          // radius: spawn just OUTSIDE the shell (1.22), settle to the shell (1.0)
+          // in the first ~5%, then sink inward to the dense interior (~0.34).
+          let rad: number;
+          if (t < 0.05) {
+            const s2 = t / 0.05;
+            rad = 1.22 - 0.22 * (s2 * (2 - s2)); // ease-out to 1.0
+          } else {
+            rad = 1.0 - 0.66 * ((t - 0.05) / 0.95); // sink 1.0 → 0.34
+          }
           pos[n * 3] = s.x * rad;
           pos[n * 3 + 1] = s.y * rad;
           pos[n * 3 + 2] = s.z * rad;
-          const fade = 1 - t;
-          col[n * 3] = Math.min(1, 0.25 + 0.75 * t) * fade; // shift to orange as it settles
-          col[n * 3 + 1] = fade;                             // green strong while fresh
-          col[n * 3 + 2] = 0.35 * fade;
+          // color: bright green flash while fresh → orange as it settles → dim as it
+          // sinks (additive blending: darker = fades into the interior).
+          const fresh = Math.max(0, 1 - t / 0.08);
+          const bright = Math.max(0, 1 - t * 0.82);
+          col[n * 3] = (0.28 + 0.62 * (1 - fresh)) * bright; // red rises as it ages
+          col[n * 3 + 1] = (0.55 + 0.45 * fresh) * bright;   // green strong when fresh
+          col[n * 3 + 2] = 0.28 * fresh * bright;
           alive.push(s);
           n += 1;
         }
