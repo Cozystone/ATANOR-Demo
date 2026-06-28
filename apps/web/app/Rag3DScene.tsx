@@ -149,6 +149,9 @@ type SceneState = {
   synapseItems: { nodes: number[]; born: number }[];
   synapseSpawnAccum: number;
   synapsesPerSecond: number;
+  nodeActivation: Float32Array | null;
+  nodeActivationCapacity: number;
+  activationFireAccum: number;
   renderer: THREE.WebGLRenderer;
   scaleChunks: Rag3DScaleChunk[];
   scene: THREE.Scene;
@@ -1225,6 +1228,13 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
       tempColor.multiplyScalar(0.66 + depthCue * 0.42);
       tempColor.lerp(depthWhiteColor, depthCue * 0.1);
     }
+    // Activation pop: a firing node flares sky-blue, then decays.
+    const activation = state.nodeActivation ? state.nodeActivation[index] : 0;
+    if (activation > 0.01) {
+      tempColor.r += skyBlueColor.r * activation * 1.9;
+      tempColor.g += skyBlueColor.g * activation * 1.9;
+      tempColor.b += skyBlueColor.b * activation * 1.9;
+    }
     state.nodeColorArray![index * 3] = tempColor.r;
     state.nodeColorArray![index * 3 + 1] = tempColor.g;
     state.nodeColorArray![index * 3 + 2] = tempColor.b;
@@ -1335,12 +1345,22 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.08);
       if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 1.8);
     }
-    state.edgeColorArray![vertexIndex] = tempColor.r;
-    state.edgeColorArray![vertexIndex + 1] = tempColor.g;
-    state.edgeColorArray![vertexIndex + 2] = tempColor.b;
-    state.edgeColorArray![vertexIndex + 3] = tempColor.r;
-    state.edgeColorArray![vertexIndex + 4] = tempColor.g;
-    state.edgeColorArray![vertexIndex + 5] = tempColor.b;
+    // Per-endpoint activation gradient: the edge brightens sky-blue at whichever
+    // end touches a firing node, so light radiates from active nodes outward.
+    const act = state.nodeActivation;
+    let sa = 0, ta = 0;
+    if (act) {
+      const si = state.nodeIndexById.get(edge.source);
+      const ti = state.nodeIndexById.get(edge.target);
+      if (si !== undefined) sa = act[si];
+      if (ti !== undefined) ta = act[ti];
+    }
+    state.edgeColorArray![vertexIndex] = tempColor.r + skyBlueColor.r * sa * 1.5;
+    state.edgeColorArray![vertexIndex + 1] = tempColor.g + skyBlueColor.g * sa * 1.5;
+    state.edgeColorArray![vertexIndex + 2] = tempColor.b + skyBlueColor.b * sa * 1.5;
+    state.edgeColorArray![vertexIndex + 3] = tempColor.r + skyBlueColor.r * ta * 1.5;
+    state.edgeColorArray![vertexIndex + 4] = tempColor.g + skyBlueColor.g * ta * 1.5;
+    state.edgeColorArray![vertexIndex + 5] = tempColor.b + skyBlueColor.b * ta * 1.5;
   });
 
   if (positionBufferChanged) {
@@ -1496,9 +1516,32 @@ function buildSynapsePath(np: Float32Array, nodeCount: number, hops: number): nu
   return path;
 }
 
-// "Synapse firing": the engine activates routes across the sphere — drawn as
-// short-lived sky-blue PATHS (a signal travelling node→node→node) that flash and
-// fade, so it reads like a brain firing along connected pathways.
+// Node activation "팟팟": random nodes fire (at the real relation-check rate) and
+// glow sky-blue, decaying quickly. The node pops, and (in the edge pass) the edges
+// touching it brighten at THAT end — light radiates from the firing node into its
+// connections. Calmer and more node-anchored than full-graph chord lines.
+function updateNodeActivation(state: SceneState, dt: number) {
+  const count = state.graphNodes.length;
+  if (count <= 0) return;
+  if (!state.nodeActivation || state.nodeActivationCapacity < count) {
+    const next = new Float32Array(nextCapacity(count, 1024));
+    if (state.nodeActivation) next.set(state.nodeActivation.subarray(0, Math.min(state.nodeActivation.length, next.length)));
+    state.nodeActivation = next;
+    state.nodeActivationCapacity = next.length;
+  }
+  const act = state.nodeActivation;
+  const decay = Math.exp(-Math.min(0.1, dt) / 0.26);
+  for (let i = 0; i < count; i += 1) act[i] *= decay;
+  const rate = state.synapsesPerSecond;
+  if (rate > 0) {
+    state.activationFireAccum += rate * Math.min(0.1, dt);
+    let toFire = Math.floor(state.activationFireAccum);
+    state.activationFireAccum -= toFire;
+    for (let i = 0; i < toFire; i += 1) act[(Math.random() * count) | 0] = 1;
+  }
+}
+
+// (legacy traveling-path synapse layer — kept for reference, no longer rendered)
 function updateSynapses(state: SceneState, elapsed: number, dt: number) {
   const nodeCount = state.nodePositionById.size > 0 ? state.graphNodes.length : 0;
   state.synapseItems = state.synapseItems.filter((s) => elapsed - s.born < SYNAPSE_LIFE_SECONDS);
@@ -1767,6 +1810,9 @@ export default function Rag3DScene({
       synapseItems: [],
       synapseSpawnAccum: 0,
       synapsesPerSecond: synapseRateRef.current,
+      nodeActivation: null,
+      nodeActivationCapacity: 0,
+      activationFireAccum: 0,
       renderer,
       scaleChunks: [],
       scene,
@@ -1890,12 +1936,12 @@ export default function Rag3DScene({
       lastSynapseElapsed = elapsed;
       if (!drag.active && coordinateAnimationAllowed(state.visualState)) group.rotation.y += 0.00125;
 
+      updateNodeActivation(state, synapseDt);
       updateNodeBuffers(state, elapsed);
       updateEdgeBuffers(state, elapsed);
       updateShellMesh(state, elapsed);
       updateHaloMesh(state, elapsed);
       updatePulseMesh(state, elapsed);
-      updateSynapses(state, elapsed, synapseDt);
 
       container.dataset.cameraZ = camera.position.z.toFixed(1);
       container.dataset.maxZoom = maxZoomDistanceForNodeCount(totalNodes).toFixed(1);
