@@ -166,10 +166,12 @@ type SceneState = {
   onViewportChange?: Rag3DSceneProps["onViewportChange"];
 };
 
-const BASE_EDGE_COLOR = 0xb8c4d2;
-const BASE_EDGE_WEAK = 0x667386;
-const BASE_EDGE_ACTIVE_NEAR = 0xffffff;
-const STRONG_EDGE_COLOR = 0xeaf2ff;
+// Neural palette: blue-purple axons/dendrites (like the reference neuron image),
+// with bright pink activation pops and orange arrivals for contrast.
+const BASE_EDGE_COLOR = 0x7c7fe0;
+const BASE_EDGE_WEAK = 0x4c4f93;
+const BASE_EDGE_ACTIVE_NEAR = 0xd9dcff;
+const STRONG_EDGE_COLOR = 0xbcc1ff;
 const NEON_ORANGE = 0xffa028;
 const COLD_LABEL = "#eef3f8";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -204,14 +206,14 @@ const activationPinkColor = new THREE.Color(0xff1f8f);
 const SYNAPSE_LIFE_SECONDS = 0.55;
 const SYNAPSE_MAX = 700;
 const constructionColor = new THREE.Color(0x22d3ee);
-const localMemoryColor = new THREE.Color(0xffffff);
-const representativeNodeColor = new THREE.Color(0xa7b7d1);
-const cloudBrainColor = new THREE.Color(0x6fb0ff);
+const localMemoryColor = new THREE.Color(0xd7d9ff);
+const representativeNodeColor = new THREE.Color(0xa7a4e6);
+const cloudBrainColor = new THREE.Color(0x8f86ff);
 const workingMemoryColor = new THREE.Color(0x5eead4);
 const contributorFragmentColor = new THREE.Color(0xffa028);
 const seedSchemaColor = new THREE.Color(0x9b7cff);
 const evidenceSourceColor = new THREE.Color(0x91a4bd);
-const depthWhiteColor = new THREE.Color(0xffffff);
+const depthWhiteColor = new THREE.Color(0xd2d6ff);
 const tempColor = new THREE.Color();
 const tempMatrix = new THREE.Matrix4();
 const tempQuaternion = new THREE.Quaternion();
