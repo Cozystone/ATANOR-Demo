@@ -519,17 +519,33 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
     // reads as attached to the body, not floating detached in empty space. It
     // stays put; a short orange tendril connects it to the existing node.
     const reach = ar * (1.05 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.06) + radius * 0.015;
+    const ax = cx + jx * reach;
+    const ay = cy + jy * reach;
+    const az = cz + jz * reach;
     extraNodes.push({
       id: arrival.id,
       label: arrival.label,
       type: "cloud_arrival",
-      x: cx + jx * reach,
-      y: cy + jy * reach,
-      z: cz + jz * reach,
+      x: ax,
+      y: ay,
+      z: az,
       confidence: 0.72,
       source_type: "cloud_fragment",
     });
-    extraEdges.push({ source: anchor.id, target: arrival.id, relation: "newly_learned", weight: 0.72, source_type: "cloud_fragment" });
+    // A new node integrates with SEVERAL related nodes, not one — the anchor plus
+    // its nearest existing neighbours, so the orange tendrils fan out variously.
+    const neighbourCount = 2 + (arrival.anchorSeed % 3); // 2..4
+    const nearest = base.nodes
+      .map((node) => ({ node, d: (node.x - ax) ** 2 + (node.y - ay) ** 2 + (node.z - az) ** 2 }))
+      .sort((left, right) => left.d - right.d)
+      .slice(0, neighbourCount)
+      .map((entry) => entry.node);
+    const linkTargets = new Map<string, Rag3DNode>();
+    linkTargets.set(anchor.id, anchor);
+    nearest.forEach((node) => linkTargets.set(node.id, node));
+    linkTargets.forEach((node) => {
+      extraEdges.push({ source: node.id, target: arrival.id, relation: "newly_learned", weight: 0.72, source_type: "cloud_fragment" });
+    });
   });
   return {
     nodes: [...base.nodes, ...extraNodes],
@@ -1702,7 +1718,7 @@ function FullApp() {
   const [cloudBudgetStatus, setCloudBudgetStatus] = useState<AnyRecord | null>(null);
   const [atlasStatus, setAtlasStatus] = useState<AnyRecord | null>(null);
   const [graphSourceMode, setGraphSourceMode] = useState<"build" | "memory">("memory");
-  const [graphEdgeOpacity, setGraphEdgeOpacity] = useState(0.34);
+  const [graphEdgeOpacity, setGraphEdgeOpacity] = useState(0.5);
   const [workbenchInfoOpen, setWorkbenchInfoOpen] = useState(false);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
@@ -3957,9 +3973,10 @@ function FullApp() {
       return;
     }
     let alive = true;
-    // New nodes linger on the surface (they "stay where they appeared") rather
-    // than popping and vanishing; the cap rotates the oldest out within budget.
-    const ARRIVAL_TTL = 24000;
+    // New nodes flash orange, freeze to white, then linger as part of the body
+    // (they "stay where they appeared"); the cap rotates the oldest out within
+    // the render budget.
+    const ARRIVAL_TTL = 45000;
     const poll = async () => {
       try {
         const res = await fetch("/api/cloud-brain/learning/continuous/metrics", { cache: "no-store" });
@@ -4725,16 +4742,28 @@ function FullApp() {
   const graphVizVirtualization = (activeBrainVisualizationState?.virtualization && typeof activeBrainVisualizationState.virtualization === "object" && !Array.isArray(activeBrainVisualizationState.virtualization))
     ? activeBrainVisualizationState.virtualization as AnyRecord
     : {};
+  const surfaceGraphMeta = (surfaceGraphData?.metadata && typeof surfaceGraphData.metadata === "object" && !Array.isArray(surfaceGraphData.metadata))
+    ? surfaceGraphData.metadata as AnyRecord
+    : {};
   const graphHeaderStats = mainSection === "cloud"
-    ? [
+    ? (cloudShowsSurface
+      // Surface (construction / sentence) graph — its OWN counts, distinct from
+      // the concept graph (the two are learned together but are not the same).
+      ? [
+        { label: language === "ko" ? "Constructions" : "Constructions", value: Number(surfaceGraphMeta.total_constructions ?? cloudCandidateStatus?.candidate_case_frames ?? 0).toLocaleString() },
+        { label: language === "ko" ? "Concept links" : "Concept links", value: Number(surfaceGraphMeta.materialized_surface_edges ?? 0).toLocaleString() },
+        { label: language === "ko" ? "Materialized" : "Materialized", value: Number(surfaceGraphMeta.materialized_surface_nodes ?? 0).toLocaleString() },
+        { label: language === "ko" ? "Linked concepts" : "Linked concepts", value: Number(surfaceGraphMeta.distinct_concepts_linked ?? 0).toLocaleString() },
+      ]
       // Verified projection is fixed (it only grows on promotion); the live
       // cumulative learning lands in the candidate store. Show verified + live
       // candidates so the count actually climbs as the brain learns.
-      { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: Number((Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount) || 0) + (Number(cloudCandidateStatus?.candidate_concepts ?? 0) || 0)).toLocaleString() },
-      { label: language === "ko" ? "Stored relations" : "Stored relations", value: Number((Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount) || 0) + (Number(cloudCandidateStatus?.candidate_relations ?? 0) || 0)).toLocaleString() },
-      { label: language === "ko" ? "Materialized" : "Materialized", value: Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
-      { label: language === "ko" ? "Rendered edges" : "Rendered edges", value: Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
-    ]
+      : [
+        { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: Number((Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount) || 0) + (Number(cloudCandidateStatus?.candidate_concepts ?? 0) || 0)).toLocaleString() },
+        { label: language === "ko" ? "Stored relations" : "Stored relations", value: Number((Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount) || 0) + (Number(cloudCandidateStatus?.candidate_relations ?? 0) || 0)).toLocaleString() },
+        { label: language === "ko" ? "Materialized" : "Materialized", value: Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
+        { label: language === "ko" ? "Rendered edges" : "Rendered edges", value: Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
+      ])
     : [
       { label: copy.nodes, value: graphHeaderNodeText },
       { label: copy.relations, value: graphHeaderEdgeText },
@@ -6270,8 +6299,8 @@ function FullApp() {
                     <input
                       aria-label={language === "ko" ? "연결선 선명도" : "Line clarity"}
                       max="0.86"
-                      min="0.04"
-                      step="0.02"
+                      min="0.05"
+                      step="0.01"
                       type="range"
                       value={graphEdgeOpacity}
                       onChange={(event) => setGraphEdgeOpacity(Number(event.target.value))}

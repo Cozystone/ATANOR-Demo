@@ -167,6 +167,9 @@ const NEW_NODE_ANIMATION_SECONDS = 1.0;
 // outward from the existing node to the new one.
 const NEW_NODE_GLOW_SECONDS = 4.6;
 const NEW_EDGE_GROW_SECONDS = 1.1;
+// After the orange glow, the arrival "freezes" — its node and tendrils fade from
+// orange to the normal white edge/node colour and stay that way.
+const NEW_NODE_FREEZE_SECONDS = 6.0;
 const MAX_SHELL_RENDER_CHUNKS = 384;
 const DEFAULT_GRAPH_TILT_X = -0.22;
 const DEFAULT_GRAPH_TILT_Y = 0.34;
@@ -1197,12 +1200,18 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
 
     const signal = nodeSignalStrength(state, node, elapsed);
     const isArrival = node.id.startsWith("cloud-arrival");
-    tempColor.copy(isArrival ? arrivalGlowColor : nodeBaseColor(node)).lerp(isArrival ? arrivalGlowColor : neonOrangeColor, signal);
     const depthCue = THREE.MathUtils.clamp(0.5 + position.z / Math.max(10, state.camera.position.z * 0.28), 0.18, 1);
     if (isArrival) {
-      // Keep arrivals bright regardless of depth, and don't whiten them.
-      tempColor.multiplyScalar(1.15 + signal * 0.5);
+      // Flash orange, then FREEZE to a normal white node and stay that way.
+      const bornAt = state.nodeBornAt.get(node.id);
+      const age = typeof bornAt === "number" ? elapsed - bornAt : 0;
+      const freeze = THREE.MathUtils.clamp((age - NEW_NODE_GLOW_SECONDS) / NEW_NODE_FREEZE_SECONDS, 0, 1);
+      tempColor.copy(arrivalGlowColor).lerp(localMemoryColor, freeze);
+      const freshBright = 1.15 + signal * 0.5;
+      const normalBright = 0.66 + depthCue * 0.42;
+      tempColor.multiplyScalar(THREE.MathUtils.lerp(freshBright, normalBright, freeze));
     } else {
+      tempColor.copy(nodeBaseColor(node)).lerp(neonOrangeColor, signal);
       tempColor.multiplyScalar(0.66 + depthCue * 0.42);
       tempColor.lerp(depthWhiteColor, depthCue * 0.1);
     }
@@ -1283,9 +1292,14 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
     const signal = edgeSignalStrength(state, edge, elapsed);
     const weight = edgeWeight(edge);
     if (edge.source.startsWith("cloud-arrival") || edge.target.startsWith("cloud-arrival")) {
-      // Pure deep-orange tendril — no base-edge mixing, no whitening — so it stays
-      // orange against both the dark margin and the bright core.
-      tempColor.copy(arrivalGlowColor).multiplyScalar(0.8 + freshGlow * 0.7);
+      // Orange tendril on arrival, then FREEZE to a normal white edge and stay.
+      const arrivalBorn = edge.source.startsWith("cloud-arrival")
+        ? state.nodeBornAt.get(edge.source)
+        : state.nodeBornAt.get(edge.target);
+      const arrivalAge = typeof arrivalBorn === "number" ? elapsed - arrivalBorn : 0;
+      const freeze = THREE.MathUtils.clamp((arrivalAge - NEW_NODE_GLOW_SECONDS) / NEW_NODE_FREEZE_SECONDS, 0, 1);
+      const lit = THREE.MathUtils.lerp(0.8 + freshGlow * 0.7, 0.72, freeze);
+      tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze).multiplyScalar(lit);
     } else {
       const base = edge.active || weight >= 0.82
         ? nearActiveEdgeColor
