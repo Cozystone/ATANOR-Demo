@@ -498,30 +498,16 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
   base.nodes.forEach((node) => {
     radius = Math.max(radius, Math.hypot(node.x - cx, node.y - cy, node.z - cz));
   });
-  // Anchor each arrival to an OUTER node (top of the radius distribution) and
-  // place the new node just beyond it. That keeps the orange "growing" tendril
-  // out in the dark periphery — visible — instead of buried in the bright core.
-  const ranked = base.nodes
-    .map((node) => ({ node, r: Math.hypot(node.x - cx, node.y - cy, node.z - cz) }))
-    .sort((a, b) => b.r - a.r);
-  const outerPool = ranked.slice(0, Math.max(12, Math.floor(ranked.length * 0.32)));
   const extraNodes: Rag3DNode[] = [];
   const extraEdges: Rag3DEdge[] = [];
   arrivals.forEach((arrival) => {
-    const anchorPick = outerPool[arrival.anchorSeed % outerPool.length] ?? ranked[0];
-    const anchor = anchorPick.node;
-    const ar = Math.max(0.001, anchorPick.r);
-    // Direction from center through the anchor, nudged so arrivals don't overlap.
-    const jx = (anchor.x - cx) / ar + stableUnit(arrival.id, 5) * 0.1;
-    const jy = (anchor.y - cy) / ar + stableUnit(arrival.id, 9) * 0.1;
-    const jz = (anchor.z - cz) / ar + stableUnit(arrival.id, 13) * 0.1;
-    // Land the new node ON the graph's surface — just beyond its anchor — so it
-    // reads as attached to the body, not floating detached in empty space. It
-    // stays put; a short orange tendril connects it to the existing node.
-    const reach = ar * (1.05 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.06) + radius * 0.015;
-    const ax = cx + jx * reach;
-    const ay = cy + jy * reach;
-    const az = cz + jz * reach;
+    // Spawn uniformly over the WHOLE sphere surface (360°), not clustered in one
+    // region — the direction is a stable per-id point on the unit sphere.
+    const dir = stableDirection(arrival.id);
+    const reach = radius * (1.04 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.05);
+    const ax = cx + dir.x * reach;
+    const ay = cy + dir.y * reach;
+    const az = cz + dir.z * reach;
     extraNodes.push({
       id: arrival.id,
       label: arrival.label,
@@ -532,19 +518,18 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
       confidence: 0.72,
       source_type: "cloud_fragment",
     });
-    // A new node integrates with SEVERAL related nodes, not one — the anchor plus
-    // its nearest existing neighbours, so the orange tendrils fan out variously.
-    const neighbourCount = 2 + (arrival.anchorSeed % 3); // 2..4
+    // The new node reaches out to SEVERAL related (nearest) nodes — orange lines
+    // radiate FROM the new node to its ontology neighbours, in all directions.
+    const neighbourCount = 4 + (arrival.anchorSeed % 4); // 4..7
     const nearest = base.nodes
       .map((node) => ({ node, d: (node.x - ax) ** 2 + (node.y - ay) ** 2 + (node.z - az) ** 2 }))
       .sort((left, right) => left.d - right.d)
       .slice(0, neighbourCount)
       .map((entry) => entry.node);
-    const linkTargets = new Map<string, Rag3DNode>();
-    linkTargets.set(anchor.id, anchor);
-    nearest.forEach((node) => linkTargets.set(node.id, node));
-    linkTargets.forEach((node) => {
-      extraEdges.push({ source: node.id, target: arrival.id, relation: "newly_learned", weight: 0.72, source_type: "cloud_fragment" });
+    nearest.forEach((node) => {
+      // source = arrival (new node) — the tendril originates AT the new node and
+      // grows out to the related existing node.
+      extraEdges.push({ source: arrival.id, target: node.id, relation: "newly_learned", weight: 0.72, source_type: "cloud_fragment" });
     });
   });
   return {
@@ -1718,7 +1703,9 @@ function FullApp() {
   const [cloudBudgetStatus, setCloudBudgetStatus] = useState<AnyRecord | null>(null);
   const [atlasStatus, setAtlasStatus] = useState<AnyRecord | null>(null);
   const [graphSourceMode, setGraphSourceMode] = useState<"build" | "memory">("memory");
-  const [graphEdgeOpacity, setGraphEdgeOpacity] = useState(0.5);
+  // Slider is re-scaled so its MIDDLE (50%) lands on opacity 0.16 — the line
+  // brightness the user liked when the old bar read "16%". Range 0.04..0.28.
+  const [graphEdgeOpacity, setGraphEdgeOpacity] = useState(0.16);
   const [workbenchInfoOpen, setWorkbenchInfoOpen] = useState(false);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
@@ -5482,16 +5469,18 @@ function FullApp() {
       </aside>
 
       <section className="atanor-user-main">
-        <button
-          type="button"
-          className="atanor-transcript-toggle"
-          data-open={transcriptOpen}
-          onClick={() => setTranscriptOpen((value) => !value)}
-          aria-label={language === "ko" ? (transcriptOpen ? "대화록 닫기" : "대화록 열기") : "Toggle transcript"}
-          title={language === "ko" ? "대화록" : "Transcript"}
-        >
-          <MessageCircle size={16} strokeWidth={1.9} />
-        </button>
+        {demoView ? null : (
+          <button
+            type="button"
+            className="atanor-transcript-toggle"
+            data-open={transcriptOpen}
+            onClick={() => setTranscriptOpen((value) => !value)}
+            aria-label={language === "ko" ? (transcriptOpen ? "대화록 닫기" : "대화록 열기") : "Toggle transcript"}
+            title={language === "ko" ? "대화록" : "Transcript"}
+          >
+            <MessageCircle size={16} strokeWidth={1.9} />
+          </button>
+        )}
         {transcriptOpen ? (
           <button
             type="button"
@@ -6298,14 +6287,14 @@ function FullApp() {
                     <span>{language === "ko" ? "연결선" : "Lines"}</span>
                     <input
                       aria-label={language === "ko" ? "연결선 선명도" : "Line clarity"}
-                      max="0.86"
-                      min="0.05"
-                      step="0.01"
+                      max="0.28"
+                      min="0.04"
+                      step="0.005"
                       type="range"
                       value={graphEdgeOpacity}
                       onChange={(event) => setGraphEdgeOpacity(Number(event.target.value))}
                     />
-                    <strong>{Math.round(graphEdgeOpacity * 100)}%</strong>
+                    <strong>{Math.round(((graphEdgeOpacity - 0.04) / 0.24) * 100)}%</strong>
                   </label>
                 ) : null}
                 {mainSection === "local" ? (

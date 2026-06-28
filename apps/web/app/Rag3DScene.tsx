@@ -182,7 +182,7 @@ const neonOrangeColor = new THREE.Color(NEON_ORANGE);
 // Deep red-orange for live arrivals. Low green channel so it stays unmistakably
 // orange even when brightened on the additive field (a high-green orange clips to
 // yellow-white).
-const arrivalGlowColor = new THREE.Color(0xff5410);
+const arrivalGlowColor = new THREE.Color(0xff6a1a);
 const localMemoryColor = new THREE.Color(0xffffff);
 const representativeNodeColor = new THREE.Color(0xa7b7d1);
 const cloudBrainColor = new THREE.Color(0x6fb0ff);
@@ -1263,15 +1263,24 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
         positionBufferChanged = true;
         const grow = THREE.MathUtils.clamp(newEndpointAge / NEW_EDGE_GROW_SECONDS, 0, 1);
         if (grow < 1) {
-          // The newer endpoint grows outward from the existing one.
-          if (targetArrival || (!sourceArrival && sourceAge > targetAge)) {
+          // For an arrival edge the new node stays put and the OTHER end grows out
+          // from it (tendrils originate AT the new node and reach its neighbours).
+          if (sourceArrival) {
             tx = source.x + (target.x - source.x) * grow;
             ty = source.y + (target.y - source.y) * grow;
             tz = source.z + (target.z - source.z) * grow;
-          } else {
+          } else if (targetArrival) {
             sx = target.x + (source.x - target.x) * grow;
             sy = target.y + (source.y - target.y) * grow;
             sz = target.z + (source.z - target.z) * grow;
+          } else if (sourceAge <= targetAge) {
+            sx = target.x + (source.x - target.x) * grow;
+            sy = target.y + (source.y - target.y) * grow;
+            sz = target.z + (source.z - target.z) * grow;
+          } else {
+            tx = source.x + (target.x - source.x) * grow;
+            ty = source.y + (target.y - source.y) * grow;
+            tz = source.z + (target.z - source.z) * grow;
           }
         }
         const twinkle = 0.64 + 0.36 * Math.abs(Math.sin(elapsed * 8 + hash01(edge.source + edge.target, 23) * Math.PI * 2));
@@ -1298,7 +1307,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
         : state.nodeBornAt.get(edge.target);
       const arrivalAge = typeof arrivalBorn === "number" ? elapsed - arrivalBorn : 0;
       const freeze = THREE.MathUtils.clamp((arrivalAge - NEW_NODE_GLOW_SECONDS) / NEW_NODE_FREEZE_SECONDS, 0, 1);
-      const lit = THREE.MathUtils.lerp(0.8 + freshGlow * 0.7, 0.72, freeze);
+      const lit = THREE.MathUtils.lerp(1.05 + freshGlow * 0.95, 0.72, freeze);
       tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze).multiplyScalar(lit);
     } else {
       const base = edge.active || weight >= 0.82
