@@ -230,11 +230,14 @@ function getNodePointTexture() {
     // A clean solid dot with a soft glow falloff — NO dark center, so the vertex
     // colour shows as a coloured point (not a black sphere with a halo).
     context.clearRect(0, 0, canvas.width, canvas.height);
+    // Solid bright core + a broad soft halo so each node reads as an emitting
+    // point of light (a glowing synapse), not a flat dot.
     const dot = context.createRadialGradient(32, 32, 0, 32, 32, 32);
     dot.addColorStop(0, "rgba(255,255,255,1)");
-    dot.addColorStop(0.32, "rgba(255,255,255,0.98)");
-    dot.addColorStop(0.55, "rgba(255,255,255,0.55)");
-    dot.addColorStop(0.78, "rgba(255,255,255,0.16)");
+    dot.addColorStop(0.16, "rgba(255,255,255,1)");
+    dot.addColorStop(0.34, "rgba(255,255,255,0.78)");
+    dot.addColorStop(0.6, "rgba(255,255,255,0.28)");
+    dot.addColorStop(0.82, "rgba(255,255,255,0.09)");
     dot.addColorStop(1, "rgba(255,255,255,0)");
     context.fillStyle = dot;
     context.beginPath();
@@ -727,7 +730,7 @@ function ensureNodeBuffers(state: SceneState, nodeCount: number) {
       depthWrite: false,
       map: getNodePointTexture(),
       opacity: 1,
-      size: nodeCount > 100_000 ? 0.044 : nodeCount > 25_000 ? 0.056 : nodeCount > 5_000 ? 0.078 : nodeCount > 1_000 ? 0.132 : 0.225,
+      size: nodeCount > 100_000 ? 0.05 : nodeCount > 25_000 ? 0.066 : nodeCount > 5_000 ? 0.095 : nodeCount > 1_000 ? 0.165 : 0.27,
       sizeAttenuation: true,
       transparent: true,
       vertexColors: true,
@@ -743,7 +746,7 @@ function ensureNodeBuffers(state: SceneState, nodeCount: number) {
     material.blending = THREE.AdditiveBlending;
     material.map = getNodePointTexture();
     material.opacity = 1;
-    material.size = nodeCount > 100_000 ? 0.044 : nodeCount > 25_000 ? 0.056 : nodeCount > 5_000 ? 0.078 : nodeCount > 1_000 ? 0.132 : 0.225;
+    material.size = nodeCount > 100_000 ? 0.05 : nodeCount > 25_000 ? 0.066 : nodeCount > 5_000 ? 0.095 : nodeCount > 1_000 ? 0.165 : 0.27;
     material.needsUpdate = true;
   }
 }
@@ -1023,7 +1026,7 @@ function syncGraph(
   }
 
   ensureNodeBuffers(state, graph.nodes.length);
-  ensureEdgeBuffers(state, state.visibleEdges.length * 2);
+  ensureEdgeBuffers(state, state.visibleEdges.length * 4);
 
   state.haloItems = [];
   ensureHaloMesh(state, state.haloItems.length);
@@ -1227,8 +1230,8 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
       tempColor.multiplyScalar(THREE.MathUtils.lerp(freshBright, normalBright, freeze));
     } else {
       tempColor.copy(nodeBaseColor(node)).lerp(neonOrangeColor, signal);
-      tempColor.multiplyScalar(0.66 + depthCue * 0.42);
-      tempColor.lerp(depthWhiteColor, depthCue * 0.1);
+      tempColor.multiplyScalar(0.98 + depthCue * 0.5);
+      tempColor.lerp(depthWhiteColor, depthCue * 0.12);
     }
     // Activation pop: a firing node momentarily turns deep pink, then decays.
     const activation = state.nodeActivation ? state.nodeActivation[index] : 0;
@@ -1311,13 +1314,15 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       }
     }
 
-    const vertexIndex = edgeIndex * 6;
-    state.edgePositionArray![vertexIndex] = sx;
-    state.edgePositionArray![vertexIndex + 1] = sy;
-    state.edgePositionArray![vertexIndex + 2] = sz;
-    state.edgePositionArray![vertexIndex + 3] = tx;
-    state.edgePositionArray![vertexIndex + 4] = ty;
-    state.edgePositionArray![vertexIndex + 5] = tz;
+    // Two sub-segments (A→mid, mid→B) so the sky-blue activation can be U-shaped:
+    // bright at both ends (near the nodes), dimmer in the middle.
+    const mx = (sx + tx) * 0.5, my = (sy + ty) * 0.5, mz = (sz + tz) * 0.5;
+    const vertexIndex = edgeIndex * 12;
+    const p = state.edgePositionArray!;
+    p[vertexIndex] = sx; p[vertexIndex + 1] = sy; p[vertexIndex + 2] = sz;
+    p[vertexIndex + 3] = mx; p[vertexIndex + 4] = my; p[vertexIndex + 5] = mz;
+    p[vertexIndex + 6] = mx; p[vertexIndex + 7] = my; p[vertexIndex + 8] = mz;
+    p[vertexIndex + 9] = tx; p[vertexIndex + 10] = ty; p[vertexIndex + 11] = tz;
 
     const signal = edgeSignalStrength(state, edge, elapsed);
     const weight = edgeWeight(edge);
@@ -1328,7 +1333,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
         : state.nodeBornAt.get(edge.target);
       const arrivalAge = typeof arrivalBorn === "number" ? elapsed - arrivalBorn : 0;
       const freeze = THREE.MathUtils.clamp((arrivalAge - NEW_NODE_GLOW_SECONDS) / NEW_NODE_FREEZE_SECONDS, 0, 1);
-      const lit = THREE.MathUtils.lerp(0.55 + freshGlow * 0.5, 0.4, freeze); // ~50% softer
+      const lit = THREE.MathUtils.lerp(1.05 + freshGlow * 0.85, 0.62, freeze); // brighter
       tempColor.copy(arrivalGlowColor).lerp(baseEdgeColor, freeze).multiplyScalar(lit);
     } else {
       const base = edge.active || weight >= 0.82
@@ -1346,8 +1351,8 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.08);
       if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 1.8);
     }
-    // Per-endpoint activation gradient: the edge brightens sky-blue at whichever
-    // end touches a firing node, so light radiates from active nodes outward.
+    // Sky-blue activation gradient: bright at each end by that node's activation,
+    // dimmer at the midpoint — so the line glows toward the nodes (synapse look).
     const act = state.nodeActivation;
     let sa = 0, ta = 0;
     if (act) {
@@ -1356,12 +1361,24 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       if (si !== undefined) sa = act[si];
       if (ti !== undefined) ta = act[ti];
     }
-    state.edgeColorArray![vertexIndex] = tempColor.r + skyBlueColor.r * sa * 0.75;
-    state.edgeColorArray![vertexIndex + 1] = tempColor.g + skyBlueColor.g * sa * 0.75;
-    state.edgeColorArray![vertexIndex + 2] = tempColor.b + skyBlueColor.b * sa * 0.75;
-    state.edgeColorArray![vertexIndex + 3] = tempColor.r + skyBlueColor.r * ta * 0.75;
-    state.edgeColorArray![vertexIndex + 4] = tempColor.g + skyBlueColor.g * ta * 0.75;
-    state.edgeColorArray![vertexIndex + 5] = tempColor.b + skyBlueColor.b * ta * 0.75;
+    const K = 1.5; // brighter sky-blue
+    const baseR = tempColor.r, baseG = tempColor.g, baseB = tempColor.b;
+    const midAct = (sa + ta) * 0.5 * 0.3; // middle markedly dimmer
+    const ca = state.edgeColorArray!;
+    // A (near source node)
+    ca[vertexIndex] = baseR + skyBlueColor.r * sa * K;
+    ca[vertexIndex + 1] = baseG + skyBlueColor.g * sa * K;
+    ca[vertexIndex + 2] = baseB + skyBlueColor.b * sa * K;
+    // mid (duplicated vertex for the two sub-segments)
+    const mR = baseR + skyBlueColor.r * midAct * K;
+    const mG = baseG + skyBlueColor.g * midAct * K;
+    const mB = baseB + skyBlueColor.b * midAct * K;
+    ca[vertexIndex + 3] = mR; ca[vertexIndex + 4] = mG; ca[vertexIndex + 5] = mB;
+    ca[vertexIndex + 6] = mR; ca[vertexIndex + 7] = mG; ca[vertexIndex + 8] = mB;
+    // B (near target node)
+    ca[vertexIndex + 9] = baseR + skyBlueColor.r * ta * K;
+    ca[vertexIndex + 10] = baseG + skyBlueColor.g * ta * K;
+    ca[vertexIndex + 11] = baseB + skyBlueColor.b * ta * K;
   });
 
   if (positionBufferChanged) {
