@@ -4532,7 +4532,7 @@ p {
   max-width: none;
   margin: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: #f7f8fb; /* off-white, gentler than pure #fff */
   color: #1d2330;
   z-index: 4;
@@ -4541,6 +4541,47 @@ p {
   box-shadow: 0 12px 44px rgba(0, 0, 0, 0.34);
   overflow: hidden; /* clip the thread to the rounded corners */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+}
+/* Gemini-style session-history rail on the LEFT of the white box. */
+.atanor-demochat-sessions {
+  flex: 0 0 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 10px;
+  background: #eef0f4;
+  border-right: 1px solid rgba(120, 140, 180, 0.16);
+  overflow: hidden;
+}
+.atanor-demochat-newchat {
+  display: flex; align-items: center; gap: 9px;
+  margin: 2px 2px 8px;
+  padding: 9px 12px;
+  border: 0; border-radius: 18px;
+  background: #dfe3ea; color: #1d2330;
+  font-size: 13.5px; font-weight: 600; cursor: pointer;
+  text-align: left;
+}
+.atanor-demochat-newchat:hover { background: #d4d9e2; }
+.atanor-demochat-newchat-icon { font-size: 14px; }
+.atanor-demochat-recent-label {
+  padding: 6px 12px 4px; font-size: 11.5px; color: #7a8294; font-weight: 600;
+}
+.atanor-demochat-session-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.atanor-demochat-session-empty { padding: 8px 12px; font-size: 12px; color: #9aa1b2; }
+.atanor-demochat-session-item {
+  display: block; width: 100%;
+  padding: 8px 12px;
+  border: 0; border-radius: 9px;
+  background: none; color: #2c3340;
+  font-size: 13px; text-align: left; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.atanor-demochat-session-item:hover { background: #e2e6ed; }
+.atanor-demochat-session-item[data-active="true"] { background: #d8def0; color: #1d2330; font-weight: 600; }
+.atanor-demochat-main {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
 }
 .atanor-demochat-orb {
   width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
