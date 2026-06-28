@@ -1670,6 +1670,8 @@ function FullApp() {
   const cloudArrivalPrevRef = useRef<number | null>(null);
   const [cloudGraphView, setCloudGraphView] = useState<"concept" | "surface">("concept");
   const [surfaceGraphData, setSurfaceGraphData] = useState<AnyRecord | null>(null);
+  const [surfaceArrivals, setSurfaceArrivals] = useState<CloudArrival[]>([]);
+  const surfaceArrivalPrevRef = useRef<number | null>(null);
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
   const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base", "seed"]);
@@ -3925,7 +3927,7 @@ function FullApp() {
         };
       });
     });
-    return {
+    const clustered: Rag3DGraph = {
       nodes: rawNodes.map((node, index) => ({
         id: String(node.id),
         label: String(node.label ?? node.id),
@@ -3945,7 +3947,10 @@ function FullApp() {
       })),
       traversal_path: [],
     };
-  }, [surfaceGraphData]);
+    // Surface arrivals (same flash/freeze/grow as concept) so the construction
+    // graph visibly grows from the same learning.
+    return appendCloudArrivals(clustered, surfaceArrivals);
+  }, [surfaceGraphData, surfaceArrivals]);
 
   const cloudShowsSurface = mainSection === "cloud" && cloudGraphView === "surface" && surfaceSceneGraph3D.nodes.length > 0;
 
@@ -3956,7 +3961,9 @@ function FullApp() {
   useEffect(() => {
     if (mainSection !== "cloud") {
       cloudArrivalPrevRef.current = null;
+      surfaceArrivalPrevRef.current = null;
       setCloudArrivals((prev) => (prev.length ? [] : prev));
+      setSurfaceArrivals((prev) => (prev.length ? [] : prev));
       return;
     }
     let alive = true;
@@ -3990,6 +3997,27 @@ function FullApp() {
           }));
           return [...live, ...fresh].slice(-180);
         });
+        // Surface (construction) graph learns from the SAME sentences — spawn
+        // surface arrivals from the surface_added delta so both grow together.
+        const surfaceTotal = Number(data.surface_added) || 0;
+        if (surfaceArrivalPrevRef.current === null) {
+          surfaceArrivalPrevRef.current = surfaceTotal;
+        } else {
+          const sDelta = Math.max(0, surfaceTotal - surfaceArrivalPrevRef.current);
+          surfaceArrivalPrevRef.current = surfaceTotal;
+          setSurfaceArrivals((prev) => {
+            const live = prev.filter((arrival) => now - arrival.born < ARRIVAL_TTL);
+            if (sDelta <= 0) return live.length === prev.length ? prev : live;
+            const spawnCount = Math.min(sDelta, 16);
+            const fresh: CloudArrival[] = Array.from({ length: spawnCount }, (_, i) => ({
+              id: `surface-arrival-${now}-${i}`,
+              label: titles.length ? titles[i % titles.length] : "새 문장",
+              born: now,
+              anchorSeed: Math.floor(Math.random() * 1_000_000_000),
+            }));
+            return [...live, ...fresh].slice(-180);
+          });
+        }
       } catch {
         /* keep last */
       }

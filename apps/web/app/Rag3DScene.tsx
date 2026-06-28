@@ -243,6 +243,12 @@ function edgeKey(source: string, target: string) {
   return `${source}:${target}`;
 }
 
+// Injected live-learning arrival nodes (concept graph "cloud-arrival-…" and
+// surface graph "surface-arrival-…") share the same flash / freeze / grow viz.
+function isArrivalId(id: string) {
+  return id.startsWith("cloud-arrival") || id.startsWith("surface-arrival");
+}
+
 function edgeIsExplicitlyActive(activeEdgeKeys: Set<string>, source: string, target: string) {
   return activeEdgeKeys.has(edgeKey(source, target)) || activeEdgeKeys.has(edgeKey(target, source));
 }
@@ -971,7 +977,7 @@ function syncGraph(
 
   // Exclude transient arrival nodes from the camera fit so spawning/expiring
   // outer nodes never jitter or re-zoom the view.
-  const fitTargets = targets.filter((_, index) => !graph.nodes[index].id.startsWith("cloud-arrival"));
+  const fitTargets = targets.filter((_, index) => !isArrivalId(graph.nodes[index].id));
   const fitDistance = fitDistanceForPositions(fitTargets.length ? fitTargets : targets, state.camera, !state.preserveSourceCoordinates) * state.fitScale;
   // Ignore small node-count wobble (live arrivals spawning/expiring) so the
   // camera doesn't re-fit and jitter every couple of seconds.
@@ -1104,7 +1110,7 @@ function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number)
   // Injected "arrival" nodes are highlighted the entire (short) time they exist
   // — they're removed after a few seconds upstream, so this IS the "glows for a
   // while" window. Keyed by id so it never depends on frame-timing math.
-  if (node.id.startsWith("cloud-arrival") && state.visualState !== "low_memory_viewer") {
+  if (isArrivalId(node.id) && state.visualState !== "low_memory_viewer") {
     // Flash bright on arrival, then settle to a faint orange node that STAYS on
     // the surface (it doesn't vanish) until the upstream cap rotates it out.
     const arrivalBornAt = state.nodeBornAt.get(node.id);
@@ -1199,7 +1205,7 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
     state.nodePositionArray![index * 3 + 2] = position.z;
 
     const signal = nodeSignalStrength(state, node, elapsed);
-    const isArrival = node.id.startsWith("cloud-arrival");
+    const isArrival = isArrivalId(node.id);
     const depthCue = THREE.MathUtils.clamp(0.5 + position.z / Math.max(10, state.camera.position.z * 0.28), 0.18, 1);
     if (isArrival) {
       // Flash orange, then FREEZE to a normal white node and stay that way.
@@ -1247,8 +1253,8 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
     let tx = target.x, ty = target.y, tz = target.z;
     let freshGlow = 0;
     if (state.visualState !== "low_memory_viewer") {
-      const sourceArrival = edge.source.startsWith("cloud-arrival");
-      const targetArrival = edge.target.startsWith("cloud-arrival");
+      const sourceArrival = isArrivalId(edge.source);
+      const targetArrival = isArrivalId(edge.target);
       const sourceBorn = state.nodeBornAt.get(edge.source);
       const targetBorn = state.nodeBornAt.get(edge.target);
       const sourceAge = typeof sourceBorn === "number" ? elapsed - sourceBorn : Number.POSITIVE_INFINITY;
@@ -1300,9 +1306,9 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
 
     const signal = edgeSignalStrength(state, edge, elapsed);
     const weight = edgeWeight(edge);
-    if (edge.source.startsWith("cloud-arrival") || edge.target.startsWith("cloud-arrival")) {
+    if (isArrivalId(edge.source) || isArrivalId(edge.target)) {
       // Orange tendril on arrival, then FREEZE to a normal white edge and stay.
-      const arrivalBorn = edge.source.startsWith("cloud-arrival")
+      const arrivalBorn = isArrivalId(edge.source)
         ? state.nodeBornAt.get(edge.source)
         : state.nodeBornAt.get(edge.target);
       const arrivalAge = typeof arrivalBorn === "number" ? elapsed - arrivalBorn : 0;
