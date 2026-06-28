@@ -1645,13 +1645,22 @@ function FullApp() {
   const [localBackendStatus, setLocalBackendStatus] = useState<"idle" | "checking" | "connected" | "failed">("idle");
   const [localBackendMessage, setLocalBackendMessage] = useState("배포 fallback 사용 중");
   const [language, setLanguage] = useState<Language>("en");
-  // Demo home (GPT-style chat in place of the orb) = build profile OR ?profile=demo
-  // for local preview without a second dev server.
+  // Demo home (GPT-style chat in place of the orb) = build profile OR ?profile=demo.
+  // Persisted to localStorage so a refresh stays in demo even after the app rewrites
+  // the URL and drops ?profile.
   const [demoView, setDemoView] = useState<boolean>(isDemo);
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("profile");
-    if (p === "demo") setDemoView(true);
-    else if (p === "full") setDemoView(false);
+    let demo = isDemo;
+    try {
+      const p = new URLSearchParams(window.location.search).get("profile");
+      if (p === "demo") demo = true;
+      else if (p === "full") demo = false;
+      else if (window.localStorage.getItem("atanor.profile") === "demo") demo = true;
+      window.localStorage.setItem("atanor.profile", demo ? "demo" : "full");
+    } catch {
+      /* storage unavailable */
+    }
+    setDemoView(demo);
   }, []);
   const [mainSection, setMainSection] = useState<MainSectionId>("home");
   const [labSurfaceVisible, setLabSurfaceVisible] = useState(false);
@@ -5184,7 +5193,7 @@ function FullApp() {
               event.currentTarget.style.display = "none";
             }}
           />
-          <span>0.1.2</span>
+          <span data-demo-badge={demoView ? "true" : "false"}>{demoView ? "DEMO" : "0.1.2"}</span>
         </div>
         <nav className="atanor-user-nav" aria-label="ATANOR sections">
           {visibleMainNav.map((item) => {
