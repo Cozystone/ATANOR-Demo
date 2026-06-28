@@ -14,6 +14,7 @@ import AtlasGlobe3D from "./AtlasGlobe3D";
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import BrainConnectionStatus from "./BrainConnectionStatus";
 import CloudBrainSphereScene, { type CloudBrainSphereStats } from "./CloudBrainSphereScene";
+import LiveLearningPanel from "./LiveLearningPanel";
 import LiveSelfhoodSchedulerPanel from "./LiveSelfhoodSchedulerPanel";
 import MemoryApprovalPanel from "./MemoryApprovalPanel";
 import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode, type Rag3DVisualState } from "./Rag3DScene";
@@ -5978,6 +5979,7 @@ function FullApp() {
               </div>
             </div>
             <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode} data-answering={usesStudioGraph && transcriptOpen}>
+              {mainSection === "cloud" ? <LiveLearningPanel /> : null}
               {isCloudViewerSection && !visibleGraph3D.nodes.length ? (
                 <CloudBrainSphereScene
                   edgeOpacity={graphEdgeOpacity}
