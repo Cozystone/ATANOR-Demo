@@ -126,7 +126,17 @@ def answer_self_question(question: str, language: str = "ko") -> dict[str, Any] 
                 if subj not in subjects:
                     subjects.append(subj)
     if not subjects:
-        return None
+        # Self-reference + an inquiry, but no specific topic matched ("넌 규칙 기반
+        # 응답을 하니?", "너 GPU 써?", "너 뭐야"). Describe ATANOR's nature rather than
+        # letting it fall through to a tangential web lookup (e.g. "규칙" → D&D).
+        is_inquiry = bool(
+            re.search(r"[?？]", text)
+            or re.search(r"(하니|나요|냐|까|는가|니|야|어때|맞아|있어|없어|뭐|쓰|사용|기반|돼|되나|할\s*수)", text)
+            or re.search(r"\b(do|are|can|is|does|what|how)\b", text, re.IGNORECASE)
+        )
+        if not is_inquiry:
+            return None
+        subjects = ["name", "nature", "philosophy"]
     sentences = [s for s in (_fact(subj, language) for subj in subjects) if s]
     if not sentences:
         return None

@@ -3182,6 +3182,40 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Self-model: who ATANOR is and how it works, answered from a stable curated
     # self-knowledge base (not the web). "너 이름이 뭐야" / "어떻게 작동해" land here.
     self_knowledge = answer_self_question(question, language) if not self_state else None
+    # Greeting / small talk must be answered conversationally — NEVER sent to web
+    # search (where "오 안녕" matched the cartoon "안녕 자두야"). Short, greeting-shaped
+    # inputs get a warm reply from the local conversation surface.
+    greeting_answer = None
+    if not (self_state or self_knowledge or recall):
+        _gs = question.strip()
+        _is_greeting = len(_gs) <= 24 and bool(
+            re.search(r"(^|\s)(안녕|하이|헬로|반가|반갑|ㅎㅇ|잘\s*지내|좋은\s*(아침|저녁))", _gs)
+            or re.search(r"\b(hi|hello|hey|yo|good\s+(morning|evening|afternoon))\b", _gs, re.IGNORECASE)
+        )
+        if _is_greeting:
+            ans = ""
+            if not re.search(r"[A-Za-z]{3}", _gs):  # Korean greeting → Korean surface
+                try:
+                    from packages.cgsr.cgsr.asm_v0 import generate_surface
+
+                    ans = (generate_surface(question).answer or "").strip()
+                except Exception:  # pragma: no cover
+                    ans = ""
+            if not ans:
+                ans = "안녕하세요! 무엇이든 편하게 물어보세요." if language == "ko" else "Hi! What can I help you with?"
+            greeting_answer = {
+                "answer": ans,
+                "reasoning_certificate": {
+                    "derivation_kind": "greeting",
+                    "anchor_concept": None,
+                    "steps": [{"type": "greeting", "fact": "local conversation surface, no web"}],
+                    "evidence_concepts": [],
+                    "confidence": 0.9,
+                    "confidence_basis": "conversation_surface",
+                    "guarantees": {"external_llm": False, "fabricated_facts": False, "web_used": False},
+                },
+                "confidence": 0.9,
+            }
     # Deterministic multi-hop comparison ("A와 B 중 누가 먼저 태어났어?"): two real
     # lookups + a deterministic compare, no LLM. None when not a comparison or when
     # it can't extract both values (abstains, never guesses).
@@ -3246,6 +3280,15 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["reasoning_certificate"] = self_knowledge["reasoning_certificate"]
         result["confidence"] = self_knowledge["confidence"]
         result["answer_kind"] = "atanor_self_knowledge"
+        result["can_speak"] = True
+
+    # Greeting — conversational, never web.
+    if greeting_answer and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = greeting_answer["answer"]
+        result["reasoning_certificate"] = greeting_answer["reasoning_certificate"]
+        result["confidence"] = greeting_answer["confidence"]
+        result["answer_kind"] = "greeting"
         result["can_speak"] = True
 
     # Reasoning VM answer (math / counting word problem) — authoritative,
