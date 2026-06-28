@@ -512,12 +512,13 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
     const anchor = anchorPick.node;
     const ar = Math.max(0.001, anchorPick.r);
     // Direction from center through the anchor, nudged so arrivals don't overlap.
-    const jx = (anchor.x - cx) / ar + stableUnit(arrival.id, 5) * 0.16;
-    const jy = (anchor.y - cy) / ar + stableUnit(arrival.id, 9) * 0.16;
-    const jz = (anchor.z - cz) / ar + stableUnit(arrival.id, 13) * 0.16;
-    // Land the new node clearly OUTSIDE the dense core (in dark space) so its
-    // glow and the orange tendril reaching it are unmistakable.
-    const reach = radius * (1.28 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.22);
+    const jx = (anchor.x - cx) / ar + stableUnit(arrival.id, 5) * 0.1;
+    const jy = (anchor.y - cy) / ar + stableUnit(arrival.id, 9) * 0.1;
+    const jz = (anchor.z - cz) / ar + stableUnit(arrival.id, 13) * 0.1;
+    // Land the new node ON the graph's surface — just beyond its anchor — so it
+    // reads as attached to the body, not floating detached in empty space. It
+    // stays put; a short orange tendril connects it to the existing node.
+    const reach = ar * (1.05 + ((stableUnit(arrival.id, 17) + 1) / 2) * 0.06) + radius * 0.015;
     extraNodes.push({
       id: arrival.id,
       label: arrival.label,
@@ -3868,26 +3869,69 @@ function FullApp() {
     const rawNodes = Array.isArray(surfaceGraphData?.nodes) ? (surfaceGraphData!.nodes as AnyRecord[]) : [];
     const rawEdges = Array.isArray(surfaceGraphData?.edges) ? (surfaceGraphData!.edges as AnyRecord[]) : [];
     if (!rawNodes.length) return { nodes: [], edges: [], traversal_path: [] };
-    const count = rawNodes.length;
-    return {
-      nodes: rawNodes.map((node, index) => {
-        // Spread constructions across a spherical shell (golden-angle) so the
-        // graph is legible immediately — uses the same source-coordinate path as
-        // the concept cloud (no force layout / no collapse).
-        const y = 1 - ((index + 0.5) / count) * 2;
-        const radial = Math.sqrt(Math.max(0, 1 - y * y));
-        const theta = index * 2.399963229728653;
-        const shell = 9 + (index % 9) * 0.5 + stableUnit(String(node.id), 7) * 0.6;
-        return {
-          id: String(node.id),
-          label: String(node.label ?? node.id),
-          type: String(node.type ?? "surface_construction"),
-          x: Math.cos(theta) * radial * shell,
-          y: y * shell,
-          z: Math.sin(theta) * radial * shell,
-          source_type: "surface_construction",
+    // Cluster constructions that share a concept (connected via shares_concept
+    // edges) so semantic groups sit together instead of a flat index sphere.
+    const idIndex = new Map(rawNodes.map((node, index) => [String(node.id), index]));
+    const parent = rawNodes.map((_, index) => index);
+    const find = (x: number): number => {
+      let root = x;
+      while (parent[root] !== root) root = parent[root];
+      while (parent[x] !== root) {
+        const next = parent[x];
+        parent[x] = root;
+        x = next;
+      }
+      return root;
+    };
+    rawEdges.forEach((edge) => {
+      const a = idIndex.get(String(edge.source));
+      const b = idIndex.get(String(edge.target));
+      if (a !== undefined && b !== undefined) {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) parent[ra] = rb;
+      }
+    });
+    const components = new Map<number, number[]>();
+    rawNodes.forEach((_, index) => {
+      const root = find(index);
+      const list = components.get(root);
+      if (list) list.push(index);
+      else components.set(root, [index]);
+    });
+    const compList = [...components.values()].sort((a, b) => b.length - a.length);
+    const positions = new Array<{ x: number; y: number; z: number }>(rawNodes.length);
+    const clusterShell = 11;
+    compList.forEach((members, ci) => {
+      const cy = 1 - ((ci + 0.5) / compList.length) * 2;
+      const cradial = Math.sqrt(Math.max(0, 1 - cy * cy));
+      const ctheta = ci * 2.399963229728653;
+      const centerX = Math.cos(ctheta) * cradial * clusterShell;
+      const centerY = cy * clusterShell;
+      const centerZ = Math.sin(ctheta) * cradial * clusterShell;
+      const localR = 0.5 + Math.cbrt(members.length) * 0.7;
+      members.forEach((mi, k) => {
+        const ly = members.length > 1 ? 1 - ((k + 0.5) / members.length) * 2 : 0;
+        const lradial = Math.sqrt(Math.max(0, 1 - ly * ly));
+        const ltheta = k * 2.399963229728653;
+        positions[mi] = {
+          x: centerX + Math.cos(ltheta) * lradial * localR + stableUnit(String(rawNodes[mi].id), 7) * 0.2,
+          y: centerY + ly * localR * 0.85,
+          z: centerZ + Math.sin(ltheta) * lradial * localR,
         };
-      }),
+      });
+    });
+    return {
+      nodes: rawNodes.map((node, index) => ({
+        id: String(node.id),
+        label: String(node.label ?? node.id),
+        type: String(node.type ?? "surface_construction"),
+        x: positions[index]?.x ?? 0,
+        y: positions[index]?.y ?? 0,
+        z: positions[index]?.z ?? 0,
+        source_type: "surface_construction",
+        cluster_id: `surface-cluster-${find(index)}`,
+      })),
       edges: rawEdges.map((edge) => ({
         source: String(edge.source),
         target: String(edge.target),
@@ -3912,7 +3956,9 @@ function FullApp() {
       return;
     }
     let alive = true;
-    const ARRIVAL_TTL = 6800;
+    // New nodes linger on the surface (they "stay where they appeared") rather
+    // than popping and vanishing; the cap rotates the oldest out within budget.
+    const ARRIVAL_TTL = 24000;
     const poll = async () => {
       try {
         const res = await fetch("/api/cloud-brain/learning/continuous/metrics", { cache: "no-store" });
@@ -3937,7 +3983,7 @@ function FullApp() {
             born: now,
             anchorSeed: Math.floor(Math.random() * 1_000_000_000),
           }));
-          return [...live, ...fresh].slice(-96);
+          return [...live, ...fresh].slice(-180);
         });
       } catch {
         /* keep last */

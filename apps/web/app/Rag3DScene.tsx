@@ -1102,8 +1102,13 @@ function nodeSignalStrength(state: SceneState, node: Rag3DNode, elapsed: number)
   // — they're removed after a few seconds upstream, so this IS the "glows for a
   // while" window. Keyed by id so it never depends on frame-timing math.
   if (node.id.startsWith("cloud-arrival") && state.visualState !== "low_memory_viewer") {
+    // Flash bright on arrival, then settle to a faint orange node that STAYS on
+    // the surface (it doesn't vanish) until the upstream cap rotates it out.
+    const arrivalBornAt = state.nodeBornAt.get(node.id);
+    const arrivalAge = typeof arrivalBornAt === "number" ? elapsed - arrivalBornAt : 0;
+    const decay = THREE.MathUtils.clamp(1 - arrivalAge / NEW_NODE_GLOW_SECONDS, 0, 1);
     const twinkle = 0.6 + 0.4 * Math.abs(Math.sin(elapsed * 7.5 + hash01(node.id, 53) * Math.PI * 2));
-    return THREE.MathUtils.clamp(0.5 + twinkle * 0.5, 0, 1);
+    return THREE.MathUtils.clamp(0.16 + decay * 0.84 * twinkle, 0, 1);
   }
   // Arrivals flash even when the overall graph has "settled" (idle) — a new node
   // landing on a calm field is exactly when the flash matters most.
@@ -1261,7 +1266,9 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
           }
         }
         const twinkle = 0.64 + 0.36 * Math.abs(Math.sin(elapsed * 8 + hash01(edge.source + edge.target, 23) * Math.PI * 2));
-        freshGlow = isArrivalEdge ? twinkle : THREE.MathUtils.clamp(1 - newEndpointAge / NEW_NODE_GLOW_SECONDS, 0, 1) * twinkle;
+        const decayEdge = THREE.MathUtils.clamp(1 - newEndpointAge / NEW_NODE_GLOW_SECONDS, 0, 1);
+        // Arrival tendril stays as a faint orange link after the flash settles.
+        freshGlow = isArrivalEdge ? (0.24 + 0.76 * decayEdge) * twinkle : decayEdge * twinkle;
       }
     }
 

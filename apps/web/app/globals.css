@@ -4526,7 +4526,7 @@ p {
   left: calc(clamp(196px, 12.2vw, 226px) + 18px);
   right: 18px;
   width: auto;
-  max-width: 940px;
+  max-width: 1240px;
   margin-left: auto;
   margin-right: auto;
   display: flex;
