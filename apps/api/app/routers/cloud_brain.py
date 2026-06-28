@@ -1094,6 +1094,121 @@ _CONT: dict[str, Any] = {
 }
 _CONT_THREAD: _threading.Thread | None = None
 
+import random as _random
+
+# Relation-discovery: continuously sample random concept pairs from the candidate
+# store and verify a lexical relation (shared significant token). Verified pairs
+# are logged as candidate relations. This is the REAL per-second cross-linking the
+# "synapse firing" visualisation reflects (the frontend drives synapse density
+# from checks_per_second).
+_RELDISC_LOCK = _threading.Lock()
+_RELDISC: dict[str, Any] = {
+    "running": False,
+    "started_at": None,
+    "checks": 0,
+    "linked": 0,
+    "recent": [],
+    "last_rate_at": 0.0,
+    "last_checks": 0,
+    "checks_per_second": 0.0,
+}
+_RELDISC_THREAD: _threading.Thread | None = None
+_RELDISC_CONCEPTS: list[tuple[str, str]] = []
+_RELDISC_CONCEPTS_AT: float = 0.0
+
+
+def _reldisc_load_concepts() -> list[tuple[str, str]]:
+    global _RELDISC_CONCEPTS, _RELDISC_CONCEPTS_AT
+    now = _time.time()
+    if _RELDISC_CONCEPTS and now - _RELDISC_CONCEPTS_AT < 45:
+        return _RELDISC_CONCEPTS
+    rows: list[tuple[str, str]] = []
+    store = _resolve_candidate_store_path()
+    if store:
+        path = Path(store) / "concepts.jsonl"
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines()[:8000]:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    continue
+                cid = str(row.get("concept_id") or "")
+                name = str(row.get("canonical_name") or "")
+                if cid and name:
+                    rows.append((cid, name))
+        except Exception:
+            pass
+    _RELDISC_CONCEPTS = rows
+    _RELDISC_CONCEPTS_AT = now
+    return rows
+
+
+def _reldisc_tokens(name: str) -> set[str]:
+    return {t for t in re.split(r"[^0-9A-Za-z가-힣]+", name.lower()) if len(t) >= 4}
+
+
+def _relation_discovery_worker() -> None:
+    while True:
+        with _RELDISC_LOCK:
+            if not _RELDISC["running"]:
+                break
+        concepts = _reldisc_load_concepts()
+        if len(concepts) < 8:
+            _time.sleep(1.0)
+            continue
+        n = len(concepts)
+        batch = 60
+        fired: list[tuple[str, str]] = []
+        for _ in range(batch):
+            a = concepts[_random.randrange(n)]
+            b = concepts[_random.randrange(n)]
+            if a[0] == b[0]:
+                continue
+            na, nb = a[1].lower(), b[1].lower()
+            shared = _reldisc_tokens(a[1]) & _reldisc_tokens(b[1])
+            # Verified relation: a shared significant token, OR one name contains
+            # the other as a whole (e.g. "Einstein" within "Albert Einstein").
+            contained = len(na) >= 4 and len(nb) >= 4 and (
+                f" {na} " in f" {nb} " or f" {nb} " in f" {na} " or na in nb.split() or nb in na.split()
+            )
+            if shared or contained:
+                fired.append((a[1], b[1]))
+        if fired:
+            try:
+                store = _resolve_candidate_store_path()
+                if store:
+                    log = Path(store) / "relation_discovery.jsonl"
+                    with log.open("a", encoding="utf-8") as fh:
+                        for la, lb in fired[:8]:
+                            fh.write(json.dumps({"a": la, "b": lb, "relation": "co_token", "at": round(_time.time(), 3), "verified": True}) + "\n")
+            except Exception:
+                pass
+        now = _time.time()
+        with _RELDISC_LOCK:
+            _RELDISC["checks"] += batch
+            _RELDISC["linked"] += len(fired)
+            _RELDISC["recent"] = ([f"{a} ↔ {b}" for a, b in fired[-6:]] + list(_RELDISC["recent"]))[:6]
+            dt = now - (_RELDISC["last_rate_at"] or now)
+            if dt >= 1.0:
+                _RELDISC["checks_per_second"] = round((_RELDISC["checks"] - _RELDISC["last_checks"]) / dt, 1)
+                _RELDISC["last_checks"] = _RELDISC["checks"]
+                _RELDISC["last_rate_at"] = now
+        _time.sleep(0.25)
+
+
+def cloud_brain_relation_discovery_start() -> dict[str, Any]:
+    global _RELDISC_THREAD
+    with _RELDISC_LOCK:
+        if _RELDISC["running"]:
+            return {"running": True, "already_running": True}
+        _RELDISC.update({"running": True, "started_at": _time.time(), "last_rate_at": _time.time()})
+    _RELDISC_THREAD = _threading.Thread(target=_relation_discovery_worker, name="atanor-relation-discovery", daemon=True)
+    _RELDISC_THREAD.start()
+    return {"running": True, "started": True}
+
 
 def _wiki_random_sentences(host: str, n_titles: int = 3) -> list[tuple[str, str]]:
     def _get(url: str) -> Any:
@@ -1183,6 +1298,10 @@ def cloud_brain_continuous_start() -> dict[str, Any]:
         _CONT.update({"running": True, "started_at": _time.time(), "last_error": None, "backoff_until": 0.0})
     _CONT_THREAD = _threading.Thread(target=_continuous_worker, name="atanor-continuous-learn", daemon=True)
     _CONT_THREAD.start()
+    try:
+        cloud_brain_relation_discovery_start()
+    except Exception:
+        pass
     return {"running": True, "started": True}
 
 
@@ -1197,10 +1316,16 @@ def cloud_brain_continuous_stop() -> dict[str, Any]:
 def cloud_brain_continuous_metrics() -> dict[str, Any]:
     with _CONT_LOCK:
         snap = dict(_CONT)
+    with _RELDISC_LOCK:
+        rel = dict(_RELDISC)
     started = snap.get("started_at")
     uptime = (_time.time() - started) if started else 0.0
     fed = snap["sentences_fed"]
     return {
+        "relation_checks_per_second": rel.get("checks_per_second", 0.0),
+        "relation_checks_total": rel.get("checks", 0),
+        "relations_linked": rel.get("linked", 0),
+        "relation_recent": rel.get("recent", []),
         "running": snap["running"],
         "uptime_seconds": round(uptime, 1),
         "ticks": snap["ticks"],

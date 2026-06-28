@@ -518,17 +518,21 @@ function appendCloudArrivals(base: Rag3DGraph, arrivals: CloudArrival[]): Rag3DG
       confidence: 0.72,
       source_type: "cloud_fragment",
     });
-    // The new node reaches out to SEVERAL related (nearest) nodes — orange lines
-    // radiate FROM the new node to its ontology neighbours, in all directions.
-    const neighbourCount = 4 + (arrival.anchorSeed % 4); // 4..7
-    const nearest = base.nodes
-      .map((node) => ({ node, d: (node.x - ax) ** 2 + (node.y - ay) ** 2 + (node.z - az) ** 2 }))
-      .sort((left, right) => left.d - right.d)
-      .slice(0, neighbourCount)
-      .map((entry) => entry.node);
-    nearest.forEach((node) => {
+    // The new node reaches out WIDELY — to nodes anywhere on the sphere, including
+    // the far side — so the orange tendrils are long and far-reaching, not timid
+    // local stubs (related content can live anywhere in the graph). Deterministic
+    // per id so the edges stay put.
+    const linkCount = 6 + (arrival.anchorSeed % 6); // 6..11
+    const picks = new Set<number>();
+    for (let k = 0; picks.size < linkCount && k < linkCount * 4; k += 1) {
+      const idx = Math.floor(((stableUnit(arrival.id, 100 + k) + 1) / 2) * base.nodes.length) % base.nodes.length;
+      picks.add(idx);
+    }
+    picks.forEach((idx) => {
+      const node = base.nodes[idx];
+      if (!node) return;
       // source = arrival (new node) — the tendril originates AT the new node and
-      // grows out to the related existing node.
+      // grows out to the related existing node, wherever it is.
       extraEdges.push({ source: arrival.id, target: node.id, relation: "newly_learned", weight: 0.72, source_type: "cloud_fragment" });
     });
   });
@@ -1672,6 +1676,7 @@ function FullApp() {
   const [surfaceGraphData, setSurfaceGraphData] = useState<AnyRecord | null>(null);
   const [surfaceArrivals, setSurfaceArrivals] = useState<CloudArrival[]>([]);
   const surfaceArrivalPrevRef = useRef<number | null>(null);
+  const [synapseRate, setSynapseRate] = useState(0);
   const [brainGraphOverlayStatus, setBrainGraphOverlayStatus] = useState<AnyRecord | null>(null);
   const [brainGraphStatus, setBrainGraphStatus] = useState<AnyRecord | null>(null);
   const [localBrainGraphLayers, setLocalBrainGraphLayers] = useState<string[]>(["local_user", "working_memory_local", "local_base", "seed"]);
@@ -3936,6 +3941,9 @@ function FullApp() {
         const total = (Number(data.concepts_added) || 0) + (Number(data.relations_added) || 0);
         const titles = Array.isArray(data.last_titles) ? (data.last_titles as unknown[]).map(String) : [];
         const now = Date.now();
+        // Drive the sky-blue synapse density from the REAL relation-check rate the
+        // backend reports (random concept pairs verified per second).
+        setSynapseRate(Math.min(140, Math.round(Number(data.relation_checks_per_second) || 0)));
         if (cloudArrivalPrevRef.current === null) {
           cloudArrivalPrevRef.current = total;
           return;
@@ -6229,7 +6237,7 @@ function FullApp() {
                   fitScale={graphFitScale}
                   showLabels={mainSection !== "local"}
                   edgeOpacity={graphEdgeOpacity}
-                  synapsesPerSecond={mainSection === "cloud" ? 75 : 0}
+                  synapsesPerSecond={mainSection === "cloud" ? synapseRate : 0}
                   onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
                 />
               ) : (

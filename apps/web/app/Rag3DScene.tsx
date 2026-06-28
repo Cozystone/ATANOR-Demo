@@ -1460,7 +1460,7 @@ function ensureSynapseBuffers(state: SceneState, segmentCount: number) {
       blending: THREE.AdditiveBlending,
       depthTest: false,
       depthWrite: false,
-      opacity: 0.92,
+      opacity: 0.68,
       transparent: true,
       vertexColors: true,
     });
@@ -1507,7 +1507,7 @@ function updateSynapses(state: SceneState, elapsed: number, dt: number) {
     pos[v + 3] = np[bi]; pos[v + 4] = np[bi + 1]; pos[v + 5] = np[bi + 2];
     const t = THREE.MathUtils.clamp((elapsed - s.born) / SYNAPSE_LIFE_SECONDS, 0, 1);
     const flash = Math.sin(t * Math.PI); // 0 -> 1 -> 0
-    const bright = flash * 1.9;
+    const bright = flash * 1.05; // softer sky-blue
     const r = skyBlueColor.r * bright;
     const g = skyBlueColor.g * bright;
     const bch = skyBlueColor.b * bright;
