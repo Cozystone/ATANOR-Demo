@@ -3850,7 +3850,23 @@ function FullApp() {
     ? Math.max(18, Math.min(92, Math.round(graphEdgeOpacity * 100)))
     : 100;
   const studioGraph3D = useMemo(() => buildStudioTopologyGraph(visibleGraph3D), [visibleGraph3D]);
-  const sphereGraph3D = useMemo(() => buildSphericalTopologyGraph(visibleGraph3D, graphPresentationMode), [visibleGraph3D, graphPresentationMode]);
+  // Onion growth: the cloud sphere slowly expands as the brain accumulates real
+  // learning (candidate concepts), quantised so it grows in gentle steps. The
+  // Rag3D camera auto-fit follows the larger radius and zooms out naturally.
+  const onionScale = useMemo(() => {
+    if (mainSection !== "cloud") return 1;
+    const cc = Number(cloudCandidateStatus?.candidate_concepts ?? 0);
+    const raw = 1 + Math.max(0, cc - 5000) / 45000;
+    return Math.min(1.7, Math.round(raw * 40) / 40);
+  }, [mainSection, cloudCandidateStatus]);
+  const sphereGraph3D = useMemo(() => {
+    const g = buildSphericalTopologyGraph(visibleGraph3D, graphPresentationMode);
+    if (onionScale === 1) return g;
+    return {
+      ...g,
+      nodes: g.nodes.map((node) => ({ ...node, x: node.x * onionScale, y: node.y * onionScale, z: node.z * onionScale })),
+    };
+  }, [visibleGraph3D, graphPresentationMode, onionScale]);
   const usesStudioGraph = mainSection === "home";
   const usesSphereGraph = mainSection === "graph" || mainSection === "local" || mainSection === "cloud" || mainSection === "chat";
   const userSceneGraph3D = usesStudioGraph ? studioGraph3D : usesSphereGraph ? sphereGraph3D : studioGraph3D;
