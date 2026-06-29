@@ -3869,8 +3869,40 @@ function FullApp() {
     : localBackendStatus === "checking"
       ? (language === "ko" ? "Ghost Shell 주소록을 깨우고 있습니다" : "Waking Ghost Shell topology")
       : (language === "ko" ? "로컬 Companion 응답 대기" : "Waiting for local Companion");
+  // Real graph-load progress: paced by the ACTUAL measured load time (rolling EMA
+  // in localStorage), corrected to 100% the moment the data truly arrives — so the
+  // percentage predicts THIS machine's real speed instead of a cosmetic fade.
+  const graphLoadStartRef = useRef<number | null>(null);
+  const [graphLoadElapsed, setGraphLoadElapsed] = useState(0);
+  useEffect(() => {
+    if (tabBrainGraphPending) {
+      if (graphLoadStartRef.current === null) graphLoadStartRef.current = performance.now();
+      let raf = 0;
+      const tick = () => {
+        setGraphLoadElapsed(performance.now() - (graphLoadStartRef.current ?? performance.now()));
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
+    if (graphLoadStartRef.current !== null) {
+      const dur = performance.now() - graphLoadStartRef.current;
+      try {
+        const prev = Number(localStorage.getItem("atanor_graph_load_ms")) || dur;
+        localStorage.setItem("atanor_graph_load_ms", String(Math.round(prev * 0.7 + dur * 0.3)));
+      } catch {}
+      graphLoadStartRef.current = null;
+    }
+    setGraphLoadElapsed(0);
+    return undefined;
+  }, [tabBrainGraphPending]);
   const graphLoadingPercent = tabBrainGraphPending
-    ? Math.max(18, Math.min(92, Math.round(graphEdgeOpacity * 100)))
+    ? (() => {
+        let est = 4000;
+        try { est = Number(localStorage.getItem("atanor_graph_load_ms")) || 4000; } catch {}
+        est = Math.max(800, est);
+        return Math.max(3, Math.min(95, Math.round((graphLoadElapsed / est) * 100)));
+      })()
     : 100;
   const studioGraph3D = useMemo(() => buildStudioTopologyGraph(visibleGraph3D), [visibleGraph3D]);
   // Onion growth: the cloud sphere slowly expands as the brain accumulates real
