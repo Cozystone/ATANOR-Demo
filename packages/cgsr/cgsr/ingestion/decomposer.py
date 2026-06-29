@@ -362,6 +362,19 @@ def _evidence(sentence: SourceSentence, decision: VerificationDecision) -> dict[
     }
 
 
+def _copula_category(text: str) -> str:
+    """The category a definition assigns its subject — the noun right before the copula
+    ('삼성전자는 … 기업이다' → '기업'; 'X is a company' → 'company'). A structural language
+    signal (not a knowledge rule): it lets the learner emit IS_A(subject, category) so a
+    type hierarchy is built in the graph FROM DATA, replacing a hand-coded type lexicon."""
+    text = str(text or "")
+    m = re.search(r"([가-힣]{2,})\s*(?:이다|입니다|이며|이고|이라\b)", text)
+    if m:
+        return m.group(1)
+    m = re.search(r"\bis\s+(?:a|an|the)\s+([A-Za-z][A-Za-z ]{1,40}?)[.,;\s]", text, re.IGNORECASE)
+    return m.group(1).strip() if m else ""
+
+
 def decompose_sentence(
     sentence: SourceSentence,
     decision: VerificationDecision,
@@ -435,6 +448,47 @@ def decompose_sentence(
                 "case_role": role,
             }
         )
+
+    # IS_A: for a copula DEFINITION ("삼성전자는 … 기업이다"), record subject is_a category.
+    # The case-role extractor leaves the copula predicate empty and the subject as TOPIC,
+    # so extract the category directly and ensure both ends are concepts. This builds a
+    # type hierarchy in the graph FROM DATA — the basis for deriving entity types from
+    # is_a later instead of a hand-coded type lexicon.
+    _category = _copula_category(sentence.text)
+    _subj_head = next((r["head"] for r in roles if r.get("role") in ("SUBJ", "TOPIC")), None)
+    _cat_canon = normalize_concept(_category) if _category else ""
+    _subj_canon = normalize_concept(_subj_head) if _subj_head else ""
+    if _cat_canon and _subj_canon and _cat_canon != _subj_canon:
+        for canon in (_subj_canon, _cat_canon):
+            if canon not in concepts:
+                dk = concept_key(canon, sentence.language)
+                concepts[canon] = {
+                    "concept_id": digest_id("vsc", dk),
+                    "canonical_name": canon,
+                    "language": sentence.language,
+                    "dedupe_key": dk,
+                    "provenance": provenance,
+                    "verification": verification,
+                    "created_at": created_at,
+                    "updated_at": created_at,
+                }
+        src, tgt = concepts.get(_subj_canon), concepts.get(_cat_canon)
+        if src and tgt:
+            dedupe_key = digest_id("relation_key", f"{src['concept_id']}:IS_A:{tgt['concept_id']}:{sentence.source_hash}")
+            relations.append(
+                {
+                    "relation_id": digest_id("vsr", dedupe_key),
+                    "source_concept_id": src["concept_id"],
+                    "relation": "IS_A",
+                    "target_concept_id": tgt["concept_id"],
+                    "language": sentence.language,
+                    "dedupe_key": dedupe_key,
+                    "provenance": provenance,
+                    "verification": verification,
+                    "created_at": created_at,
+                    "updated_at": created_at,
+                }
+            )
 
     case_frames: list[dict[str, Any]] = []
     if predicate and roles:
