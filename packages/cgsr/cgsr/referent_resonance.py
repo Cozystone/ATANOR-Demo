@@ -52,8 +52,10 @@ _ALL_TYPES = (PERSON, ORG, ORGANISM, WORK, PLACE, CONCEPT, SELF)
 # earliest mention (a movie's blurb mentions its 감독, but its HEAD category is 영화).
 _TYPE_LEXICON: tuple[tuple[str, tuple[str, ...]], ...] = (
     (ORGANISM, (
-        "고유종", "아종", "종", "동물", "포유류", "곤충", "꽃등에", "파리", "식물", "새", "조류",
-        "물고기", "어류", "균", "박테리아", "바이러스", "나비", "딱정벌레", "갑각류", "양서류", "파충류",
+        # NB: bare short nouns like "종"(→세종), "새"(→새벽), "파리"(→Paris) are excluded —
+        # they mis-tag unrelated words. Only specific category nouns.
+        "고유종", "아종", "동물", "포유류", "곤충", "꽃등에", "식물", "조류", "어류", "박테리아",
+        "바이러스", "딱정벌레", "갑각류", "양서류", "파충류", "들쥐", "설치류",
         "species", "animal", "insect", "fly", "plant", "bird", "fish", "mammal", "fungus", "bacteri",
     )),
     (WORK, (
@@ -174,7 +176,10 @@ def query_subject_entity(question: str) -> str:
 # If the entity is followed by one of these, it is the sentence subject (삼성전자는…).
 # If it is followed by any OTHER Hangul syllable, the entity is glued into a longer
 # noun (세종대왕동상, 빌게이츠꽃등에) — a different, related referent.
-_JOSA = set("는은이가을를의에도와과로으만라란야여나든께한부터까")
+# Core subject/topic markers only. Excludes syllables that collide with verb stems
+# (e.g. "나" in "세종대왕 나신 날" = 태어나다, not the josa ~나), which would wrongly
+# accept an event page as being "about" the person.
+_JOSA = set("는은이가을를의에도와과로으만야")
 
 
 def answer_is_about_entity(entity: str, text: str, *, head: int = 24) -> bool:
@@ -224,6 +229,28 @@ def is_self_reference_question(question: str) -> bool:
         return False
     low = (question or "").lower()
     return any(cue in low for cue in _SELF_PROPERTY_CUES)
+
+
+_FOUNDER_ORG = ("창업자", "창립자", "설립자", "창업", "설립", "공동창업", "ceo", "founder")
+_AUTHOR_WORK = ("감독", "저자", "작곡가", "작가", "주연", "출연", "director", "author", "composer")
+
+
+def query_entity_type(question: str) -> str:
+    """The type of the ENTITY the question is ABOUT (distinct from the answer type).
+    '테슬라 창업자가 누구야' → the entity 테슬라 is an ORG (orgs have founders); '세종대왕이
+    누구야' → the entity is a PERSON. Used to resolve an ambiguous name to the right-typed
+    page (테슬라 → 테슬라(기업), not 니콜라 테슬라)."""
+    raw = question or ""
+    low = raw.lower()
+    if any(m in raw or m in low for m in _FOUNDER_ORG):
+        return ORG
+    if any(m in raw or m in low for m in _AUTHOR_WORK):
+        return WORK
+    if any(w in low for w in _WHO):
+        return PERSON
+    if any(w in low for w in ("어디", "where")):
+        return PLACE
+    return UNKNOWN
 
 
 def query_expected_type(question: str) -> str:

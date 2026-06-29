@@ -465,6 +465,38 @@ def _wiktionary_definition(term: str, *, korean: bool) -> dict[str, Any] | None:
     return None
 
 
+def _resolve_entity_by_type(entity: str, expected_type: str, host: str) -> dict[str, Any] | None:
+    """Disambiguate an ambiguous name by surfing diversely: gather several candidate
+    pages (action search) and pick the one whose TYPE matches what the question implies
+    — '테슬라' + a founder question (→ ORG) resolves to '테슬라 (기업)', not '니콜라 테슬라'.
+    This is the crawler-like breadth the user asked for, used for selection, not paste."""
+    try:
+        from packages.cgsr.cgsr.referent_resonance import infer_evidence_type
+    except Exception:  # pragma: no cover - optional
+        return None
+    entity = (entity or "").strip()
+    if not entity or expected_type in ("", "unknown"):
+        return None
+    api = (
+        f"https://{host}/w/api.php?action=query&list=search&format=json&utf8=1"
+        f"&srlimit=6&srsearch={quote_plus(entity)}"
+    )
+    body = _wiki_get_json(api)
+    titles = [_strip_html(it.get("title") or "") for it in (body.get("query", {}).get("search", []) or [])][:6]
+    if entity not in titles:
+        titles.insert(0, entity)
+    first_valid: dict[str, Any] | None = None
+    for title in titles[:6]:
+        row = _wiki_rest_summary(title, host)
+        if not row:
+            continue
+        if first_valid is None:
+            first_valid = row
+        if infer_evidence_type(row["snippet"]) == expected_type:
+            return row  # first type-matching candidate wins
+    return first_valid
+
+
 def _diverse_fallback_rows(query: str, lookup: str, lookup_terms: list[str], primary_host: str) -> list[dict[str, Any]]:
     """When the action search finds nothing, harvest from several keyless sources
     (direct Wikipedia summary in both language editions + Wiktionary) so a query
@@ -548,13 +580,24 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
             if len(bounded_results) >= bounded_count:
                 break
             bounded_results.append(result)
-    # Precision: the action search ranks by term frequency, so a person/entity query
-    # ("빌게이츠") can surface a tangential page ("빌게이츠꽃등에", a fly named after him,
-    # or "X (소셜 네트워크)" for "일론 머스크"). The exact-title REST summary is the
-    # authoritative page for the cleaned term — prepend it so it wins, deduped.
-    direct = _wiki_rest_summary(lookup, wiki_host) or (
-        _wiki_rest_summary(lookup_terms[0], wiki_host) if lookup_terms else None
-    )
+    # Precision + disambiguation: the action search ranks by term frequency, so a
+    # person/entity query ("빌게이츠") can surface a tangential page ("빌게이츠꽃등에", a
+    # fly). The exact-title REST summary is the authoritative page; and when the
+    # question implies an entity TYPE (창업자 → ORG, 누구 → PERSON), resolve an ambiguous
+    # name to the type-matching candidate (테슬라 + 창업자 → 테슬라(기업), not 니콜라 테슬라)
+    # by surfing several candidates. Prepend the result so it wins, deduped.
+    try:
+        from packages.cgsr.cgsr.referent_resonance import query_entity_type as _qet
+        _entity_type = _qet(query)
+    except Exception:  # pragma: no cover - optional
+        _entity_type = "unknown"
+    direct = None
+    if _entity_type not in ("", "unknown"):
+        direct = _resolve_entity_by_type(lookup, _entity_type, wiki_host)
+    if not direct:
+        direct = _wiki_rest_summary(lookup, wiki_host) or (
+            _wiki_rest_summary(lookup_terms[0], wiki_host) if lookup_terms else None
+        )
     if direct:
         seen_titles = {_norm_title(direct["title"])}
         merged = [direct]
