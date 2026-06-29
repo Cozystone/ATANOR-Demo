@@ -37,11 +37,13 @@ export async function proxyJson(path: string, init?: RequestInit) {
       ? [cloud, ...backendBaseCandidates()]
       : backendBaseCandidates();
 
-  // Fail fast per-candidate: a backend whose port is open but unresponsive (e.g.
-  // wedged mid hot-reload) would otherwise hang the request forever and never let
-  // us fail over to a healthy companion or the static fallback. Abort after a
-  // short budget so the next candidate / fallback is reached promptly.
-  const PER_TRY_MS = Number(process.env.ATANOR_PROXY_TIMEOUT_MS ?? 3500);
+  // Per-candidate budget. This must accommodate the SLOWEST legitimate endpoint —
+  // /api/chat/atanor does graph routing + holographic fold + realization (~3-7s, and
+  // up to ~30s+ with live web search). The previous 3.5s budget aborted every chat
+  // request ("fetch failed" -> 502) while fast status endpoints (<0.1s) were unaffected,
+  // which read as "응답없음". A wedged backend now takes longer to fail over, but the
+  // client carries its own timeout and the alternate companions are usually absent.
+  const PER_TRY_MS = Number(process.env.ATANOR_PROXY_TIMEOUT_MS ?? 45000);
 
   let lastError: unknown = null;
   for (const baseUrl of bases) {

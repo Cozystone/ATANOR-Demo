@@ -1458,6 +1458,11 @@ def _firehose_worker() -> None:
                     with _FIREHOSE_LOCK:
                         _FIREHOSE["processed"] += 2000
                     _firehose_tick_rate()
+                    # Yield the GIL so the single-worker uvicorn event loop can serve
+                    # requests. Without this, streaming a whole corpus file is one tight
+                    # Python loop that monopolises the GIL and starves request handlers
+                    # (the dashboard's concurrent burst then times out / 502s).
+                    _time.sleep(0.03)
             with _FIREHOSE_LOCK:
                 _FIREHOSE["processed"] += count % 2000
                 _FIREHOSE["unique"] += len(batch_new)
