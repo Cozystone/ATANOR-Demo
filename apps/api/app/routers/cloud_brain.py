@@ -1532,7 +1532,18 @@ def _frontier_topics(n: int = 2) -> list[str]:
             if label and len(label) >= 2:
                 names.append(label)
     except Exception:  # pragma: no cover - defensive
-        return []
+        names = []
+    # Extend the frontier OUTWARD with concepts the graph has already LEARNED, so
+    # exploration follows what it discovers (graph-driven), not a fixed seed list.
+    try:
+        seen = set(names)
+        for _cid, name in _reldisc_load_concepts():
+            name = str(name).strip()
+            if 2 <= len(name) <= 30 and name not in seen:
+                names.append(name)
+                seen.add(name)
+    except Exception:  # pragma: no cover - defensive
+        pass
     if not names:
         return []
     topics = [names[(_LEARN_TOPIC_IDX + i) % len(names)] for i in range(n)]
