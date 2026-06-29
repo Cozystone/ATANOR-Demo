@@ -187,11 +187,11 @@ const NEW_NODE_ANIMATION_SECONDS = 1.0;
 // How long a freshly-arrived node keeps its identifiable orange flash after it
 // settles into place, and how long the orange connecting edge takes to "grow"
 // outward from the existing node to the new one.
-const NEW_NODE_GLOW_SECONDS = 8.0;
-const NEW_EDGE_GROW_SECONDS = 1.1;
+const NEW_NODE_GLOW_SECONDS = 2.2;
+const NEW_EDGE_GROW_SECONDS = 0.7;
 // After the orange glow, the arrival "freezes" — its node and tendrils fade from
 // orange to the normal white edge/node colour and stay that way.
-const NEW_NODE_FREEZE_SECONDS = 11.0;
+const NEW_NODE_FREEZE_SECONDS = 1.8;
 const MAX_SHELL_RENDER_CHUNKS = 384;
 const DEFAULT_GRAPH_TILT_X = -0.22;
 const DEFAULT_GRAPH_TILT_Y = 0.34;
