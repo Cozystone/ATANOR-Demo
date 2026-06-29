@@ -155,6 +155,76 @@ _WHO = ("누구", "누군", "who")
 _FOUNDER = ("창립자", "창업자", "설립자", "발명자", "발명가", "감독", "저자", "작곡가", "founder", "inventor", "director", "author")
 _SELF_REF = ("너", "넌", "네", "너는", "당신", "그대", "자네", "atanor", "아타노르", "yourself")
 
+# Interrogative tail stripped to leave the noun phrase the question is ABOUT.
+_Q_TAIL = re.compile(
+    r"\s*(?:란|이란)?\s*(?:은|는|이|가|을|를)?\s*"
+    r"(?:무엇인가요?|무엇이고|무엇이|무엇|뭐예요|뭐야|뭐냐|뭔데|뭐|"
+    r"누구인가요?|누구예요|누구야|누구니|누군지|누구|"
+    r"에\s*대해.*|에\s*대해서.*|알려줘.*|설명해.*)\s*$"
+)
+
+
+def query_subject_entity(question: str) -> str:
+    """The noun phrase the question is ABOUT — '삼성전자가 뭐야' → '삼성전자'."""
+    q = re.sub(r"\s+", " ", str(question or "")).strip().rstrip("?？!. ")
+    return _Q_TAIL.sub("", q).strip()
+
+
+# Single-syllable Korean particles (josa) that can immediately follow a SUBJECT noun.
+# If the entity is followed by one of these, it is the sentence subject (삼성전자는…).
+# If it is followed by any OTHER Hangul syllable, the entity is glued into a longer
+# noun (세종대왕동상, 빌게이츠꽃등에) — a different, related referent.
+_JOSA = set("는은이가을를의에도와과로으만라란야여나든께한부터까")
+
+
+def answer_is_about_entity(entity: str, text: str, *, head: int = 24) -> bool:
+    """True when the answer is ABOUT the queried entity — it leads with the entity as
+    its subject, not a *related* one (삼성전자가 뭐야 → '이재용은…' is about a different
+    referent). Space-insensitive ('빌게이츠'↔'빌 게이츠'); rejects a longer glued Hangul
+    compound (a fly '빌게이츠꽃등에', a statue '세종대왕 동상') while allowing a subject
+    particle ('삼성전자는…')."""
+    if len(entity) < 2:
+        return True  # no clear single entity → don't filter
+    deglue = lambda s: s.replace(" ", "")
+    e = deglue(entity)
+    head_text = deglue(text[:head])
+    idx = head_text.find(e)
+    if idx != -1:
+        after = head_text[idx + len(e): idx + len(e) + 1]
+        if after and re.match(r"[가-힣A-Za-z]", after) and after not in _JOSA:
+            return False  # glued into a longer noun → a different, related referent
+        return True
+    tokens = [deglue(t) for t in re.split(r"\s+", entity) if len(t) >= 2]
+    return bool(tokens) and all(t in head_text for t in tokens)
+
+
+def is_definitional_question(question: str) -> bool:
+    """A 'what/who is X' question whose answer should be ABOUT X."""
+    low = (question or "").lower()
+    return any(w in low for w in _WHO) or any(
+        w in low for w in ("뭐야", "뭐냐", "뭔데", "무엇", "이란", "란 ", "what is", "what are")
+    )
+
+
+# Cues that a self-referential question is asking about ATANOR's identity, capability,
+# mechanism, or LIMITATION — these should be answered honestly from the agent's own
+# model, never sent to the web (where "너 LLM 써?" matched an English LLM definition).
+_SELF_PROPERTY_CUES = (
+    "누구", "정체", "자기소개", "소개", "이름", "뭐야", "뭐니", "무엇", "어떻게", "원리", "구조",
+    "작동", "능력", "할 수", "한계", "약점", "limit", "llm", "sllm", "gpt", "gpu", "규칙", "모델",
+    "학습", "훈련", "사용", "기반", "오픈소스", "파라미터",
+)
+
+
+def is_self_reference_question(question: str) -> bool:
+    """True for a question about ATANOR's own nature/capability/limitation. Uses the
+    referent type (SELF) + a property cue, so it routes to the honest self path
+    uniformly — not a scattered per-phrase keyword patch."""
+    if query_expected_type(question) != SELF:
+        return False
+    low = (question or "").lower()
+    return any(cue in low for cue in _SELF_PROPERTY_CUES)
+
 
 def query_expected_type(question: str) -> str:
     """The type the ANSWER to this question should be. Only the strongly-typed
@@ -190,7 +260,21 @@ def select_resonant_facts(
     PERSON gate (SELF is routed to the identity path upstream)."""
     expected = query_expected_type(question)
     items = list(facts)
-    if expected in (UNKNOWN, SELF):
-        return items, expected
-    kept = [item for item in items if resonance(expected, infer_evidence_type(item[0])) >= threshold]
-    return kept, expected
+    if expected == SELF:
+        return items, expected  # self questions are routed to the identity path upstream
+    # Dimension 1 — SUBJECT IDENTITY: for a "what/who is X" question the answer must be
+    # ABOUT X. Drop facts whose subject is a *related* referent (삼성전자가 뭐야 → '이재용
+    # 은…', 세종대왕이 누구야 → '세종대왕 동상…'). Applies to 뭐야 too, where the type gate
+    # is permissive. If none survive, the caller abstains → the web rescue answers.
+    entity = query_subject_entity(question)
+    if len(entity) >= 2 and is_definitional_question(question):
+        about = [item for item in items if answer_is_about_entity(entity, item[0])]
+        if about:
+            items = about
+        elif items:
+            return [], expected  # nothing is about the entity → abstain, yield to web
+    # Dimension 2 — TYPE resonance: a typed interrogative ("누구"→PERSON) suppresses
+    # evidence of a different type (a fly/website/film) by destructive interference.
+    if expected not in (UNKNOWN, SELF):
+        items = [item for item in items if resonance(expected, infer_evidence_type(item[0])) >= threshold]
+    return items, expected

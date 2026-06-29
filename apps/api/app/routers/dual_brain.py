@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.services.alpha_services import alpha_service
 from packages.base_brain.scene_grounding import extract_scene_grounding
 from packages.base_brain.zero_user_answer import answer_with_base_brain, _is_identity_question
+from packages.cgsr.cgsr.referent_resonance import is_self_reference_question as _is_self_reference_question
 from packages.base_brain.pack_loader import get_semantic_context, load_base_brain_pack
 from packages.holographic_fold import (
     build_field_inputs,
@@ -3185,9 +3186,15 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # below are skipped — otherwise "너 누구야" matches the film "너의 이름은" or a
     # dictionary entry for the pronoun 너.
     self_knowledge = None
-    if not self_state and _is_identity_question(question):
+    if not self_state and (_is_identity_question(question) or _is_self_reference_question(question)):
         try:
-            _identity = answer_with_base_brain(question, language)
+            # Realize from the atanor concept. For an explicit identity marker use the
+            # question as-is; for other self-reference questions ("너 LLM 써?", "너 한계
+            # 가 뭐야") seed a canonical self-question so the graph identity path fires
+            # (the enriched atanor concept states "외부 LLM 없이…", which honestly
+            # answers the limitation question).
+            _seed = question if _is_identity_question(question) else "너는 누구야"
+            _identity = answer_with_base_brain(_seed, language)
             if _identity and "ATANOR" in str(_identity.get("answer") or ""):
                 self_knowledge = {
                     "answer": _identity["answer"],

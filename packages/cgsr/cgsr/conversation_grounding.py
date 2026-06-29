@@ -409,7 +409,7 @@ def _rank_facts_for_question(question: str, facts: tuple[str, ...], *, limit: in
     # suppressed, abstain so the web rescue answers from the right page. SELF/UNKNOWN
     # expected types are left permissive (self → the graph identity path upstream).
     resonant, expected = select_resonant_facts(question, cleaned)
-    if expected not in ("unknown", "self"):
+    if expected != "self":
         if resonant:
             cleaned = resonant
         elif cleaned:
