@@ -210,24 +210,27 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
             ))
           )}
         </div>
-        <form className="atanor-demochat-composer" onSubmit={send}>
-          <button
-            type="button"
-            className="atanor-demochat-plugins"
-            onClick={() => setPluginsOpen(true)}
-            aria-label={ko ? "플러그인 키트 열기" : "Open Plugin Kit"}
-            title={ko ? "플러그인 키트 — 문장수집·권한" : "Plugin Kit"}
-            style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 17, padding: "0 6px", color: "#6b7280" }}
-          >🧩</button>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={ko ? "메시지를 입력하세요…" : "Message ATANOR…"}
-            aria-label="message"
-          />
-          <button type="submit" disabled={busy || !input.trim()} aria-label="send">{busy ? "…" : "↑"}</button>
-        </form>
-        <PluginKitPanel open={pluginsOpen} onClose={() => setPluginsOpen(false)} language={language} />
+        <div className="atanor-demochat-composer-wrap" style={{ position: "relative" }}>
+          <PluginKitPanel open={pluginsOpen} onClose={() => setPluginsOpen(false)} language={language} />
+          <form className="atanor-demochat-composer" onSubmit={send}>
+            <button
+              type="button"
+              className="atanor-demochat-plugins"
+              onClick={() => setPluginsOpen((v) => !v)}
+              aria-label={ko ? "플러그인" : "Plugins"}
+              aria-expanded={pluginsOpen}
+              title={ko ? "플러그인 — 문장수집·도구" : "Plugins"}
+              style={{ background: pluginsOpen ? "#eef2ff" : "transparent", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 17, padding: "2px 7px", color: pluginsOpen ? "#1f6feb" : "#6b7280", transition: "background .12s" }}
+            >＋</button>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={ko ? "메시지를 입력하세요…" : "Message ATANOR…"}
+              aria-label="message"
+            />
+            <button type="submit" disabled={busy || !input.trim()} aria-label="send">{busy ? "…" : "↑"}</button>
+          </form>
+        </div>
         <div className="atanor-demochat-foot">{ko ? "로컬 엔진 · 외부 LLM 없음 · 출처를 갖춘 답변, 불확실하면 보류" : "Local engine · no external LLM · grounded, abstains when unsure"}</div>
       </div>
     </section>
