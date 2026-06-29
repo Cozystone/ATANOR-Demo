@@ -3610,6 +3610,29 @@ def atanor_self_sense() -> dict[str, Any]:
     return {**_flags(), **_atanor_self_sense()}
 
 
+@router.get("/api/media/capabilities")
+def media_capabilities_endpoint() -> dict[str, Any]:
+    from app.services.media_reader import media_capabilities
+
+    return media_capabilities()
+
+
+@router.post("/api/media/read")
+def media_read_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read non-text media into text so ATANOR can ground on it: a YouTube URL → its
+    transcript, an image path → OCR text. Honest capability degradation when a reader
+    (Tesseract) isn't installed."""
+    from app.services.media_reader import read_image_ocr, read_video_transcript
+
+    url = str(payload.get("url") or payload.get("video") or "").strip()
+    image = str(payload.get("image_path") or payload.get("image") or "").strip()
+    if url:
+        return read_video_transcript(url)
+    if image:
+        return read_image_ocr(image)
+    return {"ok": False, "text": "", "error": "provide 'url' (video) or 'image_path' (image)"}
+
+
 _SELF_STATE_KO = ("지금 뭐", "뭐하고", "뭐 하고", "무엇을 하", "네 상태", "너 상태", "기분", "뭘 배웠", "무엇을 배웠", "뭐 배웠", "얼마나 알", "무슨 생각", "어떻게 지내")
 _SELF_STATE_EN = ("what are you doing", "what have you learned", "how are you", "your state", "your mood", "what do you know", "how much do you know", "what are you thinking")
 
