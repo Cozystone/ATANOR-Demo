@@ -170,7 +170,7 @@ const BASE_EDGE_COLOR = 0xb8c4d2;
 const BASE_EDGE_WEAK = 0x667386;
 const BASE_EDGE_ACTIVE_NEAR = 0xffffff;
 const STRONG_EDGE_COLOR = 0xeaf2ff;
-const NEON_ORANGE = 0xff4800;
+const NEON_ORANGE = 0xff2a00;
 const COLD_LABEL = "#eef3f8";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const NEW_NODE_ANIMATION_SECONDS = 1.0;
@@ -194,7 +194,7 @@ const neonOrangeColor = new THREE.Color(NEON_ORANGE);
 // Deep red-orange for live arrivals. Low green channel so it stays unmistakably
 // orange even when brightened on the additive field (a high-green orange clips to
 // yellow-white).
-const arrivalGlowColor = new THREE.Color(0xff5200);
+const arrivalGlowColor = new THREE.Color(0xff3200);
 // Sky-blue = complement of the arrival orange. Used for the "synapse firing"
 // activation lines that flicker across the graph each second.
 const SYNAPSE_COLOR = 0x18b4ff;
@@ -839,10 +839,10 @@ function ensurePulseMesh(state: SceneState, count: number) {
   const geometry = new THREE.SphereGeometry(1, 8, 8);
   const material = new THREE.MeshBasicMaterial({
     blending: THREE.AdditiveBlending,
-    color: NEON_ORANGE,
+    color: 0xff2fa0,
     depthTest: false,
     depthWrite: false,
-    opacity: 0.92,
+    opacity: 0.95,
     transparent: true,
   });
   state.pulseMesh = new THREE.InstancedMesh(geometry, material, state.pulseCapacity);
@@ -1430,7 +1430,7 @@ function updatePulseMesh(state: SceneState, elapsed: number) {
     const t = (elapsed * 3.1 + pulse.phase) % 1;
     tempPosition.copy(source).lerp(target, t);
     // Fat travelling pulse: the line visibly THICKENS where the signal passes.
-    tempScale.setScalar(0.03 + Math.sin(t * Math.PI) * 0.075);
+    tempScale.setScalar(0.045 + Math.sin(t * Math.PI) * 0.11);
     tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
     state.pulseMesh!.setMatrixAt(index, tempMatrix);
   });
