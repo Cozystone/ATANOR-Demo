@@ -1986,6 +1986,19 @@ def _web_fact_bound_surface(
         return None
     if grounded_context.grounding_quality == "none" or not grounded_context.facts:
         return None
+    # Organize the evidence facts into a clean answer (definitional lead + a couple of
+    # supporting facts), extractively — the SAME composer the web rescue uses, so both
+    # web-answer paths produce an organized answer instead of joined raw snippets.
+    try:
+        from app.services.web_search import compose_web_answer
+
+        pseudo_rows = [{"snippet": fact, "title": ""} for fact in grounded_context.facts]
+        composed = compose_web_answer(question, pseudo_rows, language=language)
+        if composed and len(str(composed.get("answer") or "")) >= 40:
+            prefix = "확인된 근거로 보면, " if language == "ko" else "From the verified sources, "
+            return prefix + str(composed["answer"])
+    except Exception:  # pragma: no cover - composition must never break the answer
+        pass
     return realize_grounded_context(question, grounded_context, language=language)
 
 
@@ -2381,7 +2394,17 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
             "grafted_nodes": grafted_nodes, "web_graft": web_graft,
         }
 
-    answer = _first_sentences(str(best.get("snippet") or ""), max_chars=420)
+    # Organize the retrieved results into a clean answer (a definitional lead about the
+    # entity + a couple of non-redundant supporting facts) instead of pasting one raw
+    # snippet. Extractive composition — no LLM, no rule table; selection is referent
+    # resonance + the query's own key terms.
+    try:
+        from app.services.web_search import compose_web_answer
+
+        _composed = compose_web_answer(question, rows, language=language)
+    except Exception:  # pragma: no cover - composition must never break the answer
+        _composed = None
+    answer = (_composed or {}).get("answer") or _first_sentences(str(best.get("snippet") or ""), max_chars=420)
     if len(answer) < 40:
         return None
     certificate = {

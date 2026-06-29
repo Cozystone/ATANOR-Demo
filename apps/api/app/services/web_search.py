@@ -469,6 +469,127 @@ def _wiktionary_definition(term: str, *, korean: bool) -> dict[str, Any] | None:
 _BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 
+_EMOJI_RE = re.compile(
+    "[" "\U0001f000-\U0001faff" "\U00002600-\U000027bf" "\U0001f1e6-\U0001f1ff" "←-⇿" "✀-➿" "]",
+    flags=re.UNICODE,
+)
+_FLUFF_MARKERS = ("참고하십시오", "문서를 참고", "더보기", "바로가기", "구독", "좋아요", "본문 바로가기", "이 글은", "출처 :", "기자 =", "subscribers", "likes", "views", "구독자", "조회수", "앵커멘트", "subscribe")
+
+
+def _split_sentences(text: str) -> list[str]:
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    parts = re.split(r"(?<=[.!?。])\s+|(?<=[다요])\s+(?=[A-Z가-힣])", text)
+    return [p.strip() for p in parts if p and p.strip()]
+
+
+_KO_PREDICATE = re.compile(r"(다|요|음|함|됨|이며|이고|이다|입니다|한다|된다|했다|였다|이었|로 알려|에 위치|에 본사)[.\s)\"']*$|(이다|입니다|한다|된다|했다|였다|이며|로 알려)")
+
+
+def _is_fluff_sentence(s: str) -> bool:
+    if len(s) < 16 or len(s) > 320:
+        return True
+    if any(m in s for m in _FLUFF_MARKERS):
+        return True
+    if s.count("|") >= 2 or s.count("·") >= 5 or s.count("/") >= 3:
+        return True
+    if _EMOJI_RE.search(s):
+        return True
+    if s.rstrip().endswith("?") or "뭘까요" in s or "무엇일까" in s:  # question-form, not an answer
+        return True
+    # Korean sentence with no predicate ending is a title/fragment (e.g. a namuwiki
+    # family-tree run-on); require some verb/copula signal for Hangul-heavy sentences.
+    if re.search(r"[가-힣]", s) and not _KO_PREDICATE.search(s):
+        return True
+    return False
+
+
+def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str = "ko", max_supporting: int = 2) -> dict[str, Any] | None:
+    """Turn retrieved results into an ORGANIZED answer instead of pasting a raw snippet:
+    split the top results into clean sentences, then EXTRACTIVELY select + arrange a
+    definitional lead about the queried entity plus a couple of non-redundant supporting
+    facts. No LLM generation, no rule table — selection is by referent resonance + the
+    query's own key terms. Returns {answer, lead, sources} or None."""
+    try:
+        from packages.cgsr.cgsr.referent_resonance import (
+            answer_is_about_entity,
+            infer_evidence_type,
+            query_expected_type,
+            query_subject_entity,
+            resonance,
+        )
+        entity = query_subject_entity(query)
+        expected = query_expected_type(query)
+    except Exception:  # pragma: no cover
+        return None
+    key_terms = [t for t in _lookup_terms(_normalize_lookup_query(query)) if len(t) >= 2]
+
+    # 1) gather clean candidate sentences from the top results
+    cands: list[tuple[str, dict[str, Any]]] = []
+    seen_norm: set[str] = set()
+    for row in rows[:8]:
+        for sentence in _split_sentences(_clean_web_snippet(str(row.get("snippet") or ""))):
+            if _is_fluff_sentence(sentence):
+                continue
+            norm = re.sub(r"\s+", "", sentence)[:60]
+            if norm in seen_norm:
+                continue
+            seen_norm.add(norm)
+            cands.append((sentence, row))
+    if not cands:
+        return None
+
+    def about(s: str) -> bool:
+        return answer_is_about_entity(entity, s) if len(entity) >= 2 else True
+
+    def term_hits(s: str) -> int:
+        low = s.lower()
+        return sum(1 for t in key_terms if t.lower() in low)
+
+    def is_def(s: str) -> bool:
+        return bool(re.search(r"(은|는|이|가)\s.{4,}?(이다|입니다|이며|로 알려|를 말한다|를 뜻한다|에 위치|에 본사)", s) or re.search(r"\bis (a|an|the)\b", s.lower()))
+
+    # The candidates are already in referent-ranked order (the rows/facts were ranked
+    # upstream). RESPECT that order — do NOT globally re-rank, or a low-ranked junk
+    # sentence (a fly, a family-tree line) can win. The LEAD is the first sentence that
+    # is genuinely ABOUT the entity (defines it); fall back to the first definitional,
+    # then the first candidate.
+    lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s) and is_def(s)), None)
+    if lead_idx is None:
+        lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s)), None)
+    if lead_idx is None:
+        lead_idx = next((i for i, (s, _) in enumerate(cands) if is_def(s)), 0)
+    lead_sentence, lead_row = cands[lead_idx]
+    lead_tokens = set(re.findall(r"[가-힣A-Za-z0-9]{2,}", lead_sentence.lower()))
+
+    # 2) supporting facts: in order, about the entity, share terms, NOT redundant.
+    supporting: list[tuple[str, dict[str, Any]]] = []
+    for index, (sentence, row) in enumerate(cands):
+        if index == lead_idx:
+            continue
+        # A supporting fact must be ABOUT the entity (not merely mention it) — this drops
+        # '빌게이츠꽃등에…' (a fly) and '삼성그룹 제3대 총수…' (about a person) from a
+        # 빌게이츠/삼성전자 answer.
+        if not about(sentence):
+            continue
+        toks = set(re.findall(r"[가-힣A-Za-z0-9]{2,}", sentence.lower()))
+        overlap = len(toks & lead_tokens) / max(1, len(toks))
+        if overlap > 0.55:  # too similar to something already said
+            continue
+        supporting.append((sentence, row))
+        if len(supporting) >= max_supporting:
+            break
+
+    body = lead_sentence
+    if supporting:
+        body += " " + " ".join(s for s, _ in supporting)
+    sources = []
+    for _, row in [(lead_sentence, lead_row), *supporting]:
+        title = str(row.get("title") or "")
+        if title and title not in sources:
+            sources.append(title)
+    return {"answer": body.strip(), "lead": lead_sentence, "sources": sources[:3]}
+
+
 def _clean_web_snippet(text: str) -> str:
     """Strip the cruft a real search API returns (markdown tables/headers from Namuwiki
     infoboxes, '[펼치기·접기]' toggles, source-name title suffixes) so the answer is clean
