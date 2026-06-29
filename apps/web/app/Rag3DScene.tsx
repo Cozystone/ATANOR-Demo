@@ -1350,7 +1350,10 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       }
       tempColor.lerp(neonOrangeColor, Math.min(1, Math.max(signal, freshGlow * 0.9) * 1.45));
       const edgeDepthCue = THREE.MathUtils.clamp(0.5 + ((sz + tz) * 0.5) / Math.max(10, state.camera.position.z * 0.28), 0.2, 1);
-      tempColor.multiplyScalar(0.82 + edgeDepthCue * 0.5);
+      // Clear brightness CONTRAST by activation: a resting edge sits dim (~50%),
+      // an active/arriving one rises to ~90% so active lines visibly stand out.
+      const activeness = Math.min(1, Math.max(signal, freshGlow * 0.9, edge.active ? 0.55 : 0));
+      tempColor.multiplyScalar((0.5 + 0.42 * activeness) * (0.92 + edgeDepthCue * 0.3));
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.03);
       if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 3.1);
     }
