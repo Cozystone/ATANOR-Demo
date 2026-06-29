@@ -1757,6 +1757,11 @@ export default function Rag3DScene({
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: darkMode });
     const pixelRatio = resolveGraphPixelRatio(window.devicePixelRatio);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Overall scene brightness at 50% of the prior 100% baseline. Linear tone
+    // mapping + 0.5 exposure halves output uniformly and tames the overbright
+    // active edges (they pop without blowing fully white).
+    renderer.toneMapping = THREE.LinearToneMapping;
+    renderer.toneMappingExposure = 0.5;
     renderer.setClearColor(new THREE.Color(darkMode ? 0x000000 : 0xf8faf8), darkMode ? 0 : 1);
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(container.clientWidth, container.clientHeight);
