@@ -1353,7 +1353,8 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       // Clear brightness CONTRAST by activation: a resting edge sits dim (~50%),
       // an active/arriving one rises to ~90% so active lines visibly stand out.
       const activeness = Math.min(1, Math.max(signal, freshGlow * 0.9, edge.active ? 0.55 : 0));
-      tempColor.multiplyScalar((0.5 + 0.42 * activeness) * (0.92 + edgeDepthCue * 0.3));
+      // Rest ~50%, active blows up to ~200% (overbright / bloom) for a strong pop.
+      tempColor.multiplyScalar((0.5 + 1.5 * activeness) * (0.92 + edgeDepthCue * 0.3));
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.03);
       if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 3.1);
     }
