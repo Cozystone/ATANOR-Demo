@@ -12,9 +12,43 @@ scope for the no-LLM, bundle-size-bounded build — honest about that.
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from typing import Any
+
+
+# Tesseract is commonly installed off-PATH on Windows (Program Files). Resolve it and
+# its Korean tessdata explicitly so OCR works without a PATH/env edit by the user.
+_TESSERACT_CANDIDATES = (
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    "/usr/bin/tesseract",
+    "/usr/local/bin/tesseract",
+)
+
+
+def _tesseract_cmd() -> str | None:
+    found = shutil.which("tesseract")
+    if found:
+        return found
+    for candidate in _TESSERACT_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _tessdata_dir() -> str | None:
+    """Where kor.traineddata lives. Program Files is often non-writable, so the kor
+    pack may have been placed in a user dir with TESSDATA_PREFIX pointing at it."""
+    for candidate in (
+        os.environ.get("TESSDATA_PREFIX"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "ATANOR", "tessdata"),
+        r"C:\Program Files\Tesseract-OCR\tessdata",
+    ):
+        if candidate and os.path.exists(os.path.join(candidate, "kor.traineddata")):
+            return candidate
+    return None
 
 
 _YT_ID = re.compile(
@@ -63,7 +97,7 @@ def read_video_transcript(url_or_id: str, *, languages: tuple[str, ...] = ("ko",
 
 
 def ocr_available() -> bool:
-    if shutil.which("tesseract") is None:
+    if _tesseract_cmd() is None:
         return False
     try:
         import pytesseract  # noqa: F401
@@ -73,22 +107,31 @@ def ocr_available() -> bool:
 
 
 def read_image_ocr(image_path: str, *, lang: str = "kor+eng", max_chars: int = 6000) -> dict[str, Any]:
-    """Extract text from an image via Tesseract OCR. Gated on the Tesseract binary +
-    pytesseract being installed; returns a clear enable-instruction otherwise instead
-    of crashing."""
-    if not ocr_available():
+    """Extract text from an image via Tesseract OCR. Resolves the Tesseract binary and
+    Korean tessdata even when off-PATH; returns a clear enable-instruction (not a crash)
+    when OCR isn't installed."""
+    cmd = _tesseract_cmd()
+    if cmd is None:
         return {
             "ok": False,
             "text": "",
             "error": "ocr_not_available",
-            "enable": "Install Tesseract OCR (with Korean data 'kor') and `pip install pytesseract`. "
-            "Then OCR auto-enables — no code change.",
+            "enable": "Install Tesseract OCR (`winget install UB-Mannheim.TesseractOCR`) + the Korean "
+            "data 'kor', and `pip install pytesseract`. Then OCR auto-enables — no code change.",
         }
     try:
         import pytesseract
         from PIL import Image
 
-        text = pytesseract.image_to_string(Image.open(image_path), lang=lang)
+        pytesseract.pytesseract.tesseract_cmd = cmd
+        tessdata = _tessdata_dir()
+        # Point Tesseract at the kor tessdata via env (passing --tessdata-dir through
+        # pytesseract's space-split config mangles a quoted Windows path). Fall back to
+        # eng-only if the kor pack isn't present.
+        if tessdata:
+            os.environ["TESSDATA_PREFIX"] = tessdata
+        use_lang = lang if (tessdata or "kor" not in lang) else "eng"
+        text = pytesseract.image_to_string(Image.open(image_path), lang=use_lang)
     except Exception as exc:
         return {"ok": False, "text": "", "error": f"ocr_failed:{type(exc).__name__}"}
     text = re.sub(r"[ \t]+", " ", text).strip()
