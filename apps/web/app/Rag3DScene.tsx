@@ -172,6 +172,8 @@ type SceneState = {
   preserveSourceCoordinates: boolean;
   edgeOpacity: number;
   onViewportChange?: Rag3DSceneProps["onViewportChange"];
+  zoomPulseAt: number;   // elapsed-seconds when last arrival zoom-pulse triggered
+  zoomBaseZ: number;     // camera Z at moment of pulse trigger (render-only zoom, not real position)
 };
 
 const BASE_EDGE_COLOR = 0xb8c4d2;
@@ -978,6 +980,17 @@ function syncGraph(
   const bulkReload = state.knownNodeIds.size === 0
     || freshlyAdded.length > Math.max(48, graph.nodes.length * 0.4);
   freshlyAdded.forEach((id) => state.nodeBornAt.set(id, bulkReload ? -999 : elapsed));
+
+  // Zoom-in pulse on real arrival: brief zoom-in (5%), then ease back over 3s.
+  // Only fires for real incremental arrivals (not bulk reload/first population).
+  if (!bulkReload && state.frame >= state.userCameraControlUntilFrame) {
+    const realArrivals = freshlyAdded.filter(id => isArrivalId(id));
+    const sinceLastPulse = elapsed - state.zoomPulseAt;
+    if (realArrivals.length > 0 && sinceLastPulse > 3.5) {
+      state.zoomPulseAt = elapsed;
+      state.zoomBaseZ = state.camera.position.z;
+    }
+  }
 
   for (const id of Array.from(state.nodePositionById.keys())) {
     if (!stillPresent.has(id)) {
@@ -1900,6 +1913,8 @@ export default function Rag3DScene({
       preserveSourceCoordinates,
       edgeOpacity: THREE.MathUtils.clamp(edgeOpacityRef.current, 0.04, 0.86),
       onViewportChange: viewportChangeRef.current,
+      zoomPulseAt: -999,
+      zoomBaseZ: 0,
     };
     sceneStateRef.current = state;
     syncGraph(state, graphRef.current, activeNodeRef.current, activeEdgeRef.current, newNodeRef.current, visualState, showLabelsRef.current);
@@ -2042,9 +2057,27 @@ export default function Rag3DScene({
           radius: viewportRadiusForCamera(camera),
         });
       }
+      // Arrival zoom-pulse: cosmetic 5% zoom-in that eases back over 3s.
+      // Applied only to the render snapshot — the real camera.position.z is
+      // unchanged so the fit/clamp/user-control logic is never disrupted.
+      let zoomSavedZ = 0;
+      if (state.zoomBaseZ > 0 && state.frame >= state.userCameraControlUntilFrame) {
+        const sinceP = elapsed - state.zoomPulseAt;
+        if (sinceP < 3.0) {
+          const t = Math.min(1, sinceP / 3.0);
+          const smooth = t * t * (3 - 2 * t); // smoothstep easing
+          // zoom factor: 0.95 at t=0, 1.0 at t=1 (ease back)
+          const zoomF = 0.95 + 0.05 * smooth;
+          zoomSavedZ = camera.position.z;
+          camera.position.z = state.zoomBaseZ * zoomF;
+        } else {
+          state.zoomBaseZ = 0; // pulse complete
+        }
+      }
       // Skip the bloom pass when activity is hidden — saves GPU/power.
       if (composer && state.showActivity) composer.render();
       else renderer.render(scene, camera);
+      if (zoomSavedZ > 0) camera.position.z = zoomSavedZ;
     }
     animate();
 
