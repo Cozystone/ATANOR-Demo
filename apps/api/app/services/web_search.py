@@ -469,6 +469,28 @@ def _wiktionary_definition(term: str, *, korean: bool) -> dict[str, Any] | None:
 _BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
 
+def _clean_web_snippet(text: str) -> str:
+    """Strip the cruft a real search API returns (markdown tables/headers from Namuwiki
+    infoboxes, '[펼치기·접기]' toggles, source-name title suffixes) so the answer is clean
+    prose, not '# 빌 게이츠 | [펼치기·접기] | --- | **초대** …'."""
+    s = _strip_html(str(text or ""))
+    s = re.sub(r"\[[^\]]*?(?:펼치기|접기|편집|edit)[^\]]*?\]", " ", s)
+    s = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", s)  # markdown links/images → label
+    s = re.sub(r"[#*`>]+", " ", s)                      # headers / bold / code / quotes
+    s = re.sub(r"\s*\|\s*", " ", s)                     # table pipes
+    s = re.sub(r"-{2,}", " ", s)                        # table rules ---
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _clean_web_title(title: str) -> str:
+    """Drop the trailing site name a search result title carries ('빌 게이츠 - 나무위키',
+    '… : 네이버 블로그', '… | 예스24')."""
+    t = _strip_html(str(title or ""))
+    t = re.sub(r"\s*[-:|]\s*(나무위키|위키백과|네이버\s*블로그|티스토리|예스24|YouTube|유튜브|브런치|다음|Daum|Wikipedia)\b.*$", "", t, flags=re.IGNORECASE)
+    return t.strip()
+
+
 def brave_search(query: str, count: int = 6) -> list[dict[str, Any]]:
     """Real multi-source web search via the Brave Search API (a full web index, the way
     ChatGPT/Perplexity retrieve). Keyed by BRAVE_SEARCH_API_KEY (free tier ~2000/mo).
@@ -492,7 +514,7 @@ def brave_search(query: str, count: int = 6) -> list[dict[str, Any]]:
         return []
     rows: list[dict[str, Any]] = []
     for index, item in enumerate((payload.get("web", {}) or {}).get("results", []) or [], start=1):
-        snippet = _strip_html(str(item.get("description") or ""))
+        snippet = _clean_web_snippet(str(item.get("description") or ""))
         if not snippet:
             continue
         url_ = str(item.get("url") or "")
@@ -500,7 +522,7 @@ def brave_search(query: str, count: int = 6) -> list[dict[str, Any]]:
         rows.append(
             {
                 "id": f"brave-{index}",
-                "title": _strip_html(str(item.get("title") or "")),
+                "title": _clean_web_title(str(item.get("title") or "")),
                 "url": url_,
                 "snippet": snippet,
                 "provider": f"brave:{domain}",
@@ -533,7 +555,7 @@ def tavily_search(query: str, count: int = 6) -> list[dict[str, Any]]:
         return []
     rows: list[dict[str, Any]] = []
     for index, item in enumerate(payload.get("results", []) or [], start=1):
-        snippet = _strip_html(str(item.get("content") or ""))
+        snippet = _clean_web_snippet(str(item.get("content") or ""))
         if not snippet:
             continue
         url_ = str(item.get("url") or "")
@@ -541,7 +563,7 @@ def tavily_search(query: str, count: int = 6) -> list[dict[str, Any]]:
         rows.append(
             {
                 "id": f"tavily-{index}",
-                "title": _strip_html(str(item.get("title") or "")),
+                "title": _clean_web_title(str(item.get("title") or "")),
                 "url": url_,
                 "snippet": snippet,
                 "provider": f"tavily:{domain}",
@@ -941,7 +963,15 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
         try:
             api_rows = provider_api_search(clean_query, bounded_count + 2)
             if api_rows:
-                ranked = _rank_web_rows(clean_query, api_rows)[:bounded_count]
+                # Merge the clean, precise Wikipedia entity page so an encyclopedic bio
+                # (빌 게이츠 → 'William Henry Gates III…') can win over a blog/YouTube
+                # result, while the open web still covers topics Wikipedia lacks.
+                wiki_rows: list[dict[str, Any]] = []
+                try:
+                    wiki_rows = wikipedia_search(clean_query, 3)
+                except Exception:
+                    wiki_rows = []
+                ranked = _rank_web_rows(clean_query, api_rows + wiki_rows)[:bounded_count]
                 return {
                     "provider": "search-api",
                     "query": clean_query,
