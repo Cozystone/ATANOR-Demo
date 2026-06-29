@@ -1177,11 +1177,26 @@ def _reldisc_tokens(name: str) -> set[str]:
     return {t for t in re.split(r"[^0-9A-Za-z가-힣]+", name.lower()) if len(t) >= 4}
 
 
+def _reldisc_is_entity_like(name: str) -> bool:
+    """A relation is only meaningful between real concepts. A single all-lowercase
+    common word ("through", "carrying", "finals") is too generic to be a relation
+    endpoint — even when its name truly co-occurs in a sentence — so it is excluded
+    from relation formation. Keep multi-word terms and anything with an uppercase
+    letter (proper nouns / acronyms / Wikipedia-title concepts)."""
+    n = name.strip()
+    if len(n) < 3:
+        return False
+    if " " in n:
+        return True
+    return any(c.isupper() for c in n)
+
+
 def _reldisc_get_index(concepts: list[tuple[str, str]]) -> tuple[dict[str, set[str]], dict[str, str]]:
     """Build (token -> {cids}) and (cid -> name) once per concept refresh.
 
     Ultra-common tokens (shared by many concepts) are dropped: they are not
-    discriminative and would invite spurious matches.
+    discriminative and would invite spurious matches. Non-entity concepts (single
+    generic lowercase words) are excluded from relation formation entirely.
     """
     global _RELDISC_INDEX, _RELDISC_INDEX_AT
     now = _time.time()
@@ -1190,6 +1205,8 @@ def _reldisc_get_index(concepts: list[tuple[str, str]]) -> tuple[dict[str, set[s
     token_to_cids: dict[str, set[str]] = {}
     cid_to_name: dict[str, str] = {}
     for cid, name in concepts:
+        if not _reldisc_is_entity_like(name):
+            continue
         cid_to_name[cid] = name
         for tok in _reldisc_tokens(name):
             token_to_cids.setdefault(tok, set()).add(cid)
