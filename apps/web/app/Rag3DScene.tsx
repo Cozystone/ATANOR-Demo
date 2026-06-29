@@ -1348,11 +1348,12 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       if (weight > 0.62) {
         tempColor.lerp(strongEdgeColor, THREE.MathUtils.clamp((weight - 0.62) * 0.48, 0, 0.28));
       }
-      tempColor.lerp(neonOrangeColor, Math.min(1, Math.max(signal, freshGlow * 0.9) * 1.45));
+      // NO orange tint on activation: an active established edge flashes SKY-BLUE
+      // (added below). Orange is reserved for NEW-node branch edges (arrival branch).
       const edgeDepthCue = THREE.MathUtils.clamp(0.5 + ((sz + tz) * 0.5) / Math.max(10, state.camera.position.z * 0.28), 0.2, 1);
       // Clear brightness CONTRAST by activation: a resting edge sits dim (~50%),
-      // an active/arriving one rises to ~90% so active lines visibly stand out.
-      const activeness = Math.min(1, Math.max(signal, freshGlow * 0.9, edge.active ? 0.55 : 0));
+      // an active one rises so active lines visibly stand out.
+      const activeness = Math.min(1, Math.max(signal, edge.active ? 0.55 : 0));
       // Rest ~50%, active blows up to ~1000% (heavy overbright / bloom).
       tempColor.multiplyScalar((0.5 + 2.0 * activeness) * (0.92 + edgeDepthCue * 0.3));
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.03);
@@ -1370,12 +1371,16 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
     }
     const K = 5.2; // deep, saturated, BRIGHT sky-blue when active
     const baseR = tempColor.r, baseG = tempColor.g, baseB = tempColor.b;
-    const midAct = (sa + ta) * 0.5 * 0.55; // fuller, brighter middle, still U-shaped
+    // Flash sky-blue whenever the edge is active: drive by the stronger of node
+    // activation and the edge's own signal, so every activation reads sky-blue.
+    const sFlash = Math.min(1, Math.max(sa, signal));
+    const tFlash = Math.min(1, Math.max(ta, signal));
+    const midAct = (sFlash + tFlash) * 0.5 * 0.55; // fuller middle, still U-shaped
     const ca = state.edgeColorArray!;
     // A (near source node)
-    ca[vertexIndex] = baseR + skyBlueColor.r * sa * K;
-    ca[vertexIndex + 1] = baseG + skyBlueColor.g * sa * K;
-    ca[vertexIndex + 2] = baseB + skyBlueColor.b * sa * K;
+    ca[vertexIndex] = baseR + skyBlueColor.r * sFlash * K;
+    ca[vertexIndex + 1] = baseG + skyBlueColor.g * sFlash * K;
+    ca[vertexIndex + 2] = baseB + skyBlueColor.b * sFlash * K;
     // mid (duplicated vertex for the two sub-segments)
     const mR = baseR + skyBlueColor.r * midAct * K;
     const mG = baseG + skyBlueColor.g * midAct * K;
@@ -1383,9 +1388,9 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
     ca[vertexIndex + 3] = mR; ca[vertexIndex + 4] = mG; ca[vertexIndex + 5] = mB;
     ca[vertexIndex + 6] = mR; ca[vertexIndex + 7] = mG; ca[vertexIndex + 8] = mB;
     // B (near target node)
-    ca[vertexIndex + 9] = baseR + skyBlueColor.r * ta * K;
-    ca[vertexIndex + 10] = baseG + skyBlueColor.g * ta * K;
-    ca[vertexIndex + 11] = baseB + skyBlueColor.b * ta * K;
+    ca[vertexIndex + 9] = baseR + skyBlueColor.r * tFlash * K;
+    ca[vertexIndex + 10] = baseG + skyBlueColor.g * tFlash * K;
+    ca[vertexIndex + 11] = baseB + skyBlueColor.b * tFlash * K;
   });
 
   if (positionBufferChanged) {
