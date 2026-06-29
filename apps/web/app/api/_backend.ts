@@ -20,8 +20,22 @@ export function backendBaseCandidates() {
   ]));
 }
 
+// The shared Cloud Brain runs always-on in the cloud (Oracle VM, HTTPS). The
+// exe / web app fetches the Cloud Brain tab live from there, while Local Brain
+// and chat stay on the local companion. Set CLOUD_BRAIN_BASE (baked into the exe
+// build) to route only `/api/cloud-brain/*` to the cloud endpoint.
+export function cloudBrainBase(): string | null {
+  return process.env.CLOUD_BRAIN_BASE || process.env.NEXT_PUBLIC_CLOUD_BRAIN_BASE || null;
+}
+
 export async function proxyJson(path: string, init?: RequestInit) {
-  const bases = backendBaseCandidates();
+  // Cloud-Brain calls prefer the always-on cloud endpoint (when configured),
+  // then fall back to local companions for resilience. Everything else stays local.
+  const cloud = cloudBrainBase();
+  const bases =
+    cloud && path.startsWith("/api/cloud-brain/")
+      ? [cloud, ...backendBaseCandidates()]
+      : backendBaseCandidates();
 
   // Fail fast per-candidate: a backend whose port is open but unresponsive (e.g.
   // wedged mid hot-reload) would otherwise hang the request forever and never let
