@@ -19,9 +19,13 @@ _WIKI_CACHE: dict[str, tuple[float, Any]] = {}
 _WIKI_CACHE_TTL = 900.0  # 15 min
 
 
-def _wiki_get_json(url: str, *, timeout: float = 5.0, retries: int = 2) -> Any:
+def _wiki_get_json(url: str, *, timeout: float = 2.5, retries: int = 1) -> Any:
     """GET + parse JSON from a bounded public Wikipedia endpoint, with a tiny TTL
-    cache and one backoff retry on 429/5xx. Returns {} on failure (never raises)."""
+    cache and one backoff retry on 429/5xx. Returns {} on failure (never raises).
+
+    Timeout/retries are kept tight on purpose: a failing lookup must give up in a
+    few seconds, not ~15s (3 attempts × 5s), which is what made the answer feel
+    'too slow' / return web_unreachable after a long wait."""
     now = time.monotonic()
     cached = _WIKI_CACHE.get(url)
     if cached and now - cached[0] < _WIKI_CACHE_TTL:

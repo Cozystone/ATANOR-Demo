@@ -237,7 +237,7 @@ def route_conversation_request(question: str) -> ConversationRoute:
             rationale_summary="lightweight smalltalk can use surface-only ASM-v0 after domain routes are checked",
         )
 
-    if "?" in question or _contains_any(q, ("뭐", "무엇", "왜", "어떻게", "설명", "정의", "법칙", "원리", "what", "why", "how")):
+    if "?" in question or _contains_any(q, ("뭐", "무엇", "누구", "누군지", "어디", "언제", "왜", "어떻게", "설명", "정의", "법칙", "원리", "what", "who", "where", "when", "why", "how")):
         return ConversationRoute(
             "general_knowledge_question",
             grounding_required=True,
