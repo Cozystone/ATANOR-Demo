@@ -77,6 +77,10 @@ type Rag3DSceneProps = {
   showLabels?: boolean;
   edgeOpacity?: number;
   synapsesPerSecond?: number;
+  // When false, the live activity overlay (new-node orange branches, the bloom
+  // glow) is hidden and the bloom pass is skipped for power efficiency. The engine
+  // keeps running; this is purely a render gate.
+  showActivity?: boolean;
 };
 
 type VisibleEdge = Rag3DEdge & {
@@ -152,6 +156,7 @@ type SceneState = {
   synapseItems: { nodes: number[]; born: number }[];
   synapseSpawnAccum: number;
   synapsesPerSecond: number;
+  showActivity: boolean;
   nodeActivation: Float32Array | null;
   nodeActivationCapacity: number;
   activationFireAccum: number;
@@ -1284,7 +1289,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       // otherwise fall back to the age window for ordinary new nodes.
       const newEndpointAge = targetArrival ? targetAge : sourceArrival ? sourceAge : Math.min(sourceAge, targetAge);
       const isArrivalEdge = sourceArrival || targetArrival;
-      if (isArrivalEdge || newEndpointAge < NEW_NODE_GLOW_SECONDS) {
+      if (state.showActivity && (isArrivalEdge || newEndpointAge < NEW_NODE_GLOW_SECONDS)) {
         // While any tendril is still growing/glowing we must keep re-uploading
         // edge positions even on an otherwise-static (idle) graph.
         positionBufferChanged = true;
@@ -1329,7 +1334,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
 
     const signal = edgeSignalStrength(state, edge, elapsed);
     const weight = edgeWeight(edge);
-    if (isArrivalId(edge.source) || isArrivalId(edge.target)) {
+    if (state.showActivity && (isArrivalId(edge.source) || isArrivalId(edge.target))) {
       // Orange tendril on arrival, then FREEZE to a normal white edge and stay.
       const arrivalBorn = isArrivalId(edge.source)
         ? state.nodeBornAt.get(edge.source)
@@ -1427,7 +1432,7 @@ function updateHaloMesh(state: SceneState, elapsed: number) {
 
 function updatePulseMesh(state: SceneState, elapsed: number) {
   if (!state.pulseMesh) return;
-  if (!movingPulseAllowed(state.visualState)) {
+  if (!state.showActivity || !movingPulseAllowed(state.visualState)) {
     state.pulseMesh.count = 0;
     return;
   }
@@ -1644,11 +1649,13 @@ export default function Rag3DScene({
   showLabels = true,
   edgeOpacity = 0.34,
   synapsesPerSecond = 0,
+  showActivity = true,
 }: Rag3DSceneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
   const viewportChangeRef = useRef(onViewportChange);
   const sceneStateRef = useRef<SceneState | null>(null);
+  const showActivityRef = useRef(showActivity);
   const synapseRateRef = useRef(synapsesPerSecond);
   const activeEdgeRef = useRef(new Set(activeEdgeKeys));
   const activeNodeRef = useRef(new Set(activeNodeIds));
@@ -1690,6 +1697,12 @@ export default function Rag3DScene({
       material.needsUpdate = true;
     }
   }, [edgeOpacity]);
+
+  useEffect(() => {
+    showActivityRef.current = showActivity;
+    const state = sceneStateRef.current;
+    if (state) state.showActivity = showActivity;
+  }, [showActivity]);
 
   useEffect(() => {
     synapseRateRef.current = synapsesPerSecond;
@@ -1871,6 +1884,7 @@ export default function Rag3DScene({
       synapseItems: [],
       synapseSpawnAccum: 0,
       synapsesPerSecond: synapseRateRef.current,
+      showActivity: showActivityRef.current,
       nodeActivation: null,
       nodeActivationCapacity: 0,
       activationFireAccum: 0,
@@ -2028,7 +2042,8 @@ export default function Rag3DScene({
           radius: viewportRadiusForCamera(camera),
         });
       }
-      if (composer) composer.render();
+      // Skip the bloom pass when activity is hidden — saves GPU/power.
+      if (composer && state.showActivity) composer.render();
       else renderer.render(scene, camera);
     }
     animate();

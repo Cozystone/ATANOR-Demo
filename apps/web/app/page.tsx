@@ -1006,6 +1006,8 @@ function edgeAdvertiseApiPath(baseUrl: string) {
   return `/api/network/edge/advertise?backend=${encodeURIComponent(normalizeLocalBackendUrl(baseUrl))}`;
 }
 
+const EMPTY_STRING_ARRAY: string[] = [];
+
 function brainGraphApiPath(
   view: "local" | "cloud",
   layers?: string[],
@@ -1701,6 +1703,10 @@ function FullApp() {
   const [cloudArrivals, setCloudArrivals] = useState<CloudArrival[]>([]);
   const cloudArrivalPrevRef = useRef<number | null>(null);
   const [cloudGraphView, setCloudGraphView] = useState<"concept" | "surface">("concept");
+  // Render gate for the live activity overlay (new-node orange branches, blue
+  // verification flashes, pulses, bloom). OFF = calmer + power-efficient; the
+  // engine keeps learning/verifying regardless.
+  const [showActivity, setShowActivity] = useState(true);
   const [surfaceGraphData, setSurfaceGraphData] = useState<AnyRecord | null>(null);
   const [surfaceArrivals, setSurfaceArrivals] = useState<CloudArrival[]>([]);
   const surfaceArrivalPrevRef = useRef<number | null>(null);
@@ -6308,8 +6314,9 @@ function FullApp() {
               ) : visibleGraph3D.nodes.length ? (
                 <Rag3DScene
                   key={usesStudioGraph ? "atanor-home-studio-graph" : `atanor-${mainSection}-${graphPresentationMode}-sphere-graph`}
-                  activeEdgeKeys={activeSignalEdgeKeys}
-                  activeNodeIds={activeSignalNodeIds}
+                  activeEdgeKeys={showActivity ? activeSignalEdgeKeys : EMPTY_STRING_ARRAY}
+                  activeNodeIds={showActivity ? activeSignalNodeIds : EMPTY_STRING_ARRAY}
+                  showActivity={showActivity}
                   graph={cloudShowsSurface ? surfaceSceneGraph3D : cloudSceneGraph3D}
                   control={rag3dControl}
                   preserveSourceCoordinates={usesStudioGraph || usesSphereGraph}
@@ -6318,7 +6325,7 @@ function FullApp() {
                   fitScale={graphFitScale}
                   showLabels={mainSection !== "local"}
                   edgeOpacity={graphEdgeOpacity}
-                  synapsesPerSecond={mainSection === "cloud" ? synapseRate : 0}
+                  synapsesPerSecond={showActivity && mainSection === "cloud" ? synapseRate : 0}
                   onSelect={(node: Rag3DNode) => setSelectedMemory(node)}
                 />
               ) : (
@@ -6393,6 +6400,19 @@ function FullApp() {
                     {language === "ko" ? "Chunk 보기" : "Reveal chunk"}
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => setShowActivity((v) => !v)}
+                  data-active={showActivity ? "on" : "off"}
+                  aria-pressed={showActivity}
+                  title={language === "ko"
+                    ? "새 연결·검증 연출 표시 토글 (끄면 시각만 숨김 · 학습/검증은 계속)"
+                    : "Toggle new-connection & verification visuals (hides visuals only; learning/verification keep running)"}
+                >
+                  {language === "ko"
+                    ? (showActivity ? "연출 ON" : "연출 OFF")
+                    : (showActivity ? "Activity ON" : "Activity OFF")}
+                </button>
                 <button onClick={() => zoomGraph(-0.18)} aria-label="Zoom out">-</button>
                 <button onClick={() => zoomGraph(0.18)} aria-label="Zoom in">+</button>
                 <button onClick={resetGraph} aria-label={language === "ko" ? "그래프 초기화" : "Reset graph"}>
