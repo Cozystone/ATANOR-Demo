@@ -961,14 +961,24 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
         # path when no API key is configured (a single-endpoint DDG scrape was tried and
         # reverted — too noisy without a strong ranker).
         try:
-            api_rows = provider_api_search(clean_query, bounded_count + 2)
+            # RESOLVE: search the SUBJECT ENTITY, not the raw question, so '사랑이란 무엇
+            #인가' retrieves the concept '사랑' (not the song '사랑이란'), and '빌게이츠가
+            # 누구야' retrieves '빌게이츠'. Falls back to the full query when there's no
+            # clean entity.
+            try:
+                from packages.cgsr.cgsr.referent_resonance import query_subject_entity, is_definitional_question
+                _ent = query_subject_entity(clean_query)
+                _search_term = _ent if (2 <= len(_ent) <= 24 and is_definitional_question(clean_query)) else clean_query
+            except Exception:
+                _search_term = clean_query
+            api_rows = provider_api_search(_search_term, bounded_count + 2)
             if api_rows:
                 # Merge the clean, precise Wikipedia entity page so an encyclopedic bio
                 # (빌 게이츠 → 'William Henry Gates III…') can win over a blog/YouTube
                 # result, while the open web still covers topics Wikipedia lacks.
                 wiki_rows: list[dict[str, Any]] = []
                 try:
-                    wiki_rows = wikipedia_search(clean_query, 3)
+                    wiki_rows = wikipedia_search(_search_term, 3)  # entity ('사랑'), not '사랑이란'
                 except Exception:
                     wiki_rows = []
                 ranked = _rank_web_rows(clean_query, api_rows + wiki_rows)[:bounded_count]

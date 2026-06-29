@@ -2290,13 +2290,13 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
             "web_no_relevant_source": True,
         }
     rows = on_topic_rows
-    # prefer a definition-shaped snippet with the strongest term match; fall back
-    # to the most term-relevant readable snippet.
-    best = next((r for r in rows if _looks_like_definition(str(r.get("snippet") or ""))), None)
-    if best is None:
-        best = max(rows, key=lambda r: int(r.get("query_terms_matched") or 0), default=None)
-    if not best:
-        return None
+    # SINGLE selection authority: search_web already ranked these rows by referent
+    # resonance (type + subject-identity + trust + definition) for the search-API path
+    # and by entity resolution for the Wikipedia path. Defer to that order — take the
+    # top on-topic, non-cruft row — instead of re-selecting here. The old heuristic
+    # (_looks_like_definition + max term match) was English-biased and mis-ranked
+    # Korean encyclopedic bios, letting a news article / song beat the right page.
+    best = rows[0]
     title = str(best.get("title") or "")
     url = str(best.get("url") or "")
     is_ko = language == "ko"
