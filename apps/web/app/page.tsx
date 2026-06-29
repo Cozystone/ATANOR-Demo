@@ -3965,11 +3965,9 @@ function FullApp() {
     const sphereR = 9.5;
     const clustered: Rag3DGraph = {
       nodes: rawNodes.map((node, index) => {
-        // Hash-based latitude+longitude (not index-monotonic) so edges point in
-        // ALL directions instead of forming horizontal latitude bands.
-        const lat = stableUnit(String(node.id), 17) * 2 - 1;
+        const lat = 1 - ((index + 0.5) / count) * 2;
         const latRadial = Math.sqrt(Math.max(0.02, 1 - lat * lat));
-        const lon = stableUnit(String(node.id), 811) * Math.PI * 2;
+        const lon = index * 2.399963229728653 + stableUnit(String(node.id), 811) * 0.2;
         const r = sphereR + stableUnit(String(node.id), 7) * 0.7;
         return {
           id: String(node.id),
