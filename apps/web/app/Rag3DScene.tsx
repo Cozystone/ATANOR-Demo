@@ -170,7 +170,7 @@ const BASE_EDGE_COLOR = 0xb8c4d2;
 const BASE_EDGE_WEAK = 0x667386;
 const BASE_EDGE_ACTIVE_NEAR = 0xffffff;
 const STRONG_EDGE_COLOR = 0xeaf2ff;
-const NEON_ORANGE = 0xff7000;
+const NEON_ORANGE = 0xff4800;
 const COLD_LABEL = "#eef3f8";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const NEW_NODE_ANIMATION_SECONDS = 1.0;
@@ -1237,7 +1237,7 @@ function updateNodeBuffers(state: SceneState, elapsed: number) {
     const activation = state.nodeActivation ? state.nodeActivation[index] : 0;
     if (activation > 0.01) {
       tempColor.lerp(activationPinkColor, Math.min(1, activation * 1.3));
-      tempColor.multiplyScalar(1 + activation * 1.1);
+      tempColor.multiplyScalar(1 + activation * 2.6);
     }
     state.nodeColorArray![index * 3] = tempColor.r;
     state.nodeColorArray![index * 3 + 1] = tempColor.g;
@@ -1354,7 +1354,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       // an active/arriving one rises to ~90% so active lines visibly stand out.
       const activeness = Math.min(1, Math.max(signal, freshGlow * 0.9, edge.active ? 0.55 : 0));
       // Rest ~50%, active blows up to ~1000% (heavy overbright / bloom).
-      tempColor.multiplyScalar((0.5 + 9.5 * activeness) * (0.92 + edgeDepthCue * 0.3));
+      tempColor.multiplyScalar((0.5 + 2.0 * activeness) * (0.92 + edgeDepthCue * 0.3));
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.03);
       if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 3.1);
     }
