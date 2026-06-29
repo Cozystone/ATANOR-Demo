@@ -2176,6 +2176,87 @@ def _extract_attribution(question: str, snippets: list[str]) -> str | None:
     return None
 
 
+_IMAGE_REF_RE = re.compile(
+    r"((?:[A-Za-z]:\\|/|https?://)\S+?\.(?:png|jpe?g|webp|bmp|gif|tiff?))", re.IGNORECASE
+)
+
+
+def _media_grounded_answer(question: str, language: str) -> dict[str, Any] | None:
+    """If the question references a VIDEO (YouTube URL) or an IMAGE (path/URL), READ it
+    into text (transcript / OCR) and answer from that — ATANOR reading non-text media,
+    grounded and cited. No LLM; the answer is composed from the read text."""
+    is_ko = language == "ko"
+    try:
+        from app.services.media_reader import _youtube_id, read_image_ocr, read_video_transcript
+    except Exception:  # pragma: no cover - optional
+        return None
+
+    # VIDEO → transcript
+    if _youtube_id(question):
+        result = read_video_transcript(question)
+        if not result.get("ok") or len(str(result.get("text") or "")) < 40:
+            return None
+        text = str(result["text"])
+        composed = None
+        try:
+            from app.services.web_search import compose_web_answer
+
+            composed = compose_web_answer(question, [{"snippet": text, "title": ""}], language=language)
+        except Exception:
+            composed = None
+        body = (composed or {}).get("answer") or text[:400]
+        prefix = "이 영상 자막을 읽어보면, " if is_ko else "From this video's transcript, "
+        cert = {
+            "derivation_kind": "video_transcript_grounding",
+            "anchor_concept": {"id": result.get("source_url"), "label": "video transcript", "match": "media_read"},
+            "steps": [{"type": "media", "source": result.get("source_url"), "fact": f"{result.get('segments')} caption segments read"}],
+            "evidence_concepts": [result.get("source_url")],
+            "confidence": 0.6,
+            "confidence_basis": "video_transcript",
+            "guarantees": {"external_llm": False, "fabricated_facts": False, "media_read": True, "source_cited": True},
+        }
+        return {
+            "answer": (prefix + body).strip(),
+            "reasoning_certificate": cert,
+            "confidence": 0.6,
+            "provider": "video_transcript",
+            "source_url": result.get("source_url") or "",
+            "source_title": "video",
+        }
+
+    # IMAGE → OCR
+    match = _IMAGE_REF_RE.search(question)
+    if match:
+        result = read_image_ocr(match.group(1))
+        if not result.get("ok") or len(str(result.get("text") or "")) < 2:
+            if result.get("error") == "ocr_not_available":
+                return {
+                    "answer": (result.get("enable") or "이미지 OCR이 아직 설치되지 않았어요."),
+                    "reasoning_certificate": {"derivation_kind": "ocr_unavailable", "guarantees": {"external_llm": False}},
+                    "confidence": 0.2,
+                    "provider": "ocr_unavailable",
+                    "source_url": "",
+                    "source_title": "",
+                }
+            return None
+        text = re.sub(r"\s+", " ", str(result["text"])).strip()
+        prefix = "이미지에서 읽은 텍스트예요: " if is_ko else "Text read from the image: "
+        return {
+            "answer": prefix + text[:1200],
+            "reasoning_certificate": {
+                "derivation_kind": "image_ocr_grounding",
+                "steps": [{"type": "media", "source": match.group(1), "fact": "OCR text extracted"}],
+                "confidence": 0.6,
+                "guarantees": {"external_llm": False, "fabricated_facts": False, "media_read": True},
+            },
+            "confidence": 0.6,
+            "provider": "image_ocr",
+            "source_url": match.group(1) if match.group(1).startswith("http") else "",
+            "source_title": "image",
+        }
+    return None
+
+
 async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] | None:
     """When the local engine has no answer and web search is ON, answer from a
     real web source (Wikipedia, or a configured provider) and cite it. This is
@@ -3202,6 +3283,9 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # "Living creature" sense: answer questions about ATANOR's own live state by
     # pulling from every subsystem at once.
     self_state = _self_state_answer(question, language)
+    # Media: if the question references a VIDEO (YouTube) or IMAGE (path/URL), READ it
+    # (transcript / OCR) and answer from that — explicit user intent, so high priority.
+    media_answer = _media_grounded_answer(question, language) if not self_state else None
     # Self-model is no longer a curated answer table (that was rule-based). Identity
     # is a reference-resolution ROUTE → the GRAPH realizes the answer: an identity
     # question is answered from the "atanor" concept via answer_with_base_brain
@@ -3276,7 +3360,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             reasoning_vm = None
     comparison = None
     chained = None
-    if request.web_search and not (self_state or self_knowledge or recall or reasoning_vm):
+    if request.web_search and not (self_state or media_answer or self_knowledge or recall or reasoning_vm):
         try:
             from app.services.comparison_reasoner import answer_comparison
 
@@ -3297,7 +3381,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # (prose + infobox). Only overrides when a real name is found; else the normal
     # answer (definition) stands.
     attribution_answer = None
-    if request.web_search and not (self_state or self_knowledge or recall or reasoning_vm) and _detect_attribution_relation(question):
+    if request.web_search and not (self_state or media_answer or self_knowledge or recall or reasoning_vm) and _detect_attribution_relation(question):
         try:
             _attrib = await _web_grounded_rescue(web_query, language)
             if _attrib and _attrib.get("reasoning_certificate", {}).get("derivation_kind") == "web_attribution_extraction":
@@ -3325,6 +3409,18 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["confidence"] = self_knowledge["confidence"]
         result["answer_kind"] = "atanor_identity_graph"
         result["can_speak"] = True
+
+    # Media-grounded answer (read a video transcript / image OCR) — authoritative; the
+    # user explicitly pointed at media to read.
+    if media_answer and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = media_answer["answer"]
+        result["reasoning_certificate"] = media_answer.get("reasoning_certificate")
+        result["confidence"] = media_answer.get("confidence")
+        result["answer_kind"] = media_answer.get("provider") or "media_grounding"
+        result["can_speak"] = True
+        if media_answer.get("source_url"):
+            result["render_iframe"] = {"url": media_answer["source_url"], "title": media_answer.get("source_title") or "media"}
 
     # Greeting — conversational, never web.
     if greeting_answer and isinstance(response.get("result"), dict):
@@ -3387,7 +3483,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # from ANY internal path, ground it from a real cited web source. This RESPECTS
     # the web_search toggle — with web off, an out-of-graph question abstains honestly
     # (showing the true local graph coverage) instead of silently reaching the web.
-    if request.web_search and not (self_state or self_knowledge or comparison or chained or recall or reasoning_vm) and isinstance(response.get("result"), dict):
+    if request.web_search and not (self_state or media_answer or self_knowledge or comparison or chained or recall or reasoning_vm) and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):
