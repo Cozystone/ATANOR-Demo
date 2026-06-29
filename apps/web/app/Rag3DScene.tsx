@@ -170,7 +170,7 @@ const BASE_EDGE_COLOR = 0xb8c4d2;
 const BASE_EDGE_WEAK = 0x667386;
 const BASE_EDGE_ACTIVE_NEAR = 0xffffff;
 const STRONG_EDGE_COLOR = 0xeaf2ff;
-const NEON_ORANGE = 0xffa028;
+const NEON_ORANGE = 0xff7000;
 const COLD_LABEL = "#eef3f8";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const NEW_NODE_ANIMATION_SECONDS = 1.0;
@@ -194,10 +194,10 @@ const neonOrangeColor = new THREE.Color(NEON_ORANGE);
 // Deep red-orange for live arrivals. Low green channel so it stays unmistakably
 // orange even when brightened on the additive field (a high-green orange clips to
 // yellow-white).
-const arrivalGlowColor = new THREE.Color(0xff6a1a);
+const arrivalGlowColor = new THREE.Color(0xff5200);
 // Sky-blue = complement of the arrival orange. Used for the "synapse firing"
 // activation lines that flicker across the graph each second.
-const SYNAPSE_COLOR = 0x4ec9ff;
+const SYNAPSE_COLOR = 0x18b4ff;
 const skyBlueColor = new THREE.Color(SYNAPSE_COLOR);
 // An activated node momentarily turns deep/vivid pink.
 const activationPinkColor = new THREE.Color(0xff1f8f);
@@ -1351,7 +1351,7 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       tempColor.lerp(neonOrangeColor, Math.min(1, Math.max(signal, freshGlow * 0.9) * 1.45));
       const edgeDepthCue = THREE.MathUtils.clamp(0.5 + ((sz + tz) * 0.5) / Math.max(10, state.camera.position.z * 0.28), 0.2, 1);
       tempColor.multiplyScalar(0.82 + edgeDepthCue * 0.5);
-      tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.08);
+      tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.03);
       if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 3.1);
     }
     // Sky-blue activation gradient: bright at each end by that node's activation,
