@@ -1429,7 +1429,8 @@ function updatePulseMesh(state: SceneState, elapsed: number) {
     if (!source || !target) return;
     const t = (elapsed * 3.1 + pulse.phase) % 1;
     tempPosition.copy(source).lerp(target, t);
-    tempScale.setScalar(0.014 + Math.sin(t * Math.PI) * 0.024);
+    // Fat travelling pulse: the line visibly THICKENS where the signal passes.
+    tempScale.setScalar(0.03 + Math.sin(t * Math.PI) * 0.075);
     tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
     state.pulseMesh!.setMatrixAt(index, tempMatrix);
   });
