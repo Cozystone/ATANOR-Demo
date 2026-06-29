@@ -149,7 +149,7 @@ export default function LiveLearningPanel({
           <span title="동일 개념이 2개 이상 독립 출처에서 확인된 수 — 교차출처 중복확인(팩트체킹 원리)">
             ✓ 다출처 확인 개념 <b>{(m?.corroborated_concepts ?? 0).toLocaleString()}</b>개
             {(m?.corroborated_pairs ?? 0) > 0 && (
-              <> · 확인 연결 <b>{(m.corroborated_pairs!).toLocaleString()}</b>쌍</>
+              <> · 확인 연결 <b>{(m?.corroborated_pairs ?? 0).toLocaleString()}</b>쌍</>
             )}
           </span>
           {m?.relation_recent && m.relation_recent.some(r => r.startsWith("✓")) && (

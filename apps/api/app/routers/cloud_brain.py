@@ -1111,10 +1111,37 @@ _RELDISC: dict[str, Any] = {
     "last_rate_at": 0.0,
     "last_checks": 0,
     "checks_per_second": 0.0,
+    "pending_pairs": 0,   # co-occurring pairs seen but not yet reinforced to threshold
+    "pruned": 0,          # pairs decayed away (homeostatic pruning)
 }
 _RELDISC_THREAD: _threading.Thread | None = None
 _RELDISC_CONCEPTS: list[tuple[str, str]] = []
 _RELDISC_CONCEPTS_AT: float = 0.0
+
+# --- Brain-inspired relation formation (Hebbian co-occurrence + homeostatic prune) ---
+# Replaces the old "random concept pair + shared-token => verified relation" worker,
+# which manufactured noise ("Summer" => "Its summer home" ↔ "Something Like Summer").
+#
+# How the brain avoids/handles such noise (and what we imitate):
+#   1. Hebbian: a link forms only when two concepts ACTUALLY co-occur in the same real
+#      sentence (fire together → wire together) — not random pairing, not name-substring.
+#   2. Reinforcement: one co-occurrence is noise; a relation is only "linked" after it
+#      recurs across >= K distinct sentences (repetition = signal).
+#   3. Homeostasis (sleep down-scaling / SHY): every cycle all weights decay; pairs that
+#      fall below 1.0 are pruned. One-off coincidences fade; repeated relations survive.
+#      This also BOUNDS memory (the cooc table is capped) — critical for trillion-scale.
+_RELDISC_LINK_THRESHOLD = 3        # K reinforcements before a pair becomes a relation
+_RELDISC_COOC_CAP = 40_000         # max tracked pairs (homeostatic memory bound)
+_RELDISC_DECAY = 0.9               # per-cycle synaptic down-scaling
+_RELDISC_DECAY_EVERY = 30.0        # seconds between homeostatic decay passes
+_RELDISC_COMMON_TOKEN_CAP = 80     # tokens shared by >N concepts are non-discriminative
+# (cid_a, cid_b) -> [weight, last_seen_epoch]; cid_a < cid_b
+_RELDISC_COOC: dict[tuple[str, str], list[float]] = {}
+_RELDISC_LINKED: set[tuple[str, str]] = set()   # pairs already emitted as relations
+_RELDISC_INDEX: tuple[dict[str, set[str]], dict[str, str]] | None = None
+_RELDISC_INDEX_AT: float = 0.0
+_RELDISC_LAST_DECAY: float = 0.0
+_RELDISC_STREAM = None             # persistent corpus sentence generator
 
 
 def _reldisc_load_concepts() -> list[tuple[str, str]]:
@@ -1150,7 +1177,76 @@ def _reldisc_tokens(name: str) -> set[str]:
     return {t for t in re.split(r"[^0-9A-Za-z가-힣]+", name.lower()) if len(t) >= 4}
 
 
+def _reldisc_get_index(concepts: list[tuple[str, str]]) -> tuple[dict[str, set[str]], dict[str, str]]:
+    """Build (token -> {cids}) and (cid -> name) once per concept refresh.
+
+    Ultra-common tokens (shared by many concepts) are dropped: they are not
+    discriminative and would invite spurious matches.
+    """
+    global _RELDISC_INDEX, _RELDISC_INDEX_AT
+    now = _time.time()
+    if _RELDISC_INDEX is not None and now - _RELDISC_INDEX_AT < 45:
+        return _RELDISC_INDEX
+    token_to_cids: dict[str, set[str]] = {}
+    cid_to_name: dict[str, str] = {}
+    for cid, name in concepts:
+        cid_to_name[cid] = name
+        for tok in _reldisc_tokens(name):
+            token_to_cids.setdefault(tok, set()).add(cid)
+    for tok in list(token_to_cids):
+        if len(token_to_cids[tok]) > _RELDISC_COMMON_TOKEN_CAP:
+            del token_to_cids[tok]
+    _RELDISC_INDEX = (token_to_cids, cid_to_name)
+    _RELDISC_INDEX_AT = now
+    return _RELDISC_INDEX
+
+
+def _reldisc_sentence_stream():
+    """Endless generator over real corpus sentences (the firehose source)."""
+    while True:
+        files = _firehose_corpus_files()
+        if not files:
+            yield None
+            continue
+        emitted = False
+        for f in files:
+            for sentence in _firehose_iter_sentences(f):
+                emitted = True
+                yield sentence
+        if not emitted:
+            yield None
+
+
+def _reldisc_concepts_in_sentence(
+    sentence: str,
+    token_to_cids: dict[str, set[str]],
+    cid_to_name: dict[str, str],
+) -> list[str]:
+    """Concepts that ACTUALLY appear in this real sentence (Hebbian co-activation).
+
+    A concept counts only if its full canonical name occurs as a whole phrase — a
+    shared token alone is not enough (that was the old noise). Punctuation is
+    normalised to spaces so a mention followed by a comma/period still matches.
+    Capped per sentence (sparse coding) so one sentence cannot explode the pairs.
+    """
+    norm = " " + re.sub(r"[^0-9a-z가-힣]+", " ", sentence.lower()).strip() + " "
+    candidate: set[str] = set()
+    for tok in _reldisc_tokens(sentence):
+        candidate |= token_to_cids.get(tok, set())
+    present: list[str] = []
+    for cid in candidate:
+        nl = re.sub(r"[^0-9a-z가-힣]+", " ", cid_to_name.get(cid, "").lower()).strip()
+        if len(nl) >= 4 and f" {nl} " in norm:
+            present.append(cid)
+        if len(present) >= 12:
+            break
+    return present
+
+
 def _relation_discovery_worker() -> None:
+    global _RELDISC_STREAM, _RELDISC_LAST_DECAY
+    if _RELDISC_STREAM is None:
+        _RELDISC_STREAM = _reldisc_sentence_stream()
     while True:
         with _RELDISC_LOCK:
             if not _RELDISC["running"]:
@@ -1159,43 +1255,83 @@ def _relation_discovery_worker() -> None:
         if len(concepts) < 8:
             _time.sleep(1.0)
             continue
-        n = len(concepts)
-        batch = 200  # faster verification sweep
-        fired: list[tuple[str, str]] = []
-        for _ in range(batch):
-            a = concepts[_random.randrange(n)]
-            b = concepts[_random.randrange(n)]
-            if a[0] == b[0]:
-                continue
-            na, nb = a[1].lower(), b[1].lower()
-            shared = _reldisc_tokens(a[1]) & _reldisc_tokens(b[1])
-            # Verified relation: a shared significant token, OR one name contains
-            # the other as a whole (e.g. "Einstein" within "Albert Einstein").
-            contained = len(na) >= 4 and len(nb) >= 4 and (
-                f" {na} " in f" {nb} " or f" {nb} " in f" {na} " or na in nb.split() or nb in na.split()
-            )
-            if shared or contained:
-                fired.append((a[1], b[1]))
+        token_to_cids, cid_to_name = _reldisc_get_index(concepts)
+        now = _time.time()
+        checks = 0
+        fired: list[tuple[str, str, str]] = []
+        for _ in range(200):  # batch of REAL sentences
+            try:
+                sentence = next(_RELDISC_STREAM)
+            except StopIteration:
+                break
+            if not sentence:
+                _time.sleep(0.5)
+                break
+            present = _reldisc_concepts_in_sentence(sentence, token_to_cids, cid_to_name)
+            # Hebbian: every pair that co-occurred in THIS real sentence reinforces.
+            for i in range(len(present)):
+                for j in range(i + 1, len(present)):
+                    key = (present[i], present[j]) if present[i] < present[j] else (present[j], present[i])
+                    checks += 1
+                    slot = _RELDISC_COOC.get(key)
+                    if slot is None:
+                        _RELDISC_COOC[key] = [1.0, now]
+                    else:
+                        slot[0] += 1.0
+                        slot[1] = now
+                        if slot[0] >= _RELDISC_LINK_THRESHOLD and key not in _RELDISC_LINKED:
+                            _RELDISC_LINKED.add(key)
+                            fired.append((cid_to_name.get(key[0], key[0]), cid_to_name.get(key[1], key[1]), sentence))
+
+        # Homeostatic down-scaling + pruning (sleep-like): noise fades, signal persists,
+        # and the cooc table stays bounded (the trillion-scale memory guarantee).
+        pruned = 0
+        if now - _RELDISC_LAST_DECAY >= _RELDISC_DECAY_EVERY:
+            for key in list(_RELDISC_COOC):
+                _RELDISC_COOC[key][0] *= _RELDISC_DECAY
+                if _RELDISC_COOC[key][0] < 1.0:
+                    del _RELDISC_COOC[key]
+                    _RELDISC_LINKED.discard(key)
+                    pruned += 1
+            if len(_RELDISC_COOC) > _RELDISC_COOC_CAP:
+                weakest = sorted(_RELDISC_COOC, key=lambda k: _RELDISC_COOC[k][0])[: len(_RELDISC_COOC) - _RELDISC_COOC_CAP]
+                for key in weakest:
+                    del _RELDISC_COOC[key]
+                    _RELDISC_LINKED.discard(key)
+                    pruned += 1
+            _RELDISC_LAST_DECAY = now
+
         if fired:
             try:
                 store = _resolve_candidate_store_path()
                 if store:
                     log = Path(store) / "relation_discovery.jsonl"
                     with log.open("a", encoding="utf-8") as fh:
-                        for la, lb in fired[:8]:
-                            fh.write(json.dumps({"a": la, "b": lb, "relation": "co_token", "at": round(_time.time(), 3), "verified": True}) + "\n")
+                        for la, lb, ev in fired[:8]:
+                            fh.write(json.dumps({
+                                "a": la, "b": lb,
+                                "relation": "co_occurrence_reinforced",
+                                "weight": _RELDISC_LINK_THRESHOLD,
+                                "evidence": ev[:240],
+                                "at": round(_time.time(), 3),
+                                "verified": True,  # now evidence-backed: real co-occurrence, K-reinforced
+                            }) + "\n")
             except Exception:
                 pass
-        now = _time.time()
+
+        now2 = _time.time()
         with _RELDISC_LOCK:
-            _RELDISC["checks"] += batch
+            _RELDISC["checks"] += checks
             _RELDISC["linked"] += len(fired)
-            _RELDISC["recent"] = ([f"{a} ↔ {b}" for a, b in fired[-6:]] + list(_RELDISC["recent"]))[:6]
-            dt = now - (_RELDISC["last_rate_at"] or now)
+            _RELDISC["pending_pairs"] = len(_RELDISC_COOC)
+            _RELDISC["pruned"] += pruned
+            if fired:
+                _RELDISC["recent"] = ([f"{a} ↔ {b}" for a, b, _ in fired[-6:]] + list(_RELDISC["recent"]))[:6]
+            dt = now2 - (_RELDISC["last_rate_at"] or now2)
             if dt >= 1.0:
                 _RELDISC["checks_per_second"] = round((_RELDISC["checks"] - _RELDISC["last_checks"]) / dt, 1)
                 _RELDISC["last_checks"] = _RELDISC["checks"]
-                _RELDISC["last_rate_at"] = now
+                _RELDISC["last_rate_at"] = now2
         _time.sleep(0.1)
 
 
@@ -1292,8 +1428,12 @@ def _firehose_worker() -> None:
                 count += 1
                 h = hash(sentence)
                 if h not in seen:
-                    if len(seen) < 3_000_000:
-                        seen.add(h)
+                    # Bounded dedup window: 3M hashes cost ~150MB+ and were a major
+                    # contributor to the VM OOM. A rotating cap keeps strong dedup at a
+                    # fraction of the memory (clear-and-continue when full).
+                    if len(seen) >= 500_000:
+                        seen.clear()
+                    seen.add(h)
                     new_this_pass += 1
                     if len(batch_new) < 4000:
                         batch_new.append(sentence)

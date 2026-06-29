@@ -2544,7 +2544,6 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       ref={dashboardRef}
       className="atanor-ai-dashboard"
       data-answer-card={answerVisual && !foldScene && !iframeStage ? "true" : "false"}
-      style={{ ["--orb-dodge-y" as string]: `${orbDodgeY}px` } as CSSProperties}
       aria-label={language === "ko" ? "ATANOR \uC785\uC790 \uBCF8\uCCB4" : "ATANOR particle body"}
       data-voice-mode={voiceMode ? "true" : "false"}
       data-speaking={speakingVisual ? "true" : "false"}
@@ -2671,7 +2670,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-splatra-command-renderer-inference={splatraCommandSequence?.splatra_contract?.renderer_may_infer_topic === true ? "true" : "false"}
       data-text-layout-basis={TEXT_LAYOUT_BASIS}
       data-text-layout-reference={TEXT_LAYOUT_REFERENCE}
-      style={dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry)}
+      style={{ ...dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry), ["--orb-dodge-y" as string]: `${orbDodgeY}px` } as CSSProperties}
     >
       <div style={(foldScene || iframeStage) ? { opacity: 0, pointerEvents: "none" } : undefined}>
         <SplatraImaginationField

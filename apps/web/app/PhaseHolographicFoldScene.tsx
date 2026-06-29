@@ -289,7 +289,8 @@ export default function PhaseHolographicFoldScene({ scene }: { scene: FoldScene 
     raf = requestAnimationFrame(loop);
 
     function onResize() {
-      const w = mount.clientWidth || width, h = mount.clientHeight || height;
+      // mount is verified non-null by the early-return guard above; TS loses this in nested fns
+      const w = mount!.clientWidth || width, h = mount!.clientHeight || height;
       cam.aspect = w / h; cam.updateProjectionMatrix(); renderer.setSize(w, h);
     }
     window.addEventListener("resize", onResize);
