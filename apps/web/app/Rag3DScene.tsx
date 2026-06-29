@@ -173,7 +173,7 @@ const BASE_EDGE_COLOR = 0xb8c4d2;
 const BASE_EDGE_WEAK = 0x667386;
 const BASE_EDGE_ACTIVE_NEAR = 0xffffff;
 const STRONG_EDGE_COLOR = 0xeaf2ff;
-const NEON_ORANGE = 0xff2a00;
+const NEON_ORANGE = 0xff6000;
 const COLD_LABEL = "#eef3f8";
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const NEW_NODE_ANIMATION_SECONDS = 1.0;
@@ -197,7 +197,7 @@ const neonOrangeColor = new THREE.Color(NEON_ORANGE);
 // Deep red-orange for live arrivals. Low green channel so it stays unmistakably
 // orange even when brightened on the additive field (a high-green orange clips to
 // yellow-white).
-const arrivalGlowColor = new THREE.Color(0xff3200);
+const arrivalGlowColor = new THREE.Color(0xff5a00);
 // Sky-blue = complement of the arrival orange. Used for the "synapse firing"
 // activation lines that flicker across the graph each second.
 const SYNAPSE_COLOR = 0x18b4ff;
