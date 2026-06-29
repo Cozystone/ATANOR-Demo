@@ -362,6 +362,12 @@ def _evidence(sentence: SourceSentence, decision: VerificationDecision) -> dict[
     }
 
 
+# Bare placeholder nouns that are not real categories ('…인 것이다', '…하나이다'). These
+# are pronoun-like discourse heads, not classes — excluded so IS_A stays a type signal.
+# This is a tiny structural stoplist (like the concept-quality gate), not a knowledge map.
+_NON_CATEGORY_HEADS = frozenset({"것", "하나", "등", "경우", "때", "점", "곳", "데", "측면", "쪽", "거", "게", "걸", "분"})
+
+
 def _copula_category(text: str) -> str:
     """The category a definition assigns its subject — the noun right before the copula
     ('삼성전자는 … 기업이다' → '기업'; 'X is a company' → 'company'). A structural language
@@ -369,7 +375,7 @@ def _copula_category(text: str) -> str:
     type hierarchy is built in the graph FROM DATA, replacing a hand-coded type lexicon."""
     text = str(text or "")
     m = re.search(r"([가-힣]{2,})\s*(?:이다|입니다|이며|이고|이라\b)", text)
-    if m:
+    if m and m.group(1) not in _NON_CATEGORY_HEADS:
         return m.group(1)
     m = re.search(r"\bis\s+(?:a|an|the)\s+([A-Za-z][A-Za-z ]{1,40}?)[.,;\s]", text, re.IGNORECASE)
     return m.group(1).strip() if m else ""
