@@ -468,6 +468,106 @@ def _wiktionary_definition(term: str, *, korean: bool) -> dict[str, Any] | None:
 
 _BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
+
+def brave_search(query: str, count: int = 6) -> list[dict[str, Any]]:
+    """Real multi-source web search via the Brave Search API (a full web index, the way
+    ChatGPT/Perplexity retrieve). Keyed by BRAVE_SEARCH_API_KEY (free tier ~2000/mo).
+    Returns title/url/snippet rows; the referent-resonance gate downstream picks the
+    best. Empty list when unconfigured or on error (caller falls back to Wikipedia)."""
+    key = os.getenv("BRAVE_SEARCH_API_KEY")
+    query = (query or "").strip()
+    if not key or not query:
+        return []
+    url = (
+        "https://api.search.brave.com/res/v1/web/search?"
+        f"q={quote_plus(query)}&count={max(1, min(count, 10))}&search_lang=ko&country=KR"
+    )
+    request = urllib.request.Request(
+        url, headers={"Accept": "application/json", "X-Subscription-Token": key, "User-Agent": WEB_USER_AGENT}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=6) as response:  # nosec B310 - configured API
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:  # pragma: no cover - network/optional
+        return []
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate((payload.get("web", {}) or {}).get("results", []) or [], start=1):
+        snippet = _strip_html(str(item.get("description") or ""))
+        if not snippet:
+            continue
+        url_ = str(item.get("url") or "")
+        domain = re.sub(r"^https?://(www\.)?", "", url_).split("/")[0]
+        rows.append(
+            {
+                "id": f"brave-{index}",
+                "title": _strip_html(str(item.get("title") or "")),
+                "url": url_,
+                "snippet": snippet,
+                "provider": f"brave:{domain}",
+                "source_type": "web_search_api",
+                "license_status": "reference_only",
+                "search_score": (count - index + 1),
+                "normalized_query": query,
+            }
+        )
+    return rows
+
+
+def tavily_search(query: str, count: int = 6) -> list[dict[str, Any]]:
+    """Real web search via the Tavily API (LLM-optimized: returns clean page content).
+    Keyed by TAVILY_API_KEY (free tier). Empty when unconfigured/on error."""
+    key = os.getenv("TAVILY_API_KEY")
+    query = (query or "").strip()
+    if not key or not query:
+        return []
+    body = json.dumps(
+        {"api_key": key, "query": query, "max_results": max(1, min(count, 10)), "search_depth": "basic"}
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.tavily.com/search", data=body, headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:  # nosec B310 - configured API
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception:  # pragma: no cover - network/optional
+        return []
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(payload.get("results", []) or [], start=1):
+        snippet = _strip_html(str(item.get("content") or ""))
+        if not snippet:
+            continue
+        url_ = str(item.get("url") or "")
+        domain = re.sub(r"^https?://(www\.)?", "", url_).split("/")[0]
+        rows.append(
+            {
+                "id": f"tavily-{index}",
+                "title": _strip_html(str(item.get("title") or "")),
+                "url": url_,
+                "snippet": snippet,
+                "provider": f"tavily:{domain}",
+                "source_type": "web_search_api",
+                "license_status": "reference_only",
+                "search_score": (count - index + 1),
+                "normalized_query": query,
+            }
+        )
+    return rows
+
+
+def provider_api_search(query: str, count: int = 6) -> list[dict[str, Any]]:
+    """Use whichever real search API is configured (Tavily → Brave). Empty if none."""
+    if os.getenv("TAVILY_API_KEY"):
+        rows = tavily_search(query, count)
+        if rows:
+            return rows
+    if os.getenv("BRAVE_SEARCH_API_KEY"):
+        return brave_search(query, count)
+    return []
+
+
+def has_search_api() -> bool:
+    return bool(os.getenv("TAVILY_API_KEY") or os.getenv("BRAVE_SEARCH_API_KEY"))
+
 # DuckDuckGo Lite rate-limits aggressive use, so cache results and back off after a
 # block. The chat path is low-volume; sustained crawler-scale collection needs a real
 # search API key (Brave/Serper) — env WEB_SEARCH_PROVIDER + key — not this endpoint.
@@ -535,6 +635,44 @@ def general_web_search(query: str, count: int = 6) -> list[dict[str, Any]]:
 
 
 _TRUSTED_DOMAINS = ("wikipedia.org", "namu.wiki", "namuwiki", "terms.naver.com", "doopedia", "britannica", "dbpedia")
+
+
+def _rank_web_rows(query: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pick the best answer from a set of web rows by referent resonance + relevance,
+    so 'our side filters the best out' no matter how noisy the sources are: the answer
+    must be ABOUT the queried entity, share its terms, and prefer trusted/definitional
+    sources. This is the quality filter that the raw DuckDuckGo merge lacked."""
+    try:
+        from packages.cgsr.cgsr.referent_resonance import query_subject_entity, answer_is_about_entity
+        entity = query_subject_entity(query)
+    except Exception:  # pragma: no cover
+        entity, answer_is_about_entity = "", None  # type: ignore
+    # Use the ENTITY's terms ('사랑'), not the raw query's ('사랑이란'), so a title
+    # collision (the song '사랑이란') doesn't outscore the concept for '사랑이란 무엇인가'.
+    lookup_terms = (_lookup_terms(entity) if len(entity) >= 2 else []) or _lookup_terms(_normalize_lookup_query(query))
+    try:
+        from packages.cgsr.cgsr.referent_resonance import infer_evidence_type
+    except Exception:  # pragma: no cover
+        infer_evidence_type = None  # type: ignore
+
+    def score(row: dict[str, Any]) -> tuple:
+        snippet = str(row.get("snippet", ""))
+        text = f"{row.get('title','')} {snippet}".lower()
+        about = 1
+        if answer_is_about_entity is not None and len(entity) >= 2:
+            about = 1 if answer_is_about_entity(entity, snippet) else 0
+        # Exact-title match to the entity (사랑 == 사랑) beats a longer collided title
+        # (사랑이란 the song) — the concept page is what a definitional query wants.
+        title_norm = _norm_title(str(row.get("title") or ""))
+        exact = 1 if title_norm == _norm_title(entity) else 0
+        term_hits = sum(1 for t in lookup_terms if t and t.lower() in text)
+        url = str(row.get("url", "")).lower()
+        trust = 1 if any(d in url for d in _TRUSTED_DOMAINS) else 0
+        looks_def = 1 if re.search(r"(이다|입니다|란\s|라고도|를 말한다|를 뜻한다|를 의미|is a|are )", snippet) else 0
+        length_ok = 1 if 40 <= len(snippet) <= 600 else 0
+        return (about, exact, term_hits, trust, looks_def, length_ok)
+
+    return sorted(rows, key=score, reverse=True)
 
 
 def _merge_web_candidates(query: str, count: int) -> list[dict[str, Any]]:
@@ -794,13 +932,28 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
                 }
         except Exception:
             pass
-    if not is_fresh_search_query(clean_query) and is_knowledge_lookup_query(clean_query) and selected == "static":
+    if not is_fresh_search_query(clean_query) and is_knowledge_lookup_query(clean_query):
+        # Multi-source via a real search API (Tavily/Brave) — a full web index, the way
+        # ChatGPT/Perplexity retrieve — ranked by referent resonance so the best answer
+        # is filtered out on our end. Falls back to the precise, type-resolved Wikipedia
+        # path when no API key is configured (a single-endpoint DDG scrape was tried and
+        # reverted — too noisy without a strong ranker).
         try:
-            # NOTE: a single-endpoint DuckDuckGo merge was tried and reverted — open-web
-            # snippets are noisy (a song "사랑이란" / a movie list) and a weak ranker let
-            # junk through, regressing answers. The right design is a real browser-driven
-            # reader (see general_web_search / _merge_web_candidates, kept as building
-            # blocks). For now use the precise, type-resolved Wikipedia path.
+            api_rows = provider_api_search(clean_query, bounded_count + 2)
+            if api_rows:
+                ranked = _rank_web_rows(clean_query, api_rows)[:bounded_count]
+                return {
+                    "provider": "search-api",
+                    "query": clean_query,
+                    "results": ranked,
+                    "configured": True,
+                    "bing_query_url": f"https://www.bing.com/search?q={quote_plus(clean_query)}",
+                    "status": "ok",
+                    "provider_status": provider_status(selected),
+                }
+        except Exception:
+            pass
+        try:
             results = wikipedia_search(clean_query, bounded_count)
             if results:
                 return {
