@@ -1605,7 +1605,10 @@ def _continuous_worker() -> None:
             continue
         rows = [
             {
-                "source_type": "search_api_evidence" if use_api else "local_public_corpus_shard",
+                # 'public_web_feed' is the verification gate's allowed type for open web
+                # content (SearXNG metasearch); 'search_api_evidence' was unrecognized and
+                # the gate rejected every sentence (the 0-accepted bug).
+                "source_type": "public_web_feed" if use_api else "local_public_corpus_shard",
                 "source_id": f"{src_tag}:{int(_time.time()*1000)}:{i}",
                 "text": seg,
                 # detect per sentence (Tavily mixes ko/en); a wrong language tag makes the
