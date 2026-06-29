@@ -30,6 +30,21 @@ PACKAGE_PATHS = [
 ]
 
 
+# Heavy ML/data libraries that are installed in the dev env but NOT needed by the
+# no-LLM, numpy-based ATANOR backend. They are only ever imported lazily (e.g. an
+# optional torch GPU probe in neuro_efficiency, guarded by try/except), never at
+# module load. Excluding them drops the onefile sidecar from ~3 GB to a few hundred
+# MB — small enough for the NSIS installer to mmap (the --onefile + 3 GB combo was
+# what broke `makensis`). kiwipiepy (Korean morphology) is kept; it is required.
+EXCLUDE_MODULES = [
+    "torch", "torchvision", "torchaudio",
+    "tensorflow", "tensorboard",
+    "transformers", "tokenizers", "safetensors",
+    "scipy", "sklearn", "pandas", "matplotlib",
+    "IPython", "notebook", "jupyter",
+]
+
+
 HIDDEN_IMPORTS = [
     "app.main",
     "app.desktop_entry",
@@ -115,6 +130,8 @@ def build() -> Path:
         command.extend(["--paths", str(path)])
     for name in HIDDEN_IMPORTS:
         command.extend(["--hidden-import", name])
+    for name in EXCLUDE_MODULES:
+        command.extend(["--exclude-module", name])
     run(command)
 
     suffix = ".exe" if platform.system().lower() == "windows" else ""
