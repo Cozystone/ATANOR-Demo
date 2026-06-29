@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from packages.cgsr.cgsr.conversation_router import ConversationRoute, ConversationRouteType
+from packages.cgsr.cgsr.referent_resonance import select_resonant_facts
 from packages.cgsr.cgsr.verified_fact_retrieval import retrieve_verified_facts
 
 
@@ -396,6 +397,23 @@ def _rank_facts_for_question(question: str, facts: tuple[str, ...], *, limit: in
         role = _fact_discourse_role(clean)
         relevance = len(_grounding_content_tokens(clean) & question_tokens)
         cleaned.append((clean, role, index, relevance))
+    # Entity-anchor gate (who/definition questions only): a fact that merely
+    # mentions the entity in passing ("X(소셜 네트워크). … 일론 머스크가 트위터 인수")
+    # is NOT a definition of it. Keep only facts that LEAD with the query entity;
+    # if none do, abstain (return ()) so the web rescue answers from the right page.
+    # Referent-type resonance (replaces the earlier string-anchor patches): keep only
+    # facts whose described ontological TYPE constructively interferes with the type
+    # the question expects. A "who" question expects a PERSON, so a fly (organism), a
+    # website (org), or a film (work) destructively interferes and is suppressed —
+    # one emergent mechanism instead of a dozen per-entity rules. If everything is
+    # suppressed, abstain so the web rescue answers from the right page. SELF/UNKNOWN
+    # expected types are left permissive (self → the graph identity path upstream).
+    resonant, expected = select_resonant_facts(question, cleaned)
+    if expected not in ("unknown", "self"):
+        if resonant:
+            cleaned = resonant
+        elif cleaned:
+            return ()  # off-topic grounding → yield to the web-grounded rescue
     # Keep discourse-role priority, then prefer facts that share content with the
     # question (soft tiebreaker — never drops, so cleaning/boundary behaviour is
     # unchanged), then original order.

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.services.alpha_services import alpha_service
 from packages.base_brain.scene_grounding import extract_scene_grounding
-from packages.base_brain.zero_user_answer import answer_with_base_brain
+from packages.base_brain.zero_user_answer import answer_with_base_brain, _is_identity_question
 from packages.base_brain.pack_loader import get_semantic_context, load_base_brain_pack
 from packages.holographic_fold import (
     build_field_inputs,
@@ -3178,12 +3178,24 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # "Living creature" sense: answer questions about ATANOR's own live state by
     # pulling from every subsystem at once.
     self_state = _self_state_answer(question, language)
-    # Self-model removed as a curated answer table (it was rule-based: a regex
-    # picked rows from a hand-authored fact list). Identity is now answered the
-    # same way as any other concept — the graph-derived `_is_identity_question`
-    # path inside `answer_with_base_brain` realizes from the "atanor" concept and
-    # its relations. "너 누구야" reaches it via the low-quality→base-brain demote.
+    # Self-model is no longer a curated answer table (that was rule-based). Identity
+    # is a reference-resolution ROUTE → the GRAPH realizes the answer: an identity
+    # question is answered from the "atanor" concept via answer_with_base_brain
+    # (hand_authored=False). We resolve it up front so the web/attribution paths
+    # below are skipped — otherwise "너 누구야" matches the film "너의 이름은" or a
+    # dictionary entry for the pronoun 너.
     self_knowledge = None
+    if not self_state and _is_identity_question(question):
+        try:
+            _identity = answer_with_base_brain(question, language)
+            if _identity and "ATANOR" in str(_identity.get("answer") or ""):
+                self_knowledge = {
+                    "answer": _identity["answer"],
+                    "reasoning_certificate": _identity.get("reasoning_certificate"),
+                    "confidence": float(_identity.get("confidence") or 0.9),
+                }
+        except Exception:  # pragma: no cover - defensive
+            self_knowledge = None
     # Greeting / small talk must be answered conversationally — NEVER sent to web
     # search (where "오 안녕" matched the cartoon "안녕 자두야"). Short, greeting-shaped
     # inputs get a warm reply from the local conversation surface.
@@ -3274,7 +3286,15 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "atanor_self_sense"
         result["can_speak"] = True
 
-    # (The curated self-model override was removed — identity is graph-derived now.)
+    # Identity answer (graph-realized from the atanor concept) — authoritative over
+    # the web/definition path for a self-question.
+    if self_knowledge and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = self_knowledge["answer"]
+        result["reasoning_certificate"] = self_knowledge["reasoning_certificate"]
+        result["confidence"] = self_knowledge["confidence"]
+        result["answer_kind"] = "atanor_identity_graph"
+        result["can_speak"] = True
 
     # Greeting — conversational, never web.
     if greeting_answer and isinstance(response.get("result"), dict):
