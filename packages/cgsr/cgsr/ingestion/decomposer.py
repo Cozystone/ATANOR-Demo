@@ -100,6 +100,59 @@ ENGLISH_GENERIC_HEADS = {
     "each",
     "both",
 }
+# Function words that must never become concept nodes (prepositions, demonstratives,
+# pronouns, conjunctions, auxiliaries, common adverbs). The small ENGLISH_STOPWORDS
+# set above leaked obvious non-concepts ("this", "through", "it", "they") into the
+# store; this is the broader gate applied at concept creation. Content nouns — even
+# generic ones — are NOT rejected here (that needs POS); the relation entity-gate
+# downstream stops generic words from forming relations.
+_ENGLISH_FUNCTION_WORDS = frozenset({
+    # prepositions
+    "in", "on", "at", "by", "to", "of", "for", "with", "from", "into", "onto", "upon",
+    "within", "without", "between", "among", "amongst", "across", "behind", "beyond",
+    "during", "before", "after", "above", "below", "under", "underneath", "over",
+    "through", "throughout", "toward", "towards", "about", "against", "along", "around",
+    "amid", "beneath", "beside", "besides", "despite", "except", "inside", "outside",
+    "near", "off", "out", "since", "till", "until", "unto", "via", "versus", "per", "as",
+    # determiners / demonstratives / quantifiers
+    "this", "that", "these", "those", "the", "a", "an", "each", "every", "either",
+    "neither", "all", "any", "some", "no", "none", "both", "few", "fewer", "many",
+    "much", "most", "more", "less", "least", "such", "other", "another", "same", "own",
+    "several", "various", "enough", "certain",
+    # pronouns
+    "i", "me", "my", "mine", "myself", "we", "us", "our", "ours", "ourselves", "you",
+    "your", "yours", "yourself", "yourselves", "he", "him", "his", "himself", "she",
+    "her", "hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs",
+    "themselves", "who", "whom", "whose", "which", "what", "whoever", "whatever",
+    "whichever", "someone", "anyone", "everyone", "nobody", "anybody", "everybody",
+    "something", "anything", "everything", "nothing",
+    # conjunctions / aux / common adverbs
+    "and", "or", "but", "nor", "so", "yet", "because", "although", "though", "while",
+    "whereas", "if", "unless", "whether", "than", "then", "thus", "hence", "therefore",
+    "however", "moreover", "furthermore", "nevertheless", "nonetheless", "meanwhile",
+    "not", "only", "just", "also", "too", "very", "quite", "rather", "still", "already",
+    "always", "never", "often", "sometimes", "usually", "here", "there", "now", "when",
+    "where", "why", "how", "again", "once", "ever", "even", "else", "perhaps", "maybe",
+    "indeed", "almost", "nearly", "really", "actually", "simply", "merely",
+    "is", "are", "was", "were", "be", "been", "being", "am", "do", "does", "did",
+    "have", "has", "had", "having", "will", "would", "shall", "should", "can", "could",
+    "may", "might", "must", "ought",
+})
+
+
+def _is_quality_english_concept(name: str) -> bool:
+    """Reject obvious non-concepts (function words, bare tokens) at concept creation."""
+    n = name.strip()
+    if len(n) < 2:
+        return False
+    low = n.casefold()
+    if low in _ENGLISH_FUNCTION_WORDS:
+        return False
+    if not any(ch.isalpha() for ch in n):  # pure numbers / punctuation
+        return False
+    return True
+
+
 _ENGLISH_COPULA_RE = re.compile(r"\b(is|are|was|were)\b", re.IGNORECASE)
 _ENGLISH_INTRO_PREPOSITIONS = {
     "in",
@@ -333,7 +386,9 @@ def decompose_sentence(
     concept_names = {
         role["head"]
         for role in roles
-        if normalize_concept(role["head"]) and role["head"].casefold() not in ENGLISH_GENERIC_HEADS
+        if normalize_concept(role["head"])
+        and role["head"].casefold() not in ENGLISH_GENERIC_HEADS
+        and _is_quality_english_concept(role["head"])
     }
     if predicate:
         concept_names.add(predicate)
