@@ -4,6 +4,7 @@ import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import json
@@ -465,6 +466,122 @@ def _wiktionary_definition(term: str, *, korean: bool) -> dict[str, Any] | None:
     return None
 
 
+_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+# DuckDuckGo Lite rate-limits aggressive use, so cache results and back off after a
+# block. The chat path is low-volume; sustained crawler-scale collection needs a real
+# search API key (Brave/Serper) — env WEB_SEARCH_PROVIDER + key — not this endpoint.
+_GENWEB_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_GENWEB_CACHE_TTL = 1800.0  # 30 min
+_GENWEB_BACKOFF_UNTIL = 0.0
+
+
+def general_web_search(query: str, count: int = 6) -> list[dict[str, Any]]:
+    """Roam the OPEN web (not just Wikipedia) via DuckDuckGo Lite — a keyless, no-JS
+    endpoint that returns diverse Korean+global sources (Naver blogs, Tistory, Namuwiki,
+    news, Wikipedia). Returns title/url/snippet rows; the caller selects the best one by
+    referent resonance + relevance, so a messy source is filtered out on our end."""
+    global _GENWEB_BACKOFF_UNTIL
+    query = (query or "").strip()
+    if not query:
+        return []
+    now = time.monotonic()
+    cached = _GENWEB_CACHE.get(query)
+    if cached and now - cached[0] < _GENWEB_CACHE_TTL:
+        return cached[1]
+    if now < _GENWEB_BACKOFF_UNTIL:
+        return []  # recently blocked → don't hammer; the caller falls back to Wikipedia
+    try:
+        body = urllib.parse.urlencode({"q": query}).encode("utf-8")
+        request = urllib.request.Request(
+            "https://lite.duckduckgo.com/lite/",
+            data=body,
+            headers={"User-Agent": _BROWSER_UA, "Accept-Language": "ko,en;q=0.8"},
+        )
+        with urllib.request.urlopen(request, timeout=6) as response:  # nosec B310 - public lite search
+            html = response.read().decode("utf-8", "ignore")
+    except Exception:  # pragma: no cover - network/optional
+        _GENWEB_BACKOFF_UNTIL = now + 120.0
+        return []
+    links = re.findall(r"href=\"(https?://[^\"]+)\"\s+class='result-link'>(.*?)</a>", html, re.S)
+    if not links:
+        _GENWEB_BACKOFF_UNTIL = now + 120.0  # blocked / unexpected page → back off
+    snippets = re.findall(r"class='result-snippet'>(.*?)</td>", html, re.S)
+    rows: list[dict[str, Any]] = []
+    for index, (url, title_html) in enumerate(links[: max(1, min(count, 10))]):
+        if "duckduckgo.com" in url:
+            continue
+        title = _strip_html(title_html)
+        snippet = _strip_html(snippets[index]) if index < len(snippets) else ""
+        if not snippet:
+            continue
+        domain = re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
+        rows.append(
+            {
+                "id": f"web-{index + 1}",
+                "title": title,
+                "url": url,
+                "snippet": snippet,
+                "provider": f"web:{domain}",
+                "source_type": "open_web_search",
+                "license_status": "reference_only",
+                "search_score": (count - index),
+                "normalized_query": query,
+            }
+        )
+    if rows:
+        _GENWEB_CACHE[query] = (now, rows)
+    return rows
+
+
+_TRUSTED_DOMAINS = ("wikipedia.org", "namu.wiki", "namuwiki", "terms.naver.com", "doopedia", "britannica", "dbpedia")
+
+
+def _merge_web_candidates(query: str, count: int) -> list[dict[str, Any]]:
+    """Best-of across sources: gather DIVERSE open-web rows (DDG → Naver/Tistory/Namu/
+    news/Wikipedia) AND the precise Wikipedia entity page, then SELECT the best by
+    on-topic terms, definition shape, source trust, and entity-anchoring — so a messy
+    or off-topic source (the song '사랑이란' for '사랑이란 무엇인가', a random movie list) is
+    filtered out on our end. Searches the SUBJECT ENTITY ('사랑'), not the raw question,
+    so an exact title-collision ('사랑이란' the song) doesn't win. Falls back to
+    Wikipedia-only when the open web is rate-limited."""
+    try:
+        from packages.cgsr.cgsr.referent_resonance import query_subject_entity, answer_is_about_entity
+        entity = query_subject_entity(query) or query
+    except Exception:  # pragma: no cover
+        entity = query
+        answer_is_about_entity = None  # type: ignore
+    search_term = entity if 2 <= len(entity) <= 20 else query
+    general = general_web_search(search_term, count + 2)
+    wiki = wikipedia_search(query, count)  # keeps entity resolution / direct summary
+    lookup_terms = _lookup_terms(_normalize_lookup_query(query)) or _lookup_terms(entity)
+
+    def score(row: dict[str, Any]) -> tuple:
+        snippet = str(row.get("snippet", ""))
+        text = f"{row.get('title','')} {snippet}".lower()
+        term_hits = sum(1 for t in lookup_terms if t and t.lower() in text)
+        about = 1
+        if answer_is_about_entity is not None and len(entity) >= 2:
+            about = 1 if answer_is_about_entity(entity, snippet) else 0
+        url = str(row.get("url", "")).lower()
+        trust = 2 if any(d in url for d in _TRUSTED_DOMAINS) else (1 if row.get("provider") == "wikipedia" else 0)
+        looks_def = 1 if re.search(r"(이다|입니다|란\s|라고도|를 말한다|를 뜻한다|를 의미)", snippet) else 0
+        length_ok = 1 if len(snippet) >= 40 else 0
+        return (about, term_hits, trust, looks_def, length_ok)
+
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in sorted(general + wiki, key=score, reverse=True):
+        key = _norm_title(str(row.get("title") or ""))[:30] + str(row.get("snippet") or "")[:30]
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+        if len(merged) >= count:
+            break
+    return merged
+
+
 def _resolve_entity_by_type(entity: str, expected_type: str, host: str) -> dict[str, Any] | None:
     """Disambiguate an ambiguous name by surfing diversely: gather several candidate
     pages (action search) and pick the one whose TYPE matches what the question implies
@@ -679,6 +796,11 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
             pass
     if not is_fresh_search_query(clean_query) and is_knowledge_lookup_query(clean_query) and selected == "static":
         try:
+            # NOTE: a single-endpoint DuckDuckGo merge was tried and reverted — open-web
+            # snippets are noisy (a song "사랑이란" / a movie list) and a weak ranker let
+            # junk through, regressing answers. The right design is a real browser-driven
+            # reader (see general_web_search / _merge_web_candidates, kept as building
+            # blocks). For now use the precise, type-resolved Wikipedia path.
             results = wikipedia_search(clean_query, bounded_count)
             if results:
                 return {
