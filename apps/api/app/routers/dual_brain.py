@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 from app.services.alpha_services import alpha_service
 from packages.base_brain.scene_grounding import extract_scene_grounding
 from packages.base_brain.zero_user_answer import answer_with_base_brain
-from packages.base_brain.atanor_self_knowledge import answer_self_question
 from packages.base_brain.pack_loader import get_semantic_context, load_base_brain_pack
 from packages.holographic_fold import (
     build_field_inputs,
@@ -3179,9 +3178,12 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # "Living creature" sense: answer questions about ATANOR's own live state by
     # pulling from every subsystem at once.
     self_state = _self_state_answer(question, language)
-    # Self-model: who ATANOR is and how it works, answered from a stable curated
-    # self-knowledge base (not the web). "너 이름이 뭐야" / "어떻게 작동해" land here.
-    self_knowledge = answer_self_question(question, language) if not self_state else None
+    # Self-model removed as a curated answer table (it was rule-based: a regex
+    # picked rows from a hand-authored fact list). Identity is now answered the
+    # same way as any other concept — the graph-derived `_is_identity_question`
+    # path inside `answer_with_base_brain` realizes from the "atanor" concept and
+    # its relations. "너 누구야" reaches it via the low-quality→base-brain demote.
+    self_knowledge = None
     # Greeting / small talk must be answered conversationally — NEVER sent to web
     # search (where "오 안녕" matched the cartoon "안녕 자두야"). Short, greeting-shaped
     # inputs get a warm reply from the local conversation surface.
@@ -3272,15 +3274,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "atanor_self_sense"
         result["can_speak"] = True
 
-    # Self-model answer (name / how I work / what I am) — authoritative over the
-    # public engine, which cannot know ATANOR's own identity.
-    if self_knowledge and isinstance(response.get("result"), dict):
-        result = response["result"]
-        result["answer"] = self_knowledge["answer"]
-        result["reasoning_certificate"] = self_knowledge["reasoning_certificate"]
-        result["confidence"] = self_knowledge["confidence"]
-        result["answer_kind"] = "atanor_self_knowledge"
-        result["can_speak"] = True
+    # (The curated self-model override was removed — identity is graph-derived now.)
 
     # Greeting — conversational, never web.
     if greeting_answer and isinstance(response.get("result"), dict):
