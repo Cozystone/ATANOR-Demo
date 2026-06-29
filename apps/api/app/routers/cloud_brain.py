@@ -1514,9 +1514,58 @@ def _wiki_random_sentences(host: str, n_titles: int = 3) -> list[tuple[str, str]
     return out
 
 
+_LEARN_TOPIC_IDX = 0
+
+
+def _frontier_topics(n: int = 2) -> list[str]:
+    """Graph-driven exploration topics — the graph's OWN concepts, cycled, so it grows
+    outward from what it knows (no hardcoded topic list). Seeds from the base-brain pack
+    concepts; the cumulative store's concepts extend the frontier over time."""
+    global _LEARN_TOPIC_IDX
+    names: list[str] = []
+    try:
+        from packages.base_brain.pack_loader import load_base_brain_pack
+
+        for concept in load_base_brain_pack().semantic_graph.get("concepts", []) or []:
+            labels = concept.get("labels") or {}
+            label = str(labels.get("ko") or concept.get("canonical_name") or "").strip()  # Korean topic → Korean results
+            if label and len(label) >= 2:
+                names.append(label)
+    except Exception:  # pragma: no cover - defensive
+        return []
+    if not names:
+        return []
+    topics = [names[(_LEARN_TOPIC_IDX + i) % len(names)] for i in range(n)]
+    _LEARN_TOPIC_IDX = (_LEARN_TOPIC_IDX + n) % len(names)
+    return topics
+
+
+def _tavily_learn_sentences(topics: list[str]) -> list[tuple[str, str]]:
+    """Pull clean sentences about each topic from the search API (Tavily) — the agreed
+    web source, NOT Wikipedia-centric. Returns (topic, sentence) pairs for ingestion."""
+    try:
+        from app.services.web_search import _clean_web_snippet, has_search_api, provider_api_search
+    except Exception:
+        return []
+    if not has_search_api():
+        return []
+    out: list[tuple[str, str]] = []
+    for topic in topics:
+        for row in provider_api_search(topic, 4):
+            for raw in re.split(r"(?<=[.!?。])\s+|(?<=다\.)\s+", _clean_web_snippet(str(row.get("snippet") or ""))):
+                seg = re.sub(r"\s+", " ", raw).strip()
+                if 18 <= len(seg) <= 1000:
+                    out.append((topic, seg))
+    return out
+
+
 def _continuous_worker() -> None:
     hosts = ("en.wikipedia.org", "ko.wikipedia.org")
     hi = 0
+    _learn_interval = float(os.getenv("ATANOR_LEARN_INTERVAL_SEC", "60") or 60)
+    _daily_cap = int(os.getenv("ATANOR_LEARN_DAILY_CAP", "800") or 800)
+    _day = _time.strftime("%Y-%m-%d")
+    _used_today = 0
     while True:
         with _CONT_LOCK:
             if not _CONT["running"]:
@@ -1525,29 +1574,45 @@ def _continuous_worker() -> None:
         if _time.time() < backoff:
             _time.sleep(0.5)
             continue
-        host = hosts[hi % 2]
-        hi += 1
+        # Daily budget reset for the search API (free tier is small).
+        _today = _time.strftime("%Y-%m-%d")
+        if _today != _day:
+            _day, _used_today = _today, 0
+        # SOURCE = the search API (Tavily), graph-driven topics — the agreed design. Fall
+        # back to random Wikipedia only when no key is set or the daily budget is spent,
+        # so the learner keeps growing the graph either way.
+        from app.services.web_search import has_search_api as _has_api
+
+        use_api = _has_api() and _used_today < _daily_cap
         try:
-            batch = _wiki_random_sentences(host)
+            if use_api:
+                topics = _frontier_topics(2)
+                _used_today += len(topics)
+                batch = _tavily_learn_sentences(topics)
+                src_tag, lang_default, source_label = "tavily", "ko", "tavily-search-api"
+            else:
+                host = hosts[hi % 2]
+                hi += 1
+                batch = _wiki_random_sentences(host)
+                src_tag, lang_default, source_label = f"wiki:{host}", ("ko" if host.startswith("ko") else "en"), host
         except Exception as exc:  # rate limit / network — back off, keep looping
             with _CONT_LOCK:
                 _CONT["last_error"] = f"fetch: {type(exc).__name__}"
-                # Wikipedia 429s take time to clear; a short 8s backoff just kept
-                # hammering and starved the chat web-search of the same shared limit.
-                # Back off a full minute so the limit recovers for everyone.
                 _CONT["backoff_until"] = _time.time() + 60.0
             continue
         if not batch:
-            _time.sleep(1.0)
+            _time.sleep(_learn_interval)
             continue
         rows = [
             {
-                "source_type": "local_public_corpus_shard",
-                "source_id": f"wiki:{host}:{int(_time.time()*1000)}:{i}",
+                "source_type": "search_api_evidence" if use_api else "local_public_corpus_shard",
+                "source_id": f"{src_tag}:{int(_time.time()*1000)}:{i}",
                 "text": seg,
-                "language": "ko" if host.startswith("ko") else "en",
-                "license_hint": "CC BY-SA 4.0",
-                "source_url_or_path": f"https://{host}/wiki/{_uparse.quote(title.replace(' ', '_'), safe='')}",
+                # detect per sentence (Tavily mixes ko/en); a wrong language tag makes the
+                # ingest reject everything.
+                "language": "ko" if any("가" <= c <= "힣" for c in seg) else "en",
+                "license_hint": "reference_only" if use_api else "CC BY-SA 4.0",
+                "source_url_or_path": source_label,
             }
             for i, (title, seg) in enumerate(batch)
         ]
@@ -1565,14 +1630,14 @@ def _continuous_worker() -> None:
                 _CONT["relations_added"] += int(sem.get("relations_added") or 0)
                 _CONT["surface_added"] += int(surf.get("surface_candidates_created") or 0)
                 _CONT["last_titles"] = [t for t, _ in batch][:5]
+                _CONT["source"] = source_label
+                _CONT["api_used_today"] = _used_today
                 _CONT["last_error"] = None
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"ingest: {type(exc).__name__}: {exc}"[:160]
-        # pace to respect public API rate limits. Each fetch makes several wiki calls,
-        # so 1.2s pacing (~50 fetches/min) was enough to get the IP 429-rate-limited,
-        # which also broke the chat's web search. 4s keeps learning steady but polite.
-        _time.sleep(4.0)
+        # Pace to respect the search-API free tier (default 60s; ATANOR_LEARN_INTERVAL_SEC).
+        _time.sleep(_learn_interval)
 
 
 @router.post("/learning/continuous/start")

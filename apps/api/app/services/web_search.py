@@ -612,6 +612,65 @@ def _clean_web_title(title: str) -> str:
     return t.strip()
 
 
+_SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:8888").rstrip("/")
+_SEARXNG_OK: dict[str, Any] = {"checked": 0.0, "up": False}
+
+
+def _searxng_reachable() -> bool:
+    """Cache a reachability probe — a self-hosted SearXNG is unlimited but may be down."""
+    now = time.monotonic()
+    if now - float(_SEARXNG_OK["checked"]) < 60.0:
+        return bool(_SEARXNG_OK["up"])
+    up = False
+    try:
+        req = urllib.request.Request(_SEARXNG_URL + "/healthz", headers={"User-Agent": WEB_USER_AGENT})
+        with urllib.request.urlopen(req, timeout=2) as resp:  # nosec B310 - local instance
+            up = resp.status == 200
+    except Exception:
+        up = False
+    _SEARXNG_OK.update({"checked": now, "up": up})
+    return up
+
+
+def searxng_search(query: str, count: int = 6) -> list[dict[str, Any]]:
+    """Query a self-hosted SearXNG metasearch instance (unlimited, keyless, diverse —
+    aggregates Google/Bing/DuckDuckGo/Namuwiki/blogs/news). The agreed primary web
+    source. Returns title/url/snippet rows; empty when the instance is down."""
+    query = (query or "").strip()
+    if not query:
+        return []
+    url = _SEARXNG_URL + "/search?" + urllib.parse.urlencode({"q": query, "format": "json", "language": "ko"})
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": WEB_USER_AGENT, "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=8) as resp:  # nosec B310 - local instance
+            payload = json.loads(resp.read().decode("utf-8", "ignore"))
+    except Exception:  # pragma: no cover - network/optional
+        return []
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(payload.get("results", []) or [], start=1):
+        snippet = _clean_web_snippet(str(item.get("content") or ""))
+        if not snippet:
+            continue
+        url_ = str(item.get("url") or "")
+        domain = re.sub(r"^https?://(www\.)?", "", url_).split("/")[0]
+        rows.append(
+            {
+                "id": f"searxng-{index}",
+                "title": _clean_web_title(str(item.get("title") or "")),
+                "url": url_,
+                "snippet": snippet,
+                "provider": f"searxng:{domain}",
+                "source_type": "metasearch",
+                "license_status": "reference_only",
+                "search_score": max(1, count - index + 1),
+                "normalized_query": query,
+            }
+        )
+        if len(rows) >= max(1, min(count, 12)):
+            break
+    return rows
+
+
 def brave_search(query: str, count: int = 6) -> list[dict[str, Any]]:
     """Real multi-source web search via the Brave Search API (a full web index, the way
     ChatGPT/Perplexity retrieve). Keyed by BRAVE_SEARCH_API_KEY (free tier ~2000/mo).
@@ -698,7 +757,12 @@ def tavily_search(query: str, count: int = 6) -> list[dict[str, Any]]:
 
 
 def provider_api_search(query: str, count: int = 6) -> list[dict[str, Any]]:
-    """Use whichever real search API is configured (Tavily → Brave). Empty if none."""
+    """Real multi-source web search. PRIMARY = self-hosted SearXNG (unlimited, keyless,
+    diverse metasearch) — the agreed source; then Tavily/Brave if a key is set."""
+    if _searxng_reachable():
+        rows = searxng_search(query, count)
+        if rows:
+            return rows
     if os.getenv("TAVILY_API_KEY"):
         rows = tavily_search(query, count)
         if rows:
@@ -709,7 +773,7 @@ def provider_api_search(query: str, count: int = 6) -> list[dict[str, Any]]:
 
 
 def has_search_api() -> bool:
-    return bool(os.getenv("TAVILY_API_KEY") or os.getenv("BRAVE_SEARCH_API_KEY"))
+    return bool(_searxng_reachable() or os.getenv("TAVILY_API_KEY") or os.getenv("BRAVE_SEARCH_API_KEY"))
 
 # DuckDuckGo Lite rate-limits aggressive use, so cache results and back off after a
 # block. The chat path is low-volume; sustained crawler-scale collection needs a real
