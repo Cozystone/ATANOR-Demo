@@ -38,8 +38,11 @@ def _wiki_get_json(url: str, *, timeout: float = 2.5, retries: int = 1) -> Any:
             _WIKI_CACHE[url] = (now, payload)
             return payload
         except urllib.error.HTTPError as exc:
-            if exc.code in (429, 500, 502, 503) and attempt < retries:
-                time.sleep(1.2 * (attempt + 1))
+            # 429 = rate-limited; an immediate retry just gets another 429, so give up
+            # at once (fast fail) instead of sleeping. Only retry genuinely transient
+            # 5xx server errors, and with a short backoff.
+            if exc.code in (500, 502, 503) and attempt < retries:
+                time.sleep(0.4 * (attempt + 1))
                 continue
             return {}
         except Exception:

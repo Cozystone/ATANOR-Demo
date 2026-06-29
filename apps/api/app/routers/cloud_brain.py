@@ -1532,7 +1532,10 @@ def _continuous_worker() -> None:
         except Exception as exc:  # rate limit / network — back off, keep looping
             with _CONT_LOCK:
                 _CONT["last_error"] = f"fetch: {type(exc).__name__}"
-                _CONT["backoff_until"] = _time.time() + 8.0
+                # Wikipedia 429s take time to clear; a short 8s backoff just kept
+                # hammering and starved the chat web-search of the same shared limit.
+                # Back off a full minute so the limit recovers for everyone.
+                _CONT["backoff_until"] = _time.time() + 60.0
             continue
         if not batch:
             _time.sleep(1.0)
@@ -1566,8 +1569,10 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"ingest: {type(exc).__name__}: {exc}"[:160]
-        # pace to respect public API rate limits (sustained, not bursty)
-        _time.sleep(1.2)
+        # pace to respect public API rate limits. Each fetch makes several wiki calls,
+        # so 1.2s pacing (~50 fetches/min) was enough to get the IP 429-rate-limited,
+        # which also broke the chat's web search. 4s keeps learning steady but polite.
+        _time.sleep(4.0)
 
 
 @router.post("/learning/continuous/start")
