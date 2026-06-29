@@ -2,6 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { browserMemorySafeMode, chromeHeapSnapshot, graphRenderFpsCap, resolveGraphPixelRatio, shouldRenderGraphFrame, writeGraphTelemetry } from "./graphRendererGuardrails";
 import { computeWebGpuGraphLayout } from "./webgpuLayout";
 
@@ -1354,8 +1357,9 @@ function updateEdgeBuffers(state: SceneState, elapsed: number) {
       // Clear brightness CONTRAST by activation: a resting edge sits dim (~50%),
       // an active one rises so active lines visibly stand out.
       const activeness = Math.min(1, Math.max(signal, edge.active ? 0.55 : 0));
-      // Rest ~50%, active blows up to ~1000% (heavy overbright / bloom).
-      tempColor.multiplyScalar((0.5 + 2.0 * activeness) * (0.92 + edgeDepthCue * 0.3));
+      // Full graph stays visible; active edges go overbright so the bloom pass
+      // (post-processing) makes ONLY the active ones glow/bleed at scale.
+      tempColor.multiplyScalar((0.5 + 2.5 * activeness) * (0.92 + edgeDepthCue * 0.3));
       tempColor.lerp(depthWhiteColor, edgeDepthCue * 0.03);
       if (freshGlow > 0) tempColor.multiplyScalar(1 + freshGlow * 3.1);
     }
@@ -1773,6 +1777,27 @@ export default function Rag3DScene({
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.replaceChildren(renderer.domElement);
 
+    // Bloom post-processing (dark mode only): the whole graph stays visible, but
+    // pixels brighter than the threshold (the OVERBRIGHT active edges/nodes) glow
+    // and bleed, so activation pops at scale without dimming the dormant graph.
+    let composer: EffectComposer | null = null;
+    let bloomPass: UnrealBloomPass | null = null;
+    if (darkMode) {
+      composer = new EffectComposer(renderer);
+      composer.setPixelRatio(pixelRatio);
+      composer.setSize(container.clientWidth, container.clientHeight);
+      composer.addPass(new RenderPass(scene, camera));
+      // (resolution, strength, radius, threshold) — threshold 0.85 keeps the
+      // dormant graph (dim) out of the glow; only active overbright lines bloom.
+      bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(container.clientWidth, container.clientHeight),
+        1.1,
+        0.6,
+        0.85,
+      );
+      composer.addPass(bloomPass);
+    }
+
     const group = new THREE.Group();
     group.rotation.set(DEFAULT_GRAPH_TILT_X, DEFAULT_GRAPH_TILT_Y, 0);
     scene.add(group);
@@ -1921,6 +1946,8 @@ export default function Rag3DScene({
       camera.aspect = container.clientWidth / Math.max(1, container.clientHeight);
       camera.updateProjectionMatrix();
       renderer.setSize(container.clientWidth, container.clientHeight);
+      composer?.setSize(container.clientWidth, container.clientHeight);
+      bloomPass?.setSize(container.clientWidth, container.clientHeight);
     }
 
     let visibilityPaused = typeof document !== "undefined" ? document.hidden : false;
@@ -2001,7 +2028,8 @@ export default function Rag3DScene({
           radius: viewportRadiusForCamera(camera),
         });
       }
-      renderer.render(scene, camera);
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
     }
     animate();
 
