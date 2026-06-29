@@ -29,6 +29,9 @@ type Metrics = {
   firehose_unique?: number;
   firehose_sources?: number;
   relation_checks_per_second?: number;
+  corroborated_pairs?: number;
+  corroborated_concepts?: number;
+  relation_recent?: string[];
 };
 
 type View = "concept" | "surface";
@@ -139,8 +142,25 @@ export default function LiveLearningPanel({
         <span>발화 파이어호스</span>
         <b>{(m?.firehose_unique ?? 0).toLocaleString()}문장</b>
         <i>{m?.firehose_per_second ? `${m.firehose_per_second.toLocaleString()}/초` : "코퍼스 대기"}</i>
-        <em>{(m?.relation_checks_per_second ?? 0).toLocaleString()} 검증/초</em>
+        <em>{(m?.relation_checks_per_second ?? 0).toLocaleString()} 관계 점검/초</em>
       </div>
+      {((m?.corroborated_concepts ?? 0) > 0 || (m?.corroborated_pairs ?? 0) > 0) && (
+        <div className="atanor-livelearn-corroboration">
+          <span title="동일 개념이 2개 이상 독립 출처에서 확인된 수 — 교차출처 중복확인(팩트체킹 원리)">
+            ✓ 다출처 확인 개념 <b>{(m?.corroborated_concepts ?? 0).toLocaleString()}</b>개
+            {(m?.corroborated_pairs ?? 0) > 0 && (
+              <> · 확인 연결 <b>{(m.corroborated_pairs!).toLocaleString()}</b>쌍</>
+            )}
+          </span>
+          {m?.relation_recent && m.relation_recent.some(r => r.startsWith("✓")) && (
+            <ul className="atanor-livelearn-corr-recent">
+              {m.relation_recent.filter(r => r.startsWith("✓")).slice(0, 3).map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <div className="atanor-livelearn-foot">
         수집(발화)≠이해(개념) 분리 · 실제 공개 문장 · 가짜 성장 없음{m?.last_error ? ` · ${m.last_error}` : ""}
       </div>
