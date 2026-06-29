@@ -13,6 +13,14 @@ from typing import Any
 from urllib.parse import quote, quote_plus
 
 
+# Wikimedia's User-Agent policy REQUIRES a descriptive agent with a real contact
+# (URL or email). A generic / "contact: local" agent gets aggressively 429'd — that
+# was the real cause of the recurring "web_unreachable": with a proper UA the same
+# REST calls return 200 immediately. Override per-deployment via ATANOR_WEB_UA.
+WEB_USER_AGENT = os.getenv("ATANOR_WEB_UA") or (
+    "ATANOR-KnowledgeBot/0.2 (+https://github.com/ATANOR-Demo; ATANOR knowledge grounding)"
+)
+
 # Small TTL cache so repeated questions don't re-hit Wikipedia (cuts latency and
 # avoids 429 rate-limiting). Keyed by request URL.
 _WIKI_CACHE: dict[str, tuple[float, Any]] = {}
@@ -30,7 +38,7 @@ def _wiki_get_json(url: str, *, timeout: float = 2.5, retries: int = 1) -> Any:
     cached = _WIKI_CACHE.get(url)
     if cached and now - cached[0] < _WIKI_CACHE_TTL:
         return cached[1]
-    request = urllib.request.Request(url, headers={"User-Agent": "ATANORAlpha/0.1 (web-search; contact: local)"})
+    request = urllib.request.Request(url, headers={"User-Agent": WEB_USER_AGENT})
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - bounded public API
@@ -299,7 +307,7 @@ def _wikipedia_extract_for_page(title: str) -> str:
         "https://ko.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=0"
         f"&format=json&titles={page_slug}"
     )
-    request = urllib.request.Request(page_url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
+    request = urllib.request.Request(page_url, headers={"User-Agent": WEB_USER_AGENT})
     with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public API endpoint
         body = json.loads(response.read().decode("utf-8"))
     pages = (body.get("query", {}) or {}).get("pages", {}) or {}
@@ -388,6 +396,105 @@ def _wiki_host_for_query(query: str) -> str:
     return "ko.wikipedia.org" if re.search(r"[가-힣]", query or "") else "en.wikipedia.org"
 
 
+def _norm_title(title: str) -> str:
+    return re.sub(r"[\s_]+", "", str(title or "").lower())
+
+
+def _wiki_rest_summary(term: str, host: str) -> dict[str, Any] | None:
+    """Direct REST summary for an exact page title. Catches entities the action
+    search misses (e.g. '빌게이츠' resolves to the '빌 게이츠' page) and is the most
+    rate-limit-friendly Wikipedia endpoint. Returns a result row or None."""
+    term = (term or "").strip()
+    if not term:
+        return None
+    slug = quote(term.replace(" ", "_"), safe="")
+    summary = _wiki_get_json(f"https://{host}/api/rest_v1/page/summary/{slug}", timeout=3.0)
+    if not isinstance(summary, dict) or not summary:
+        return None
+    if str(summary.get("type") or "") == "disambiguation":
+        return None
+    extract = _strip_html(str(summary.get("extract") or ""))
+    if not extract:
+        return None
+    title = _strip_html(str(summary.get("title") or term))
+    page_url = (summary.get("content_urls", {}) or {}).get("desktop", {}).get("page") or f"https://{host}/wiki/{slug}"
+    return {
+        "id": "wikipedia-direct",
+        "title": title,
+        "url": page_url,
+        "snippet": extract,
+        "provider": "wikipedia",
+        "source_type": "encyclopedia_summary",
+        "license_status": "reference_only",
+        "search_score": 250,
+        "query_terms_matched": 2,
+        "normalized_query": term,
+    }
+
+
+def _wiktionary_definition(term: str, *, korean: bool) -> dict[str, Any] | None:
+    """A free DICTIONARY source (different content type from the encyclopedia) for
+    plain definitional 'X가 뭐야' queries — real source diversity beyond Wikipedia
+    while staying on a keyless, language-aware endpoint."""
+    term = (term or "").strip()
+    if not term:
+        return None
+    host = "ko.wiktionary.org" if korean else "en.wiktionary.org"
+    slug = quote(term.replace(" ", "_"), safe="")
+    body = _wiki_get_json(f"https://{host}/api/rest_v1/page/definition/{slug}", timeout=3.0)
+    if not isinstance(body, dict) or not body:
+        return None
+    lang_key = "ko" if korean else "en"
+    entries = body.get(lang_key) or next((v for v in body.values() if isinstance(v, list)), [])
+    for entry in entries or []:
+        for definition in entry.get("definitions", []) or []:
+            text = _strip_html(str(definition.get("definition") or "")).strip()
+            if len(text) >= 6:
+                return {
+                    "id": "wiktionary-1",
+                    "title": term,
+                    "url": f"https://{host}/wiki/{slug}",
+                    "snippet": text,
+                    "provider": "wiktionary",
+                    "source_type": "dictionary_definition",
+                    "license_status": "reference_only",
+                    "search_score": 180,
+                    "query_terms_matched": 1,
+                    "normalized_query": term,
+                }
+    return None
+
+
+def _diverse_fallback_rows(query: str, lookup: str, lookup_terms: list[str], primary_host: str) -> list[dict[str, Any]]:
+    """When the action search finds nothing, harvest from several keyless sources
+    (direct Wikipedia summary in both language editions + Wiktionary) so a query
+    isn't dead just because the strict title search missed."""
+    korean = primary_host.startswith("ko")
+    other_host = "en.wikipedia.org" if korean else "ko.wikipedia.org"
+    # Candidate page titles: the cleaned lookup, plus each multi-char term.
+    candidates: list[str] = []
+    for cand in [lookup, *lookup_terms, query.strip()]:
+        cand = (cand or "").strip()
+        if cand and cand not in candidates:
+            candidates.append(cand)
+    rows: list[dict[str, Any]] = []
+    for host in (primary_host, other_host):
+        for cand in candidates[:4]:
+            row = _wiki_rest_summary(cand, host)
+            if row:
+                rows.append(row)
+                break
+        if rows:
+            break
+    if not rows:
+        for cand in candidates[:2]:
+            wk = _wiktionary_definition(cand, korean=korean)
+            if wk:
+                rows.append(wk)
+                break
+    return rows
+
+
 def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     lookup = _normalize_lookup_query(query)
     lookup_terms = _lookup_terms(lookup)
@@ -441,12 +548,32 @@ def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
             if len(bounded_results) >= bounded_count:
                 break
             bounded_results.append(result)
+    # Precision: the action search ranks by term frequency, so a person/entity query
+    # ("빌게이츠") can surface a tangential page ("빌게이츠꽃등에", a fly named after him,
+    # or "X (소셜 네트워크)" for "일론 머스크"). The exact-title REST summary is the
+    # authoritative page for the cleaned term — prepend it so it wins, deduped.
+    direct = _wiki_rest_summary(lookup, wiki_host) or (
+        _wiki_rest_summary(lookup_terms[0], wiki_host) if lookup_terms else None
+    )
+    if direct:
+        seen_titles = {_norm_title(direct["title"])}
+        merged = [direct]
+        for row in bounded_results:
+            if _norm_title(str(row.get("title") or "")) not in seen_titles:
+                merged.append(row)
+                seen_titles.add(_norm_title(str(row.get("title") or "")))
+        bounded_results = merged[:bounded_count]
+    # Diversity + robustness: if the strict action search found nothing (title
+    # mismatch, or it was 429'd), harvest from direct summaries (both language
+    # editions) and Wiktionary so the query still gets a real, cited source.
+    if not bounded_results:
+        bounded_results = _diverse_fallback_rows(query, lookup, lookup_terms, wiki_host)
     return bounded_results
 
 
 def news_rss_search(query: str, count: int = 5) -> list[dict[str, Any]]:
     url = f"https://news.google.com/rss/search?q={quote_plus(query)}&hl=ko&gl=KR&ceid=KR:ko"
-    request = urllib.request.Request(url, headers={"User-Agent": "ATANORAlpha/0.1 web-search"})
+    request = urllib.request.Request(url, headers={"User-Agent": WEB_USER_AGENT})
     with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310 - bounded public RSS endpoint
         xml = response.read()
     root = ET.fromstring(xml)
