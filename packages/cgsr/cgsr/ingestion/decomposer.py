@@ -488,6 +488,47 @@ def decompose_sentence(
                 }
             )
 
+    # Predicate-anchored relations: turn each sentence's predicate-argument structure
+    # into clean, queryable EDGES — subject --<predicate>--> object — so noun-noun
+    # ASSOCIATIONS become first-class (not buried in case_frames, and NOT the {ROLE}_OF
+    # parse-structure noise above). The relation TYPE is the predicate lemma itself
+    # (real knowledge from data), e.g. "Corporation --두다--> 델라웨어". Only
+    # subject(TOPIC/SUBJ) -> object(OBJ/ADVL), and only when BOTH ends survived the
+    # concept quality filter (so junk heads do not become edges).
+    _EMIT_PREDICATE_RELATIONS = True
+    if _EMIT_PREDICATE_RELATIONS and predicate:
+        _pred_rel = normalize_concept(predicate) or str(predicate)
+        _subject_heads = [r["head"] for r in roles if r.get("role") in ("TOPIC", "SUBJ")]
+        _object_roles = [r for r in roles if r.get("role") in ("OBJ", "ADVL")]
+        for _s_head in _subject_heads:
+            _src = concepts.get(normalize_concept(_s_head))
+            if not _src:
+                continue
+            for _obj in _object_roles:
+                _tgt = concepts.get(normalize_concept(_obj["head"]))
+                if not _tgt or _tgt["concept_id"] == _src["concept_id"]:
+                    continue
+                _dk = digest_id(
+                    "relation_key",
+                    f"{_src['concept_id']}:{_pred_rel}:{_tgt['concept_id']}:{sentence.source_hash}",
+                )
+                relations.append(
+                    {
+                        "relation_id": digest_id("vsr", _dk),
+                        "source_concept_id": _src["concept_id"],
+                        "relation": _pred_rel,
+                        "target_concept_id": _tgt["concept_id"],
+                        "language": sentence.language,
+                        "dedupe_key": _dk,
+                        "provenance": provenance,
+                        "verification": verification,
+                        "created_at": created_at,
+                        "updated_at": created_at,
+                        "predicate": predicate,
+                        "object_marker": _obj.get("marker"),
+                    }
+                )
+
     # IS_A: for a copula DEFINITION ("삼성전자는 … 기업이다"), record subject is_a category.
     # The case-role extractor leaves the copula predicate empty and the subject as TOPIC,
     # so extract the category directly and ensure both ends are concepts. This builds a
