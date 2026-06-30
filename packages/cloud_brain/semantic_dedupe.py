@@ -1,10 +1,33 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any
 
 from .semantic_store import SemanticCloudStore, utc_now_iso
+
+
+def _append_history(store: SemanticCloudStore, kind: str, event: dict[str, Any]) -> None:
+    """Append-only temporal-event sidecar for 4D permanent memory (BLOCKER #2).
+
+    When an existing concept/relation row is updated in place (confidence/trust/
+    seen_count), the prior state would otherwise be lost. This records each change
+    as an append-only event in ``<store>/<kind>_history.jsonl`` so the timeline is
+    preserved and ``V(t)`` is reconstructable.
+
+    Pure observability: it does NOT change upsert semantics, is NOT part of the
+    answer-path ``STORE_FILES`` (filename differs from ``concepts.jsonl`` /
+    ``relations.jsonl``), and any failure is swallowed so it can never break the
+    live write path.
+    """
+    try:
+        path = store.paths["store"] / f"{kind}_history.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    except Exception:
+        pass
 
 
 ALIAS_CANONICAL: dict[str, str] = {
@@ -84,6 +107,7 @@ def resolve_or_create_concept(candidate: dict[str, Any], store: SemanticCloudSto
         }
     else:
         row = concepts[concept_id]
+        _prev = {"confidence": row.get("confidence"), "trust": row.get("trust"), "seen_count": row.get("seen_count")}
         seen = int(row.get("seen_count") or 0) + 1
         old_conf = float(row.get("confidence") or 0.5)
         new_conf = float(candidate.get("confidence") or old_conf)
@@ -97,6 +121,12 @@ def resolve_or_create_concept(candidate: dict[str, Any], store: SemanticCloudSto
         if source_hash and source_hash not in row.get("source_hashes", []):
             row.setdefault("source_hashes", []).append(source_hash)
         row["updated_at"] = now
+        _append_history(store, "concept", {
+            "t_observed": now, "concept_id": concept_id, "reason": "dedupe_upsert",
+            "prev": _prev,
+            "next": {"confidence": row["confidence"], "trust": row["trust"], "seen_count": row["seen_count"]},
+            "source_hash": source_hash,
+        })
     store.save_concepts(concepts)
     return concepts[concept_id], created
 
@@ -136,6 +166,8 @@ def upsert_semantic_relation(
         }
     else:
         row = relations[relation_id]
+        _prev = {"confidence": row.get("confidence"), "trust": row.get("trust"),
+                 "weight": row.get("weight"), "seen_count": row.get("seen_count")}
         seen = int(row.get("seen_count") or 0) + 1
         old_conf = float(row.get("confidence") or 0.5)
         new_conf = float(confidence or old_conf)
@@ -146,5 +178,12 @@ def upsert_semantic_relation(
         if source_hash and source_hash not in row.get("source_hashes", []):
             row.setdefault("source_hashes", []).append(source_hash)
         row["updated_at"] = now
+        _append_history(store, "relation", {
+            "t_observed": now, "relation_id": relation_id, "reason": "dedupe_upsert",
+            "prev": _prev,
+            "next": {"confidence": row["confidence"], "trust": row["trust"],
+                     "weight": row["weight"], "seen_count": row["seen_count"]},
+            "source_hash": source_hash,
+        })
     store.save_relations(relations)
     return relations[relation_id], created

@@ -381,6 +381,23 @@ def _copula_category(text: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+# Source-aware trust tiering. Community/social content (Reddit, X, DCInside, etc.) is
+# ingested as a LOW-trust "claim/opinion" tier so the phase-interference layer is NOT
+# relied on as a bias filter (it does referent-type selection, not veracity): biased
+# claims enter low-trust and only rise via independent multi-source corroboration
+# (seen_count) + the verification/4D-consistency layer. Curated/structured sources keep
+# the default tier.
+_TRUST_TIERS: dict[str, tuple[float, float]] = {
+    # source_type: (confidence, trust)
+    "community_social": (0.35, 0.30),
+}
+_DEFAULT_TIER = (0.6, 0.55)
+
+
+def _trust_for_source(source_type: str | None) -> tuple[float, float]:
+    return _TRUST_TIERS.get(str(source_type or ""), _DEFAULT_TIER)
+
+
 def decompose_sentence(
     sentence: SourceSentence,
     decision: VerificationDecision,
@@ -398,6 +415,7 @@ def decompose_sentence(
     created_at = utc_now()
     provenance = _provenance(sentence, ingest_run_id)
     verification = _verification_block(decision)
+    _conf, _trust = _trust_for_source(sentence.source_type)
     if sentence.language == "en":
         roles, predicate = extract_english_case_roles(sentence.text)
     else:
@@ -422,6 +440,13 @@ def decompose_sentence(
             "canonical_name": canonical,
             "language": sentence.language,
             "dedupe_key": dedupe_key,
+            # 4D pipeline fix (Codex #2): unify concept schema with the semantic_dedupe
+            # path so the two ingestion routes produce consistent rows.
+            # Trust is source-aware (community/social = low tier); see _trust_for_source.
+            "confidence": _conf,
+            "trust": _trust,
+            "seen_count": 1,
+            "source_hashes": [sentence.source_hash] if sentence.source_hash else [],
             "provenance": provenance,
             "verification": verification,
             "created_at": created_at,
@@ -429,31 +454,39 @@ def decompose_sentence(
         }
 
     relations: list[dict[str, Any]] = []
-    predicate_concept = concepts.get(predicate) if predicate else None
-    for role in roles:
-        source = concepts.get(role["head"])
-        if not source or not predicate_concept:
-            continue
-        rel_name = f"{role['role']}_OF"
-        dedupe_key = digest_id(
-            "relation_key",
-            f"{source['concept_id']}:{rel_name}:{predicate_concept['concept_id']}:{sentence.source_hash}",
-        )
-        relations.append(
-            {
-                "relation_id": digest_id("vsr", dedupe_key),
-                "source_concept_id": source["concept_id"],
-                "relation": rel_name,
-                "target_concept_id": predicate_concept["concept_id"],
-                "language": sentence.language,
-                "dedupe_key": dedupe_key,
-                "provenance": provenance,
-                "verification": verification,
-                "created_at": created_at,
-                "updated_at": created_at,
-                "case_role": role,
-            }
-        )
+    # 4D pipeline fix (Codex review #1): grammatical role relations ({ROLE}_OF) are
+    # NOT written to the semantic relations store. They duplicate case_frames.case_roles
+    # (built below) and were ~95.5% of relation volume — parse structure, not knowledge —
+    # which buried the semantic layer. The role information is preserved in case_frames.
+    # The semantic relations store now holds only IS_A + verified typed predicates.
+    # Flip _EMIT_ROLE_RELATIONS to True only to restore the legacy behaviour.
+    _EMIT_ROLE_RELATIONS = False
+    if _EMIT_ROLE_RELATIONS:
+        predicate_concept = concepts.get(predicate) if predicate else None
+        for role in roles:
+            source = concepts.get(role["head"])
+            if not source or not predicate_concept:
+                continue
+            rel_name = f"{role['role']}_OF"
+            dedupe_key = digest_id(
+                "relation_key",
+                f"{source['concept_id']}:{rel_name}:{predicate_concept['concept_id']}:{sentence.source_hash}",
+            )
+            relations.append(
+                {
+                    "relation_id": digest_id("vsr", dedupe_key),
+                    "source_concept_id": source["concept_id"],
+                    "relation": rel_name,
+                    "target_concept_id": predicate_concept["concept_id"],
+                    "language": sentence.language,
+                    "dedupe_key": dedupe_key,
+                    "provenance": provenance,
+                    "verification": verification,
+                    "created_at": created_at,
+                    "updated_at": created_at,
+                    "case_role": role,
+                }
+            )
 
     # IS_A: for a copula DEFINITION ("삼성전자는 … 기업이다"), record subject is_a category.
     # The case-role extractor leaves the copula predicate empty and the subject as TOPIC,
@@ -473,6 +506,11 @@ def decompose_sentence(
                     "canonical_name": canon,
                     "language": sentence.language,
                     "dedupe_key": dk,
+                    # 4D pipeline fix (Codex #2): unify concept schema (see above).
+                    "confidence": _conf,
+                    "trust": _trust,
+                    "seen_count": 1,
+                    "source_hashes": [sentence.source_hash] if sentence.source_hash else [],
                     "provenance": provenance,
                     "verification": verification,
                     "created_at": created_at,

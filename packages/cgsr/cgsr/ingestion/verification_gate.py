@@ -37,6 +37,7 @@ ALLOWED_SOURCE_TYPES = {
     "graph_hub_verified",
     "verified_store_rebuild",
     "local_proof_seed",
+    "community_social",
 }
 FORBIDDEN_SOURCE_TYPES = {"local_semantic_acceleration_batch", "mock_template", "unknown_origin"}
 ENGLISH_FACT_RE = re.compile(

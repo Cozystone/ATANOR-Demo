@@ -27,6 +27,7 @@ ALLOWED_SOURCE_TYPES = {
     "manual_public_sentence",
     "verified_store_rebuild",
     "user_provided_allowed",
+    "community_social",
 }
 
 

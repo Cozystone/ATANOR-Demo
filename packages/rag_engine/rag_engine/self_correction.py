@@ -43,7 +43,11 @@ INVERSE_RELATIONS = {
     "required_by": "depends_on",
 }
 
-FUNCTIONAL_RELATIONS = {
+# Fallback kept for resilience; the live value is derived from the data sidecar
+# data/ontology/relation_type_schema.jsonl (4D BLOCKER #1: functional relations
+# are declared as versioned DATA, not a hand-coded code constant). If the sidecar
+# is missing/unreadable, behaviour falls back to this set unchanged.
+_FALLBACK_FUNCTIONAL_RELATIONS = {
     "parent",
     "child",
     "born_in",
@@ -52,6 +56,18 @@ FUNCTIONAL_RELATIONS = {
     "capital_of",
     "part_of",
 }
+
+try:
+    from .relation_type_schema import functional_relations as _functional_relations
+except ImportError:
+    # loader module genuinely unavailable -> safe fallback
+    FUNCTIONAL_RELATIONS = _FALLBACK_FUNCTIONAL_RELATIONS
+else:
+    # Codex review: only a MISSING/EMPTY sidecar may fall back silently (loader
+    # returns an empty set -> `or _FALLBACK`). An INVALID sidecar (bad JSON,
+    # forbidden instance field, invalid temporal_policy) raises here and is
+    # intentionally NOT caught — schema corruption must fail loud, not be hidden.
+    FUNCTIONAL_RELATIONS = _functional_relations() or _FALLBACK_FUNCTIONAL_RELATIONS
 
 
 @dataclass(frozen=True)
