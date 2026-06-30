@@ -393,12 +393,10 @@ _TRUST_TIERS: dict[str, tuple[float, float]] = {
 }
 _DEFAULT_TIER = (0.6, 0.55)
 
-# Copula / light verbs carry no relational content as edge types — they were the bulk
-# of predicate-edge noise. Predicate relations skip these (IS_A / attributes cover them).
-_LIGHT_PREDICATES = {
-    "be", "have", "do", "become", "make", "get",
-    "하다", "있다", "되다", "같다", "이다", "돼다", "지다", "들다", "보다", "주다",
-}
+# (Removed the hand-listed _LIGHT_PREDICATES stoplist — a rule table. Predicate
+# importance is now derived from the graph's own distribution by
+# packages.cloud_brain.neuroplasticity.predicate_informativeness, then shaped by usage
+# and decay. See the predicate-relation emission below.)
 
 
 def _trust_for_source(source_type: str | None) -> tuple[float, float]:
@@ -505,13 +503,14 @@ def decompose_sentence(
     _EMIT_PREDICATE_RELATIONS = True
     if _EMIT_PREDICATE_RELATIONS and predicate:
         _pred_rel = normalize_concept(predicate) or str(predicate)
-        # Skip copula / light verbs: they carry no relational content ("X be Y",
-        # "X 하다 Y") and are already covered by IS_A / attributes — they were the bulk
-        # of the noise (English "be" alone ~17%). Keep only contentful predicates.
-        if _pred_rel in _LIGHT_PREDICATES:
-            _subject_heads = []
-        else:
-            _subject_heads = [r["head"] for r in roles if r.get("role") in ("TOPIC", "SUBJ")]
+        # Emit ALL contentful predicates — no hand-listed light-verb stoplist (that was a
+        # rule table). Predicate IMPORTANCE is set later, data-driven, by
+        # neuroplasticity.predicate_informativeness: a predicate used by a huge diverse
+        # set of subjects (copula / 하다 / 있다) gets a low informativeness weight and
+        # rarely surfaces; a selective predicate (발견하다 / 위치하다) gets a high weight.
+        # Importance becomes a continuous WEIGHT (then shaped by usage + decay), not a
+        # binary in/out list — the grammar-vs-knowledge (LAD) boundary, made statistical.
+        _subject_heads = [r["head"] for r in roles if r.get("role") in ("TOPIC", "SUBJ")]
         _object_roles = [r for r in roles if r.get("role") in ("OBJ", "ADVL")]
         for _s_head in _subject_heads:
             _src = concepts.get(normalize_concept(_s_head))
