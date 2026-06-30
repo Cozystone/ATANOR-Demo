@@ -420,6 +420,13 @@ KO_RELATION = {
 def _ko_relation_clause(relation_name: str, target_label: str) -> str:
     spec = KO_RELATION.get(relation_name)
     if spec is None:
+        # Predicate-anchored relation: relation_name IS a Korean verb lemma
+        # (생산하다 / 발견하다 / 사용하다 ...). Render it with REGULAR morphology only —
+        # the 하다-class ("생산하다" -> "생산합니다"). That is grammar (LAD), not a
+        # knowledge rule; irregular verbs fall back to the safe generic clause so we
+        # never emit a mis-conjugated form.
+        if relation_name.endswith("하다") and len(relation_name) > 2:
+            return f"{_object(target_label)} {relation_name[:-2]}합니다"
         return f"{_with_and(target_label)} 관련이 있습니다"
     kind, verb = spec
     if kind == "object":
@@ -447,7 +454,9 @@ def _korean_relation_sentence(
         if len(clauses) >= max_relations:
             break
         relation_name = str(relation.get("relation") or "related_to")
-        if relation_name not in KO_RELATION:
+        # allow curated relations AND predicate-anchored verb relations (하다-class),
+        # which _ko_relation_clause renders via regular morphology
+        if relation_name not in KO_RELATION and not relation_name.endswith("하다"):
             continue
         target_id = str(relation.get("target") or "")
         if target_id not in context_map and "_" in target_id:
