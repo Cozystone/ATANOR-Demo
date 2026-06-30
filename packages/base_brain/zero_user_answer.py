@@ -442,7 +442,10 @@ def _korean_relation_sentence(
     """Aggregate a concept's relations: '이는 <clause1>. 또한 <clause2>.' — one
     subject ('이는' = it), correct particles, no subject repetition."""
     clauses: list[str] = []
-    for relation in primary.get("relations", [])[:max_relations]:
+    seen: set[tuple[str, str]] = set()
+    for relation in primary.get("relations", []):
+        if len(clauses) >= max_relations:
+            break
         relation_name = str(relation.get("relation") or "related_to")
         if relation_name not in KO_RELATION:
             continue
@@ -453,6 +456,12 @@ def _korean_relation_sentence(
         target_label = _label(target, "ko")
         if not target_label:
             continue
+        # dedup: the cloud graph can carry several identical (relation, target)
+        # edges; do not emit "또한 X의 한 종류입니다" twice.
+        key = (relation_name, target_label)
+        if key in seen:
+            continue
+        seen.add(key)
         clauses.append(_ko_relation_clause(relation_name, target_label))
     if not clauses:
         return ""
@@ -557,9 +566,12 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
     primary = strong[0]
     # Precision gate: if the top concept is only a loose token-overlap match and
     # the query never actually names it, we are likely about to describe the
-    # WRONG concept confidently (e.g. "capital of France" -> "API"). Abstain
-    # honestly instead. (Definitional questions only; comparisons handled above.)
-    if intent in {"define", "explain"} and not _named_in_query(query, primary) and not _is_identity_question(query):
+    # WRONG concept confidently (e.g. "capital of France" -> "API", or
+    # "인텔에 대해 알려줘" -> an unrelated optimization concept). Abstain honestly.
+    # Applies to ALL informational intents — "알려줘 / 란 / 대해" classify as
+    # clarify/other and previously bypassed this gate, which let a large promoted
+    # graph answer confidently-wrong. Comparisons handled above; identity excepted.
+    if not _named_in_query(query, primary) and not _is_identity_question(query):
         return (
             "지금 확인된 근거가 부족해서 단정하기 어렵습니다. 주제나 참고 문장을 조금 더 주면 그 범위 안에서 설명할 수 있습니다."
             if language == "ko"
