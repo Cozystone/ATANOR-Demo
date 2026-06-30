@@ -393,6 +393,13 @@ _TRUST_TIERS: dict[str, tuple[float, float]] = {
 }
 _DEFAULT_TIER = (0.6, 0.55)
 
+# Copula / light verbs carry no relational content as edge types — they were the bulk
+# of predicate-edge noise. Predicate relations skip these (IS_A / attributes cover them).
+_LIGHT_PREDICATES = {
+    "be", "have", "do", "become", "make", "get",
+    "하다", "있다", "되다", "같다", "이다", "돼다", "지다", "들다", "보다", "주다",
+}
+
 
 def _trust_for_source(source_type: str | None) -> tuple[float, float]:
     return _TRUST_TIERS.get(str(source_type or ""), _DEFAULT_TIER)
@@ -498,7 +505,13 @@ def decompose_sentence(
     _EMIT_PREDICATE_RELATIONS = True
     if _EMIT_PREDICATE_RELATIONS and predicate:
         _pred_rel = normalize_concept(predicate) or str(predicate)
-        _subject_heads = [r["head"] for r in roles if r.get("role") in ("TOPIC", "SUBJ")]
+        # Skip copula / light verbs: they carry no relational content ("X be Y",
+        # "X 하다 Y") and are already covered by IS_A / attributes — they were the bulk
+        # of the noise (English "be" alone ~17%). Keep only contentful predicates.
+        if _pred_rel in _LIGHT_PREDICATES:
+            _subject_heads = []
+        else:
+            _subject_heads = [r["head"] for r in roles if r.get("role") in ("TOPIC", "SUBJ")]
         _object_roles = [r for r in roles if r.get("role") in ("OBJ", "ADVL")]
         for _s_head in _subject_heads:
             _src = concepts.get(normalize_concept(_s_head))
