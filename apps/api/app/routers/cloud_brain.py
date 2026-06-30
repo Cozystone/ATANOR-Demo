@@ -1570,6 +1570,38 @@ def _tavily_learn_sentences(topics: list[str]) -> list[tuple[str, str]]:
     return out
 
 
+def _run_plasticity_maintenance() -> dict[str, Any]:
+    """Neuroplasticity 'sleep consolidation' over the active candidate store's relations:
+    data-derived predicate informativeness weight + time decay (LTD) + pruning. Runs in the
+    worker thread BETWEEN learning ticks (single-threaded -> no write race). Bounds memory:
+    un-reobserved low-weight edges fade and are pruned; IS_A taxonomy is held strong inside
+    plasticity_tick. See docs/neuroplasticity_live_wiring_design.md."""
+    from packages.cloud_brain.neuroplasticity import plasticity_tick
+    from packages.cloud_brain.candidate_read_model import resolve_candidate_store
+
+    ref = resolve_candidate_store()
+    if not ref.path:
+        return {}
+    rel_path = ref.path / "relations.jsonl"
+    if not rel_path.exists():
+        return {}
+    rels = [json.loads(line) for line in rel_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not rels:
+        return {}
+    res = plasticity_tick(
+        rels,
+        datetime.now(timezone.utc),
+        half_life_days=float(os.getenv("ATANOR_PLASTICITY_HALFLIFE_DAYS", "60") or 60),
+        prune_floor=float(os.getenv("ATANOR_PLASTICITY_FLOOR", "0.04") or 0.04),
+    )
+    # atomic rewrite (worker thread is the only writer of this file)
+    tmp = rel_path.with_suffix(".jsonl.tmp")
+    body = "\n".join(json.dumps(r, ensure_ascii=False) for r in res["kept"])
+    tmp.write_text(body + ("\n" if body else ""), encoding="utf-8")
+    tmp.replace(rel_path)
+    return res["stats"]
+
+
 def _continuous_worker() -> None:
     hosts = ("en.wikipedia.org", "ko.wikipedia.org")
     hi = 0
@@ -1650,6 +1682,18 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"ingest: {type(exc).__name__}: {exc}"[:160]
+        # Neuroplasticity consolidation every N ticks: informativeness reweight + decay +
+        # prune (bounded memory, self-cleaning). Worker-thread-local -> no write race.
+        try:
+            _every = int(os.getenv("ATANOR_PLASTICITY_EVERY", "30") or 30)
+            if _every > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _every == 0:
+                _pstats = _run_plasticity_maintenance()
+                if _pstats:
+                    with _CONT_LOCK:
+                        _CONT["plasticity"] = {**_pstats, "at": _time.time()}
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"plasticity: {type(exc).__name__}"[:120]
         # Pace to respect the search-API free tier (default 60s; ATANOR_LEARN_INTERVAL_SEC).
         _time.sleep(_learn_interval)
 
