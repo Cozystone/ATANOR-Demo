@@ -111,10 +111,23 @@ def promote() -> dict:
             in_degree[t] = in_degree.get(t, 0) + 1
     pred_info = predicate_informativeness(all_rels)
 
+    # Time-deixis / discourse words are closed-class grammar (LAD layer), not knowledge
+    # entities — but casual sentences ("오늘은 …해볼게요") make them look like topics, so
+    # they get promoted and then match real queries wrongly ("오늘 날씨" -> the "오늘"
+    # concept). Data signals (in_degree) can't separate them (1077/1131 promoted concepts
+    # have in_degree 0, incl. real entities like 방탄소년단), so exclude this small deictic
+    # set explicitly — the same grammar-vs-knowledge boundary as copula handling.
+    _NON_ENTITY_DEIXIS = {
+        "오늘", "지금", "내일", "어제", "요즘", "최근", "방금", "오늘날", "현재", "이제",
+        "원래", "본래", "당시", "그때", "이때", "여기", "거기", "저기",
+    }
+
     promoted = []
     for c in concepts:
         name = str(c.get("canonical_name") or "").strip()
         if not name or name.lower() in taken_names:
+            continue
+        if name in _NON_ENTITY_DEIXIS:
             continue
         # faithful AND about-this-concept: the sentence's TOPIC must be this concept
         # AND the sentence must LEAD with the concept name (it is the primary
