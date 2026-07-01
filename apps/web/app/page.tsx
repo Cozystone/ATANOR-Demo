@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import dynamic from "next/dynamic";
 import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import DemoChat from "./DemoChat";
@@ -10,14 +11,16 @@ import AgenticMicroOSPanel from "./AgenticMicroOSPanel";
 import SeismographChart from "./SeismographChart";
 import AutonomousAgentPanel from "./AutonomousAgentPanel";
 import OvernightBriefing from "./OvernightBriefing";
-import AtlasGlobe3D from "./AtlasGlobe3D";
+const AtlasGlobe3D = dynamic(() => import("./AtlasGlobe3D"), { ssr: false, loading: () => null });
 import AtlasCongressPanel from "./AtlasCongressPanel";
 import BrainConnectionStatus from "./BrainConnectionStatus";
-import CloudBrainSphereScene, { type CloudBrainSphereStats } from "./CloudBrainSphereScene";
+import type { CloudBrainSphereStats } from "./CloudBrainSphereScene";
+const CloudBrainSphereScene = dynamic(() => import("./CloudBrainSphereScene"), { ssr: false, loading: () => null });
 import LiveLearningPanel from "./LiveLearningPanel";
 import LiveSelfhoodSchedulerPanel from "./LiveSelfhoodSchedulerPanel";
 import MemoryApprovalPanel from "./MemoryApprovalPanel";
-import Rag3DScene, { type Rag3DControl, type Rag3DEdge, type Rag3DGraph, type Rag3DNode, type Rag3DVisualState } from "./Rag3DScene";
+import type { Rag3DControl, Rag3DEdge, Rag3DGraph, Rag3DNode, Rag3DVisualState } from "./Rag3DScene";
+const Rag3DScene = dynamic(() => import("./Rag3DScene"), { ssr: false, loading: () => null });
 import SelfhoodRuntimePanel from "./SelfhoodRuntimePanel";
 import { TauriUpdatePrompt } from "./TauriUpdatePrompt";
 
@@ -3421,10 +3424,21 @@ function FullApp() {
   useEffect(() => {
     if (mainSection !== "graphhub") return;
     let cancelled = false;
+    // Yield to the browser between each expensive WebGL snapshot so opening the Hub is
+    // interactive immediately (the SVG fragment thumbs already show); the real 3D PNGs then
+    // fill in progressively during idle time instead of blocking the main thread in one burst.
+    const idle = () =>
+      new Promise<void>((resolve) => {
+        const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void };
+        if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(() => resolve(), { timeout: 300 });
+        else window.setTimeout(resolve, 32);
+      });
     void (async () => {
       for (const [id, value] of Object.entries(graphHubPreviews)) {
         if (cancelled) break;
         if (Array.isArray(value) && value.length && !(id in graphHubSnapshots)) {
+          await idle();
+          if (cancelled) break;
           const url = await graphHubSnapshot(value);
           if (url && !cancelled) setGraphHubSnapshots((prev) => ({ ...prev, [id]: url }));
         }
