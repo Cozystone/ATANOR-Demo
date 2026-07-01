@@ -958,6 +958,9 @@ const memoryTypeColors: Record<string, string> = {
   graph_cartridge_node: "#e0338a",
   graph_cartridge: "#e0338a",
   cloud_attached: "#00b4d8",
+  // Brain Link P2P compute-share topology.
+  brain_link_self: "#0ea5a4",
+  brain_link_peer: "#6366f1",
 };
 
 const memoryTypeDescriptions: Record<string, string> = {
@@ -982,6 +985,8 @@ const memoryTypeDescriptions: Record<string, string> = {
   graph_cartridge_node: "Graph Hub에서 꽂은 전문·페르소나 그래프 카트리지 노드입니다.",
   graph_cartridge: "Graph Hub에서 꽂은 전문·페르소나 그래프 카트리지 노드입니다.",
   cloud_attached: "클라우드에서 임시로 부착된 작업기억 오버레이 노드입니다.",
+  brain_link_self: "Brain Link에서 내 노드(유휴 연산을 공유하는 이 기기)입니다.",
+  brain_link_peer: "Brain Link P2P 풀의 상대 피어입니다 (신뢰·사생활 게이트로 연산 공유 여부 결정).",
 };
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {

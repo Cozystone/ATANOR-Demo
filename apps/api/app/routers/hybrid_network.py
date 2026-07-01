@@ -9,9 +9,19 @@ from knowledge_bakery import memory_status
 from app.services.alpha_services import alpha_service
 from app.services.edge_compute_broker import default_edge_compute_broker
 from app.services.hybrid_network_manager import default_hybrid_network_manager, resolve_cloud_knowledge
+from packages.atlas_p2p_sandbox.brain_link import brain_link_status
 
 
 router = APIRouter(prefix="/api/network", tags=["hybrid-network"])
+
+
+@router.get("/brain-link")
+def brain_link() -> dict[str, Any]:
+    """Brain Link status graph + compute-share operation over the local P2P sandbox.
+    Shares idle compute only with eligible (online, public, trusted) peers; excludes
+    low-trust and private peers by the real gates. Local-only, no WAN path."""
+    cap = default_edge_compute_broker.current_capacity()
+    return brain_link_status(self_peer_id=cap.peer_id, idle=cap.idle, task_types=list(cap.task_types))
 
 
 class ResolveNetworkRequest(BaseModel):
