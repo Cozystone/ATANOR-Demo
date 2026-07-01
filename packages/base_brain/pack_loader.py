@@ -109,7 +109,7 @@ def _get_indexed_store(expected_n: int):
     """Return the persisted SemanticConceptStore iff it exists AND matches the loaded
     pack (same concept count) — so a custom/grown pack passed in tests still uses the
     scan. Cached by index mtime; any error falls back to None (scan)."""
-    idx = SEMANTIC_STORE_DIR / "index.json"
+    idx = SEMANTIC_STORE_DIR / "index.sqlite"
     if not idx.exists():
         return None
     try:
