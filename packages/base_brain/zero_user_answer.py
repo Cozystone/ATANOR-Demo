@@ -350,14 +350,31 @@ def _with_and(label: str) -> str:
     return f"{label}{'과' if _has_final_consonant(label) else '와'}"
 
 
-def _description_sentence(concept: dict[str, Any], language: str, audience_level: str) -> str:
-    label = _label(concept, language)
-    description = str(concept.get("short_description") or "")
-    if language == "ko":
-        return f"{_topic(label)} {KO_DESCRIPTIONS.get(str(concept.get('concept_id')), description)}"
+def _is_hangul_text(text: str) -> bool:
+    return any("가" <= ch <= "힣" for ch in text)
+
+
+# Copula/auxiliary/verb openers that mean the description is already a PREDICATE
+# whose subject was stripped during promotion ("Marie Curie" + "was the first …").
+# Re-attaching the label as an English subject reconstructs the sentence instead of
+# stuttering ("Marie Curie is was the first …").
+_EN_PREDICATE_HEADS = (
+    "is ", "are ", "was ", "were ", "has ", "have ", "had ", "can ", "could ",
+    "will ", "would ", "may ", "might ", "does ", "do ", "did ", "refers ",
+    "describes ", "means ", "consists ", "includes ", "occurs ", "represents ",
+)
+
+
+def _english_frame(label: str, description: str, audience_level: str) -> str:
+    """Frame an English concept+description in English (no Korean particle)."""
+    if not description:
+        return f"{label} is a related concept in the base graph"
     lowered = description.lower()
     if lowered.startswith(label.lower()) or lowered.startswith("a ") or lowered.startswith("an "):
         return description.rstrip(".")
+    # Description is a bare predicate ("was the first …") -> re-attach the subject.
+    if lowered.startswith(_EN_PREDICATE_HEADS):
+        return f"{label} {description}".rstrip(".")
     # If the description restates the concept as a full clause ("inference uses …",
     # "training adjusts …"), rendering "{label} is {description}" stutters
     # ("AI inference is inference uses …"). Use the clause as its own sentence.
@@ -368,7 +385,21 @@ def _description_sentence(concept: dict[str, Any], language: str, audience_level
         return standalone[:1].upper() + standalone[1:] if standalone else label
     if audience_level == "expert":
         return f"{label}: {description}"
-    return f"{label} is {description[:1].lower() + description[1:] if description else 'a related concept in the base graph'}"
+    return f"{label} is {description[:1].lower() + description[1:]}"
+
+
+def _description_sentence(concept: dict[str, Any], language: str, audience_level: str) -> str:
+    label = _label(concept, language)
+    description = str(concept.get("short_description") or "")
+    # Language-matched framing: an English concept/description must NOT receive a
+    # Korean topic particle ("Marie Curie는 was the first …"). If the label is
+    # non-Korean and the description carries no Hangul, frame it in English even when
+    # the answer language is ko (the fact stays faithful; only the frame changes).
+    if language == "ko" and not _is_hangul_text(label) and description and not _is_hangul_text(description):
+        return _english_frame(label, description, audience_level)
+    if language == "ko":
+        return f"{_topic(label)} {KO_DESCRIPTIONS.get(str(concept.get('concept_id')), description)}"
+    return _english_frame(label, description, audience_level)
 
 
 def _concept_by_id(context: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -874,6 +905,18 @@ _PERSONA_OPENERS = {
     "formal": "정리하자면,",
 }
 
+# English mirror of the persona openers/closers — used when the grounded core is
+# English so the WHOLE surface stays in one language (no "Marie Curie가 왜 그러하며").
+_PERSONA_OPENERS_EN = {
+    "humble": "As far as I know,",
+    "inquisitive": "Let's start here —",
+    "analytical": "To get to the point,",
+    "direct": "In short,",
+    "warm": "Great question.",
+    "playful": "Fun topic —",
+    "formal": "In summary,",
+}
+
 
 # Clause-level register realization (CGSR): map a plain sentence-final ending to the
 # persona's register. Regular/high-frequency endings only; anything else is left unchanged
@@ -932,7 +975,27 @@ def _apply_persona_style(query: str, answer: str, language: str, persona: dict[s
     _c = topic[-1] if topic else ""
     _iga = "이" if ("가" <= _c <= "힣" and (ord(_c) - 0xAC00) % 28 != 0) else "가"
 
-    opener = next((_PERSONA_OPENERS[t] for t in ("humble", "analytical", "direct", "warm", "playful", "inquisitive", "formal") if t in tone_tokens), "")
+    # Language-matched persona surface: if the grounded core is English, wrap it in
+    # English so the whole answer is one language (the Korean register table only
+    # matches Korean endings, so it is a no-op on English and is skipped).
+    core_is_en = not _is_hangul_text(answer)
+    tone_order = ("humble", "analytical", "direct", "warm", "playful", "inquisitive", "formal")
+    if core_is_en:
+        opener = next((_PERSONA_OPENERS_EN[t] for t in tone_order if t in tone_tokens), "")
+        closer = ""
+        if "counter_question" in moves and topic:
+            closer = f" But it's worth asking — why is {topic} so, and how does it differ from other cases?"
+        elif "stepwise_guide" in moves and topic:
+            closer = f" Let's take it step by step — shall we start from the basics of {topic}?"
+        core = answer.rstrip()
+        if not opener and not closer:
+            return answer, None
+        if closer and core and core[-1] not in ".!?":
+            core += "."  # sentence boundary before the English closer
+        body = (opener + " " if opener else "") + core
+        return body + closer, str(persona.get("cartridge_id"))
+
+    opener = next((_PERSONA_OPENERS[t] for t in tone_order if t in tone_tokens), "")
     closer = ""
     if "counter_question" in moves and topic:
         closer = f" 그런데 스스로 되물어 봅시다 — {topic}{_iga} 왜 그러하며, 다른 경우와는 어떻게 다를까요?"
