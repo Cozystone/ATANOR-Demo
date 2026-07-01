@@ -55,8 +55,8 @@ _OP_CUES: tuple[tuple[str, str], ...] = (
     (r"배(?:로|를|만큼|\s|$)", "mul"),
     (r"나누|나눠|나눈|÷|/|divid|split", "div"),
     # subtract
-    (r"먹|팔|잃|훔|뺏|빼앗|뺀|빼|덜|줄(?:어|여|이)|쓰|사용|소비|없어|버(?:려|린)|"
-     r"가져가|가져간|떼|차감|제외|줬|주(?:었|고|면)|도둑|훔쳐|eat|ate|sold|sell|los[te]|"
+    (r"먹|팔|잃|훔|뺏|빼앗|뺀|빼|덜|줄(?:어|여|이)|쓰|썼|써\b|마시|마셔|마신|사용|소비|없어|버(?:려|린)|"
+     r"가져가|가져간|떼|차감|제외|줬|주(?:었|고|면)|도둑|훔쳐|eat|ate|drank|drink|sold|sell|los[te]|"
      r"stole|stolen|spend|spent|gave\s+away|remove|drop|minus|fewer|less|took\s+away", "sub"),
     # add (last — most generic). NOTE: "buy" must be matched as a real verb form
     # (샀/산/사다/사서/사고/사면…), never as a bare "사", or it false-matches
@@ -350,6 +350,45 @@ def _solve_word_problem(q: str, language: str) -> dict[str, Any] | None:
             "단계별 계산" if language != "en" else "Step-by-step",
             formula,
             registry_hint="word_problem_steps",
+        ),
+    }
+
+
+# ── rate × time → distance ("기차가 시속 60km로 2시간 가면 몇 km?") ──────────────
+_RATE_RE = re.compile(r"시속\s*(\d[\d,]*(?:\.\d+)?)\s*(?:km|킬로미터|킬로|미터|m)?", re.IGNORECASE)
+_TIME_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*(시간|분|초)")
+
+
+def _solve_rate_time(q: str, language: str) -> dict[str, Any] | None:
+    # Specific, deterministic template (arithmetic is calculator territory — no need to
+    # "emerge" it): speed × time = distance. Requires a motion cue so it never fires on an
+    # unrelated "시속" mention.
+    if not re.search(r"가면|간다|갈까|달리|이동|거리|얼마나|몇\s*(?:km|킬로|미터|m)\b", q):
+        return None
+    sm, tm = _RATE_RE.search(q), _TIME_RE.search(q)
+    if not (sm and tm):
+        return None
+    speed = float(sm.group(1).replace(",", ""))
+    tval, unit = float(tm.group(1).replace(",", "")), tm.group(2)
+    hours = tval if unit == "시간" else (tval / 60 if unit == "분" else tval / 3600)
+    dist = speed * hours
+    steps = [
+        {"type": "base", "fact": f"속력 = {_fmt(speed)} km/h, 시간 = {_fmt(tval)}{unit}"},
+        {"type": "mul", "fact": f"{_fmt(speed)} × {_fmt(hours)} = {_fmt(dist)} (거리 = 속력 × 시간)"},
+    ]
+    if language == "en":
+        answer = f"{_fmt(dist)} km. distance = speed × time = {_fmt(speed)} × {_fmt(hours)} = {_fmt(dist)}  (no LLM)"
+    else:
+        answer = f"{_fmt(dist)}km예요. 거리 = 속력 × 시간 = {_fmt(speed)} × {_fmt(hours)} = {_fmt(dist)}km로, 외부 LLM 없이 계산했어요."
+    return {
+        "answer": answer,
+        "reasoning_certificate": _certificate(steps, "deterministic_rate_time"),
+        "confidence": 0.95,
+        "result_value": dist,
+        "answer_visual": _formula_visual(
+            "거리 = 속력 × 시간" if language != "en" else "distance = speed × time",
+            f"{_fmt(speed)} × {_fmt(hours)} = {_fmt(dist)}",
+            registry_hint="rate_time",
         ),
     }
 
@@ -663,6 +702,7 @@ def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | Non
         return None
     result = (
         _solve_geometry(q, language)
+        or _solve_rate_time(q, language)
         or _solve_exponent(q, language)
         or _solve_expression(q, language)
         or _solve_word_problem(q, language)

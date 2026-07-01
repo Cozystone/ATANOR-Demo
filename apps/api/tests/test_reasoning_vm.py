@@ -99,3 +99,14 @@ def test_abstains_on_non_math():
 
 def test_division_by_zero_abstains():
     assert solve_reasoning("10 나누기 0은?", "ko") is None
+
+
+def test_subtraction_drink_and_spend_verbs():
+    # 마시다(drink) / 쓰다→썼(spent) must count as consumption (subtraction).
+    assert _val("물 500ml에서 200ml를 마시면 얼마 남아?") == 300
+    assert _val("지갑에 500원 있었는데 200원 썼어. 얼마 남아?") == 300
+
+
+def test_rate_time_distance():
+    assert _val("기차가 시속 60km로 2시간 가면 몇 km?") == 120
+    assert _val("자동차가 시속 80km로 30분 달리면 몇 km 이동해?") == 40
