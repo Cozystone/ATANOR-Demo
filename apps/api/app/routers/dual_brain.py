@@ -2850,6 +2850,30 @@ def _answer_is_abstention(answer: str) -> bool:
     )
 
 
+def _grounded_answer_incoherent(answer: str, query: str) -> bool:
+    """General coherence gate for a grounded answer — NO per-entity rules. A native
+    graph-token stitch can be lexically diverse yet incoherent (drops the subject, trails off
+    on a bare particle: '…서버 CPU를'). A grounded definitional answer must (a) contain the
+    query's own key content terms — a definition of X mentions X — and (b) end as a sentence,
+    not a dangling Korean particle. When it fails, the caller re-grounds it in the real
+    evidence sentence. Works for ANY query; the checks come from the query itself + grammar."""
+    a = re.sub(r"\s+", " ", str(answer or "").strip())
+    if len(a) < 4:
+        return True
+    try:
+        from app.services.web_search import _lookup_terms, _normalize_lookup_query
+
+        key_terms = [t for t in _lookup_terms(_normalize_lookup_query(query)) if len(t) >= 2]
+    except Exception:
+        key_terms = []
+    low = a.lower()
+    if key_terms and not all(t.lower() in low for t in key_terms):
+        return True  # dropped the subject entity
+    if re.search(r"[가-힣]", a) and re.search(r"(를|을|와|과|의|에|에서|으로|로|이|가|은|는|도|만)$", a):
+        return True  # trails off on a bare particle -> a stitched fragment, not a sentence
+    return False
+
+
 def _public_evidence_docs(docs: list[dict[str, Any]], *, mode: str) -> list[dict[str, Any]]:
     if mode in {"trace", "research"}:
         return docs
@@ -4088,16 +4112,37 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
             and rag_result.get("web_search")
             and (semantic_context.get("evidence") or semantic_context.get("relations") or semantic_context.get("claims"))
         ):
+            answer_source = "web_grounded_native_graph_token_answer"
+            # The native graph-token stitch can be incoherent (drops the subject, dangles on a
+            # particle) for ANY topic where the graph is sparse. Never ship that: if it fails
+            # the general coherence gate, re-ground it in the real evidence sentence via the
+            # extractive composer; if even that has no matching source, abstain honestly rather
+            # than emit a garbled fragment. No per-entity handling — the check is query-driven.
+            if _grounded_answer_incoherent(grounded_web_answer, question):
+                rescue = await _web_grounded_rescue(question, language)
+                rescue_answer = str((rescue or {}).get("answer") or "").strip()
+                if rescue_answer and not _answer_is_abstention(rescue_answer) and not _grounded_answer_incoherent(rescue_answer, question):
+                    grounded_web_answer = rescue_answer
+                    answer_source = "web_grounded_extractive_reground"
+                    if rescue and rescue.get("reasoning_certificate"):
+                        realized["reasoning_certificate"] = rescue["reasoning_certificate"]
+                else:
+                    grounded_web_answer = (
+                        "현재 확인된 근거만으로는 정확히 설명하기 어렵습니다."
+                        if language == "ko"
+                        else "I could not find a clearly matching source to answer that yet."
+                    )
+                    answer_source = "web_grounded_abstained_incoherent"
             realized["answer"] = grounded_web_answer
             realized["confidence"] = max(
                 float(realized.get("confidence") or 0.0),
                 float(rag_result.get("confidence") or 0.0),
                 0.52,
-            )
+            ) if not answer_source.endswith("abstained_incoherent") else min(float(realized.get("confidence") or 0.0), 0.4)
             realized["repair"] = {
                 **(realized.get("repair") or {}),
                 "safety_applied": True,
-                "source": "web_grounded_native_graph_token_answer",
+                "source": answer_source,
                 "web_search_provider": (rag_result.get("web_search") or {}).get("provider"),
             }
     if request.mode not in {"trace", "research"} and _answer_is_unsafe(str(realized.get("answer") or "")):
