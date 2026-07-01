@@ -2410,6 +2410,39 @@ p {
   transform: translateX(1px);
 }
 
+/* "Advanced" disclosure toggle: quieter than a real destination so it reads as a group header. */
+.atanor-user-nav button.atanor-user-nav-more {
+  margin-top: 6px;
+  min-height: 40px;
+  opacity: 0.72;
+}
+
+.atanor-user-nav button.atanor-user-nav-more strong {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+
+.atanor-user-nav button.atanor-user-nav-more span {
+  border-color: transparent;
+}
+
+.atanor-user-nav button.atanor-user-nav-more:hover {
+  opacity: 1;
+}
+
+/* Advanced destinations sit slightly inset and dimmer to signal the secondary tier. */
+.atanor-user-nav button[data-advanced="true"] {
+  opacity: 0.82;
+}
+
+.atanor-user-nav button[data-advanced="true"] strong {
+  font-weight: 640;
+}
+
+.atanor-user-nav button[data-advanced="true"][data-active="true"] {
+  opacity: 1;
+}
+
 .atanor-ai-dashboard {
   align-content: start;
   display: flex;
@@ -4582,6 +4615,7 @@ p {
 .atanor-demochat-main {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column;
+  position: relative;
 }
 .atanor-demochat-orb {
   width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
@@ -4612,14 +4646,206 @@ p {
 .atanor-demochat-typing i { width: 7px; height: 7px; border-radius: 50%; background: #b3bac9; animation: atanor-demo-bounce 1.2s infinite; }
 .atanor-demochat-typing i:nth-child(2) { animation-delay: 0.15s; }
 .atanor-demochat-typing i:nth-child(3) { animation-delay: 0.3s; }
-.atanor-demochat-composer { max-width: 760px; width: 100%; margin: 0 auto; padding: 8px 24px; display: flex; gap: 8px; }
-.atanor-demochat-composer input {
-  flex: 1; min-width: 0; font-size: 15px; padding: 13px 16px; border-radius: 14px; border: 1px solid #d9dce4; background: #fff; color: #1d2330; outline: none;
+.atanor-demochat-composer-wrap { max-width: 760px; width: 100%; margin: 0 auto; padding: 0 24px; }
+/* two-row composer (Codex pattern): text input on top, controls row below */
+.atanor-demochat-composer {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid #dcdfe6; border-radius: 22px; background: #fff;
+  padding: 10px 12px 9px; transition: border-color .12s, box-shadow .12s;
 }
-.atanor-demochat-composer input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
-.atanor-demochat-composer button { width: 46px; border-radius: 14px; border: 0; background: #2563eb; color: #fff; font-size: 18px; cursor: pointer; }
-.atanor-demochat-composer button:disabled { background: #c3cbe0; cursor: default; }
+.atanor-demochat-composer:focus-within { border-color: #d2521f; box-shadow: 0 0 0 3px rgba(210,82,31,0.08); }
+.atanor-demochat-cinput {
+  border: 0; outline: none; background: none; width: 100%;
+  font-size: 15px; color: #1d2330; padding: 6px 8px 2px;
+}
+.atanor-demochat-controls { display: flex; align-items: center; gap: 8px; }
+.atanor-demochat-controls-spacer { flex: 1; }
+/* "+" tools button */
+.atanor-demochat-composer button.atanor-demochat-plugins {
+  flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid #d2521f; border-radius: 50%;
+  background: #d2521f; color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.atanor-demochat-composer button.atanor-demochat-plugins:hover { background: #ba4718; border-color: #ba4718; }
+.atanor-demochat-composer button.atanor-demochat-plugins[data-open="true"] { background: #fff; color: #d2521f; border-color: #e7cabb; }
+/* mode pill (ATANOR's honest analog to Codex's access dropdown) */
+.atanor-demochat-mode {
+  display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+  border: 1px solid #e7cabb; border-radius: 17px; background: #fff; cursor: pointer;
+  font-size: 12.5px; font-weight: 500; color: #b4541f;
+  transition: background .12s, border-color .12s;
+}
+.atanor-demochat-mode:hover { background: #fdf2ec; }
+.atanor-demochat-mode[data-open="true"] { background: #fdf2ec; border-color: #d2521f; }
+.atanor-demochat-mode svg:first-child { color: #d2521f; }
+.atanor-demochat-mode svg:last-child { color: #c79a85; }
+/* send button */
+.atanor-demochat-send {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer;
+  background: #1d2330; color: #fff; display: flex; align-items: center; justify-content: center;
+}
+.atanor-demochat-send:disabled { background: #d7dae1; cursor: default; }
 .atanor-demochat-foot { text-align: center; font-size: 11px; color: #9aa1b2; padding: 4px 0 12px; }
+
+/* sidebar nav (Claude-style: plugins / customize / read-a-file) */
+.atanor-demochat-nav { display: flex; flex-direction: column; gap: 1px; margin: 2px 2px 6px; }
+.atanor-demochat-navitem {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border: 0; border-radius: 9px;
+  background: none; color: #3a4150; font-size: 13px; text-align: left; cursor: pointer;
+}
+.atanor-demochat-navitem svg { color: #6b7280; flex: 0 0 auto; }
+.atanor-demochat-navitem:hover { background: #e2e6ed; }
+.atanor-demochat-navitem[data-active="true"] { background: #d8def0; color: #1d2330; font-weight: 600; }
+.atanor-demochat-navitem[data-active="true"] svg { color: #d2521f; }
+.atanor-demochat-newchat svg { color: #1d2330; flex: 0 0 auto; }
+
+.atanor-spin { animation: atanor-spin 0.8s linear infinite; }
+@keyframes atanor-spin { to { transform: rotate(360deg); } }
+
+/* composer "+" dropdown menu */
+.atanor-cm-scrim { position: fixed; inset: 0; z-index: 40; background: transparent; }
+.atanor-cm-menu {
+  position: absolute; bottom: calc(100% + 10px); left: 8px; right: 8px; z-index: 41;
+  max-height: 60vh; overflow-y: auto; padding: 8px; border-radius: 16px;
+  background: #fff; border: 1px solid #e3e6ec;
+  box-shadow: 0 16px 40px rgba(30, 40, 70, 0.18);
+  animation: atanor-cm-pop 0.12s ease-out;
+}
+@keyframes atanor-cm-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.atanor-cm-sec { margin-bottom: 2px; }
+.atanor-cm-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 1px; }
+.atanor-cm-section {
+  font-size: 11px; font-weight: 600; color: #9aa1b2; letter-spacing: 0.2px;
+  padding: 9px 10px 4px;
+}
+.atanor-cm-sec:first-child .atanor-cm-section { padding-top: 4px; }
+.atanor-cm-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: 10px;
+  background: none; cursor: pointer; text-align: left;
+}
+.atanor-cm-item:hover { background: #f3f5f9; }
+.atanor-cm-ico { width: 22px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: #586173; }
+.atanor-cm-item:hover .atanor-cm-ico { color: #d2521f; }
+.atanor-cm-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }
+.atanor-cm-name { font-size: 13.5px; color: #1d2330; font-weight: 500; white-space: nowrap; flex: 0 0 auto; }
+.atanor-cm-desc { font-size: 12px; color: #9aa1b2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* capabilities / permissions popover */
+.atanor-caps {
+  position: absolute; bottom: calc(100% + 10px); left: 8px; z-index: 41;
+  width: 300px; padding: 4px; border-radius: 16px;
+  background: #fff; border: 1px solid #e3e6ec;
+  box-shadow: 0 16px 40px rgba(30, 40, 70, 0.18);
+  animation: atanor-cm-pop 0.12s ease-out;
+}
+.atanor-caps-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px 8px; font-size: 13px; font-weight: 650; color: #1d2330;
+}
+.atanor-caps-title { display: flex; align-items: center; gap: 7px; }
+.atanor-caps-title svg { color: #d2521f; }
+.atanor-caps-head button { display: flex; align-items: center; justify-content: center; border: 0; background: none; color: #9aa1b2; cursor: pointer; padding: 4px; border-radius: 7px; }
+.atanor-caps-head button:hover { background: #f0f2f6; color: #555; }
+.atanor-caps-list { list-style: none; margin: 0; padding: 2px; display: flex; flex-direction: column; gap: 1px; }
+.atanor-caps-list li { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 9px; font-size: 13px; color: #2c3340; }
+.atanor-caps-list li[data-on="false"] { color: #9aa1b2; }
+.atanor-caps-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: #22c55e; }
+.atanor-caps-dot[data-on="false"] { background: #cbd2de; }
+.atanor-caps-label { flex: 1; }
+.atanor-caps-note { font-size: 11.5px; color: #9aa1b2; }
+.atanor-caps-foot { padding: 8px 12px 10px; font-size: 11px; color: #9aa1b2; border-top: 1px solid #eef0f4; margin-top: 2px; }
+
+/* plugin store (Codex-store style, FULLSCREEN — fills the chat content area) */
+.atanor-pg-scrim {
+  position: absolute; inset: 0; z-index: 30;
+  background: #fff; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+/* top bar: tabs (left) + refresh/close (right), sticky */
+.atanor-pg-topbar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; border-bottom: 1px solid #eef0f4; background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(6px);
+}
+.atanor-pg-tabs { display: flex; gap: 4px; }
+.atanor-pg-tabs button {
+  border: 0; background: none; cursor: pointer; padding: 6px 12px; border-radius: 8px;
+  font-size: 13px; font-weight: 500; color: #8a92a4;
+}
+.atanor-pg-tabs button:hover { background: #f3f5f9; }
+.atanor-pg-tabs button[data-active="true"] { background: #f0f1f5; color: #1d2330; }
+.atanor-pg-topright { display: flex; gap: 4px; }
+.atanor-pg-topright button {
+  display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border: 0; border-radius: 8px; background: none; color: #8a92a4; cursor: pointer;
+}
+.atanor-pg-topright button:hover { background: #f3f5f9; color: #1d2330; }
+
+.atanor-pg {
+  flex: 1; width: 100%; max-width: 880px; margin: 0 auto;
+  display: flex; flex-direction: column;
+  color: #1d2330; padding: 32px 40px 28px;
+}
+.atanor-pg-head h2 { font-size: 28px; font-weight: 700; margin: 0; }
+.atanor-pg-head p { font-size: 15px; color: #6b7280; margin: 7px 0 0; }
+.atanor-pg-search {
+  display: flex; align-items: center; gap: 9px;
+  margin: 22px 0 6px; padding: 13px 16px;
+  border: 1px solid #e2e4ea; border-radius: 12px; background: #fafbfc; color: #9aa1b2;
+}
+.atanor-pg-search input { flex: 1; border: 0; background: none; outline: none; font-size: 14.5px; color: #1d2330; }
+.atanor-pg-offline { font-size: 12px; color: #b06a16; padding: 6px 2px; }
+.atanor-pg-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 22px 2px 12px; font-size: 13.5px; font-weight: 600; color: #4b5563;
+}
+.atanor-pg-section-head svg { color: #aab0bd; }
+.atanor-pg-cat { font-size: 15px; color: #1d2330; font-weight: 600; margin-top: 26px; }
+.atanor-pg-chiprow { display: flex; flex-wrap: wrap; gap: 10px; }
+.atanor-pg-chip {
+  display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; border-radius: 13px;
+  background: #f3f5f9; color: #586173; border: 1px solid #eceef3;
+}
+/* marketplace filter chips */
+.atanor-pg-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 2px; }
+.atanor-pg-filters button {
+  border: 1px solid #e4e6ec; background: #fff; cursor: pointer;
+  padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 500; color: #586173;
+}
+.atanor-pg-filters button:hover { background: #f6f7f9; }
+.atanor-pg-filters button[data-active="true"] { background: #1d2330; border-color: #1d2330; color: #fff; }
+.atanor-pg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 720px) { .atanor-pg-grid { grid-template-columns: 1fr; } }
+.atanor-pg-card {
+  display: flex; align-items: center; gap: 13px;
+  padding: 14px 16px; border: 1px solid #eceef3; border-radius: 14px; background: #fff;
+  transition: border-color .12s, box-shadow .12s;
+}
+.atanor-pg-card:hover { border-color: #d8dce4; box-shadow: 0 3px 12px rgba(30, 41, 59, 0.06); }
+.atanor-pg-card-ico {
+  display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 40px; height: 40px; border-radius: 11px; background: #f3f5f9; color: #586173;
+}
+.atanor-pg-card-body { flex: 1; min-width: 0; }
+.atanor-pg-card-top { display: flex; align-items: center; gap: 7px; }
+.atanor-pg-card-top strong { font-size: 14.5px; font-weight: 600; }
+.atanor-pg-card-top code { font-size: 11px; color: #9aa1b2; }
+.atanor-pg-on { color: #2f8a52; }
+.atanor-pg-card-body p { font-size: 12.5px; color: #6b7280; margin: 3px 0 0; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atanor-pg-use, .atanor-pg-install {
+  flex: 0 0 auto; border-radius: 9px; padding: 7px 15px; cursor: pointer; font-size: 12.5px; font-weight: 600;
+}
+.atanor-pg-use { border: 0; background: #d2521f; color: #fff; }
+.atanor-pg-use:hover { background: #ba4718; }
+.atanor-pg-install { border: 1px solid #d7dbe3; background: #fff; color: #3a4150; }
+.atanor-pg-install:hover { background: #f6f7f9; border-color: #c2c8d2; }
+.atanor-pg-empty { font-size: 13px; color: #9aa1b2; padding: 16px 2px; }
+.atanor-pg-foot { font-size: 11.5px; color: #9aa1b2; margin: 24px 2px 2px; line-height: 1.5; }
 
 /* ───────────────────────── DEMO PROFILE (white, GPT-style) ───────────────── */
 .atanor-demo {

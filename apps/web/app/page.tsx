@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
+import { Bell, Brain, ChevronDown, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import DemoChat from "./DemoChat";
 import { isDemo } from "./lib/profile";
@@ -1811,6 +1811,9 @@ function FullApp() {
   const [mainSection, setMainSection] = useState<MainSectionId>("home");
   // Tracks whether the one-time baseline dashboard refresh has run (see section-gated poll).
   const didInitialAggregateRef = useRef(false);
+  // General-user IA: keep the core tabs always visible and tuck the rest under an "Advanced"
+  // disclosure so a first-time visitor sees a short, focused nav (demo view only).
+  const [navAdvancedOpen, setNavAdvancedOpen] = useState(false);
   const [labSurfaceVisible, setLabSurfaceVisible] = useState(false);
   const [contributionEnabled, setContributionEnabled] = useState(() => readBrowserStorage("atanor.contribution.enabled") === "true");
   const [contributionPaused, setContributionPaused] = useState(false);
@@ -2479,22 +2482,23 @@ function FullApp() {
     if (graphHubPricingFilter !== "all") query.set("pricing_model", graphHubPricingFilter);
     if (graphHubSearch.trim()) query.set("query", graphHubSearch.trim());
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    // Read Hub data local-first, but fall back to the reliable server-side proxy. When the
-    // Local Brain is CONNECTED the demo fires many DIRECT browser→backend polls, which can
-    // saturate the browser's per-host connection pool (~6 over HTTP/1.1) and make a direct
-    // Hub read hang → empty list. A short direct timeout then a proxy fallback keeps the Hub
-    // filling. (The proxy reaches the same backend server-side, unaffected by the browser pool.)
+    // Read Hub data over whichever channel answers first. When the Local Brain is CONNECTED
+    // the demo fires many DIRECT browser→backend polls that saturate the browser's per-host
+    // connection pool (~6 over HTTP/1.1), so a direct Hub read can hang → empty list. Racing
+    // the direct call against the server-side proxy (which uses a different host pool and
+    // reaches the same backend) fills the Hub reliably: in the local demo the proxy wins; in a
+    // deployed local-first setup, where the proxy cannot reach the user's backend, the direct
+    // call wins. Generous timeout because reads can be slow under polling congestion.
     const hubGet = async <T,>(path: string, fallback: T): Promise<T> => {
+      const channels: Promise<T>[] = [fetchJson<T>(path, undefined, 9000)];
       if (localBackendConnected) {
-        try {
-          return await directBackendJson<T>(localBackendUrl, path, undefined, 2500);
-        } catch {
-          // direct path unavailable/saturated from the browser — fall through to the proxy
-        }
+        channels.push(directBackendJson<T>(localBackendUrl, path, undefined, 9000));
       }
-      // Short proxy timeout too, so a failed attempt cycles the retry quickly (fills within a
-      // few seconds) instead of holding a socket for the full default window.
-      return await fetchJson<T>(path, undefined, 4000).catch(() => fallback);
+      try {
+        return await Promise.any(channels);
+      } catch {
+        return fallback;
+      }
     };
     const [status, catalog, installed, attachments, audit] = await Promise.all([
       hubGet<AnyRecord | null>("/api/graph-hub/status", null),
@@ -5391,6 +5395,17 @@ function FullApp() {
   const visibleMainNav = copy.nav.filter((item) => mainSectionSurface[item.id] === "product");
   const labMainNav: typeof copy.nav = [];
 
+  // Core tabs a first-time visitor needs; the rest of the product tabs fold under "Advanced".
+  const coreNavIds = new Set<MainSectionId>(["home", "local", "cloud", "graphhub"]);
+  const primaryMainNav = demoView ? visibleMainNav.filter((item) => coreNavIds.has(item.id)) : visibleMainNav;
+  const secondaryMainNav = demoView
+    ? visibleMainNav.filter((item) => !coreNavIds.has(item.id) && item.id !== "settings")
+    : [];
+  const settingsNavItem = demoView ? visibleMainNav.find((item) => item.id === "settings") : undefined;
+  // Auto-reveal the advanced group when the user is currently on one of those sections, so the
+  // active tab is never hidden behind a collapsed disclosure.
+  const advancedNavShown = navAdvancedOpen || secondaryMainNav.some((item) => item.id === mainSection);
+
   function setMainLanguage(nextLanguage: Language) {
     setLanguage(nextLanguage);
     writeBrowserStorage("atanor.uiLanguage", nextLanguage);
@@ -5629,7 +5644,7 @@ function FullApp() {
           <span data-demo-badge={demoView ? "true" : "false"}>{demoView ? "DEMO" : "0.1.2"}</span>
         </div>
         <nav className="atanor-user-nav" aria-label="ATANOR sections">
-          {visibleMainNav.map((item) => {
+          {primaryMainNav.map((item) => {
             const Icon = mainNavIcon[item.id];
             return (
               <button key={item.id} data-active={isMainSectionActive(item.id)} onClick={() => openMainSection(item.id)}>
@@ -5638,6 +5653,48 @@ function FullApp() {
               </button>
             );
           })}
+          {demoView && secondaryMainNav.length ? (
+            <>
+              <button
+                type="button"
+                className="atanor-user-nav-more"
+                data-open={advancedNavShown ? "true" : "false"}
+                aria-expanded={advancedNavShown}
+                onClick={() => setNavAdvancedOpen((value) => !value)}
+              >
+                <span aria-hidden="true">
+                  <ChevronDown
+                    size={16}
+                    strokeWidth={1.8}
+                    style={{ transform: advancedNavShown ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s ease" }}
+                  />
+                </span>
+                <strong>{language === "ko" ? "고급" : "Advanced"}</strong>
+              </button>
+              {advancedNavShown
+                ? secondaryMainNav.map((item) => {
+                    const Icon = mainNavIcon[item.id];
+                    return (
+                      <button key={item.id} data-active={isMainSectionActive(item.id)} data-advanced="true" onClick={() => openMainSection(item.id)}>
+                        <span aria-hidden="true"><Icon size={17} strokeWidth={1.8} /></span>
+                        <strong>{item.label}</strong>
+                      </button>
+                    );
+                  })
+                : null}
+            </>
+          ) : null}
+          {settingsNavItem
+            ? (() => {
+                const Icon = mainNavIcon[settingsNavItem.id];
+                return (
+                  <button key={settingsNavItem.id} data-active={isMainSectionActive(settingsNavItem.id)} onClick={() => openMainSection(settingsNavItem.id)}>
+                    <span aria-hidden="true"><Icon size={17} strokeWidth={1.8} /></span>
+                    <strong>{settingsNavItem.label}</strong>
+                  </button>
+                );
+              })()
+            : null}
           {labMainNav.length ? <small className="atanor-user-nav-group">{language === "ko" ? "Lab / Developer" : "Lab / Developer"}</small> : null}
           {labMainNav.map((item) => {
             const Icon = mainNavIcon[item.id];
