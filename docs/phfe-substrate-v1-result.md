@@ -59,14 +59,34 @@ corpus. This makes the density claim precise:
 This is the honest correction to "just add nodes": denser graph → better generation **iff** the
 representation's capacity scales with it.
 
+## v2 — semantic generalization (done)
+
+The v1 base vectors were random, so generalization was over **token-overlap** only. v2 adds a
+`semantic=True` mode: base filler phasors are **Random Fourier Features of the IDF-weighted
+co-occurrence embedding** — `φ(s) = exp(i · E_s · R)`, which by Bochner makes
+`resonance(φ(a),φ(b)) ≈ exp(−‖E_a−E_b‖²/2)`, an RBF kernel over distributional embeddings. Roles
+stay random for clean role separation. Deterministic, still no training/LLM.
+
+Measured (`test_holographic_lm.py`, now 9 green):
+
+| token (never seen before the target) | semantic base | random base (v1) |
+|---|---|---|
+| `puppy` → animal sound? | **barks** (0.56 vs honks 0.01) ✓ | honks ✗ (noise) |
+| `sedan` → machine sound? | **honks** (0.38 vs barks −0.02) ✓ | barks ✗ (noise) |
+| resonance dog~cat (same contexts) | **1.00** | 0.015 |
+| resonance dog~car (different) | −0.01 | — |
+
+This is **semantic generalization the token-overlap model cannot reach**: `puppy` picks the
+animal sound purely because it is *distributionally* like dog/cat, with no rule and no prior
+`puppy→barks` example. This is the toy→real bridge — the mechanism that lets density over real
+corpora yield generalizing generation.
+
 ## Honest limits + next steps
 
-- Base vectors are random, so generalization here is over **token-overlap** sub-context, not yet
-  **semantic** similarity (dog≈cat). Next: derive base phasors from co-occurrence (reuse
-  `PhaseField`) so semantically-similar fillers also resonate — combines v0's distributional phase
-  with v1's binding.
 - Single prototype per successor blurs when a successor has many distinct contexts. Next:
   **cluster** contexts → a small mixture of prototypes per successor (raises effective capacity).
+- Validated on small synthetic batteries; **real large-corpus fluent generation is not yet
+  shown** (that is graph SIZE + integration, per the density theory above).
 - Integration into the live `_walk_for_frame` / answer path is Claude's job (brief §7); the module
   exposes a clean `predict(context) → scores` interface for a bounded additive term, exactly like
   the existing `Superposition.interference` nudge.

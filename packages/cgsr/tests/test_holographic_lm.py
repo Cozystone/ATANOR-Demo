@@ -71,6 +71,47 @@ def test_deterministic():
     assert a == b
 
 
+def test_semantic_base_resonance_is_distributional():
+    # co-occurrence-similar tokens must resonate; dissimilar ones must not.
+    train = ["dog runs", "cat runs", "dog eats", "cat eats", "car drives", "truck drives"]
+    lm = HolographicLM(window=1, seed=7, semantic=True, bandwidth=2.0).fit(train)
+    dog_cat = resonance(lm._filler_vec["dog"], lm._filler_vec["cat"])
+    dog_car = resonance(lm._filler_vec["dog"], lm._filler_vec["car"])
+    assert dog_cat > 0.5
+    assert dog_car < 0.2
+    assert dog_cat > dog_car + 0.4
+
+
+def test_semantic_generalization_that_token_overlap_cannot_do():
+    # puppy/sedan NEVER precede barks/honks — only DISTRIBUTIONAL similarity can decide, so
+    # this is generalization the random-base (token-overlap) model cannot reach.
+    train = [
+        "dog chased ball", "cat chased ball", "puppy chased ball",
+        "dog ate bone", "cat ate bone", "puppy ate bone",
+        "car drove road", "truck drove road", "sedan drove road",
+        "dog barks", "cat barks", "car honks", "truck honks",
+    ]
+
+    def decide(lm, tok):
+        p = lm.predict([tok], candidates=["barks", "honks"])
+        return max(p, key=p.get) if p else None
+
+    sem = HolographicLM(window=1, seed=7, semantic=True, bandwidth=2.0).fit(train)
+    assert decide(sem, "puppy") == "barks"   # animal-like → animal sound
+    assert decide(sem, "sedan") == "honks"   # machine-like → machine sound
+
+    rnd = HolographicLM(window=1, seed=7, semantic=False).fit(train)
+    # random base has no distributional kinship → it cannot get both right
+    assert not (decide(rnd, "puppy") == "barks" and decide(rnd, "sedan") == "honks")
+
+
+def test_semantic_mode_is_deterministic():
+    train = ["dog runs", "cat runs", "car drives"]
+    a = HolographicLM(window=1, seed=7, semantic=True).fit(train).predict(["dog"], candidates=["runs", "drives"])
+    b = HolographicLM(window=1, seed=7, semantic=True).fit(train).predict(["dog"], candidates=["runs", "drives"])
+    assert a == b
+
+
 def test_bind_unbind_recovers():
     lm = HolographicLM(dim=2048, seed=7)
     role = lm.space.vec("role")

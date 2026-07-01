@@ -81,24 +81,89 @@ def resonance(q: np.ndarray, r: np.ndarray) -> float:
 class HolographicLM:
     """A holographic associative n-gram: window-context prototypes + resonance retrieval."""
 
-    def __init__(self, *, dim: int = 1024, window: int = 3, decay: float = 0.7, seed: int = 7) -> None:
+    def __init__(
+        self,
+        *,
+        dim: int = 1024,
+        window: int = 3,
+        decay: float = 0.7,
+        seed: int = 7,
+        semantic: bool = False,
+        cooc_window: int = 3,
+        bandwidth: float = 3.0,
+    ) -> None:
         self.space = HoloSpace(dim=dim, seed=seed)
         self.window = int(window)
         self.decay = float(decay)
+        self.semantic = bool(semantic)
+        self.cooc_window = int(cooc_window)
+        self.bandwidth = float(bandwidth)
         self._roles = [self.space.vec(f"__role_pos_{j}__") for j in range(self.window)]
+        self._filler_vec: dict[str, np.ndarray] = {}  # distributional fillers (semantic mode)
         self._proto: dict[str, np.ndarray] = {}      # successor → bundled context phasor
         self._count: Counter[str] = Counter()
         self._bigram: dict[str, Counter[str]] = defaultdict(Counter)  # last-token baseline
+
+    def _filler(self, token: str) -> np.ndarray:
+        """The vector a token contributes as a bound FILLER. Random by default; in semantic
+        mode it is a distributional phasor, so co-occurrence-similar tokens resonate (dog≈cat)."""
+        v = self._filler_vec.get(token)
+        return v if v is not None else self.space.vec(token)
+
+    def _build_distributional_base(self, corpus: list[str] | tuple[str, ...]) -> None:
+        """Random Fourier Features of the IDF-weighted co-occurrence embedding: φ(s) = exp(i·E_s·R).
+        By Bochner, resonance(φ(a),φ(b)) ≈ exp(−‖E_a−E_b‖²/2) — an RBF kernel over distributional
+        embeddings, so similar-context tokens have graded resonance and dissimilar ones ≈ 0.
+        Deterministic (seeded), no training. Roles stay random for clean role separation."""
+        cooc: dict[str, Counter[str]] = defaultdict(Counter)
+        vocab: list[str] = []
+        seen: set[str] = set()
+        for line in corpus:
+            toks = tokens(line)
+            for t in toks:
+                if t not in seen:
+                    seen.add(t)
+                    vocab.append(t)
+            for i, left in enumerate(toks):
+                lo = max(0, i - self.cooc_window)
+                hi = min(len(toks), i + self.cooc_window + 1)
+                for j in range(lo, hi):
+                    if j != i:
+                        cooc[left][toks[j]] += 1
+        index = {t: k for k, t in enumerate(vocab)}
+        v = len(vocab)
+        if v == 0:
+            return
+        df: Counter[str] = Counter()
+        for t in vocab:
+            for ctx in cooc[t]:
+                df[ctx] += 1
+        idf = np.array([np.log((1.0 + v) / (1.0 + df.get(t, 0))) + 1.0 for t in vocab], dtype=np.float64)
+        emb = np.zeros((v, v), dtype=np.float64)
+        for t in vocab:
+            row = emb[index[t]]
+            for ctx, c in cooc[t].items():
+                row[index[ctx]] = c * idf[index[ctx]]
+            n = np.linalg.norm(row)
+            if n > 0:
+                row /= n
+        rng = np.random.default_rng(self.space.seed ^ 0x5DEECE66D)
+        proj = self.bandwidth * rng.standard_normal((v, self.space.dim))
+        theta = emb @ proj  # (v, dim)
+        phasors = np.exp(1j * theta)
+        self._filler_vec = {t: phasors[index[t]] for t in vocab}
 
     def encode_context(self, ctx_tokens: list[str]) -> np.ndarray:
         """Bundle the recent window into one phasor: newest token bound to role 0."""
         acc = np.zeros(self.space.dim, dtype=np.complex128)
         recent = ctx_tokens[-self.window:]
         for j, tok in enumerate(reversed(recent)):  # j = 0 is the newest token
-            acc = acc + (self.decay ** j) * self.space.bind(self._roles[j], self.space.vec(tok))
+            acc = acc + (self.decay ** j) * self.space.bind(self._roles[j], self._filler(tok))
         return acc
 
     def fit(self, corpus: list[str] | tuple[str, ...]) -> "HolographicLM":
+        if self.semantic:
+            self._build_distributional_base(corpus)
         for line in corpus:
             toks = tokens(line)
             for i in range(1, len(toks)):
