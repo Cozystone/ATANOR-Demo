@@ -989,15 +989,37 @@ const memoryTypeDescriptions: Record<string, string> = {
   brain_link_peer: "Brain Link P2P 풀의 상대 피어입니다 (신뢰·사생활 게이트로 연산 공유 여부 결정).",
 };
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+// Without a timeout a slow/wedged backend leaves the browser fetch pending forever, and
+// since browsers cap concurrent connections per host (~6 over HTTP/1.1) a handful of stuck
+// polls permanently starve the pool — every later click (e.g. opening Graph Hub) then hangs
+// and its panel renders empty. A bounded timeout aborts the stuck request, frees the socket,
+// and lets the caller's catch/retry recover. Generous default so real slow answers aren't cut.
+const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+
+async function fetchWithTimeout(input: string, init?: RequestInit, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException("timeout", "AbortError")), timeoutMs);
+  const outerSignal = init?.signal;
+  if (outerSignal) {
+    if (outerSignal.aborted) controller.abort(outerSignal.reason);
+    else outerSignal.addEventListener("abort", () => controller.abort(outerSignal.reason), { once: true });
+  }
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchJson<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
+  const response = await fetchWithTimeout(path, {
     ...init,
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
-  });
+  }, timeoutMs);
   const body = await response.json();
   if (!response.ok) {
     throw new Error(body.detail ?? body.error ?? `API returned ${response.status}`);
@@ -1087,17 +1109,17 @@ function localBackendDisplayMessage(message: string, status: "idle" | "checking"
   return "Local FastAPI did not respond";
 }
 
-async function directBackendJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+async function directBackendJson<T>(baseUrl: string, path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
   const headers = new Headers(init?.headers ?? undefined);
   const method = init?.method?.toUpperCase() ?? "GET";
   if ((init?.body || method !== "GET") && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(`${normalizeLocalBackendUrl(baseUrl)}${path}`, {
+  const response = await fetchWithTimeout(`${normalizeLocalBackendUrl(baseUrl)}${path}`, {
     ...init,
     cache: "no-store",
     headers,
-  });
+  }, timeoutMs);
   const body = await response.json();
   if (!response.ok) {
     throw new Error(body.detail ?? body.error ?? `Local FastAPI returned ${response.status}`);
@@ -1787,6 +1809,8 @@ function FullApp() {
     setDemoView(demo);
   }, []);
   const [mainSection, setMainSection] = useState<MainSectionId>("home");
+  // Tracks whether the one-time baseline dashboard refresh has run (see section-gated poll).
+  const didInitialAggregateRef = useRef(false);
   const [labSurfaceVisible, setLabSurfaceVisible] = useState(false);
   const [contributionEnabled, setContributionEnabled] = useState(() => readBrowserStorage("atanor.contribution.enabled") === "true");
   const [contributionPaused, setContributionPaused] = useState(false);
@@ -2455,12 +2479,29 @@ function FullApp() {
     if (graphHubPricingFilter !== "all") query.set("pricing_model", graphHubPricingFilter);
     if (graphHubSearch.trim()) query.set("query", graphHubSearch.trim());
     const suffix = query.toString() ? `?${query.toString()}` : "";
+    // Read Hub data local-first, but fall back to the reliable server-side proxy. When the
+    // Local Brain is CONNECTED the demo fires many DIRECT browser→backend polls, which can
+    // saturate the browser's per-host connection pool (~6 over HTTP/1.1) and make a direct
+    // Hub read hang → empty list. A short direct timeout then a proxy fallback keeps the Hub
+    // filling. (The proxy reaches the same backend server-side, unaffected by the browser pool.)
+    const hubGet = async <T,>(path: string, fallback: T): Promise<T> => {
+      if (localBackendConnected) {
+        try {
+          return await directBackendJson<T>(localBackendUrl, path, undefined, 2500);
+        } catch {
+          // direct path unavailable/saturated from the browser — fall through to the proxy
+        }
+      }
+      // Short proxy timeout too, so a failed attempt cycles the retry quickly (fills within a
+      // few seconds) instead of holding a socket for the full default window.
+      return await fetchJson<T>(path, undefined, 4000).catch(() => fallback);
+    };
     const [status, catalog, installed, attachments, audit] = await Promise.all([
-      apiJson<AnyRecord>("/api/graph-hub/status", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => null),
-      apiJson<AnyRecord[]>(`/api/graph-hub/catalog${suffix}`, undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
-      apiJson<AnyRecord[]>("/api/graph-hub/installed", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
-      apiJson<AnyRecord[]>("/api/graph-hub/attachments", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
-      apiJson<AnyRecord[]>("/api/graph-hub/audit?limit=20", undefined, localBackendConnected ? { localOnly: true } : {}).catch(() => []),
+      hubGet<AnyRecord | null>("/api/graph-hub/status", null),
+      hubGet<AnyRecord[]>(`/api/graph-hub/catalog${suffix}`, []),
+      hubGet<AnyRecord[]>("/api/graph-hub/installed", []),
+      hubGet<AnyRecord[]>("/api/graph-hub/attachments", []),
+      hubGet<AnyRecord[]>("/api/graph-hub/audit?limit=20", []),
     ]);
     if (status) setGraphHubStatus(status);
     setGraphHubCatalog(Array.isArray(catalog) ? catalog : []);
@@ -2468,6 +2509,11 @@ function FullApp() {
     setGraphHubAttachments(Array.isArray(attachments) ? attachments : []);
     setGraphHubAudit(Array.isArray(audit) ? audit : []);
     setGraphHubLoading(false);
+    // Report whether real data arrived, so the auto-load effect can retry through a
+    // backend-restart / first-load transient instead of showing an empty Hub.
+    return (Array.isArray(installed) && installed.length > 0)
+      || (Array.isArray(catalog) && catalog.length > 0)
+      || (Array.isArray(attachments) && attachments.length > 0);
   }
 
   async function runGraphHubAction(action: string, path: string, body?: AnyRecord) {
@@ -2981,17 +3027,30 @@ function FullApp() {
   useEffect(() => {
     const requestedSection = new URLSearchParams(window.location.search).get("section");
     const deferFullRefresh = requestedSection === "home" || requestedSection === "local" || requestedSection === "cloud";
-    const initialTimer = window.setTimeout(() => {
+    // Only sections that display the live dashboard aggregate keep polling it. The recurring
+    // ~24-endpoint refreshAll goes DIRECT to the backend; on light sections (Graph Hub, Brain
+    // Link, Settings, Agora…) that storm saturates the browser's per-host socket pool and
+    // stalls those panels' own reads (Graph Hub rendered empty). Light sections keep their
+    // last-known status pills; one initial refresh still runs on first mount for baseline data.
+    const aggregateSection = mainSection === "home" || mainSection === "local"
+      || mainSection === "cloud" || mainSection === "atlas";
+    let initialTimer: number | undefined;
+    if (aggregateSection || !didInitialAggregateRef.current) {
+      didInitialAggregateRef.current = true;
+      initialTimer = window.setTimeout(() => {
       refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "BakeBoard瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??"));
-    }, deferFullRefresh ? 1600 : 0);
-    const timer = window.setInterval(() => {
-      refreshAll().catch(() => undefined);
-    }, 10000);
+      }, deferFullRefresh ? 1600 : 0);
+    }
+    const timer = aggregateSection
+      ? window.setInterval(() => {
+          refreshAll().catch(() => undefined);
+        }, 10000)
+      : null;
     return () => {
-      window.clearTimeout(initialTimer);
-      window.clearInterval(timer);
+      if (initialTimer !== undefined) window.clearTimeout(initialTimer);
+      if (timer !== null) window.clearInterval(timer);
     };
-  }, [learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at, localBackendConnected, localBackendUrl]);
+  }, [mainSection, learningVolume, targetNodeCount, benchmark?.can_read_local_hardware, benchmark?.generated_at, localBackendConnected, localBackendUrl]);
 
   useEffect(() => {
     if (mainSection !== "local") return;
@@ -3000,7 +3059,25 @@ function FullApp() {
 
   useEffect(() => {
     if (mainSection !== "graphhub") return;
-    refreshGraphHub().catch((caught) => setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub refresh failed."));
+    let cancelled = false;
+    let attempts = 0;
+    const run = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      const gotData = await refreshGraphHub().catch((caught) => {
+        setGraphHubError(caught instanceof Error ? caught.message : "Graph Hub refresh failed.");
+        return false;
+      });
+      // Empty on first load is usually a backend-restart / cold transient, not truly
+      // empty — retry a few times so the Hub reliably fills instead of showing "empty".
+      if (!cancelled && !gotData && attempts < 4) {
+        setTimeout(run, 1200);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [mainSection, graphHubPricingFilter, localBackendConnected, localBackendUrl]);
 
   useEffect(() => {
