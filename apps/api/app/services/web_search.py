@@ -181,7 +181,13 @@ def static_search(query: str, count: int = 5) -> list[dict[str, Any]]:
         score = sum(1 for term in terms if term in haystack)
         scored.append((score, result))
     scored.sort(key=lambda item: (-item[0], item[1].id))
-    return [asdict(result) | {"search_score": score} for score, result in scored[: max(1, min(count, 10))]]
+    # Only return entries that actually overlap the query. The static catalog is a
+    # last-resort sample set; returning a score-0 entry (e.g. the GraphRAG sample for an
+    # unrelated question like "who will be president in 2050") leaks an off-topic snippet
+    # as if it were evidence. When nothing overlaps, return [] so the caller abstains
+    # rather than surface garbage — "no relevant grounding → hold", not a canned answer.
+    relevant = [(score, result) for score, result in scored if score > 0]
+    return [asdict(result) | {"search_score": score} for score, result in relevant[: max(1, min(count, 10))]]
 
 
 def _strip_html(value: str) -> str:
@@ -563,6 +569,12 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
 
     # 2) supporting facts: in order, about the entity, share terms, NOT redundant.
     supporting: list[tuple[str, dict[str, Any]]] = []
+    # Non-redundancy is checked against EVERYTHING already chosen (the lead AND every
+    # supporting sentence picked so far) — not just the lead. Two paraphrases of the same
+    # definition ("…오케스트레이션 시스템으로 …자동화한다" twice) each differ enough from the
+    # lead to pass a lead-only check, then both land and the answer repeats itself. Pairwise
+    # against all chosen sentences drops the second copy.
+    chosen_token_sets: list[set[str]] = [lead_tokens]
     for index, (sentence, row) in enumerate(cands):
         if index == lead_idx:
             continue
@@ -572,10 +584,10 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
         if not about(sentence):
             continue
         toks = set(re.findall(r"[가-힣A-Za-z0-9]{2,}", sentence.lower()))
-        overlap = len(toks & lead_tokens) / max(1, len(toks))
-        if overlap > 0.55:  # too similar to something already said
-            continue
+        if any(len(toks & chosen) / max(1, len(toks)) > 0.55 for chosen in chosen_token_sets):
+            continue  # too similar to the lead or an already-selected supporting fact
         supporting.append((sentence, row))
+        chosen_token_sets.append(toks)
         if len(supporting) >= max_supporting:
             break
 
@@ -596,6 +608,7 @@ def _clean_web_snippet(text: str) -> str:
     prose, not '# 빌 게이츠 | [펼치기·접기] | --- | **초대** …'."""
     s = _strip_html(str(text or ""))
     s = re.sub(r"\[[^\]]*?(?:펼치기|접기|편집|edit)[^\]]*?\]", " ", s)
+    s = re.sub(r"\[\d+\]", "", s)                        # wiki citation markers [3][4] → drop
     s = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", s)  # markdown links/images → label
     s = re.sub(r"[#*`>]+", " ", s)                      # headers / bold / code / quotes
     s = re.sub(r"\s*\|\s*", " ", s)                     # table pipes
