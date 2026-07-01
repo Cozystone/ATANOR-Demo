@@ -1044,7 +1044,30 @@ def _diverse_fallback_rows(query: str, lookup: str, lookup_terms: list[str], pri
     return rows
 
 
+_WIKI_CACHE: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
+_WIKI_CACHE_TTL = 300.0  # seconds
+
+
 def wikipedia_search(query: str, count: int = 5) -> list[dict[str, Any]]:
+    """TTL-memoized wrapper. A single chat request fans out several wikipedia_search
+    calls (search_web's internal fetch, the outer fallback, and claim verification),
+    often for the SAME term — each was a fresh ~1.5s network round-trip. Caching them
+    for 5 min collapses the duplicates and makes a re-ask instant, without changing what
+    is retrieved."""
+    key = (str(query), int(count))
+    hit = _WIKI_CACHE.get(key)
+    now = time.time()
+    if hit and (now - hit[0]) < _WIKI_CACHE_TTL:
+        return hit[1]
+    rows = _wikipedia_search_impl(query, count)
+    _WIKI_CACHE[key] = (now, rows)
+    if len(_WIKI_CACHE) > 512:  # bounded: drop the oldest quarter
+        for k, _v in sorted(_WIKI_CACHE.items(), key=lambda kv: kv[1][0])[:128]:
+            _WIKI_CACHE.pop(k, None)
+    return rows
+
+
+def _wikipedia_search_impl(query: str, count: int = 5) -> list[dict[str, Any]]:
     lookup = _normalize_lookup_query(query)
     lookup_terms = _lookup_terms(lookup)
     bounded_count = max(1, min(count, 10))
@@ -1211,7 +1234,14 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
                 _search_term = _ent if (2 <= len(_ent) <= 24 and is_definitional_question(clean_query)) else clean_query
             except Exception:
                 _search_term = clean_query
-            api_rows = provider_api_search(_search_term, bounded_count + 2)
+            # Only attempt the external search API when a real key is configured. With no
+            # key, provider_api_search spends ~1-2s failing before we fall back to
+            # Wikipedia anyway — skip it and go straight to the keyless Wikipedia path.
+            api_rows = (
+                provider_api_search(_search_term, bounded_count + 2)
+                if selected in {"brave", "serper", "tavily"}
+                else []
+            )
             if api_rows:
                 # Merge the clean, precise Wikipedia entity page so an encyclopedic bio
                 # (빌 게이츠 → 'William Henry Gates III…') can win over a blog/YouTube
