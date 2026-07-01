@@ -60,7 +60,16 @@ class RenderableBrainNode:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        # Manual dict (not dataclasses.asdict): asdict deep-recurses into metadata and was
+        # ~46% of aggregate_brain_graph. This is a read-only serialization path, so the
+        # metadata dict is referenced, not deep-copied. ~10x faster per node.
+        return {
+            "id": self.id, "label": self.label, "layer": self.layer,
+            "source_scope": self.source_scope, "persistent": self.persistent,
+            "temporary": self.temporary, "x": self.x, "y": self.y, "z": self.z,
+            "kind": self.kind, "trust_state": self.trust_state,
+            "verification_state": self.verification_state, "metadata": self.metadata,
+        }
 
 
 @dataclass(slots=True)
@@ -79,7 +88,13 @@ class RenderableBrainEdge:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "id": self.id, "source": self.source, "target": self.target,
+            "relation": self.relation, "layer": self.layer, "source_scope": self.source_scope,
+            "persistent": self.persistent, "temporary": self.temporary, "weight": self.weight,
+            "trust_state": self.trust_state, "verification_state": self.verification_state,
+            "metadata": self.metadata,
+        }
 
 
 @dataclass(slots=True)
@@ -94,4 +109,9 @@ class LayerResult:
     partial: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        # nodes/edges are already plain dicts; reference them (asdict deep-copied every one).
+        return {
+            "layer": self.layer, "available": self.available, "nodes": self.nodes,
+            "edges": self.edges, "side_panel": self.side_panel, "stats": self.stats,
+            "missing_reason": self.missing_reason, "partial": self.partial,
+        }
