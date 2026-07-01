@@ -834,6 +834,53 @@ def _cartridge_expert_answer(query: str, language: str) -> tuple[str, str] | Non
     return None
 
 
+def _active_persona_cartridge() -> dict[str, Any] | None:
+    """First ATTACHED persona cartridge (category=persona), if any."""
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2] / "data" / "graph_hub"
+    inst = root / "installed"
+    att = root / "attachments" / "active_attachments.json"
+    if not inst.exists():
+        return None
+    active: set[str] = set()
+    if att.exists():
+        try:
+            payload = json.loads(att.read_text(encoding="utf-8"))
+            active = set(payload.keys()) if isinstance(payload, dict) else {a.get("cartridge_id") for a in payload}
+        except Exception:
+            active = set()
+    for f in inst.glob("*.graphpack.json"):
+        try:
+            c = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if str(c.get("category")) == "persona" and str(c.get("cartridge_id")) in active:
+            return c
+    return None
+
+
+def _apply_persona_style(query: str, answer: str, language: str, persona: dict[str, Any]) -> tuple[str, str | None]:
+    """Apply an attached persona's discourse MOVES to the answer SURFACE only — the grounded
+    content is unchanged; the persona (from its graph's surface_graph.discourse_moves) adds a
+    tone/move flourish, attributed via the trace. Not fabrication: a surface transform the user
+    opted into by attaching the persona. Deeper realization (full surface engine) is a follow-up."""
+    if language != "ko" or not answer or "근거가 부족" in answer or "실시간" in answer:
+        return answer, None
+    moves = ((persona.get("contents") or {}).get("surface_graph") or {}).get("discourse_moves") or []
+    topic = re.sub(r"\s*(이란|란|가 뭐야|는 뭐야|뭐야|이 뭐|에 대해.*|은 무엇.*|는 무엇.*)\s*\??\s*$", "", query).strip()
+    _c = topic[-1] if topic else ""
+    _iga = "이" if ("가" <= _c <= "힣" and (ord(_c) - 0xAC00) % 28 != 0) else "가"
+    add = ""
+    if "counter_question" in moves and topic:
+        add = f" 그런데 스스로 되물어 봅시다 — {topic}{_iga} 왜 그러하며, 다른 경우와는 어떻게 다를까요?"
+    elif "stepwise_guide" in moves and topic:
+        add = f" 한 걸음씩 짚어 보죠 — {topic}의 가장 기본이 되는 것부터 함께 확인해 볼까요?"
+    if add:
+        return answer.rstrip() + add, str(persona.get("cartridge_id"))
+    return answer, None
+
+
 def answer_with_base_brain(
     query: str,
     language: Language = "ko",
@@ -874,6 +921,13 @@ def answer_with_base_brain(
         _cart = _cartridge_expert_answer(query, language)
         if _cart:
             answer, useful, cartridge_source = _cart[0], True, _cart[1]
+    # Persona styling: if a persona cartridge is attached, apply its discourse moves to the
+    # answer surface (tone/move only; grounded content unchanged; attributed in the trace).
+    persona_source = None
+    if useful:
+        _persona = _active_persona_cartridge()
+        if _persona:
+            answer, persona_source = _apply_persona_style(query, answer, language, _persona)
     # M3 honesty signal: was this surface a hand-authored canned answer, or was it
     # realized from the graph? General questions must be graph-derived (False).
     hand_authored_answer_used = _project_level_answer(query, language) is not None
@@ -887,6 +941,7 @@ def answer_with_base_brain(
         "intent": intent,
         "hand_authored_answer_used": hand_authored_answer_used,
         "cartridge_source": cartridge_source,
+        "persona_source": persona_source,
         "matched_concepts": [
             {
                 "concept_id": item.get("concept_id"),
