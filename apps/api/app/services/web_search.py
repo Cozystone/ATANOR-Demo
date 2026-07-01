@@ -614,6 +614,35 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
     return {"answer": body.strip(), "lead": lead_sentence, "sources": sources[:3]}
 
 
+# Korean particles are BOUND morphemes — they attach to the preceding word with no
+# space. Some sources emit "빛 을 포함한", "밀도 와 중력", "특이점 과 사건". Re-attaching a
+# space-separated particle to the preceding Hangul word is morphology (LAD), not a
+# knowledge rule. The particle must be delimited on the right (space/punct/end) so a
+# noun that merely starts with the same syllable ("그 도시" — 도시) is never joined.
+_KO_PARTICLES = sorted(
+    [
+        "으로부터", "이라는", "이라고", "에서는", "에게서", "으로서", "으로써", "이라도", "조차도",
+        "에서", "에게", "한테", "께서", "으로", "이랑", "라는", "라고", "처럼", "보다", "만큼",
+        "까지", "부터", "마다", "조차", "마저", "밖에", "이나", "이란", "라도",
+        "은", "는", "이", "가", "을", "를", "와", "과", "에", "의", "로", "도", "만", "랑", "란",
+    ],
+    key=len,
+    reverse=True,
+)
+_KO_PARTICLE_RX = re.compile(
+    r"([가-힣])\s+(" + "|".join(_KO_PARTICLES) + r")(?=[\s.,;:!?)\]}\"'」』·]|$)"
+)
+
+
+def _reattach_korean_particles(text: str) -> str:
+    prev = None
+    s = str(text or "")
+    while prev != s:  # re-run so chained "A 와 B 의 C" fully settles
+        prev = s
+        s = _KO_PARTICLE_RX.sub(r"\1\2", s)
+    return s
+
+
 def _clean_web_snippet(text: str) -> str:
     """Strip the cruft a real search API returns (markdown tables/headers from Namuwiki
     infoboxes, '[펼치기·접기]' toggles, source-name title suffixes) so the answer is clean
@@ -626,6 +655,7 @@ def _clean_web_snippet(text: str) -> str:
     s = re.sub(r"\s*\|\s*", " ", s)                     # table pipes
     s = re.sub(r"-{2,}", " ", s)                        # table rules ---
     s = re.sub(r"\s+", " ", s).strip()
+    s = _reattach_korean_particles(s)                   # "빛 을" -> "빛을" (bound morphemes)
     return s
 
 

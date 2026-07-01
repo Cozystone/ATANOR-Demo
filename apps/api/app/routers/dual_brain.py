@@ -2327,7 +2327,11 @@ async def _verify_claim_about_entity(question: str, language: str) -> dict[str, 
         return -1
 
     ranked = sorted(((_title_score(r), r) for r in rows), key=lambda sr: sr[0], reverse=True)
-    if not ranked or ranked[0][0] < 1:
+    # Require an EXACT normalized-title match for the entity's own page. A mere prefix
+    # ("아인슈타인 방정식" for 아인슈타인, "빌게이츠꽃등에" for 빌게이츠) is a DIFFERENT entity,
+    # so grounding on it would answer about the wrong thing — better to abstain than to
+    # rebut from a namesake. ("빌 게이츠" -> "빌게이츠" == entity, so the person still works.)
+    if not ranked or ranked[0][0] < 3:
         return None
     best = ranked[0][1]
     composed = compose_web_answer(entity, [{"snippet": best.get("snippet", ""), "title": best.get("title", "")}], language=language)
@@ -2335,10 +2339,15 @@ async def _verify_claim_about_entity(question: str, language: str) -> dict[str, 
     if len(facts) < 30:
         return None
     src = str(best.get("url") or best.get("source_url") or "")
+    # SAFE framing only: never assert the claim true or false (a substring like "게이" in
+    # "게이츠" would falsely "confirm" a rumor). Report that the specific claim was not
+    # found in the documented facts, and present what the entity IS documented to be.
     if is_ko:
-        answer = f"‘{claim}’라는 주장을 뒷받침하는 근거는 찾지 못했습니다. {entity}에 대해 확인된 사실은 이렇습니다. {facts}"
+        _c = claim[-1] if claim else ""
+        _rn = "이라는" if ("가" <= _c <= "힣" and (ord(_c) - 0xAC00) % 28 != 0) else "라는"  # 이형태
+        answer = f"‘{claim}’{_rn} 주장은 확인된 근거에서 찾지 못했습니다. {entity}에 대해 확인된 사실은 이렇습니다. {facts}"
     else:
-        answer = f"I found no evidence supporting the claim “{claim}.” Here is what is documented about {entity}: {facts}"
+        answer = f"I found no evidence for the claim “{claim}.” Here is what is documented about {entity}: {facts}"
     return {
         "answer": answer,
         "reasoning_certificate": {
@@ -2461,13 +2470,19 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         return any(term in subject for term in _core_terms) and int(row.get("query_terms_matched") or 0) >= 1
 
     on_topic_rows = [r for r in rows if _on_topic(r)]
-    if not on_topic_rows:
-        # Before blank-abstaining on a yes/no CLAIM ("빌게이츠는 게이야?"), try to
-        # re-ground on the ENTITY alone and rebut with documented facts (structural,
-        # not a rumor table). Only when the entity is genuinely documented.
+    # A yes/no CLAIM ("아인슈타인은 유대인이야?") must be VERIFIED against the entity's own
+    # documented facts — not answered from any page that merely mentions the entity (an
+    # "아인슈타인 냉장고" page anchors the term but says nothing about the claim). So route
+    # claim questions to entity-grounded verification FIRST, ahead of general retrieval.
+    if _parse_yes_no_claim(question, language):
         _claim_answer = await _verify_claim_about_entity(question, language)
         if _claim_answer:
             return _claim_answer
+        # A claim we could not confidently ground on the entity's OWN page must NOT be
+        # answered from a page that merely mentions the entity (the "아인슈타인 방정식"
+        # tangent). Force the honest abstain instead.
+        on_topic_rows = []
+    if not on_topic_rows:
         # No retrieved page is genuinely about the asked entity. Abstain honestly
         # rather than answer from an unrelated page — and graft nothing.
         return {
