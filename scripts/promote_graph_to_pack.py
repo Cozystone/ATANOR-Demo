@@ -286,6 +286,15 @@ def promote(dry_run: bool = False) -> dict:
     }
     if not dry_run:
         PACK_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Build the inverted-index + disk-record store next to the pack so the live
+        # answer path serves lookups in O(candidates) with bounded RAM instead of an
+        # O(N) scan (get_semantic_context uses it when it matches the loaded pack).
+        try:
+            from packages.base_brain.pack_loader import SEMANTIC_STORE_DIR
+            from packages.base_brain.semantic_store import SemanticConceptStore
+            SemanticConceptStore.build(SEMANTIC_STORE_DIR, merged)
+        except Exception as exc:  # store is an optimization; never fail promotion on it
+            print(f"[PROMOTE] semantic store build skipped: {exc}")
     return {"curated": len(curated_concepts), "promoted": len(promoted), "total": len(merged),
             "pack": str(PACK_PATH), "dry_run": dry_run,
             "promoted_names": [c.get("canonical_name") for c in promoted]}

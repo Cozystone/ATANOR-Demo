@@ -9,6 +9,11 @@ from .models import PACK_PATH, BaseBrainPack
 from .pack_builder import build_base_brain_pack_v0
 
 BASE_PACK_CODE_VERSION = "0.1.5"
+# Persisted inverted-index + disk-record store (built by promote_graph_to_pack). When
+# present AND matching the loaded pack, get_semantic_context serves lookups from it:
+# O(candidates) scoring + bounded RAM instead of an O(N) scan that copies every concept.
+SEMANTIC_STORE_DIR = PACK_PATH.parent / "semantic_store"
+_STORE_CACHE: dict[str, Any] = {"store": None, "sig": None}
 TOKEN_STOPWORDS = {
     "a",
     "an",
@@ -100,8 +105,33 @@ def _concept_score(query: str, concept: dict[str, Any]) -> float:
     return score
 
 
+def _get_indexed_store(expected_n: int):
+    """Return the persisted SemanticConceptStore iff it exists AND matches the loaded
+    pack (same concept count) — so a custom/grown pack passed in tests still uses the
+    scan. Cached by index mtime; any error falls back to None (scan)."""
+    idx = SEMANTIC_STORE_DIR / "index.json"
+    if not idx.exists():
+        return None
+    try:
+        sig = (idx.stat().st_mtime, expected_n)
+        if _STORE_CACHE["sig"] != sig:
+            from .semantic_store import SemanticConceptStore
+            store = SemanticConceptStore.open(SEMANTIC_STORE_DIR)
+            _STORE_CACHE["store"] = store if store.n == expected_n else None
+            _STORE_CACHE["sig"] = sig
+        return _STORE_CACHE["store"]
+    except Exception:
+        return None
+
+
 def get_semantic_context(query: str, pack: BaseBrainPack, limit: int = 12) -> list[dict[str, Any]]:
     concepts = pack.semantic_graph.get("concepts") or []
+    store = _get_indexed_store(len(concepts))
+    if store is not None:
+        try:
+            return store.lookup(query, limit=limit)
+        except Exception:
+            pass  # any store failure falls back to the exact in-RAM scan below
     scored = [{**concept, "match_score": _concept_score(query, concept)} for concept in concepts]
     ranked = sorted(
         scored,
