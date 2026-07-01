@@ -483,9 +483,43 @@ _EMOJI_RE = re.compile(
 _FLUFF_MARKERS = ("참고하십시오", "문서를 참고", "더보기", "바로가기", "구독", "좋아요", "본문 바로가기", "이 글은", "출처 :", "기자 =", "subscribers", "likes", "views", "구독자", "조회수", "앵커멘트", "subscribe")
 
 
+def _ko_has_batchim(ch: str) -> bool:
+    """True if a Hangul syllable carries a final consonant (받침). Pure morphology:
+    the syllable block is 0xAC00..0xD7A3 and the 받침 index is (code-0xAC00) % 28."""
+    o = ord(ch) if ch else 0
+    return 0xAC00 <= o <= 0xD7A3 and (o - 0xAC00) % 28 != 0
+
+
+def _is_ko_predicate_final(left: str) -> bool:
+    """Does `left` end on a Korean declarative predicate (so a period-less join can be cut
+    here)? A sentence-final -다 terminates a CONJUGATED predicate — the copula 이다/아니다, or a
+    verb/adjective stem carrying a 받침 (한다·된다·뛴다·있다·없다·았다·었다·였다). A Sino-Korean noun
+    that merely ends in the syllable 다 with a vowel-final stem (최다=最多) has no 받침 and is NOT
+    a boundary, so '최다 득점자' stays one clause. Segmentation morphology, not a knowledge rule."""
+    left = left.rstrip()
+    if not left.endswith("다"):
+        return False
+    if left.endswith("이다") or left.endswith("아니다"):
+        return True
+    return _ko_has_batchim(left[-2]) if len(left) >= 2 else False
+
+
 def _split_sentences(text: str) -> list[str]:
     text = re.sub(r"\s+", " ", str(text or "")).strip()
-    parts = re.split(r"(?<=[.!?。])\s+|(?<=[다요])\s+(?=[A-Z가-힣])", text)
+    # Primary boundaries: sentence-final punctuation.
+    parts: list[str] = []
+    for part in re.split(r"(?<=[.!?。])\s+", text):
+        # Secondary: search snippets sometimes drop the period between declarative sentences
+        # ("…소속이다 현재 …최다 득점자이다"). Break at a "-다 " boundary ONLY when the 다 is a genuine
+        # predicate final (see _is_ko_predicate_final) — never mid noun-compound like 최다 得점자
+        # or 중요 요소. The prior rule split on ANY 다/요 + space and stranded such fragments.
+        start = 0
+        for m in re.finditer(r"다\s+(?=[가-힣A-Z])", part):
+            cut = m.start() + 1  # keep 다 on the left side
+            if _is_ko_predicate_final(part[start:cut]):
+                parts.append(part[start:cut])
+                start = m.end()
+        parts.append(part[start:])
     return [p.strip() for p in parts if p and p.strip()]
 
 
