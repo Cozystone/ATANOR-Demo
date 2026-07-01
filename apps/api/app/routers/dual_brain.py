@@ -2270,6 +2270,95 @@ def _media_grounded_answer(question: str, language: str) -> dict[str, Any] | Non
     return None
 
 
+# A yes/no CLAIM about an entity: "X는 Y야?", "is X Y?". Parsed structurally into
+# (entity=subject, claim=predicate) — NOT a table of known rumors. wh-questions
+# (뭐/무엇/누구/what/who) are definitions, not claims, so they are excluded.
+_CLAIM_KO = re.compile(r"^\s*(.+?)(?:은|는|이|가)\s+(.+)\s*(?:야|이야|인가요?|맞아요?|맞나요?|니|냐|나요)\s*\??\s*$")
+_CLAIM_EN = re.compile(r"^\s*(?:is|are|was|were)\s+(.+?)\s+(.+?)\s*\??\s*$", re.IGNORECASE)
+_WH_PRED = ("뭐", "무엇", "무슨", "누구", "어디", "언제", "어떻게", "왜", "what", "who", "where", "when", "why", "how")
+
+
+def _parse_yes_no_claim(question: str, language: str) -> tuple[str, str] | None:
+    q = str(question or "").strip()
+    for rx in ((_CLAIM_KO, _CLAIM_EN) if language == "ko" else (_CLAIM_EN, _CLAIM_KO)):
+        m = rx.match(q)
+        if m:
+            entity, claim = m.group(1).strip(), m.group(2).strip()
+            if len(entity) >= 2 and claim and not any(w in claim.lower() for w in _WH_PRED):
+                return entity, claim
+    return None
+
+
+async def _verify_claim_about_entity(question: str, language: str) -> dict[str, Any] | None:
+    """Structural rescue for an abstained yes/no claim: re-ground on the ENTITY alone
+    (not the claim), and if the entity is documented, answer "no evidence supports the
+    claim; here is what IS documented about the entity" — grounded rebuttal instead of
+    blank silence. Never asserts the claim; only reports the entity's real facts."""
+    parsed = _parse_yes_no_claim(question, language)
+    if not parsed:
+        return None
+    entity, claim = parsed
+    is_ko = language == "ko"
+    try:
+        from app.services.web_search import (
+            _lookup_terms, _normalize_lookup_query, compose_web_answer, wikipedia_search,
+        )
+        rows = wikipedia_search(entity, 5) or []
+    except Exception:  # pragma: no cover - network/optional
+        return None
+    # Anchor on the entity's OWN page, space-insensitively (wiki titles space words:
+    # "빌게이츠" must match "빌 게이츠"), and take the SINGLE best match by title —
+    # exact title beats prefix beats substring — so a namesake ("빌게이츠꽃등에", a fly)
+    # never wins over the person. Ranking, not a disambiguation table.
+    ne = re.sub(r"\s+", "", entity).lower()
+    if len(ne) < 2:
+        return None
+
+    def _title_score(r: dict[str, Any]) -> int:
+        tn = re.sub(r"\s+", "", str(r.get("title") or "")).lower()
+        if not tn:
+            return -1
+        if tn == ne:
+            return 3
+        if tn.startswith(ne):
+            return 2
+        if ne in tn:
+            return 1
+        return -1
+
+    ranked = sorted(((_title_score(r), r) for r in rows), key=lambda sr: sr[0], reverse=True)
+    if not ranked or ranked[0][0] < 1:
+        return None
+    best = ranked[0][1]
+    composed = compose_web_answer(entity, [{"snippet": best.get("snippet", ""), "title": best.get("title", "")}], language=language)
+    facts = str((composed or {}).get("answer") or "").strip()
+    if len(facts) < 30:
+        return None
+    src = str(best.get("url") or best.get("source_url") or "")
+    if is_ko:
+        answer = f"‘{claim}’라는 주장을 뒷받침하는 근거는 찾지 못했습니다. {entity}에 대해 확인된 사실은 이렇습니다. {facts}"
+    else:
+        answer = f"I found no evidence supporting the claim “{claim}.” Here is what is documented about {entity}: {facts}"
+    return {
+        "answer": answer,
+        "reasoning_certificate": {
+            "derivation_kind": "claim_unsupported_entity_grounded",
+            "anchor_concept": entity,
+            "steps": [
+                {"type": "claim_decomposition", "fact": f"question is a yes/no claim: entity='{entity}', claim='{claim}'"},
+                {"type": "entity_reground", "fact": f"no source supports the claim; re-grounded on the entity '{entity}' and reported its documented facts"},
+            ],
+            "evidence_concepts": [entity],
+            "confidence": 0.55,
+            "confidence_basis": "entity_documented_claim_unsupported",
+            "guarantees": {"external_llm": False, "fabricated_facts": False, "claim_asserted": False, "grafted_to_brain": False},
+        },
+        "confidence": 0.55,
+        "provider": "wikipedia_entity_reground",
+        "source_url": src,
+    }
+
+
 async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] | None:
     """When the local engine has no answer and web search is ON, answer from a
     real web source (Wikipedia, or a configured provider) and cite it. This is
@@ -2373,6 +2462,12 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
 
     on_topic_rows = [r for r in rows if _on_topic(r)]
     if not on_topic_rows:
+        # Before blank-abstaining on a yes/no CLAIM ("빌게이츠는 게이야?"), try to
+        # re-ground on the ENTITY alone and rebut with documented facts (structural,
+        # not a rumor table). Only when the entity is genuinely documented.
+        _claim_answer = await _verify_claim_about_entity(question, language)
+        if _claim_answer:
+            return _claim_answer
         # No retrieved page is genuinely about the asked entity. Abstain honestly
         # rather than answer from an unrelated page — and graft nothing.
         return {
