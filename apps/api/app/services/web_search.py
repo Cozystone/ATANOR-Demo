@@ -510,7 +510,7 @@ def _is_fluff_sentence(s: str) -> bool:
     return False
 
 
-def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str = "ko", max_supporting: int = 2) -> dict[str, Any] | None:
+def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str = "ko", max_supporting: int = 4) -> dict[str, Any] | None:
     """Turn retrieved results into an ORGANIZED answer instead of pasting a raw snippet:
     split the top results into clean sentences, then EXTRACTIVELY select + arrange a
     definitional lead about the queried entity plus a couple of non-redundant supporting
@@ -570,11 +570,29 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
         low = s.lower()
         return all(t.lower() in low for t in key_terms) if key_terms else True
 
-    lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s) and is_def(s) and covers(s)), None)
+    def subject_lead(s: str) -> bool:
+        # The lead should have the query's entity as its TOPIC — the phrase before the first
+        # topic/subject particle (은/는/이/가). "CUDA는 엔비디아가 만들었다" is ABOUT CUDA (topic
+        # = CUDA) even though it names 엔비디아; "엔비디아 코퍼레이션은 …기술 회사이다" is topic'd on
+        # 엔비디아. English (no particle): fall back to the sentence-initial span.
+        head = max(key_terms, key=len) if key_terms else ""
+        if not head:
+            return True
+        match = re.match(r"^(.{1,40}?)(은|는|이|가|께서)\s", s)
+        topic = match.group(1) if match else s[:24]
+        return head.lower() in topic.lower()
+
+    # Lead selection leans on covers()+subject_lead()+is_def() rather than about(): about()
+    # runs on query_subject_entity(query), which is the whole noisy query ("엔비디아가 뭐야"),
+    # so it fires inconsistently. covers (every key term present) + subject_lead (entity is the
+    # sentence's topic) + is_def (definitional) is a cleaner, stronger anchor for the lead.
+    lead_idx = next((i for i, (s, _) in enumerate(cands) if covers(s) and subject_lead(s) and is_def(s)), None)
     if lead_idx is None:
-        lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s) and covers(s)), None)
+        lead_idx = next((i for i, (s, _) in enumerate(cands) if covers(s) and subject_lead(s)), None)
     if lead_idx is None:
-        lead_idx = next((i for i, (s, _) in enumerate(cands) if is_def(s) and covers(s)), None)
+        lead_idx = next((i for i, (s, _) in enumerate(cands) if covers(s) and is_def(s)), None)
+    if lead_idx is None:
+        lead_idx = next((i for i, (s, _) in enumerate(cands) if covers(s)), None)
     if lead_idx is None:
         # nothing covers the query's key terms -> abstain rather than paste an off-topic fact
         return None
@@ -601,12 +619,16 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
     for index, (sentence, row) in enumerate(cands):
         if index == lead_idx:
             continue
-        # A supporting fact must be ABOUT the entity (not merely mention it) — this drops
-        # '빌게이츠꽃등에…' (a fly) and '삼성그룹 제3대 총수…' (about a person) from a
-        # 빌게이츠/삼성전자 answer.
-        if not about(sentence):
-            continue
         toks = _shingles(sentence)
+        # A supporting fact is kept if it is a CONTINUATION from the lead's own source paragraph
+        # (row is lead_row — follow-on sentences elaborate the subject via pronoun/ellipsis,
+        # "현재 …에서 뛰고 있다", "2025년 기준 …최다 득점자", and never re-name it) OR it independently
+        # COVERS the query's key terms. This makes a rich definitional paragraph yield several
+        # facts instead of one line, while dropping a different page that merely shares a word —
+        # "Black is a color…" for a black-hole query lacks 'hole' and is not from the lead's
+        # paragraph, so it is rejected. No entity list; the checks come from the query + source.
+        if not ((row is lead_row) or covers(sentence)):
+            continue
         # Char-bigram overlap (Korean-robust): a paraphrase of the same definition shares
         # most of its bigrams with one already chosen, so it is dropped and a genuinely
         # new fact is picked instead. 0.55 on bigrams ≈ "says mostly the same thing".
