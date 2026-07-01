@@ -570,21 +570,29 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
         low = s.lower()
         return all(t.lower() in low for t in key_terms) if key_terms else True
 
+    is_who_query = bool(re.search(r"누구|누가|\bwho\b", query.lower()))
+
     def subject_lead(s: str) -> bool:
-        # The lead must be TOPIC'd on the query's entity as the HEAD of its subject phrase (the
-        # phrase before the first 은/는/이/가 particle). Two things this catches:
-        #  - object mentions: "CUDA는 엔비디아가 만들었다" is topic'd on CUDA, not 엔비디아.
-        #  - homonyms: for "테슬라가 뭐야?" a person page leads "니콜라 테슬라는 …" where 테슬라 is
-        #    NOT the head (니콜라 is) — so it is rejected and the company sense ("테슬라(기업)은 …")
-        #    is preferred. The entity must START the subject phrase (after an optional English
-        #    article), not merely appear inside it.
-        head = max(key_terms, key=len) if key_terms else ""
+        # The lead must be TOPIC'd on the query's entity — the subject phrase before the first
+        # 은/는/이/가 particle (parentheticals stripped). WHERE in that phrase depends on the
+        # question, so a Korean noun compound resolves correctly:
+        #  - WHO ("아인슈타인이 누구야?"): a person, so the entity is the HEAD noun (last word) —
+        #    "알베르트 아인슈타인" (head 아인슈타인) wins; "아인슈타인 방정식" (head 방정식, a derived
+        #    thing) is rejected.
+        #  - WHAT ("테슬라가 뭐야?"): the entity HEADS the phrase — "테슬라(Tesla,Inc.)" wins;
+        #    "니콜라 테슬라" (a different person, 니콜라-headed) is rejected. Also drops object
+        #    mentions like "CUDA는 엔비디아가 …" (topic'd on CUDA).
+        head = (max(key_terms, key=len) if key_terms else "").lower()
         if not head:
             return True
         match = re.match(r"^(.{1,40}?)(은|는|이|가|께서)\s", s)
-        topic = (match.group(1) if match else s[:24]).strip().lower()
-        topic = re.sub(r"^(a|an|the)\s+", "", topic)
-        return topic.startswith(head.lower())
+        topic = re.sub(r"\([^)]*\)", "", (match.group(1) if match else s[:24])).strip().lower()
+        topic = re.sub(r"^(a|an|the)\s+", "", topic).strip()
+        if not topic:
+            return False
+        if is_who_query:
+            return topic.split()[-1].startswith(head)
+        return topic.startswith(head)
 
     # Lead selection leans on covers()+subject_lead()+is_def() rather than about(): about()
     # runs on query_subject_entity(query), which is the whole noisy query ("엔비디아가 뭐야"),
