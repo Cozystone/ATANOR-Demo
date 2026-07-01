@@ -292,3 +292,37 @@ def pool_status() -> dict[str, Any]:
             # The merge engine that absorbs peer output (persistent + sharded).
             "merge_engine": merge,
         }
+
+
+@router.get("/pool/graph")
+def pool_graph() -> dict[str, Any]:
+    """The peer pool as a STATUS GRAPH for the Brain Link UI tab: a coordinator node + one
+    node per peer (kind brain_link_self/peer, colored in the graph view), with edges weighted
+    by each peer's contributed concepts+relations. Read-only view over pool/status."""
+    status = pool_status()
+    peers = status.get("peers", [])
+    nodes: list[dict[str, Any]] = [{
+        "id": "coordinator", "label": "Brain Link 코디네이터", "kind": "brain_link_self",
+        "concepts": status.get("store_concepts_total"), "relations": status.get("store_relations_total"),
+        "queue_remaining": status.get("queue_remaining"), "online_peers": status.get("online_peers"),
+    }]
+    edges: list[dict[str, Any]] = []
+    for p in peers:
+        contributed = int(p.get("concepts", 0)) + int(p.get("relations", 0))
+        nodes.append({
+            "id": p["peer_id"], "label": p.get("label", p["peer_id"]), "kind": "brain_link_peer",
+            "online": p.get("online"), "claimed": p.get("claimed", 0), "completed": p.get("completed", 0),
+            "concepts": p.get("concepts", 0), "relations": p.get("relations", 0),
+        })
+        edges.append({
+            "source": "coordinator", "target": p["peer_id"], "relation": "shares_compute",
+            "weight": contributed, "contributed": contributed, "online": p.get("online"),
+        })
+    return {
+        "nodes": nodes, "edges": edges,
+        "peer_count": status.get("peer_count"), "online_peers": status.get("online_peers"),
+        "queue_remaining": status.get("queue_remaining"),
+        "store_concepts_total": status.get("store_concepts_total"),
+        "store_relations_total": status.get("store_relations_total"),
+        "architecture": status.get("architecture"),
+    }
