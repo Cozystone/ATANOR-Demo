@@ -117,10 +117,19 @@ def promote() -> dict:
     # killer: 광합성's good "광합성은 …과정이다" existed in evidence but wasn't in the concept's
     # hashes, so it never promoted.) Search ALL evidence with the same quality gate (name is a
     # TOPIC and the sentence leads with it); keep the shortest match (cleanest definition).
+    # Topic sources: (a) case_frame TOPIC/SUBJ roles, AND (b) the sentence's own leading
+    # subject "X는/은/이/가 …". (b) is essential because a PURE-COPULA definition
+    # ("세포는 …단위이다", no verb) yields NO case_frame, so it had no recorded TOPIC and
+    # could never promote — the systematic killer of dictionary-style "X는 …이다" definitions.
+    _lead_subj = re.compile(r"^\s*([^\s()]{2,20}?)(?:은|는|이|가)\s")
     lead_def_by_name: dict[str, str] = {}
     for h, txt in text_by_hash.items():
         tn = _norm(txt)
-        for topic in topics_by_hash.get(h, set()):
+        cands = set(topics_by_hash.get(h, set()))
+        m = _lead_subj.match(txt)
+        if m:
+            cands.add(_norm(m.group(1)))
+        for topic in cands:
             if topic and tn.startswith(topic):
                 cur = lead_def_by_name.get(topic)
                 if cur is None or len(txt) < len(cur):
