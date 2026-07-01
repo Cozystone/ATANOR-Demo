@@ -875,6 +875,40 @@ _PERSONA_OPENERS = {
 }
 
 
+# Clause-level register realization (CGSR): map a plain sentence-final ending to the
+# persona's register. Regular/high-frequency endings only; anything else is left unchanged
+# (no mis-conjugation). This is faithful surface realization — same proposition, different
+# register — not new content.
+_REGISTER = {
+    "formal": {"이다": "입니다", "한다": "합니다", "된다": "됩니다", "있다": "있습니다", "없다": "없습니다",
+               "이었다": "이었습니다", "였다": "였습니다", "했다": "했습니다"},
+    "polite": {"이다": "이에요", "한다": "해요", "된다": "돼요", "있다": "있어요", "없다": "없어요",
+               "이었다": "이었어요", "였다": "였어요", "했다": "했어요"},
+    "humble": {"이다": "이지요", "한다": "하지요", "된다": "되지요", "있다": "있지요", "없다": "없지요",
+               "이었다": "이었지요", "였다": "였지요", "했다": "했지요"},
+}
+
+
+def _register_one(sentence: str, table: dict[str, str]) -> str:
+    s = sentence.rstrip()
+    for plain, styled in sorted(table.items(), key=lambda kv: -len(kv[0])):
+        if s.endswith(plain):
+            return s[: -len(plain)] + styled
+    return s
+
+
+def _apply_register(text: str, register: str) -> str:
+    """Realize EACH sentence's plain final ending (이다/한다/…) in the persona register.
+    Already-polite endings (…습니다/…입니다) and irregular ones are left unchanged."""
+    table = _REGISTER.get(register)
+    if not table or not text:
+        return text
+    parts = re.split(r"\.\s+", text.rstrip().rstrip("."))
+    if not parts:
+        return text
+    return ". ".join(_register_one(p, table) for p in parts) + "."
+
+
 def _persona_style_profile(persona: dict[str, Any]) -> dict[str, Any]:
     contents = persona.get("contents") or {}
     sg = contents.get("surface_graph") or {}
@@ -905,9 +939,15 @@ def _apply_persona_style(query: str, answer: str, language: str, persona: dict[s
     elif "stepwise_guide" in moves and topic:
         closer = f" 한 걸음씩 짚어 보죠 — {topic}의 가장 기본이 되는 것부터 함께 확인해 볼까요?"
 
-    if not opener and not closer:
+    # CGSR clause-level: realize the grounded core's sentence-final register per persona tone.
+    register = ("formal" if tone_tokens & {"formal", "analytical", "direct"}
+                else "humble" if "humble" in tone_tokens
+                else "polite" if tone_tokens & {"warm", "playful", "inquisitive"}
+                else "")
+    core = _apply_register(answer, register) if register else answer
+    if not opener and not closer and core == answer:
         return answer, None
-    body = (opener + " " if opener else "") + answer.rstrip()
+    body = (opener + " " if opener else "") + core.rstrip()
     return body + closer, str(persona.get("cartridge_id"))
 
 
