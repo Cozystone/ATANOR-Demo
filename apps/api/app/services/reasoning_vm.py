@@ -700,6 +700,16 @@ def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | Non
         pass
     if not re.search(r"\d|" + "|".join(map(re.escape, _WORD_NUM)), q):
         return None
+    # Compound relational-quantity problems ("영희는 철수보다 3개 많아") need cross-actor
+    # composition the single-actor word-problem solver can't do — try it first.
+    try:
+        from app.services.compound_reasoner import solve_compound
+
+        compound = solve_compound(question, language)
+        if compound:
+            return compound
+    except Exception:  # pragma: no cover - reasoner must never break chat
+        pass
     result = (
         _solve_geometry(q, language)
         or _solve_rate_time(q, language)
