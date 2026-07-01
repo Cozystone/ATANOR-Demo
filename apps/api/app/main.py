@@ -114,6 +114,15 @@ class PipelineStatus(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # GC tuning: the graph aggregators churn thousands of short-lived dicts per poll, so the
+    # cyclic collector fired often and its pauses showed up as periodic ~0.5-1s latency
+    # spikes on otherwise ~30ms endpoints. freeze() moves the large permanent startup object
+    # set out of the generations GC scans, and higher thresholds collect less often — both
+    # shrink each pause. (Not a leak: freeze only excludes already-live long-lived objects.)
+    import gc as _gc
+    _gc.collect()
+    _gc.freeze()
+    _gc.set_threshold(50_000, 500, 500)
     create_boot_shadow_backups()
     try:
         skip_benchmark = os.getenv("ATANOR_SKIP_STARTUP_BENCHMARK", os.getenv("HOMAGE_SKIP_STARTUP_BENCHMARK")) == "1"
