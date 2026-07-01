@@ -8399,11 +8399,13 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 16px;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
+  /* overflow must stay visible: setting overflow-x:auto forces overflow-y:auto too, which
+     clipped the active tab's fill/shadow at the container edge. Wrap instead of scroll. */
+  overflow: visible;
   padding: 6px;
-  scrollbar-width: none;
-  width: min(100%, 760px);
+  width: min(100%, 820px);
 }
 
 .atanor-graph-hub-tabs button {
@@ -8488,14 +8490,22 @@ p {
 
 .atanor-graph-hub-grid {
   display: grid;
-  gap: clamp(14px, 1.4vw, 20px);
-  /* Moderate density: a handful of cards per row, not a dense wall. */
-  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: clamp(12px, 1.1vw, 18px);
+  /* Fully fluid: cards reflow with the window; ~6 across on a wide screen, fewer as it
+     narrows (min ~190px keeps them legible on small viewports). */
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
 }
 
-@media (min-width: 1400px) {
+@media (min-width: 1320px) {
   .atanor-graph-hub-grid {
-    grid-template-columns: repeat(5, 1fr);
+    /* Target 6 across on typical desktop widths while staying responsive. */
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 2100px) {
+  .atanor-graph-hub-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
   }
 }
 
@@ -8594,6 +8604,45 @@ p {
   object-fit: cover;
   position: relative;
   z-index: 1;
+}
+
+/* Sketchfab-style skeleton cards while the catalog loads. */
+@keyframes atanorGhShimmer {
+  0% { background-position: -180% 0; }
+  100% { background-position: 180% 0; }
+}
+
+.atanor-graph-hub-skeleton {
+  pointer-events: none;
+}
+
+.atanor-graph-hub-skeleton .atanor-graph-hub-skel-cover,
+.atanor-graph-hub-skel-line,
+.atanor-graph-hub-skel-btn {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.04) 30%,
+    rgba(255, 255, 255, 0.11) 50%,
+    rgba(255, 255, 255, 0.04) 70%
+  );
+  background-size: 220% 100%;
+  animation: atanorGhShimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.atanor-graph-hub-skeleton .atanor-graph-hub-skel-cover {
+  border: 0;
+}
+
+.atanor-graph-hub-skel-line {
+  height: 11px;
+  border-radius: 6px;
+}
+
+.atanor-graph-hub-skel-btn {
+  height: 38px;
+  margin-top: auto;
+  border-radius: 10px;
 }
 
 .atanor-graph-hub-cover[data-graph="true"]::before {
@@ -8772,25 +8821,30 @@ p {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
   grid-template-columns: none;
 }
 
+/* Primary action gets its own full-width row; secondary actions size to their label and
+   wrap onto the next line so nothing is ever truncated (fixes "Start san…" clipping). */
 .atanor-graph-hub-card-actions button {
   box-sizing: border-box;
-  flex: 1 1 0;
-  height: 40px !important;
-  min-width: 0;
-  min-height: 40px !important;
-  padding: 0 10px;
+  flex: 1 1 auto;
+  height: 38px !important;
+  min-width: max-content;
+  min-height: 38px !important;
+  padding: 0 12px;
   white-space: nowrap;
+}
+
+.atanor-graph-hub-card-actions button:first-child {
+  flex: 1 1 100%;
 }
 
 .atanor-graph-hub-card-actions button span {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
   white-space: nowrap;
 }
 

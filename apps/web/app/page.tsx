@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import { Bell, Brain, ChevronDown, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
+import { Bell, Brain, Cloud, Globe2, Home, MessageCircle, Network, Package, RefreshCw, Settings, Share2, UserCircle, UsersRound } from "lucide-react";
 import AtanorUserStatusCard from "./AtanorUserStatusCard";
 import DemoChat from "./DemoChat";
 import { isDemo } from "./lib/profile";
@@ -1136,12 +1136,15 @@ function ghHash(value: string): number {
   return h >>> 0;
 }
 
-const GH_LAYER_COLOR: Record<string, string> = {
-  core: "#ff7d46",
-  inner: "#ffb066",
-  middle: "#5fb0ff",
-  outer: "#8fd0ff",
-};
+// Theme-matched palette. Node color encodes its REAL semantic domain / cluster (consistent
+// per domain), so a multi-domain fragment reads as a colorful but meaningful constellation
+// rather than a monochrome blob. ATANOR orange leads; sky-blue/violet/teal/rose fill it out.
+const GH_PALETTE = ["#ff9f1c", "#4da3ff", "#b07bff", "#3dd6a0", "#ff6b9d", "#ffd166", "#22d3ee", "#f97316", "#7c9bff"];
+
+function ghNodeColorHex(node: AnyRecord, index: number): string {
+  const key = String(node.planetary_domain ?? node.cluster_id ?? node.onion_layer ?? node.id ?? node.label ?? index);
+  return GH_PALETTE[ghHash(key) % GH_PALETTE.length];
+}
 
 // Renders a cartridge's REAL graph fragment (nodes from /sandbox-preview) as a small
 // constellation: nodes at their stored x/y when present (else a deterministic per-id layout),
@@ -1220,7 +1223,7 @@ function GraphHubFragmentThumb({ nodes }: { nodes: AnyRecord[] }): JSX.Element {
           cx={p.cx}
           cy={p.cy}
           r={2.1 + Math.min(1.8, p.trust * 2)}
-          fill={GH_LAYER_COLOR[p.layer] ?? "#cfe0ff"}
+          fill={GH_PALETTE[ghHash(p.domain || p.layer || String(i)) % GH_PALETTE.length]}
           opacity={0.55 + Math.min(0.4, p.trust * 0.5)}
         />
       ))}
@@ -1350,7 +1353,7 @@ async function graphHubSnapshot(nodes: AnyRecord[]): Promise<string | null> {
       nodePos[i * 3] = pts[i].x;
       nodePos[i * 3 + 1] = pts[i].y;
       nodePos[i * 3 + 2] = pts[i].z;
-      const c = new THREE.Color(GH_LAYER_COLOR[String(n.onion_layer ?? "")] ?? "#ff9f1c");
+      const c = new THREE.Color(ghNodeColorHex(n, i));
       nodeCol[i * 3] = c.r;
       nodeCol[i * 3 + 1] = c.g;
       nodeCol[i * 3 + 2] = c.b;
@@ -2082,9 +2085,6 @@ function FullApp() {
   const [mainSection, setMainSection] = useState<MainSectionId>("home");
   // Tracks whether the one-time baseline dashboard refresh has run (see section-gated poll).
   const didInitialAggregateRef = useRef(false);
-  // General-user IA: keep the core tabs always visible and tuck the rest under an "Advanced"
-  // disclosure so a first-time visitor sees a short, focused nav (demo view only).
-  const [navAdvancedOpen, setNavAdvancedOpen] = useState(false);
   const [labSurfaceVisible, setLabSurfaceVisible] = useState(false);
   const [contributionEnabled, setContributionEnabled] = useState(() => readBrowserStorage("atanor.contribution.enabled") === "true");
   const [contributionPaused, setContributionPaused] = useState(false);
@@ -5730,17 +5730,6 @@ function FullApp() {
   const visibleMainNav = copy.nav.filter((item) => mainSectionSurface[item.id] === "product");
   const labMainNav: typeof copy.nav = [];
 
-  // Core tabs a first-time visitor needs; the rest of the product tabs fold under "Advanced".
-  const coreNavIds = new Set<MainSectionId>(["home", "local", "cloud", "graphhub"]);
-  const primaryMainNav = demoView ? visibleMainNav.filter((item) => coreNavIds.has(item.id)) : visibleMainNav;
-  const secondaryMainNav = demoView
-    ? visibleMainNav.filter((item) => !coreNavIds.has(item.id) && item.id !== "settings")
-    : [];
-  const settingsNavItem = demoView ? visibleMainNav.find((item) => item.id === "settings") : undefined;
-  // Auto-reveal the advanced group when the user is currently on one of those sections, so the
-  // active tab is never hidden behind a collapsed disclosure.
-  const advancedNavShown = navAdvancedOpen || secondaryMainNav.some((item) => item.id === mainSection);
-
   function setMainLanguage(nextLanguage: Language) {
     setLanguage(nextLanguage);
     writeBrowserStorage("atanor.uiLanguage", nextLanguage);
@@ -5979,7 +5968,7 @@ function FullApp() {
           <span data-demo-badge={demoView ? "true" : "false"}>{demoView ? "DEMO" : "0.1.2"}</span>
         </div>
         <nav className="atanor-user-nav" aria-label="ATANOR sections">
-          {primaryMainNav.map((item) => {
+          {visibleMainNav.map((item) => {
             const Icon = mainNavIcon[item.id];
             return (
               <button key={item.id} data-active={isMainSectionActive(item.id)} onClick={() => openMainSection(item.id)}>
@@ -5988,48 +5977,6 @@ function FullApp() {
               </button>
             );
           })}
-          {demoView && secondaryMainNav.length ? (
-            <>
-              <button
-                type="button"
-                className="atanor-user-nav-more"
-                data-open={advancedNavShown ? "true" : "false"}
-                aria-expanded={advancedNavShown}
-                onClick={() => setNavAdvancedOpen((value) => !value)}
-              >
-                <span aria-hidden="true">
-                  <ChevronDown
-                    size={16}
-                    strokeWidth={1.8}
-                    style={{ transform: advancedNavShown ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s ease" }}
-                  />
-                </span>
-                <strong>{language === "ko" ? "고급" : "Advanced"}</strong>
-              </button>
-              {advancedNavShown
-                ? secondaryMainNav.map((item) => {
-                    const Icon = mainNavIcon[item.id];
-                    return (
-                      <button key={item.id} data-active={isMainSectionActive(item.id)} data-advanced="true" onClick={() => openMainSection(item.id)}>
-                        <span aria-hidden="true"><Icon size={17} strokeWidth={1.8} /></span>
-                        <strong>{item.label}</strong>
-                      </button>
-                    );
-                  })
-                : null}
-            </>
-          ) : null}
-          {settingsNavItem
-            ? (() => {
-                const Icon = mainNavIcon[settingsNavItem.id];
-                return (
-                  <button key={settingsNavItem.id} data-active={isMainSectionActive(settingsNavItem.id)} onClick={() => openMainSection(settingsNavItem.id)}>
-                    <span aria-hidden="true"><Icon size={17} strokeWidth={1.8} /></span>
-                    <strong>{settingsNavItem.label}</strong>
-                  </button>
-                );
-              })()
-            : null}
           {labMainNav.length ? <small className="atanor-user-nav-group">{language === "ko" ? "Lab / Developer" : "Lab / Developer"}</small> : null}
           {labMainNav.map((item) => {
             const Icon = mainNavIcon[item.id];
@@ -6352,7 +6299,7 @@ function FullApp() {
                       ) : null}
                       {item.installed ? (
                         <button type="button" disabled={graphHubRunning === `trial-${cartridgeId}`} onClick={() => startGraphHubTrial(item)}>
-                          <span>{language === "ko" ? "샌드박스 시작" : "Start sandbox"}</span>
+                          <span>{language === "ko" ? "샌드박스" : "Sandbox"}</span>
                         </button>
                       ) : null}
                     </div>
@@ -6399,17 +6346,28 @@ function FullApp() {
                   </article>
                 );
               })}
-              {!visibleGraphHubCatalog.length ? (
+              {!visibleGraphHubCatalog.length && graphHubLoading
+                ? Array.from({ length: 12 }).map((_, index) => (
+                    <article className="atanor-graph-hub-card atanor-graph-hub-skeleton" key={`gh-skeleton-${index}`} aria-hidden="true">
+                      <div className="atanor-graph-hub-cover atanor-graph-hub-skel-cover" />
+                      <div className="atanor-graph-hub-skel-line" style={{ width: "42%" }} />
+                      <div className="atanor-graph-hub-skel-line" style={{ width: "82%" }} />
+                      <div className="atanor-graph-hub-skel-line" style={{ width: "64%" }} />
+                      <div className="atanor-graph-hub-skel-btn" />
+                    </article>
+                  ))
+                : null}
+              {!visibleGraphHubCatalog.length && !graphHubLoading ? (
                 <article className="atanor-graph-hub-card">
                   <div className="atanor-graph-hub-cover">
                     <span>G</span>
                     <i />
                   </div>
                   <header>
-                    <span>{graphHubLoading ? "…" : "EMPTY"}</span>
+                    <span>EMPTY</span>
                     <strong>Graph Hub</strong>
                   </header>
-                  <h3>{graphHubLoading ? (language === "ko" ? "불러오는 중…" : "Loading…") : (language === "ko" ? "검색 결과가 없습니다" : "No cartridges found")}</h3>
+                  <h3>{language === "ko" ? "검색 결과가 없습니다" : "No cartridges found"}</h3>
                   <p>{language === "ko" ? "검색어나 필터를 조정해보세요." : "Try adjusting your search or filters."}</p>
                 </article>
               ) : null}
