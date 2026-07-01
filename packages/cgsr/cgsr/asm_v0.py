@@ -304,6 +304,17 @@ def _walk_for_frame(input_text: str, frame: ConstructionFrame, variant: int) -> 
     if not transitions:
         return None
 
+    # Holographic phase-context: a SUPERPOSED state of everything emitted so far, so the next
+    # token is chosen by INTERFERENCE with the whole context (not just the last token). Bounded
+    # nudge — local transition counts still lead; interference breaks ties toward coherence and
+    # steers away from off-topic drift. Falls back to pure Markov if the field can't be built.
+    try:
+        from .phase_context import PhaseField, Superposition
+
+        _field: PhaseField | None = PhaseField(list(corpus) + list(focus))
+    except Exception:  # pragma: no cover - generation must never break on the upgrade
+        _field = None
+
     starts = [_tokens(sentence)[0] for sentence in focus if _tokens(sentence)]
     starts.extend(token for token in frame.lexical_fields if token in transitions)
     starts.extend(token for token in _tokens(input_text) if token in transitions)
@@ -319,6 +330,10 @@ def _walk_for_frame(input_text: str, frame: ConstructionFrame, variant: int) -> 
     min_len, max_len = frame.length_target
     target_len = min(max_len, max(min_len, min_len + variant + 3))
 
+    _sup = Superposition(_field) if _field is not None else None
+    if _sup is not None:
+        _sup.add(current)
+
     for step in range(target_len - 1):
         options = transitions.get(current)
         if not options:
@@ -327,8 +342,10 @@ def _walk_for_frame(input_text: str, frame: ConstructionFrame, variant: int) -> 
         for token, weight in options.items():
             repetition_penalty = 1.0 / (1.0 + recent[token] * 2.1)
             lexical_bonus = 0.18 if token in frame.lexical_fields else 0.0
+            # Interference with the whole context so far (bounded [-1,1] → scaled nudge).
+            interference = 0.4 * _sup.interference(token) if _sup is not None else 0.0
             tie = _stable_unit(f"{input_text}|{frame.frame_id}|{variant}|{current}|{token}|{step}") * 0.01
-            ranked.append((float(weight) * repetition_penalty + lexical_bonus + tie, token))
+            ranked.append((float(weight) * repetition_penalty + lexical_bonus + interference + tie, token))
         ranked.sort(key=lambda item: (-item[0], item[1]))
         next_token = ranked[0][1]
         if recent[next_token] >= 2:
@@ -336,6 +353,8 @@ def _walk_for_frame(input_text: str, frame: ConstructionFrame, variant: int) -> 
         generated.append(next_token)
         recent[next_token] += 1
         current = next_token
+        if _sup is not None:
+            _sup.add(next_token)
 
     if len(generated) < 3:
         return None
