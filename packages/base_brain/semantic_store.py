@@ -116,6 +116,22 @@ class SemanticConceptStore:
                     keys.add(nq[i:j])
         return keys
 
+    def get_concept_by_id(self, cid: str) -> dict[str, Any] | None:
+        """O(1) fetch of one concept record by id (offset seek) — lets the answer path
+        resolve a specific concept (e.g. 'atanor' for identity) WITHOUT holding the full
+        concept list in RAM, so pack-load stays bounded at trillion scale."""
+        with self._records_path.open("rb") as fh:
+            return self._read_record(fh, str(cid))
+
+    def get_concepts_by_ids(self, cids: Iterable[str]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        with self._records_path.open("rb") as fh:
+            for cid in cids:
+                rec = self._read_record(fh, str(cid))
+                if rec is not None:
+                    out.append(rec)
+        return out
+
     def _candidate_ids(self, query: str, max_candidates: int) -> list[str]:
         seen: dict[str, None] = {}
         for t in self._query_keys(query):
