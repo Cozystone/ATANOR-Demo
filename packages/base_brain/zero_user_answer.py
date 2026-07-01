@@ -784,23 +784,32 @@ def _reasoning_certificate(
     }
 
 
-def _installed_expert_cartridges() -> list[dict[str, Any]]:
-    """Read installed, enabled EXPERT/knowledge cartridges (not persona) from Graph Hub.
-    Direct file read to avoid a base_brain -> graph_hub import dependency."""
+def _active_expert_cartridges() -> list[dict[str, Any]]:
+    """Installed EXPERT cartridges that are currently ATTACHED (plugged in). Attaching a
+    cartridge makes it answer; detaching it removes it from answers — the "뺐다 꽂았다" control.
+    Direct file reads (repo-root-anchored) to avoid a base_brain -> graph_hub import dependency."""
     import json
     from pathlib import Path
+    root = Path(__file__).resolve().parents[2] / "data" / "graph_hub"
+    installed_dir = root / "installed"
+    if not installed_dir.exists():
+        return []
+    # active attachment set (detach removes the id here)
+    active: set[str] = set()
+    att = root / "attachments" / "active_attachments.json"
+    if att.exists():
+        try:
+            payload = json.loads(att.read_text(encoding="utf-8"))
+            active = set(payload.keys()) if isinstance(payload, dict) else {a.get("cartridge_id") for a in payload}
+        except Exception:
+            active = set()
     out: list[dict[str, Any]] = []
-    # anchor to the repo root (packages/base_brain/this_file -> parents[2]) so it resolves
-    # regardless of the server's working directory.
-    d = Path(__file__).resolve().parents[2] / "data" / "graph_hub" / "installed"
-    if not d.exists():
-        return out
-    for f in d.glob("*.graphpack.json"):
+    for f in installed_dir.glob("*.graphpack.json"):
         try:
             c = json.loads(f.read_text(encoding="utf-8"))
         except Exception:
             continue
-        if str(c.get("category")) != "persona":
+        if str(c.get("category")) != "persona" and str(c.get("cartridge_id")) in active:
             out.append(c)
     return out
 
@@ -809,7 +818,7 @@ def _cartridge_expert_answer(query: str, language: str) -> tuple[str, str] | Non
     """Fallback: when the base pack can't answer, consult an attached domain-expert
     cartridge. Returns (answer, cartridge_id) if the query NAMES a cartridge concept that
     carries a description, else None. Fires only on a base-pack abstain -> no regression."""
-    for cart in _installed_expert_cartridges():
+    for cart in _active_expert_cartridges():
         sem = (cart.get("contents") or {}).get("semantic_graph") or {}
         nodes = sem.get("nodes") or []
         for n in nodes:
