@@ -2384,6 +2384,40 @@ async def _verify_claim_about_entity(question: str, language: str) -> dict[str, 
     }
 
 
+def _wiki_direct_entity_row(question: str) -> dict[str, Any] | None:
+    """FIND-HARDER backstop: resolve the query's core entity DIRECTLY on Wikipedia via the
+    exact-title REST summary (then Wiktionary), catching entities the open-web / action
+    search misses (bad ranking, odd title) or when the search API is down (a different
+    endpoint). Returns a single result row or None — a disambiguation page returns None, so
+    we never guess a referent for an ambiguous bare term. Real cited source, never fabricated."""
+    try:
+        from app.services.web_search import (
+            _lookup_terms,
+            _normalize_lookup_query,
+            _wiki_host_for_query,
+            _wiki_rest_summary,
+            _wiktionary_definition,
+        )
+
+        terms = [t for t in _lookup_terms(_normalize_lookup_query(question)) if len(t) >= 2]
+        if not terms:
+            return None
+        host = _wiki_host_for_query(question)
+        cands: list[str] = []
+        seen: set[str] = set()
+        for cand in (" ".join(terms), max(terms, key=len), *terms):
+            if cand and cand not in seen:
+                seen.add(cand)
+                cands.append(cand)
+        for term in cands[:4]:
+            row = _wiki_rest_summary(term, host)
+            if row:
+                return row
+        return _wiktionary_definition(cands[0], korean=bool(re.search(r"[가-힣]", question)))
+    except Exception:  # pragma: no cover - network/optional backstop
+        return None
+
+
 async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] | None:
     """When the local engine has no answer and web search is ON, answer from a
     real web source (Wikipedia, or a configured provider) and cite it. This is
@@ -2407,9 +2441,16 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
             wiki_rows = await asyncio.to_thread(wikipedia_search, question, 5)
         except Exception:  # pragma: no cover - network/optional
             wiki_rows = []
+        if not wiki_rows:
+            # The action search still found nothing (or the API is down). Try the exact-title
+            # REST summary directly — it resolves entities the action search misses and uses a
+            # different endpoint, so it answers even when the general search is unreachable.
+            _direct = await asyncio.to_thread(_wiki_direct_entity_row, question)
+            if _direct:
+                wiki_rows = [_direct]
         if wiki_rows:
-            provider = "wikipedia"
-            payload = {"provider": "wikipedia", "results": wiki_rows}
+            provider = str(wiki_rows[0].get("provider") or "wikipedia")
+            payload = {"provider": provider, "results": wiki_rows}
     # For a knowledge query the web search tries real retrieval first and only
     # falls back to "static" when the live web could not be reached (offline /
     # rate-limited / down). Say so honestly instead of pasting fixtures.
@@ -2501,37 +2542,13 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         on_topic_rows = []
     if not on_topic_rows and not _is_claim:
         # FIND HARDER before abstaining: the open-web search sometimes misses the entity's
-        # OWN page (bad ranking / odd title), which surfaced as a false "근거 없음". A DIRECT
-        # Wikipedia summary — or a Wiktionary definition — of the core entity is an
-        # exact-title page: guaranteed on-topic and reliably cited. Answer from it instead of
-        # abstaining. Still a real cited source, never fabricated; a disambiguation page
-        # returns None (below) so we never guess a referent for an ambiguous bare term.
-        try:
-            from app.services.web_search import (
-                _wiki_host_for_query,
-                _wiki_rest_summary,
-                _wiktionary_definition,
-            )
-
-            _host = _wiki_host_for_query(question)
-            _cands: list[str] = []
-            if _core_terms:
-                _cands = [" ".join(_core_terms), max(_core_terms, key=len), *_core_terms]
-            _seen: set[str] = set()
-            _cands = [c for c in _cands if c and not (c in _seen or _seen.add(c))]
-            for _t in _cands[:4]:
-                _wrow = _wiki_rest_summary(_t, _host)
-                if _wrow:
-                    on_topic_rows = [_wrow]
-                    provider = "wikipedia"
-                    break
-            if not on_topic_rows and _cands:
-                _wk = _wiktionary_definition(_cands[0], korean=(language == "ko"))
-                if _wk:
-                    on_topic_rows = [_wk]
-                    provider = "wiktionary"
-        except Exception:  # pragma: no cover - network/optional backstop
-            pass
+        # OWN page (bad ranking / odd title), which surfaced as a false "근거 없음". Resolve the
+        # core entity directly on Wikipedia/Wiktionary and answer from that exact-title page
+        # instead. Still a real cited source, never fabricated (disambiguation → None).
+        _direct = await asyncio.to_thread(_wiki_direct_entity_row, question)
+        if _direct:
+            on_topic_rows = [_direct]
+            provider = str(_direct.get("provider") or "wikipedia")
     if not on_topic_rows:
         # No retrieved page is genuinely about the asked entity. Abstain honestly
         # rather than answer from an unrelated page — and graft nothing.
