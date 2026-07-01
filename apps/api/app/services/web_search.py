@@ -565,7 +565,16 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
     if lead_idx is None:
         lead_idx = next((i for i, (s, _) in enumerate(cands) if is_def(s)), 0)
     lead_sentence, lead_row = cands[lead_idx]
-    lead_tokens = set(re.findall(r"[가-힣A-Za-z0-9]{2,}", lead_sentence.lower()))
+
+    def _shingles(s: str) -> set[str]:
+        # Character bigrams (spaces/punct stripped): robust to Korean agglutination —
+        # "컨테이너화된" and "컨테이너를" share bigrams (컨테/테이/이너) even though they are
+        # DIFFERENT tokens, so paraphrases of the same fact are recognized as redundant
+        # where token-overlap was fooled and let three near-identical definitions through.
+        t = re.sub(r"[^가-힣a-z0-9]", "", s.lower())
+        return {t[i:i + 2] for i in range(len(t) - 1)} if len(t) >= 2 else {t}
+
+    lead_tokens = _shingles(lead_sentence)
 
     # 2) supporting facts: in order, about the entity, share terms, NOT redundant.
     supporting: list[tuple[str, dict[str, Any]]] = []
@@ -583,7 +592,10 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
         # 빌게이츠/삼성전자 answer.
         if not about(sentence):
             continue
-        toks = set(re.findall(r"[가-힣A-Za-z0-9]{2,}", sentence.lower()))
+        toks = _shingles(sentence)
+        # Char-bigram overlap (Korean-robust): a paraphrase of the same definition shares
+        # most of its bigrams with one already chosen, so it is dropped and a genuinely
+        # new fact is picked instead. 0.55 on bigrams ≈ "says mostly the same thing".
         if any(len(toks & chosen) / max(1, len(toks)) > 0.55 for chosen in chosen_token_sets):
             continue  # too similar to the lead or an already-selected supporting fact
         supporting.append((sentence, row))
