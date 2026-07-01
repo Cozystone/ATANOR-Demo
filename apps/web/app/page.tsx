@@ -139,8 +139,8 @@ const MAIN_COPY: Record<Language, {
     activeTask: "Active Task",
     quickActions: "Quick Actions",
     recentActivity: "Recent Activity",
-    chatTitle: "ATANOR RAG",
-    chatSubtitle: "Ask the local graph. Context is resolved through Ghost Shell and Payload Vault.",
+    chatTitle: "ATANOR",
+    chatSubtitle: "Ask the Local Brain's knowledge graph — grounded answers, honest when unsure.",
     send: "Send",
     generating: "Generating",
     placeholder: "Ask ATANOR about the current memory graph...",
@@ -204,8 +204,8 @@ const MAIN_COPY: Record<Language, {
     activeTask: "활성 작업",
     quickActions: "빠른 실행",
     recentActivity: "최근 활동",
-    chatTitle: "ATANOR RAG",
-    chatSubtitle: "로컬 그래프에 질문하세요. Ghost Shell과 Payload Vault 문맥을 읽어 답합니다.",
+    chatTitle: "ATANOR",
+    chatSubtitle: "로컬 브레인 지식 그래프에 질문하세요 — 근거를 갖춘 답, 모르면 정직하게 보류.",
     send: "보내기",
     generating: "생성 중",
     placeholder: "현재 로컬 브레인에 대해 질문하세요...",
@@ -249,8 +249,8 @@ const INITIAL_CHAT_PROMPT: Record<Language, string> = {
 };
 
 const INITIAL_ASSISTANT_MESSAGE: Record<Language, string> = {
-  en: "Ask ATANOR through the Local Brain graph. It resolves Ghost Shell paths, fetches Payload Vault context, and answers through the local generation layer.",
-  ko: "ATANOR에게 로컬 브레인을 기준으로 질문하세요. Ghost Shell 경로와 Payload Vault 문맥을 읽고 로컬 생성 계층에서 답변합니다.",
+  en: "Ask ATANOR anything. It answers from the Local Brain's knowledge graph — grounded in what it knows, and honest when it isn't sure.",
+  ko: "무엇이든 물어보세요. 로컬 브레인의 지식 그래프에서 근거를 갖춰 답하고, 확실하지 않으면 정직하게 보류합니다.",
 };
 
 const EFFECTIVE_MAIN_COPY: typeof MAIN_COPY = MAIN_COPY;
@@ -6207,7 +6207,7 @@ function FullApp() {
             <header className="atanor-graph-hub-hero">
               <div>
                 <h2>Graph Hub</h2>
-                <p>{language === "ko" ? "그래프 지식과 사고 회로를 탐색하고 설치하세요." : "Browse and install graph knowledge and reasoning circuits."}</p>
+                <p>{language === "ko" ? "분야별 지식 그래프를 둘러보고 설치하세요." : "Browse and install domain knowledge graphs."}</p>
               </div>
               <button className="atanor-graph-hub-refresh" type="button" onClick={() => refreshGraphHub().catch(() => undefined)}>
                 {language === "ko" ? "새로고침" : "Refresh"}
