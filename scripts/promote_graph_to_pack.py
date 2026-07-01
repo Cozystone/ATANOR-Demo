@@ -111,6 +111,21 @@ def promote() -> dict:
             in_degree[t] = in_degree.get(t, 0) + 1
     pred_info = predicate_informativeness(all_rels)
 
+    # name -> a definitional sentence where the name is the LEADING topic. Decoupled from
+    # each concept's recorded source_hashes, which can be INCOMPLETE: a concept first created
+    # from a worse sentence may never record its clean definition's hash. (The coverage
+    # killer: 광합성's good "광합성은 …과정이다" existed in evidence but wasn't in the concept's
+    # hashes, so it never promoted.) Search ALL evidence with the same quality gate (name is a
+    # TOPIC and the sentence leads with it); keep the shortest match (cleanest definition).
+    lead_def_by_name: dict[str, str] = {}
+    for h, txt in text_by_hash.items():
+        tn = _norm(txt)
+        for topic in topics_by_hash.get(h, set()):
+            if topic and tn.startswith(topic):
+                cur = lead_def_by_name.get(topic)
+                if cur is None or len(txt) < len(cur):
+                    lead_def_by_name[topic] = txt
+
     # Time-deixis / discourse words are closed-class grammar (LAD layer), not knowledge
     # entities — but casual sentences ("오늘은 …해볼게요") make them look like topics, so
     # they get promoted and then match real queries wrongly ("오늘 날씨" -> the "오늘"
@@ -133,15 +148,9 @@ def promote() -> dict:
         # AND the sentence must LEAD with the concept name (it is the primary
         # subject, not a mid-sentence topic). This filters run-ons ("프레디 머큐리는
         # 〈곡〉는 ...") and mentions where the real subject is something else.
-        desc = None
-        nn = _norm(name)
-        for h in (c.get("source_hashes") or []):
-            txt = text_by_hash.get(h)
-            if txt and nn in topics_by_hash.get(h, set()) and _norm(txt).startswith(nn):
-                desc = txt
-                break
+        desc = lead_def_by_name.get(_norm(name))
         if not desc:
-            continue  # no sentence leads with / is about this concept -> do not promote
+            continue  # no definitional sentence leads with this concept -> do not promote
         # desc leads with the concept name; strip that leading subject + particle so
         # the answer engine's own "{name}는" prefix does not double it
         # ("종족은 종족은 테란이며" -> "종족은 테란이며").
