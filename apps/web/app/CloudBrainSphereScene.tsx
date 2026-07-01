@@ -39,6 +39,25 @@ function shellPoint(index: number, total: number, radius: number) {
   return new THREE.Vector3(Math.cos(theta) * r * radius, y * radius, Math.sin(theta) * r * radius);
 }
 
+let _sceneDotTex: THREE.Texture | null = null;
+function sceneDotTexture(): THREE.Texture {
+  if (_sceneDotTex) return _sceneDotTex;
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.35, "rgba(255,255,255,0.82)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+  }
+  _sceneDotTex = new THREE.CanvasTexture(canvas);
+  return _sceneDotTex;
+}
+
 async function apiJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { cache: "no-store" });
   if (!response.ok) throw new Error(`${path} failed: ${response.status}`);
@@ -172,10 +191,12 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
     const nodes = new THREE.Points(
       new THREE.BufferGeometry(),
       new THREE.PointsMaterial({
-        color: new THREE.Color("#ff9f1c"),
-        opacity: 0.92,
+        color: new THREE.Color("#ffb43d"),
+        map: sceneDotTexture(),
+        alphaTest: 0.01,
+        opacity: 0.95,
         transparent: true,
-        size: 0.026,
+        size: 0.03,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
