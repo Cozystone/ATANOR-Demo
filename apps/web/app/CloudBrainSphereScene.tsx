@@ -87,10 +87,42 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const nextManifest = await apiJson<AnyRecord>("/api/cloud-brain/sphere/manifest").catch(() => null);
-      const nextMaterialized = await apiJson<AnyRecord>(
+      let nextManifest = await apiJson<AnyRecord>("/api/cloud-brain/sphere/manifest").catch(() => null);
+      let nextMaterialized = await apiJson<AnyRecord>(
         `/api/cloud-brain/sphere/materialize?tile_id=sphere_l0_x0000_y0000_r0&zoom=${zoomLevel}&budget_nodes=${budgets.nodes}&budget_edges=${budgets.edges}`,
       ).catch(() => null);
+      // Fallback: the sphere's logical store can be empty while the surfaced CANDIDATE store
+      // holds the real learned graph (status/candidate report tens of thousands). Render THAT
+      // instead of a blank sphere — honestly styled as candidate (unverified), consistent with
+      // what /status already reports. Positions are synthesized on the sphere (fibonacci).
+      const sphereNodes = Array.isArray(nextMaterialized?.materialized_nodes) ? nextMaterialized.materialized_nodes : [];
+      if (sphereNodes.length === 0) {
+        const cand = await apiJson<AnyRecord>(
+          `/api/cloud-brain/candidate/graph?max_nodes=${Math.min(budgets.nodes, 1200)}&max_edges=${Math.min(budgets.edges, 2400)}`,
+        ).catch(() => null);
+        const candNodes = Array.isArray(cand?.nodes) ? cand.nodes : [];
+        if (candNodes.length > 0) {
+          const posMap = new Map<string, { x: number; y: number; z: number }>();
+          const materialized_nodes = candNodes.map((node: AnyRecord, index: number) => {
+            const p = shellPoint(index, candNodes.length, 1.0);
+            const xyz = { x: p.x, y: p.y, z: p.z };
+            if (node?.id) posMap.set(String(node.id), xyz);
+            return xyz;
+          });
+          const candEdges = Array.isArray(cand?.edges) ? cand.edges : [];
+          const materialized_edges = candEdges
+            .map((edge: AnyRecord) => {
+              const s = posMap.get(String(edge?.source));
+              const t = posMap.get(String(edge?.target));
+              return s && t ? { source: s, target: t } : null;
+            })
+            .filter(Boolean);
+          const status = await apiJson<AnyRecord>("/api/cloud-brain/candidate/status").catch(() => null);
+          const logical = Number(status?.candidate_concepts ?? candNodes.length);
+          nextManifest = { ...(nextManifest ?? {}), logical_total_nodes: String(logical), graph_source: "candidate_store_fallback" };
+          nextMaterialized = { materialized_nodes, materialized_edges, logical_nodes_addressable: String(logical) };
+        }
+      }
       if (cancelled) return;
       setManifest(nextManifest);
       setMaterialized(nextMaterialized);
