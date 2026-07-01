@@ -2490,7 +2490,8 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     # documented facts — not answered from any page that merely mentions the entity (an
     # "아인슈타인 냉장고" page anchors the term but says nothing about the claim). So route
     # claim questions to entity-grounded verification FIRST, ahead of general retrieval.
-    if _parse_yes_no_claim(question, language):
+    _is_claim = _parse_yes_no_claim(question, language)
+    if _is_claim:
         _claim_answer = await _verify_claim_about_entity(question, language)
         if _claim_answer:
             return _claim_answer
@@ -2498,6 +2499,39 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         # answered from a page that merely mentions the entity (the "아인슈타인 방정식"
         # tangent). Force the honest abstain instead.
         on_topic_rows = []
+    if not on_topic_rows and not _is_claim:
+        # FIND HARDER before abstaining: the open-web search sometimes misses the entity's
+        # OWN page (bad ranking / odd title), which surfaced as a false "근거 없음". A DIRECT
+        # Wikipedia summary — or a Wiktionary definition — of the core entity is an
+        # exact-title page: guaranteed on-topic and reliably cited. Answer from it instead of
+        # abstaining. Still a real cited source, never fabricated; a disambiguation page
+        # returns None (below) so we never guess a referent for an ambiguous bare term.
+        try:
+            from app.services.web_search import (
+                _wiki_host_for_query,
+                _wiki_rest_summary,
+                _wiktionary_definition,
+            )
+
+            _host = _wiki_host_for_query(question)
+            _cands: list[str] = []
+            if _core_terms:
+                _cands = [" ".join(_core_terms), max(_core_terms, key=len), *_core_terms]
+            _seen: set[str] = set()
+            _cands = [c for c in _cands if c and not (c in _seen or _seen.add(c))]
+            for _t in _cands[:4]:
+                _wrow = _wiki_rest_summary(_t, _host)
+                if _wrow:
+                    on_topic_rows = [_wrow]
+                    provider = "wikipedia"
+                    break
+            if not on_topic_rows and _cands:
+                _wk = _wiktionary_definition(_cands[0], korean=(language == "ko"))
+                if _wk:
+                    on_topic_rows = [_wk]
+                    provider = "wiktionary"
+        except Exception:  # pragma: no cover - network/optional backstop
+            pass
     if not on_topic_rows:
         # No retrieved page is genuinely about the asked entity. Abstain honestly
         # rather than answer from an unrelated page — and graft nothing.
