@@ -860,25 +860,55 @@ def _active_persona_cartridge() -> dict[str, Any] | None:
     return None
 
 
+# Persona-realization layer (the "Broca" for personas): tone-keyword -> humble/analytical/…
+# opener register. Generic + graph-driven — a persona declaring a different tone realizes a
+# different surface. This REALIZES the persona graph's declared tone/traits (like surface
+# constructions realize semantic intent); it does not add world-content, so grounding holds.
+_PERSONA_OPENERS = {
+    "humble": "제가 아는 범위에서 함께 살펴보면,",
+    "inquisitive": "먼저 짚어 볼까요 —",
+    "analytical": "핵심부터 짚자면,",
+    "direct": "결론부터 말하면,",
+    "warm": "좋은 질문이에요.",
+    "playful": "재미있는 주제네요 —",
+    "formal": "정리하자면,",
+}
+
+
+def _persona_style_profile(persona: dict[str, Any]) -> dict[str, Any]:
+    contents = persona.get("contents") or {}
+    sg = contents.get("surface_graph") or {}
+    profiles = sg.get("style_profiles") or []
+    tone = str((profiles[0] or {}).get("tone") if profiles else "") .lower()
+    tone_tokens = set(re.split(r"[_\s,/-]+", tone)) if tone else set()
+    moves = sg.get("discourse_moves") or []
+    return {"tone_tokens": tone_tokens, "moves": moves}
+
+
 def _apply_persona_style(query: str, answer: str, language: str, persona: dict[str, Any]) -> tuple[str, str | None]:
-    """Apply an attached persona's discourse MOVES to the answer SURFACE only — the grounded
-    content is unchanged; the persona (from its graph's surface_graph.discourse_moves) adds a
-    tone/move flourish, attributed via the trace. Not fabrication: a surface transform the user
-    opted into by attaching the persona. Deeper realization (full surface engine) is a follow-up."""
+    """FULL-TONE realization: wrap the grounded answer with an OPENER (from the persona's tone)
+    and a CLOSER (from its discourse moves), so the whole surface reflects the persona's
+    character. Grounded content is unchanged; every added element traces to a persona
+    tone-token / move; attributed via trace.persona_source. Opts in via attach."""
     if language != "ko" or not answer or "근거가 부족" in answer or "실시간" in answer:
         return answer, None
-    moves = ((persona.get("contents") or {}).get("surface_graph") or {}).get("discourse_moves") or []
+    prof = _persona_style_profile(persona)
+    tone_tokens, moves = prof["tone_tokens"], prof["moves"]
     topic = re.sub(r"\s*(이란|란|가 뭐야|는 뭐야|뭐야|이 뭐|에 대해.*|은 무엇.*|는 무엇.*)\s*\??\s*$", "", query).strip()
     _c = topic[-1] if topic else ""
     _iga = "이" if ("가" <= _c <= "힣" and (ord(_c) - 0xAC00) % 28 != 0) else "가"
-    add = ""
+
+    opener = next((_PERSONA_OPENERS[t] for t in ("humble", "analytical", "direct", "warm", "playful", "inquisitive", "formal") if t in tone_tokens), "")
+    closer = ""
     if "counter_question" in moves and topic:
-        add = f" 그런데 스스로 되물어 봅시다 — {topic}{_iga} 왜 그러하며, 다른 경우와는 어떻게 다를까요?"
+        closer = f" 그런데 스스로 되물어 봅시다 — {topic}{_iga} 왜 그러하며, 다른 경우와는 어떻게 다를까요?"
     elif "stepwise_guide" in moves and topic:
-        add = f" 한 걸음씩 짚어 보죠 — {topic}의 가장 기본이 되는 것부터 함께 확인해 볼까요?"
-    if add:
-        return answer.rstrip() + add, str(persona.get("cartridge_id"))
-    return answer, None
+        closer = f" 한 걸음씩 짚어 보죠 — {topic}의 가장 기본이 되는 것부터 함께 확인해 볼까요?"
+
+    if not opener and not closer:
+        return answer, None
+    body = (opener + " " if opener else "") + answer.rstrip()
+    return body + closer, str(persona.get("cartridge_id"))
 
 
 def answer_with_base_brain(

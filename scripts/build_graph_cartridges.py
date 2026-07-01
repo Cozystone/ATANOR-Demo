@@ -108,9 +108,39 @@ def socratic_persona() -> dict:
     )
 
 
+def analyst_persona() -> dict:
+    # A DIFFERENT persona -> a different tone, proving the realization is graph-driven.
+    nodes = [
+        _n("persona.analyst", "냉철한 분석가", ["analyst"], "결론과 핵심을 먼저 제시하고 근거로 뒷받침하는 분석가 페르소나."),
+        _n("trait.direct", "직설", [], "결론부터 명확히 제시한다."),
+        _n("trait.rigor", "엄밀", [], "근거와 조건을 분명히 한다."),
+        _n("value.honesty2", "정직", [], "근거 없는 단정은 하지 않는다."),
+    ]
+    edges = [
+        _e("persona.analyst", "has_trait", "trait.direct"),
+        _e("persona.analyst", "has_trait", "trait.rigor"),
+        _e("persona.analyst", "upholds", "value.honesty2"),
+    ]
+    return make_graph_cartridge(
+        cartridge_id="persona.analyst.ko.v1", name="냉철한 분석가 페르소나",
+        subtitle="결론-우선 분석가 성격 그래프",
+        description="에이전트 성격: 직설·엄밀 트레잇, 결론부터 제시하는 analytical_direct 톤, 정직 가치.",
+        category="persona", pricing={"model": "free"}, tags=["persona", "agent", "analyst", "ko"],
+        contents={
+            "semantic_graph": {"nodes": nodes, "edges": edges},
+            "surface_graph": {"constructions": [], "discourse_moves": [],
+                              "lemma_choices": [], "style_profiles": [{"id": "analyst", "tone": "analytical_direct"}]},
+            "reasoning_patterns": [{"id": "conclusion_first", "name": "결론 먼저, 근거 뒤"}],
+        },
+        provenance={"source_type": "authored_persona_graph", "persona": "analyst", "authored": True},
+        permissions={"write_local_brain": False, "attach_to_working_memory": True, "export_allowed": True},
+        safety={"default_read_only": True, "requires_user_approval_for_local_write": True, "risk_level": "low"},
+    )
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
-    for build in (coffee_expert, socratic_persona):
+    for build in (coffee_expert, socratic_persona, analyst_persona):
         cart = build()
         v = validate_cartridge_schema(cart)
         cid = cart["cartridge_id"]
