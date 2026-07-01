@@ -15,7 +15,7 @@ def _forbidden_leakage(answer: str) -> list[str]:
 
 
 def run_base_brain_proof() -> dict[str, Any]:
-    pack = build_base_brain_pack_v0()
+    pack = build_base_brain_pack_v0(write=False)  # introspection only — never clobber a promoted pack
     ko_answer = answer_with_base_brain("쿠버네티스가 뭐야?", language="ko", audience_level="beginner")
     en_answer = answer_with_base_brain("What is Kubernetes?", language="en", audience_level="beginner")
     unsupported = answer_with_base_brain("오늘 내 동네 비가 올지 알려줘.", language="ko", audience_level="beginner")

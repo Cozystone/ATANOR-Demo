@@ -50,7 +50,11 @@ def _lemma_links(semantic_graph: dict[str, Any], surface_graph: dict[str, Any]) 
     return links
 
 
-def build_base_brain_pack_v0() -> dict[str, Any]:
+def build_base_brain_pack_v0(write: bool = True) -> dict[str, Any]:
+    """Build the curated base pack. ``write`` defaults True (create/refresh the
+    on-disk pack). Callers that only need the payload in memory — proof/introspection
+    and the loader's in-memory rebuild — pass write=False so they never CLOBBER a
+    promoted pack on disk (curated 58 would overwrite promoted 1472+)."""
     ensure_base_dirs()
     seed_graph = build_seed_graph_v2()
     semantic_graph = build_general_semantic_pack_v0()
@@ -90,7 +94,8 @@ def build_base_brain_pack_v0() -> dict[str, Any]:
         benchmark=benchmark,
     )
     payload = pack.to_dict()
-    PACK_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if write:
+        PACK_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
 
 

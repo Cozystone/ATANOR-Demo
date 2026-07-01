@@ -66,7 +66,9 @@ def load_base_brain_pack(pack_path: str | Path | None = None) -> BaseBrainPack:
         build_base_brain_pack_v0()
     payload = json.loads(path.read_text(encoding="utf-8"))
     if _needs_rebuild(payload):
-        payload = build_base_brain_pack_v0()
+        # In-memory rebuild for THIS load only — never write, so a promoted pack on
+        # disk is not clobbered back to curated-only by a version/mojibake trip.
+        payload = build_base_brain_pack_v0(write=False)
     return BaseBrainPack(
         pack_id=payload["pack_id"],
         version=payload["version"],
