@@ -1977,9 +1977,10 @@ def _web_fact_bound_surface(
     grounded_context: GroundedContext,
     language: str,
     evidence_docs: list[dict[str, Any]] | None = None,
-) -> str | None:
+) -> dict[str, Any] | None:
     """Prefer evidence-local facts over graph-token fragments for web answers.
 
+    Returns {"answer", "follow_ups"} (follow_ups = related-page topics for chips) or None.
     This does not introduce a prompt answer table. It only serializes facts that
     have already passed through the read-only web/graph evidence path.
     """
@@ -1997,7 +1998,7 @@ def _web_fact_bound_surface(
 
         _who = _extract_who_attribution_lead(question, [str(f) for f in grounded_context.facts], language=language)
         if _who:
-            return _who
+            return {"answer": _who, "follow_ups": []}
     except Exception:  # pragma: no cover - never break the answer
         pass
     # Organize the evidence facts into a clean answer (definitional lead + a couple of
@@ -2019,18 +2020,13 @@ def _web_fact_bound_surface(
         composed = compose_web_answer(question, rows, language=language)
         if composed and len(str(composed.get("answer") or "")) >= 40:
             # No "확인된 근거로 보면," / "From the verified sources," preamble — lead with
-            # the content; the 🔒 reasoning certificate carries the grounding signal.
-            answer_text = str(composed["answer"])
+            # the content; the 🔒 reasoning certificate carries the grounding signal. Follow-up
+            # topics ride alongside as a field so the client can render clickable chips.
             follow_ups = [str(f).strip() for f in (composed.get("follow_ups") or []) if str(f).strip()][:4]
-            if follow_ups:
-                answer_text += (
-                    ("\n\n관련해서 더 물어볼 수 있어요: " if language == "ko" else "\n\nYou could also ask about: ")
-                    + " · ".join(follow_ups)
-                )
-            return answer_text
+            return {"answer": str(composed["answer"]), "follow_ups": follow_ups}
     except Exception:  # pragma: no cover - composition must never break the answer
         pass
-    return realize_grounded_context(question, grounded_context, language=language)
+    return {"answer": realize_grounded_context(question, grounded_context, language=language), "follow_ups": []}
 
 
 def _needs_base_brain_fallback(semantic_context: dict[str, Any]) -> bool:
@@ -4212,14 +4208,21 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
             route=visual_route,
             grounded_context=visual_grounding,
             language=language,
-            evidence_docs=semantic_context.get("evidence") if isinstance(semantic_context.get("evidence"), list) else None,
+            evidence_docs=(
+                rag_result.get("evidence_docs")
+                if isinstance(rag_result.get("evidence_docs"), list) and rag_result.get("evidence_docs")
+                else (semantic_context.get("evidence") if isinstance(semantic_context.get("evidence"), list) else None)
+            ),
         )
         if request.web_search and request.mode not in {"trace", "research"}
         else None
     )
     if fact_bound_web_answer:
         discourse_metadata = grounded_discourse_metadata(routing_question, visual_grounding)
-        realized["answer"] = fact_bound_web_answer
+        realized["answer"] = fact_bound_web_answer["answer"]
+        _fu = [f for f in (fact_bound_web_answer.get("follow_ups") or []) if f]
+        if _fu:
+            realized["follow_ups"] = _fu
         realized["confidence"] = max(
             float(realized.get("confidence") or 0.0),
             float(rag_result.get("confidence") or 0.0),
@@ -4341,6 +4344,7 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
         realized["answer"] = _clean_public_fact_bound_answer(realized.get("answer"))
     payload = {
         "answer": realized["answer"],
+        "follow_ups": realized.get("follow_ups") or [],
         "language": realized["language"],
         "confidence": realized["confidence"],
         "default_trace_visible": False,
