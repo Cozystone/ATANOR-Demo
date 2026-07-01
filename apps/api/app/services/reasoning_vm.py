@@ -636,6 +636,18 @@ def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | Non
     plot = _solve_function_plot(q, language)
     if plot:
         return plot
+    # Transitive/ordering reasoning ("A는 B보다 크고 B는 C보다 크다 → 가장 큰?") is digit-less,
+    # so run it before the numeric gate. It COMPOSES the stated comparative relations (a
+    # transitive-closure traversal), not a per-question template — the graph-native reasoning
+    # shape that scales as the relation store grows.
+    try:
+        from app.services.transitive_reasoner import solve_transitive
+
+        order = solve_transitive(question, language)
+        if order:
+            return order
+    except Exception:  # pragma: no cover - reasoner must never break chat
+        pass
     if not re.search(r"\d|" + "|".join(map(re.escape, _WORD_NUM)), q):
         return None
     result = (
