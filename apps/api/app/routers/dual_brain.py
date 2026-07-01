@@ -1986,6 +1986,18 @@ def _web_fact_bound_surface(
         return None
     if grounded_context.grounding_quality == "none" or not grounded_context.facts:
         return None
+    # who-attribution shortcut: for "X's CEO / 창립자 / 대표 누구" the facts often name the
+    # person but bury it in a rambling sentence ("…일론 머스크 테슬라 CEO 의 사촌인…"). Anchored
+    # on the query's own subject+role tokens (NOT a role→answer table), surface the person
+    # directly. Falls through when not confident, so other answers are unchanged.
+    try:
+        from packages.cgsr.cgsr.conversation_grounding import _extract_who_attribution_lead
+
+        _who = _extract_who_attribution_lead(question, [str(f) for f in grounded_context.facts], language=language)
+        if _who:
+            return _who
+    except Exception:  # pragma: no cover - never break the answer
+        pass
     # Organize the evidence facts into a clean answer (definitional lead + a couple of
     # supporting facts), extractively — the SAME composer the web rescue uses, so both
     # web-answer paths produce an organized answer instead of joined raw snippets.
@@ -1995,8 +2007,9 @@ def _web_fact_bound_surface(
         pseudo_rows = [{"snippet": fact, "title": ""} for fact in grounded_context.facts]
         composed = compose_web_answer(question, pseudo_rows, language=language)
         if composed and len(str(composed.get("answer") or "")) >= 40:
-            prefix = "확인된 근거로 보면, " if language == "ko" else "From the verified sources, "
-            return prefix + str(composed["answer"])
+            # No "확인된 근거로 보면," / "From the verified sources," preamble — lead with
+            # the content; the 🔒 reasoning certificate carries the grounding signal.
+            return str(composed["answer"])
     except Exception:  # pragma: no cover - composition must never break the answer
         pass
     return realize_grounded_context(question, grounded_context, language=language)
@@ -3741,15 +3754,18 @@ def media_read_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     """Read non-text media into text so ATANOR can ground on it: a YouTube URL → its
     transcript, an image path → OCR text. Honest capability degradation when a reader
     (Tesseract) isn't installed."""
-    from app.services.media_reader import read_image_ocr, read_video_transcript
+    from app.services.media_reader import read_image_ocr, read_image_ocr_b64, read_video_transcript
 
     url = str(payload.get("url") or payload.get("video") or "").strip()
     image = str(payload.get("image_path") or payload.get("image") or "").strip()
+    image_b64 = str(payload.get("image_b64") or "").strip()
     if url:
         return read_video_transcript(url)
+    if image_b64:
+        return read_image_ocr_b64(image_b64)
     if image:
         return read_image_ocr(image)
-    return {"ok": False, "text": "", "error": "provide 'url' (video) or 'image_path' (image)"}
+    return {"ok": False, "text": "", "error": "provide 'url' (video), 'image_b64' (upload), or 'image_path'"}
 
 
 _SELF_STATE_KO = ("지금 뭐", "뭐하고", "뭐 하고", "무엇을 하", "네 상태", "너 상태", "기분", "뭘 배웠", "무엇을 배웠", "뭐 배웠", "얼마나 알", "무슨 생각", "어떻게 지내")

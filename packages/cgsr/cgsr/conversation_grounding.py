@@ -447,6 +447,84 @@ def grounded_discourse_metadata(question: str, context: GroundedContext) -> dict
     }
 
 
+_WHO_RE = re.compile(r"누구|누가|\bwho\b", re.IGNORECASE)
+# Attribution forms only: KO question ENDS with 누구… (not an action "누가 …했어?"); EN is "who is/was".
+_ATTR_KO_END = re.compile(r"누구[가-힣]{0,5}\s*\??\s*$")
+_ATTR_EN_RE = re.compile(r"\bwho\s+(?:is|was|are|were)\b", re.IGNORECASE)
+_Q_DROP_WHO = {
+    "누구", "누가", "누군지", "누구야", "누구인가", "who", "is", "are", "the", "of", "한", "그", "이",
+}
+# A person name: 2–4 Korean syllables (optionally a second 1–3 syllable block), or a
+# capitalised 2–3 word Latin name. Used ONLY anchored next to the query's subject+role,
+# so it cannot run wild over ordinary Korean text.
+_NAME = r"(?:[가-힣]{2,4}(?:\s[가-힣]{1,3})?|[A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]+){1,2})"
+_NAME_STOP = {"회사", "기업", "사촌", "사람", "당시", "현재", "최고", "경영", "실적", "상승세", "인수", "자신", "이사", "임원", "업체", "그것", "이것", "본래", "이름", "최고경영자"}
+# Title/role phrases that the name regex can capture but which are never the person.
+_ROLE_WORD_RE = re.compile(
+    r"^(?:chief\s+executive(?:\s+officer)?|executive\s+officer|chief\s+\w+\s+officer|ceo|president|"
+    r"chairman|founder|co-?founder|director|대표|회장|사장|부사장|최고경영자|창업자|창립자|설립자|의장)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_who_attribution_lead(question: str, facts: list[str], *, language: str) -> str | None:
+    """For "who is X's CEO / 창립자 / 대표" questions, surface the person cleanly.
+
+    The grounded facts often CONTAIN the answer but bury it in a rambling web sentence
+    ("2006년 일론 머스크 테슬라 CEO 의 사촌인 …"). Anchored on the query's own subject and
+    role tokens — never a role→answer table — pull the person name that sits right next
+    to "{subject} … {role}" and, if one recurs across the facts, state it directly.
+    Returns None unless confident → the caller keeps the normal grounded discourse.
+    """
+    if not _WHO_RE.search(question):
+        return None
+    # Attribution-form gate (Korean only — the demo is KO-first). The KO attribution form
+    # ENDS with 누구… ("테슬라 CEO가 누구야?"); an action-who ("누가 …했어?") ends with a verb
+    # and is excluded. English is left to the normal composer: "who is/was" alone can't tell
+    # attribution from an action ("Who is Tesla CEO suing?"), so EN extraction stays off.
+    if not re.search(r"[가-힣]", question):
+        return None
+    if not _ATTR_KO_END.search(question):
+        return None
+    content = [t for t in re.findall(r"[A-Za-z][A-Za-z.'\-]+|[가-힣]{2,}", question) if t.lower() not in _Q_DROP_WHO]
+    if len(content) < 2:
+        return None
+    subject, role = content[0], content[1]
+    s, r = re.escape(subject), re.escape(role)
+    before = re.compile(rf"({_NAME})\s+{s}\s*[^.\n]{{0,12}}?{r}")
+    after = re.compile(rf"{s}\s*[^.\n]{{0,12}}?{r}\s*(?:는|은|:|=|\s|이|가)+({_NAME})")
+    # Count a candidate per DISTINCT evidence snippet, not per raw occurrence — web
+    # results are often near-duplicates, so a stray word repeated across copies must not
+    # clear the confidence gate. Exact-duplicate facts collapse to one source.
+    sources: dict[str, set[int]] = {}
+    # Dedupe on a normalised key (collapse whitespace + case) so near-identical web
+    # results count as one source — a stray word repeated across copies can't reach ≥2.
+    _seen: dict[str, str] = {}
+    for fact in facts:
+        _seen.setdefault(re.sub(r"\s+", " ", fact).strip().lower(), fact)
+    for idx, fact in enumerate(_seen.values()):
+        for pattern in (before, after):
+            for match in pattern.finditer(fact):
+                name = match.group(1).strip(" .,'-")
+                low = name.lower()
+                if not name or name in _NAME_STOP or low in {subject.lower(), role.lower()} or name in content:
+                    continue
+                # A title/role phrase is never the person (span disambiguation, not a
+                # role→answer table): "Chief Executive Officer", "최고경영자", "창립자"…
+                if _ROLE_WORD_RE.match(name):
+                    continue
+                sources.setdefault(name, set()).add(idx)
+    if not sources:
+        return None
+    person = max(sources, key=lambda k: (len(sources[k]), len(k)))
+    # The real answer-person appears in ≥2 DISTINCT snippets; a one-off match is dropped.
+    if len(sources[person]) < 2:
+        return None
+    if language == "ko":
+        return f"{subject}의 {role}는 {person}입니다."
+    return f"The {role} of {subject} is {person}."
+
+
 def _compose_grounded_discourse(question: str, context: GroundedContext, *, language: str) -> str | None:
     limit = _grounded_fact_limit(context, question)
     if context.grounding_source in {"local_state", "local_brain_redacted", "agentic_runtime_state", "review_queue"}:
@@ -456,23 +534,19 @@ def _compose_grounded_discourse(question: str, context: GroundedContext, *, lang
     if not ranked:
         return None
     facts = [fact for fact, _ in ranked]
+    # who-attribution shortcut: if the facts clearly name the person for "X's CEO/대표/
+    # 창립자", state it directly instead of pasting the rambling source sentence.
+    _who_lead = _extract_who_attribution_lead(question, facts, language=language)
+    if _who_lead:
+        return _who_lead
     mode = _question_discourse_mode(question)
     if language == "ko":
-        if context.grounding_source == "verified_store_v0_readonly":
-            prefix = "검증된 저장소 기준으로 정리하면,"
-        elif context.grounding_source in {"local_state", "local_brain_redacted", "agentic_runtime_state", "review_queue"}:
-            prefix = "현재 확인된 상태만 놓고 말하면,"
-        else:
-            prefix = {
-                "causal_explanation": "근거상 핵심 원인은 이렇습니다.",
-                "mechanism_explanation": "근거 안에서 보면, 작동 방식은 이렇습니다.",
-                "definition_explanation": "확인된 근거로 보면,",
-                "contrast_explanation": "근거 안에서 갈리는 지점은 이렇습니다.",
-                "example_request": "근거에 들어 있는 예시만 보면,",
-            }.get(mode, "확인된 근거로 보면,")
+        # No grounding-disclaimer preamble: the answer leads with the content itself.
+        # The grounding signal is carried by the 🔒 reasoning certificate, not a verbose
+        # "확인된 근거로 보면," opener, so answers read cleanly (like a direct reply).
         if len(facts) == 1:
-            return f"{prefix} {facts[0]}"
-        return f"{prefix} {' '.join(facts)}"
+            return facts[0]
+        return " ".join(facts)
 
     if context.grounding_source == "verified_store_v0_readonly":
         prefix = "From the verified store,"
