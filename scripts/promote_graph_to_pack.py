@@ -94,8 +94,22 @@ def promote() -> dict:
     concepts = _read("concepts.jsonl")
     id_to_name = {c["concept_id"]: c.get("canonical_name", "") for c in concepts}
     rels_by_src: dict[str, list] = {}
+    all_rels: list[dict] = []
     for r in _read("relations.jsonl"):
         rels_by_src.setdefault(r.get("source_concept_id"), []).append(r)
+        all_rels.append(r)
+
+    # Data-derived quality signals (NO rule list):
+    #  - in_degree: how many facts REFERENCE a concept — a referenced concept is a real
+    #    entity; an adverbial/filler subject (원래/오늘/지금) is never referenced (in=0).
+    #  - predicate informativeness: selective verbs (결합하다) outrank light verbs (하다).
+    from packages.cloud_brain.neuroplasticity import predicate_informativeness
+    in_degree: dict[str, int] = {}
+    for r in all_rels:
+        t = r.get("target_concept_id")
+        if t:
+            in_degree[t] = in_degree.get(t, 0) + 1
+    pred_info = predicate_informativeness(all_rels)
 
     promoted = []
     for c in concepts:
@@ -124,8 +138,25 @@ def promote() -> dict:
         cid = str(c["concept_id"])
         if cid in taken_ids:
             continue
+        # Quality gate: keep IS_A always; surface predicate (association) relations ONLY
+        # for referenced entities (in_degree>=1), then only the most informative ones
+        # with a substantive target. Parse-error/adverbial subjects (in_degree 0) fall
+        # back to definition + IS_A only, instead of emitting noise
+        # ("원래는 디자이너를 취직합니다").
+        raw = rels_by_src.get(cid, [])
+        chosen: list[dict] = []
+        # Only REFERENCED entities (in_degree>=1) get relations at all; adverbial/filler
+        # parse-error subjects (원래/오늘, in=0) fall back to description-only, so we never
+        # assert a false "X의 한 종류" or a junk association for them.
+        if in_degree.get(cid, 0) >= 1:
+            chosen = [r for r in raw if str(r.get("relation")) == "IS_A"][:2]
+            cand = [r for r in raw if str(r.get("relation")) != "IS_A"
+                    and pred_info.get(str(r.get("relation")), 0.0) >= 0.3
+                    and len(str(id_to_name.get(r.get("target_concept_id")) or "").strip()) >= 2]
+            cand.sort(key=lambda r: pred_info.get(str(r.get("relation")), 0.0), reverse=True)
+            chosen += cand[:3]
         rels = []
-        for r in rels_by_src.get(cid, [])[:6]:
+        for r in chosen:
             tgt = id_to_name.get(r.get("target_concept_id")) or r.get("target_concept_id")
             if tgt:
                 rels.append({
