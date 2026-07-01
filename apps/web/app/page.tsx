@@ -1150,7 +1150,7 @@ function ghNodeColorHex(node: AnyRecord, index: number): string {
 // constellation: nodes at their stored x/y when present (else a deterministic per-id layout),
 // linked where they share a planetary domain / cluster (real structure), else to the nearest
 // node so the shape reads as a graph rather than scattered dots.
-function GraphHubFragmentThumb({ nodes }: { nodes: AnyRecord[] }): JSX.Element {
+function GraphHubFragmentThumb({ nodes }: { nodes: AnyRecord[] }) {
   const W = 100;
   const H = 100;
   const pad = 14;
