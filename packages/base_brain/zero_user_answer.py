@@ -1002,7 +1002,7 @@ def _apply_persona_style(query: str, answer: str, language: str, persona: dict[s
         opener = next((_PERSONA_OPENERS_EN[t] for t in tone_order if t in tone_tokens), "")
         closer = ""
         if "counter_question" in moves and topic:
-            closer = f" But it's worth asking — why is {topic} so, and how does it differ from other cases?"
+            closer = f" But it's worth asking — what makes {topic} what it is, and how does it differ from similar cases?"
         elif "stepwise_guide" in moves and topic:
             closer = f" Let's take it step by step — shall we start from the basics of {topic}?"
         core = answer.rstrip()
@@ -1037,6 +1037,7 @@ def answer_with_base_brain(
     language: Language = "ko",
     audience_level: AudienceLevel = "beginner",
     mode: AnswerMode = "default",
+    apply_persona: bool = False,
 ) -> dict[str, Any]:
     pack = load_base_brain_pack()
     semantic_context = get_semantic_context(query, pack, limit=12)
@@ -1072,10 +1073,12 @@ def answer_with_base_brain(
         _cart = _cartridge_expert_answer(query, language)
         if _cart:
             answer, useful, cartridge_source = _cart[0], True, _cart[1]
-    # Persona styling: if a persona cartridge is attached, apply its discourse moves to the
-    # answer surface (tone/move only; grounded content unchanged; attributed in the trace).
+    # Persona styling is OPT-IN (apply_persona=True), NOT automatic on attach. General
+    # QA must stay in a neutral lab voice — an attached persona (e.g. socratic) should
+    # only color answers when the caller explicitly asks to speak AS that persona, so a
+    # plain factual question never gets wrapped ("스스로 되물어 봅시다 …").
     persona_source = None
-    if useful:
+    if useful and apply_persona:
         _persona = _active_persona_cartridge()
         if _persona:
             answer, persona_source = _apply_persona_style(query, answer, language, _persona)

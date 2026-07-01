@@ -21,6 +21,9 @@ class BaseBrainAnswerRequest(BaseModel):
     language: str = "ko"
     audience_level: str = "beginner"
     mode: str = "default"
+    # Persona styling is opt-in: general QA stays neutral; set True to speak AS the
+    # attached persona (e.g. socratic). Default False so plain questions are unwrapped.
+    apply_persona: bool = False
 
 
 class BaseBrainBenchmarkRequest(BaseModel):
@@ -67,6 +70,7 @@ def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
         language=request.language,  # type: ignore[arg-type]
         audience_level=request.audience_level,  # type: ignore[arg-type]
         mode=request.mode,  # type: ignore[arg-type]
+        apply_persona=request.apply_persona,
     )
 
 
