@@ -784,6 +784,47 @@ def _reasoning_certificate(
     }
 
 
+def _installed_expert_cartridges() -> list[dict[str, Any]]:
+    """Read installed, enabled EXPERT/knowledge cartridges (not persona) from Graph Hub.
+    Direct file read to avoid a base_brain -> graph_hub import dependency."""
+    import json
+    from pathlib import Path
+    out: list[dict[str, Any]] = []
+    # anchor to the repo root (packages/base_brain/this_file -> parents[2]) so it resolves
+    # regardless of the server's working directory.
+    d = Path(__file__).resolve().parents[2] / "data" / "graph_hub" / "installed"
+    if not d.exists():
+        return out
+    for f in d.glob("*.graphpack.json"):
+        try:
+            c = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if str(c.get("category")) != "persona":
+            out.append(c)
+    return out
+
+
+def _cartridge_expert_answer(query: str, language: str) -> tuple[str, str] | None:
+    """Fallback: when the base pack can't answer, consult an attached domain-expert
+    cartridge. Returns (answer, cartridge_id) if the query NAMES a cartridge concept that
+    carries a description, else None. Fires only on a base-pack abstain -> no regression."""
+    for cart in _installed_expert_cartridges():
+        sem = (cart.get("contents") or {}).get("semantic_graph") or {}
+        nodes = sem.get("nodes") or []
+        for n in nodes:
+            names = [str(n.get("label") or ""), *(str(a) for a in (n.get("aliases") or []))]
+            if not any(nm.strip() and _named_in_query(query, {"canonical_name": nm}) for nm in names):
+                continue
+            desc = str(n.get("short_description") or "").strip()
+            if not desc:
+                continue
+            label = str(n.get("label") or "")
+            ans = f"{_topic(label)} {desc}" if language == "ko" else f"{label}: {desc}"
+            return ans, str(cart.get("cartridge_id"))
+    return None
+
+
 def answer_with_base_brain(
     query: str,
     language: Language = "ko",
@@ -817,6 +858,13 @@ def answer_with_base_brain(
     surface_candidates = get_surface_candidates(query, semantic_context, language, audience_level, limit=8, pack=pack)
     selection = select_surface_candidates(surface_candidates, max_selected=4, seed=_seed(query), q_cortex_enabled=True)
     answer, useful = _compose_answer(query, semantic_context, language, audience_level, intent)
+    # Graph Hub fallback: if the base pack abstains, consult an installed domain-expert
+    # cartridge (e.g. coffee) so an attached specialist graph can answer what the base cannot.
+    cartridge_source = None
+    if not useful and not _is_identity_question(query):
+        _cart = _cartridge_expert_answer(query, language)
+        if _cart:
+            answer, useful, cartridge_source = _cart[0], True, _cart[1]
     # M3 honesty signal: was this surface a hand-authored canned answer, or was it
     # realized from the graph? General questions must be graph-derived (False).
     hand_authored_answer_used = _project_level_answer(query, language) is not None
@@ -829,6 +877,7 @@ def answer_with_base_brain(
         "pack_id": pack.pack_id,
         "intent": intent,
         "hand_authored_answer_used": hand_authored_answer_used,
+        "cartridge_source": cartridge_source,
         "matched_concepts": [
             {
                 "concept_id": item.get("concept_id"),
