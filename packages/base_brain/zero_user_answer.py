@@ -552,7 +552,13 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
 
     lowered = query.lower()
     if (language == "ko" and _contains_any(query, UNSUPPORTED_HINTS_KO)) or _contains_any(lowered, UNSUPPORTED_HINTS_EN):
-        if not any(float(item.get("match_score") or 0.0) > 1.5 for item in context):
+        # A "current-state" query (지금/현재/오늘/실시간 …) cannot be answered from a static graph
+        # even when a related concept matches — abstain UNCONDITIONALLY. Otherwise a partial
+        # concept match hijacks it ("비트코인 지금 가격은?" -> the "비트" concept). A plain
+        # definitional query ("가격이란?") has no now-marker and still routes to the concept.
+        _NOW = ("지금", "현재", "오늘", "실시간", "최신", "요즘", "시세", "얼마", "now", "current", "today", "latest")
+        _now = _contains_any(query, _NOW) or _contains_any(lowered, _NOW)
+        if _now or not any(float(item.get("match_score") or 0.0) > 1.5 for item in context):
             return (
                 "현재 기본 지식만으로는 이 질문에 필요한 최신 또는 실시간 근거가 부족합니다. 날씨, 주가, 최신 인물 정보처럼 변하는 내용은 별도의 확인 가능한 근거가 필요합니다."
                 if language == "ko"
