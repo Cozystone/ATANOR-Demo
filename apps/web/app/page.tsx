@@ -4283,6 +4283,21 @@ function FullApp() {
     return () => window.clearInterval(timer);
   }, [mainSection]);
 
+  // Brain Link — real P2P coordinator pool (peers, queue, per-peer contribution).
+  const [brainLinkPool, setBrainLinkPool] = useState<AnyRecord | null>(null);
+  useEffect(() => {
+    if (mainSection !== "contribute") return;
+    let alive = true;
+    const load = () => {
+      fetchJson<AnyRecord>("/api/brain-link/pool/status")
+        .then((data) => { if (alive) setBrainLinkPool(data); })
+        .catch(() => {});
+    };
+    load();
+    const timer = window.setInterval(load, 4000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [mainSection]);
+
   const processSteps = [
     {
       key: "collect" as LabStageKey,
@@ -6106,6 +6121,30 @@ function FullApp() {
                 <span><small>Local write</small><strong>false</strong></span>
               </div>
             </header>
+            {brainLinkPool ? (
+              <article style={{ border: "1px solid rgba(99,102,241,0.4)", borderRadius: 12, padding: 16, margin: "0 0 16px", background: "rgba(99,102,241,0.06)" }}>
+                <h3 style={{ margin: "0 0 10px", color: "#6366f1" }}>{language === "ko" ? "실시간 P2P 연산 풀 (Brain Link 코디네이터)" : "Live P2P compute pool (Brain Link coordinator)"}</h3>
+                <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 12 }}>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "피어(온라인/전체)" : "Peers"}</small><br /><strong>{String(brainLinkPool.online_peers ?? 0)}/{String(brainLinkPool.peer_count ?? 0)}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "작업 대기" : "Queue"}</small><br /><strong>{Number(brainLinkPool.queue_remaining ?? 0).toLocaleString()}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "완료 배치" : "Batches"}</small><br /><strong>{String(brainLinkPool.batches_completed ?? 0)}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "기여 개념" : "Concepts"}</small><br /><strong>{Number(brainLinkPool.store_concepts_total ?? 0).toLocaleString()}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "기여 관계" : "Relations"}</small><br /><strong>{Number(brainLinkPool.store_relations_total ?? 0).toLocaleString()}</strong></span>
+                </div>
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {(Array.isArray(brainLinkPool.peers) ? brainLinkPool.peers : []).map((peer: AnyRecord) => (
+                    <li key={String(peer.peer_id)} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: peer.online ? "#22c55e" : "#94a3b8", flexShrink: 0 }} />
+                      <strong style={{ color: "#6366f1" }}>{String(peer.label ?? peer.peer_id)}</strong>
+                      <span style={{ opacity: 0.7 }}>{language === "ko" ? "청구" : "claimed"} {String(peer.claimed ?? 0)} · {language === "ko" ? "완료" : "done"} {String(peer.completed ?? 0)} · {language === "ko" ? "개념" : "concepts"} {String(peer.concepts ?? 0)} · {language === "ko" ? "관계" : "rel"} {String(peer.relations ?? 0)}</span>
+                    </li>
+                  ))}
+                  {(!Array.isArray(brainLinkPool.peers) || brainLinkPool.peers.length === 0) ? (
+                    <li style={{ opacity: 0.6, fontSize: 13 }}>{language === "ko" ? "연결된 피어 없음 — deploy/brain_link_peer로 피어를 띄우면 여기 실시간으로 나타납니다." : "No peers connected — start one via deploy/brain_link_peer."}</li>
+                  ) : null}
+                </ul>
+              </article>
+            ) : null}
             <article className="atanor-contribution-hero">
               <div className="atanor-contribution-ring" data-active={contributionIsActive}>
                 <svg viewBox="0 0 120 120" aria-hidden="true">
