@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { proxyJson } from "../../../../_backend";
+import { proxyJson } from "../../../_backend";
 
 export async function GET() {
   const proxied = await proxyJson("/api/brain-link/pool/status");
