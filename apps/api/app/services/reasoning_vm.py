@@ -648,6 +648,17 @@ def solve_reasoning(question: str, language: str = "ko") -> dict[str, Any] | Non
             return order
     except Exception:  # pragma: no cover - reasoner must never break chat
         pass
+    # IS-A / property / causal entailment ("참새는 새다. 새는 동물이다. 참새는 동물이야?") is
+    # also digit-less and composes stated relations via transitive closure — same shape,
+    # different relation type. Runs before the numeric gate too.
+    try:
+        from app.services.entailment_reasoner import solve_entailment
+
+        entail = solve_entailment(question, language)
+        if entail:
+            return entail
+    except Exception:  # pragma: no cover - reasoner must never break chat
+        pass
     if not re.search(r"\d|" + "|".join(map(re.escape, _WORD_NUM)), q):
         return None
     result = (
