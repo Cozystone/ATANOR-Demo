@@ -1228,6 +1228,82 @@ function GraphHubFragmentThumb({ nodes }: { nodes: AnyRecord[] }): JSX.Element {
   );
 }
 
+// Shared offscreen Three.js renderer: render each cartridge's REAL node cloud in 3D once and
+// capture a PNG. Cards then show an actual 3D render (perspective, depth, lighting) via a
+// single reused WebGL context instead of many live canvases.
+let _ghThree: any = null;
+let _ghRenderer: any = null;
+
+async function graphHubSnapshot(nodes: AnyRecord[]): Promise<string | null> {
+  if (typeof window === "undefined" || !nodes.length) return null;
+  try {
+    if (!_ghThree) _ghThree = await import("three");
+    const THREE = _ghThree;
+    const SIZE = 340;
+    if (!_ghRenderer) {
+      _ghRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+      _ghRenderer.setSize(SIZE, SIZE);
+      _ghRenderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    }
+    const renderer = _ghRenderer;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+    const list = nodes.slice(0, 26);
+    const pts = list.map((n, i) => {
+      if (typeof n.x === "number" && typeof n.y === "number") {
+        return new THREE.Vector3(Number(n.x), Number(n.y), Number(n.z ?? 0));
+      }
+      const h = ghHash(String(n.id ?? n.label ?? i));
+      const theta = (h % 360) * (Math.PI / 180);
+      const phi = (((h >> 4) % 180) + 10) * (Math.PI / 180);
+      const r = 2 + (((h >> 8) % 100) / 100) * 2.4;
+      return new THREE.Vector3(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
+    });
+    const box = new THREE.Box3().setFromPoints(pts);
+    const center = box.getCenter(new THREE.Vector3());
+    pts.forEach((p: any) => p.sub(center));
+    const radius = Math.max(0.8, box.getSize(new THREE.Vector3()).length() / 2);
+    const geo = new THREE.SphereGeometry(Math.max(0.12, radius * 0.05), 18, 18);
+    const disposables: any[] = [geo];
+    list.forEach((n, i) => {
+      const color = new THREE.Color(GH_LAYER_COLOR[String(n.onion_layer ?? "")] ?? "#8fd0ff");
+      const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.1 });
+      disposables.push(mat);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.copy(pts[i]);
+      scene.add(mesh);
+    });
+    const linePos: number[] = [];
+    for (let i = 0; i < pts.length; i += 1) {
+      for (let j = i + 1; j < pts.length; j += 1) {
+        const di = String(list[i].planetary_domain ?? list[i].cluster_id ?? "");
+        const dj = String(list[j].planetary_domain ?? list[j].cluster_id ?? "");
+        if (di && di === dj) linePos.push(pts[i].x, pts[i].y, pts[i].z, pts[j].x, pts[j].y, pts[j].z);
+      }
+    }
+    if (linePos.length) {
+      const lg = new THREE.BufferGeometry();
+      lg.setAttribute("position", new THREE.Float32BufferAttribute(linePos, 3));
+      const lm = new THREE.LineBasicMaterial({ color: 0xa6c8ff, transparent: true, opacity: 0.4 });
+      disposables.push(lg, lm);
+      scene.add(new THREE.LineSegments(lg, lm));
+    }
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const dl = new THREE.DirectionalLight(0xffffff, 0.85);
+    dl.position.set(3, 5, 4);
+    scene.add(dl);
+    const dist = radius * 3.1;
+    camera.position.set(dist * 0.55, dist * 0.32, dist);
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+    const url = renderer.domElement.toDataURL("image/png");
+    disposables.forEach((d) => d.dispose && d.dispose());
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 function percent(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
@@ -1819,6 +1895,8 @@ function FullApp() {
   const [graphHubProof, setGraphHubProof] = useState<AnyRecord | null>(null);
   // Real graph fragment previews (nodes from /sandbox-preview) rendered as each card's cover.
   const [graphHubPreviews, setGraphHubPreviews] = useState<Record<string, AnyRecord[] | "loading" | "error">>({});
+  // PNG snapshots of each cartridge's fragment rendered in real 3D (see graphHubSnapshot).
+  const [graphHubSnapshots, setGraphHubSnapshots] = useState<Record<string, string>>({});
   const [graphHubProfiles, setGraphHubProfiles] = useState<Record<string, AnyRecord>>({});
   const [graphHubSynergy, setGraphHubSynergy] = useState<Record<string, AnyRecord>>({});
   const [graphHubTrials, setGraphHubTrials] = useState<Record<string, AnyRecord>>({});
@@ -3230,6 +3308,26 @@ function FullApp() {
     // graphHubPreviews intentionally omitted: we only (re)load when the catalog set changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainSection, graphHubCatalog, localBackendConnected, localBackendUrl]);
+
+  // Once a cartridge's fragment nodes arrive, render them in real 3D and cache a PNG snapshot.
+  useEffect(() => {
+    if (mainSection !== "graphhub") return;
+    let cancelled = false;
+    void (async () => {
+      for (const [id, value] of Object.entries(graphHubPreviews)) {
+        if (cancelled) break;
+        if (Array.isArray(value) && value.length && !(id in graphHubSnapshots)) {
+          const url = await graphHubSnapshot(value);
+          if (url && !cancelled) setGraphHubSnapshots((prev) => ({ ...prev, [id]: url }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // graphHubSnapshots omitted so setting one entry doesn't re-trigger the whole pass.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainSection, graphHubPreviews]);
 
   useEffect(() => {
     const updateClock = () => setClockNow(new Date());
@@ -6119,8 +6217,12 @@ function FullApp() {
                 const trialActive = trial && !["detached", "exhausted", "expired", "failed"].includes(String(trial.state));
                 return (
                   <article className="atanor-graph-hub-card" key={cartridgeId} data-attached={attached}>
-                    <div className="atanor-graph-hub-cover" data-tone={String(item.category ?? "general")} data-graph={previewNodes ? "true" : "false"}>
-                      {previewNodes ? <GraphHubFragmentThumb nodes={previewNodes} /> : <span>{initial}</span>}
+                    <div className="atanor-graph-hub-cover" data-tone={String(item.category ?? "general")} data-graph={(graphHubSnapshots[cartridgeId] || previewNodes) ? "true" : "false"}>
+                      {graphHubSnapshots[cartridgeId]
+                        ? <img className="atanor-graph-hub-render" src={graphHubSnapshots[cartridgeId]} alt="" loading="lazy" />
+                        : previewNodes
+                          ? <GraphHubFragmentThumb nodes={previewNodes} />
+                          : <span>{initial}</span>}
                       <i />
                     </div>
                     <header>

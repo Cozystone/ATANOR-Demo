@@ -8488,14 +8488,14 @@ p {
 
 .atanor-graph-hub-grid {
   display: grid;
-  gap: clamp(18px, 2vw, 28px);
-  /* Fewer, larger cards per row so a first-time visitor isn't hit with a dense wall. */
-  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: clamp(14px, 1.4vw, 20px);
+  /* Moderate density: a handful of cards per row, not a dense wall. */
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
 }
 
-@media (min-width: 1500px) {
+@media (min-width: 1400px) {
   .atanor-graph-hub-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 
@@ -8521,7 +8521,7 @@ p {
 
 .atanor-graph-hub-cover {
   align-items: center;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 16 / 10;
   background:
     radial-gradient(circle at 55% 42%, rgba(255, 255, 255, 0.22), transparent 0 10%, rgba(255, 255, 255, 0.02) 11%),
     linear-gradient(145deg, rgba(74, 110, 255, 0.38), rgba(118, 75, 162, 0.18) 44%, rgba(18, 22, 34, 0.92));
@@ -8585,6 +8585,15 @@ p {
   position: relative;
   z-index: 1;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+
+/* Real 3D render snapshot of the fragment. */
+.atanor-graph-hub-render {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  position: relative;
+  z-index: 1;
 }
 
 .atanor-graph-hub-cover[data-graph="true"]::before {
