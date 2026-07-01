@@ -8488,8 +8488,15 @@ p {
 
 .atanor-graph-hub-grid {
   display: grid;
-  gap: clamp(16px, 1.8vw, 24px);
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: clamp(18px, 2vw, 28px);
+  /* Fewer, larger cards per row so a first-time visitor isn't hit with a dense wall. */
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+}
+
+@media (min-width: 1500px) {
+  .atanor-graph-hub-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .atanor-graph-hub-card {
@@ -8568,6 +8575,24 @@ p {
   font: 900 clamp(3.4rem, 8vw, 5.5rem) Helvetica, Arial, sans-serif;
   position: relative;
   z-index: 1;
+}
+
+/* Real graph fragment thumbnail: fills the cover; drop the placeholder ring/grid so the
+   actual node constellation reads clearly. */
+.atanor-graph-hub-fragment {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+
+.atanor-graph-hub-cover[data-graph="true"]::before {
+  opacity: 0;
+}
+
+.atanor-graph-hub-cover[data-graph="true"]::after {
+  opacity: 0.12;
 }
 
 .atanor-graph-hub-cover i {

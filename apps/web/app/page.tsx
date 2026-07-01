@@ -1127,6 +1127,107 @@ async function directBackendJson<T>(baseUrl: string, path: string, init?: Reques
   return body;
 }
 
+function ghHash(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+const GH_LAYER_COLOR: Record<string, string> = {
+  core: "#ff7d46",
+  inner: "#ffb066",
+  middle: "#5fb0ff",
+  outer: "#8fd0ff",
+};
+
+// Renders a cartridge's REAL graph fragment (nodes from /sandbox-preview) as a small
+// constellation: nodes at their stored x/y when present (else a deterministic per-id layout),
+// linked where they share a planetary domain / cluster (real structure), else to the nearest
+// node so the shape reads as a graph rather than scattered dots.
+function GraphHubFragmentThumb({ nodes }: { nodes: AnyRecord[] }): JSX.Element {
+  const W = 100;
+  const H = 100;
+  const pad = 14;
+  const picked = nodes.slice(0, 16);
+  const raw = picked.map((n, i) => {
+    const hasXY = typeof n.x === "number" && typeof n.y === "number";
+    let px: number;
+    let py: number;
+    if (hasXY) {
+      px = Number(n.x);
+      py = Number(n.y);
+    } else {
+      const h = ghHash(String(n.id ?? n.label ?? i));
+      const ang = (h % 360) * (Math.PI / 180);
+      const rad = 0.35 + (((h >> 4) % 100) / 100) * 0.6;
+      px = Math.cos(ang) * rad;
+      py = Math.sin(ang) * rad;
+    }
+    return {
+      px,
+      py,
+      domain: String(n.planetary_domain ?? n.cluster_id ?? ""),
+      layer: String(n.onion_layer ?? ""),
+      trust: Number(n.trust ?? n.confidence ?? 0.6),
+    };
+  });
+  const xs = raw.map((p) => p.px);
+  const ys = raw.map((p) => p.py);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const nx = (v: number) => pad + (maxX > minX ? (v - minX) / (maxX - minX) : 0.5) * (W - 2 * pad);
+  const ny = (v: number) => pad + (maxY > minY ? (v - minY) / (maxY - minY) : 0.5) * (H - 2 * pad);
+  const laid = raw.map((p) => ({ ...p, cx: nx(p.px), cy: ny(p.py) }));
+  const edges: Array<[number, number]> = [];
+  for (let i = 0; i < laid.length; i += 1) {
+    let linked = false;
+    for (let j = i + 1; j < laid.length; j += 1) {
+      if (laid[i].domain && laid[i].domain === laid[j].domain) {
+        edges.push([i, j]);
+        linked = true;
+      }
+    }
+    if (!linked && laid.length > 1) {
+      let best = -1;
+      let bd = Infinity;
+      for (let j = 0; j < laid.length; j += 1) {
+        if (j === i) continue;
+        const d = (laid[i].cx - laid[j].cx) ** 2 + (laid[i].cy - laid[j].cy) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = j;
+        }
+      }
+      if (best >= 0) edges.push([i, best]);
+    }
+  }
+  const cappedEdges = edges.slice(0, 26);
+  return (
+    <svg className="atanor-graph-hub-fragment" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <g stroke="rgba(255,255,255,0.34)" strokeWidth={0.7}>
+        {cappedEdges.map(([a, b], k) => (
+          <line key={k} x1={laid[a].cx} y1={laid[a].cy} x2={laid[b].cx} y2={laid[b].cy} />
+        ))}
+      </g>
+      {laid.map((p, i) => (
+        <circle
+          key={i}
+          cx={p.cx}
+          cy={p.cy}
+          r={2.1 + Math.min(1.8, p.trust * 2)}
+          fill={GH_LAYER_COLOR[p.layer] ?? "#cfe0ff"}
+          opacity={0.55 + Math.min(0.4, p.trust * 0.5)}
+        />
+      ))}
+    </svg>
+  );
+}
+
 function percent(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
@@ -1716,6 +1817,8 @@ function FullApp() {
   const [graphHubAudit, setGraphHubAudit] = useState<AnyRecord[]>([]);
   const [graphHubExport, setGraphHubExport] = useState<AnyRecord | null>(null);
   const [graphHubProof, setGraphHubProof] = useState<AnyRecord | null>(null);
+  // Real graph fragment previews (nodes from /sandbox-preview) rendered as each card's cover.
+  const [graphHubPreviews, setGraphHubPreviews] = useState<Record<string, AnyRecord[] | "loading" | "error">>({});
   const [graphHubProfiles, setGraphHubProfiles] = useState<Record<string, AnyRecord>>({});
   const [graphHubSynergy, setGraphHubSynergy] = useState<Record<string, AnyRecord>>({});
   const [graphHubTrials, setGraphHubTrials] = useState<Record<string, AnyRecord>>({});
@@ -3083,6 +3186,50 @@ function FullApp() {
       cancelled = true;
     };
   }, [mainSection, graphHubPricingFilter, localBackendConnected, localBackendUrl]);
+
+  // Load each visible cartridge's real graph fragment (from /sandbox-preview) for its cover.
+  // Bounded concurrency + a race between proxy and direct channels keeps it off the critical
+  // path and avoids a request burst; results are cached per cartridge so it runs once.
+  useEffect(() => {
+    if (mainSection !== "graphhub") return;
+    const ids = graphHubCatalog
+      .map((item) => String(item.cartridge_id))
+      .filter((id) => id && !(id in graphHubPreviews));
+    if (!ids.length) return;
+    let cancelled = false;
+    setGraphHubPreviews((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = "loading";
+      return next;
+    });
+    const fetchOne = async (id: string) => {
+      const path = `/api/graph-hub/sandbox-preview/${encodeURIComponent(id)}`;
+      const channels: Promise<AnyRecord>[] = [fetchJson<AnyRecord>(path, { method: "POST" }, 9000)];
+      if (localBackendConnected) {
+        channels.push(directBackendJson<AnyRecord>(localBackendUrl, path, { method: "POST" }, 9000));
+      }
+      try {
+        const res = await Promise.any(channels);
+        const nodes = Array.isArray(res.semantic_preview) ? res.semantic_preview : [];
+        if (!cancelled) setGraphHubPreviews((prev) => ({ ...prev, [id]: nodes }));
+      } catch {
+        if (!cancelled) setGraphHubPreviews((prev) => ({ ...prev, [id]: "error" }));
+      }
+    };
+    const queue = [...ids];
+    const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+      while (queue.length && !cancelled) {
+        const next = queue.shift();
+        if (next) await fetchOne(next);
+      }
+    });
+    void Promise.all(workers);
+    return () => {
+      cancelled = true;
+    };
+    // graphHubPreviews intentionally omitted: we only (re)load when the catalog set changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainSection, graphHubCatalog, localBackendConnected, localBackendUrl]);
 
   useEffect(() => {
     const updateClock = () => setClockNow(new Date());
@@ -5964,14 +6111,16 @@ function FullApp() {
                 const title = String(item.name ?? "Graph Cartridge");
                 const initial = title.trim().slice(0, 1).toUpperCase();
                 const cartridgeId = String(item.cartridge_id);
+                const previewState = graphHubPreviews[cartridgeId];
+                const previewNodes = Array.isArray(previewState) && previewState.length ? previewState : null;
                 const profile = graphHubProfiles[cartridgeId];
                 const synergy = graphHubSynergy[cartridgeId];
                 const trial = graphHubTrials[cartridgeId];
                 const trialActive = trial && !["detached", "exhausted", "expired", "failed"].includes(String(trial.state));
                 return (
                   <article className="atanor-graph-hub-card" key={cartridgeId} data-attached={attached}>
-                    <div className="atanor-graph-hub-cover" data-tone={String(item.category ?? "general")}>
-                      <span>{initial}</span>
+                    <div className="atanor-graph-hub-cover" data-tone={String(item.category ?? "general")} data-graph={previewNodes ? "true" : "false"}>
+                      {previewNodes ? <GraphHubFragmentThumb nodes={previewNodes} /> : <span>{initial}</span>}
                       <i />
                     </div>
                     <header>
