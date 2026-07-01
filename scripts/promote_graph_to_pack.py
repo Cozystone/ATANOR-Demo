@@ -36,11 +36,31 @@ from packages.base_brain.models import utc_now_iso                             #
 STORE = REPO_ROOT / "data" / "cloud_brain" / "candidate_runs" / "clean_seed_v2"
 MOJIBAKE = ("荑", "吏", "媛", "占")  # _needs_rebuild trips on these; skip such descriptions
 
+# Non-destructive overlay: additional stores whose rows are read ALONGSIDE the
+# primary STORE, so their concepts flow through the SAME quality gate (aboutness,
+# IS_A, name-strip, thresholds) below. Nothing promotes unless it passes. Set via
+# --extra-store (repeatable); a sharded root (contributed_store_sharded) expands to
+# its shard_*/ dirs. This is the Brain Link closed loop: peer compute -> gate -> pack.
+EXTRA_STORES: list[Path] = []
+
+
+def _store_dirs(root: Path) -> list[Path]:
+    """Concrete store dirs under a path: the path itself if it holds jsonl rows,
+    plus any shard_*/ subdirs (a ShardedContributedStore root)."""
+    dirs: list[Path] = []
+    if (root / "concepts.jsonl").exists() or (root / "evidence.jsonl").exists():
+        dirs.append(root)
+    dirs.extend(sorted(root.glob("shard_*")))
+    return dirs
+
 
 def _read(fn: str) -> list[dict]:
-    p = STORE / fn
     out = []
-    if p.exists():
+    stores = [STORE] + [d for x in EXTRA_STORES for d in _store_dirs(x)]
+    for store in stores:
+        p = store / fn
+        if not p.exists():
+            continue
         for line in p.open(encoding="utf-8"):
             try:
                 out.append(json.loads(line))
@@ -58,7 +78,7 @@ def _clean_desc(text: str) -> str | None:
     return t
 
 
-def promote() -> dict:
+def promote(dry_run: bool = False) -> dict:
     # curated stays authoritative
     curated = build_general_semantic_pack_v0()
     curated_concepts = curated.get("concepts", [])
@@ -145,13 +165,40 @@ def promote() -> dict:
         "오늘", "지금", "내일", "어제", "요즘", "최근", "방금", "오늘날", "현재", "이제",
         "원래", "본래", "당시", "그때", "이때", "여기", "거기", "저기",
     }
+    # English mirror of the same grammar-vs-knowledge boundary: English source
+    # sentences make sentence-leading discourse connectives / pronouns / conjunctions
+    # look like subjects ("However, ..." -> topic "However"), so they promote and then
+    # match queries wrongly. These are closed-class grammar (LAD layer), not entities.
+    # (Surfaced by the Brain Link peer overlay: 14/18 net-new were words like However,
+    # Therefore, They, Thus, Meanwhile, Indeed, I, we, s.) Matched case-insensitively.
+    _NON_ENTITY_EN = {
+        "however", "therefore", "thus", "hence", "meanwhile", "indeed", "moreover",
+        "furthermore", "nevertheless", "nonetheless", "besides", "otherwise", "instead",
+        "similarly", "consequently", "accordingly", "additionally", "conversely",
+        "then", "also", "finally", "first", "firstly", "second", "secondly", "next",
+        "below", "above", "here", "there", "why", "when", "where", "how", "what", "who",
+        "i", "we", "you", "they", "he", "she", "it", "them", "us", "me", "him", "her",
+        "this", "that", "these", "those", "everything", "everyone", "someone",
+        "something", "anyone", "anything", "nobody", "nothing",
+        "until", "while", "because", "although", "though", "since", "unless", "whereas",
+        "and", "but", "or", "so", "yet", "nor", "if", "as", "the", "a", "an", "of",
+    }
+
+    def _is_non_entity(nm: str) -> bool:
+        low = nm.lower()
+        if low in _NON_ENTITY_EN:
+            return True
+        # single-char / bare-inflection fragments ("s", "In") are decomposition debris
+        if len(nm.strip()) <= 1:
+            return True
+        return False
 
     promoted = []
     for c in concepts:
         name = str(c.get("canonical_name") or "").strip()
         if not name or name.lower() in taken_names:
             continue
-        if name in _NON_ENTITY_DEIXIS:
+        if name in _NON_ENTITY_DEIXIS or _is_non_entity(name):
             continue
         # faithful AND about-this-concept: the sentence's TOPIC must be this concept
         # AND the sentence must LEAD with the concept name (it is the primary
@@ -237,12 +284,42 @@ def promote() -> dict:
         "surface_graph": surface_graph,
         "benchmark": benchmark,
     }
-    PACK_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not dry_run:
+        PACK_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"curated": len(curated_concepts), "promoted": len(promoted), "total": len(merged),
-            "pack": str(PACK_PATH)}
+            "pack": str(PACK_PATH), "dry_run": dry_run,
+            "promoted_names": [c.get("canonical_name") for c in promoted]}
 
 
 if __name__ == "__main__":
-    r = promote()
-    print(f"[PROMOTE] curated={r['curated']} + cloud_promoted={r['promoted']} = total={r['total']} concepts")
-    print(f"[PROMOTE] wrote {r['pack']} (base_pack_code_version aligned -> authoritative)")
+    import argparse
+    ap = argparse.ArgumentParser(description="Promote graph/contributed stores into the base answer pack.")
+    ap.add_argument("--extra-store", action="append", default=[],
+                    help="Additional store dir or sharded root to overlay (repeatable). "
+                         "e.g. data/brain_link/contributed_store_sharded")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Measure what WOULD promote; do NOT write the live pack.")
+    args = ap.parse_args()
+    for x in args.extra_store:
+        p = Path(x)
+        EXTRA_STORES.append(p if p.is_absolute() else REPO_ROOT / p)
+    if EXTRA_STORES:
+        print(f"[PROMOTE] overlay stores: {[str(p) for p in EXTRA_STORES]}")
+    r = promote(dry_run=args.dry_run)
+    tag = "DRY-RUN (no write)" if r["dry_run"] else f"wrote {r['pack']} (authoritative)"
+    print(f"[PROMOTE] curated={r['curated']} + cloud_promoted={r['promoted']} = total={r['total']} concepts | {tag}")
+    if EXTRA_STORES:
+        # Which promoted concepts are NOT in a from-scratch (no-overlay) run = the
+        # net gain the overlay (e.g. Brain Link peer contributions) actually yields.
+        base_names = set()
+        try:
+            EXTRA_SAVE = list(EXTRA_STORES)
+            EXTRA_STORES.clear()
+            base_names = {n for n in promote(dry_run=True)["promoted_names"]}
+            EXTRA_STORES.extend(EXTRA_SAVE)
+        except Exception:
+            pass
+        gained = [n for n in r["promoted_names"] if n not in base_names]
+        print(f"[PROMOTE] net-new from overlay: {len(gained)} concepts")
+        for n in gained[:25]:
+            print("   +", n)
