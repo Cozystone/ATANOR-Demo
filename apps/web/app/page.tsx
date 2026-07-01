@@ -954,6 +954,10 @@ const memoryTypeColors: Record<string, string> = {
   verification: "#e89d2a",
   learning: "#111715",
   efficiency: "#006a9f",
+  // Graph Hub cartridges + cloud overlay — visually distinct from base/local nodes.
+  graph_cartridge_node: "#e0338a",
+  graph_cartridge: "#e0338a",
+  cloud_attached: "#00b4d8",
 };
 
 const memoryTypeDescriptions: Record<string, string> = {
@@ -975,6 +979,9 @@ const memoryTypeDescriptions: Record<string, string> = {
   verification: "근거 확인과 검증에 쓰이는 노드입니다.",
   learning: "실시간 학습 과정과 연결되는 노드입니다.",
   efficiency: "저전력 및 저사양 실행을 위한 효율 노드입니다.",
+  graph_cartridge_node: "Graph Hub에서 꽂은 전문·페르소나 그래프 카트리지 노드입니다.",
+  graph_cartridge: "Graph Hub에서 꽂은 전문·페르소나 그래프 카트리지 노드입니다.",
+  cloud_attached: "클라우드에서 임시로 부착된 작업기억 오버레이 노드입니다.",
 };
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
