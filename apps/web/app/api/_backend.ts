@@ -9,14 +9,13 @@ export function backendBaseCandidates() {
     process.env.API_BASE_URL,
   ].filter((value): value is string => Boolean(value));
   if (process.env.VERCEL) return explicit;
+  // Only the live companion (:8502) runs locally. The legacy alternates :8504/:8500 are
+  // not up, so every endpoint that 404s on :8502 fell through to two ECONNREFUSED probes,
+  // adding latency + log noise on each dashboard poll. Set ATANOR_GATEWAY_API to add a
+  // real alternate; otherwise probe only what actually exists.
   return Array.from(new Set([
     ...explicit,
-    // Prefer the live companion that carries the product conversation +
-    // SPLATRA scene contracts. Older healthy companions may answer /health
-    // while lacking the current hologram scene payload.
     "http://127.0.0.1:8502",
-    "http://127.0.0.1:8504",
-    "http://127.0.0.1:8500",
   ]));
 }
 

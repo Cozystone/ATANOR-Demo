@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
+import time
+from typing import Any, Literal
 
 from fastapi import APIRouter, Query
 
@@ -9,6 +10,13 @@ from packages.brain_graph.proof import run_tab_aware_brain_graph_proof
 
 
 router = APIRouter(prefix="/api/brain", tags=["brain-graph"])
+
+# Short-TTL response cache: the dashboard polls /api/brain/graph repeatedly with the SAME
+# params (~1.9s aggregate each). The graph doesn't change sub-second, so caching by param
+# key for a couple seconds makes repeated polls instant without a stale UX — decoupling
+# poll frequency from backend cost (query=... focus requests bypass via their own key).
+_GRAPH_CACHE: dict[tuple, tuple[float, dict]] = {}
+_GRAPH_CACHE_TTL = 2.5
 
 
 @router.get("/graph")
@@ -23,7 +31,12 @@ def brain_graph(
     lod: int | None = Query(default=None, ge=1, le=6),
 ) -> dict:
     layer_list = [part.strip() for part in layers.split(",") if part.strip()] if layers else None
-    return aggregate_brain_graph(
+    key = (view, mode, layers, query, max_nodes, max_edges, focus_node_id, lod)
+    now = time.time()
+    hit = _GRAPH_CACHE.get(key)
+    if hit and (now - hit[0]) < _GRAPH_CACHE_TTL:
+        return hit[1]
+    result = aggregate_brain_graph(
         view=view,
         layers=layer_list,
         query=query,
@@ -33,6 +46,11 @@ def brain_graph(
         lod=lod,
         mode=mode,
     )
+    _GRAPH_CACHE[key] = (now, result)
+    if len(_GRAPH_CACHE) > 64:
+        for k, _v in sorted(_GRAPH_CACHE.items(), key=lambda kv: kv[1][0])[:32]:
+            _GRAPH_CACHE.pop(k, None)
+    return result
 
 
 @router.get("/overlay-status")
