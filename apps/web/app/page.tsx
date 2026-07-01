@@ -1228,28 +1228,59 @@ function GraphHubFragmentThumb({ nodes }: { nodes: AnyRecord[] }): JSX.Element {
   );
 }
 
-// Shared offscreen Three.js renderer: render each cartridge's REAL node cloud in 3D once and
-// capture a PNG. Cards then show an actual 3D render (perspective, depth, lighting) via a
-// single reused WebGL context instead of many live canvases.
+// Shared offscreen Three.js renderer. Each cartridge's REAL node cloud is rendered once (in
+// the same additive glowing-points-on-black style as the live Local/Cloud Brain scenes) and
+// captured as a PNG — one reused WebGL context instead of many live canvases.
 let _ghThree: any = null;
 let _ghRenderer: any = null;
+let _ghDotTex: any = null;
+
+// Soft round glow sprite so points read as luminous nodes (not square dots), matching the
+// additive look of the brain scenes.
+function ghDotTexture(THREE: any): any {
+  if (_ghDotTex) return _ghDotTex;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.25, "rgba(255,255,255,0.9)");
+  g.addColorStop(0.55, "rgba(255,255,255,0.32)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _ghDotTex = new THREE.CanvasTexture(c);
+  return _ghDotTex;
+}
+
+// Fibonacci-sphere point (same distribution the Cloud Brain shell uses).
+function ghShellPoint(THREE: any, index: number, total: number, radius: number): any {
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const y = 1 - (index / Math.max(1, total - 1)) * 2;
+  const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = golden * index;
+  return new THREE.Vector3(Math.cos(theta) * r * radius, y * radius, Math.sin(theta) * r * radius);
+}
 
 async function graphHubSnapshot(nodes: AnyRecord[]): Promise<string | null> {
   if (typeof window === "undefined" || !nodes.length) return null;
   try {
     if (!_ghThree) _ghThree = await import("three");
     const THREE = _ghThree;
-    const SIZE = 340;
+    const SIZE = 420;
     if (!_ghRenderer) {
-      _ghRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+      _ghRenderer = new THREE.WebGLRenderer({ alpha: false, antialias: true, preserveDrawingBuffer: true });
       _ghRenderer.setSize(SIZE, SIZE);
       _ghRenderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     }
     const renderer = _ghRenderer;
+    renderer.setClearColor(0x04060d, 1); // black backdrop for the additive glow
+    const dot = ghDotTexture(THREE);
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
-    const list = nodes.slice(0, 26);
-    const pts = list.map((n, i) => {
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+    const list = nodes.slice(0, 48);
+    const pts = list.map((n: AnyRecord, i: number) => {
       if (typeof n.x === "number" && typeof n.y === "number") {
         return new THREE.Vector3(Number(n.x), Number(n.y), Number(n.z ?? 0));
       }
@@ -1262,17 +1293,40 @@ async function graphHubSnapshot(nodes: AnyRecord[]): Promise<string | null> {
     const box = new THREE.Box3().setFromPoints(pts);
     const center = box.getCenter(new THREE.Vector3());
     pts.forEach((p: any) => p.sub(center));
-    const radius = Math.max(0.8, box.getSize(new THREE.Vector3()).length() / 2);
-    const geo = new THREE.SphereGeometry(Math.max(0.12, radius * 0.05), 18, 18);
-    const disposables: any[] = [geo];
-    list.forEach((n, i) => {
-      const color = new THREE.Color(GH_LAYER_COLOR[String(n.onion_layer ?? "")] ?? "#8fd0ff");
-      const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.1 });
-      disposables.push(mat);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.copy(pts[i]);
-      scene.add(mesh);
+    const radius = Math.max(1.3, box.getSize(new THREE.Vector3()).length() / 2);
+    const disposables: any[] = [];
+
+    // Dense spherical shell of ambient points → the "brain cluster" backdrop. We fill both a
+    // surface shell and a thinner inner scatter so even a small cartridge reads as a populated
+    // cluster (like the real Cloud Brain sphere), with its real nodes highlighted on top.
+    const shellR = radius * 1.25 + 0.85;
+    const shellCount = Math.min(1600, 900 + list.length * 40);
+    const shellPos = new Float32Array(shellCount * 3);
+    for (let i = 0; i < shellCount; i += 1) {
+      const h = ghHash(String(i * 2 + 1));
+      // ~70% on the surface shell, ~30% scattered inside for volume.
+      const rr = (h % 100) < 70 ? shellR * (0.9 + ((h >> 3) % 100) / 100 * 0.14) : shellR * (0.3 + ((h >> 5) % 100) / 100 * 0.55);
+      const p = ghShellPoint(THREE, i, shellCount, rr);
+      shellPos[i * 3] = p.x;
+      shellPos[i * 3 + 1] = p.y;
+      shellPos[i * 3 + 2] = p.z;
+    }
+    const shellGeo = new THREE.BufferGeometry();
+    shellGeo.setAttribute("position", new THREE.BufferAttribute(shellPos, 3));
+    const shellMat = new THREE.PointsMaterial({
+      color: new THREE.Color("#4c83b8"),
+      map: dot,
+      size: radius * 0.1,
+      opacity: 0.62,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
     });
+    disposables.push(shellGeo, shellMat);
+    scene.add(new THREE.Points(shellGeo, shellMat));
+
+    // Edges between same-domain nodes → additive near-white filaments.
     const linePos: number[] = [];
     for (let i = 0; i < pts.length; i += 1) {
       for (let j = i + 1; j < pts.length; j += 1) {
@@ -1284,16 +1338,52 @@ async function graphHubSnapshot(nodes: AnyRecord[]): Promise<string | null> {
     if (linePos.length) {
       const lg = new THREE.BufferGeometry();
       lg.setAttribute("position", new THREE.Float32BufferAttribute(linePos, 3));
-      const lm = new THREE.LineBasicMaterial({ color: 0xa6c8ff, transparent: true, opacity: 0.4 });
+      const lm = new THREE.LineBasicMaterial({ color: 0xdce8ff, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending });
       disposables.push(lg, lm);
       scene.add(new THREE.LineSegments(lg, lm));
     }
-    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-    const dl = new THREE.DirectionalLight(0xffffff, 0.85);
-    dl.position.set(3, 5, 4);
-    scene.add(dl);
-    const dist = radius * 3.1;
-    camera.position.set(dist * 0.55, dist * 0.32, dist);
+
+    // A soft halo pass under the real nodes for bloom-like depth.
+    const nodePos = new Float32Array(list.length * 3);
+    const nodeCol = new Float32Array(list.length * 3);
+    list.forEach((n: AnyRecord, i: number) => {
+      nodePos[i * 3] = pts[i].x;
+      nodePos[i * 3 + 1] = pts[i].y;
+      nodePos[i * 3 + 2] = pts[i].z;
+      const c = new THREE.Color(GH_LAYER_COLOR[String(n.onion_layer ?? "")] ?? "#ff9f1c");
+      nodeCol[i * 3] = c.r;
+      nodeCol[i * 3 + 1] = c.g;
+      nodeCol[i * 3 + 2] = c.b;
+    });
+    const nodeGeo = new THREE.BufferGeometry();
+    nodeGeo.setAttribute("position", new THREE.BufferAttribute(nodePos, 3));
+    nodeGeo.setAttribute("color", new THREE.BufferAttribute(nodeCol, 3));
+    const haloMat = new THREE.PointsMaterial({
+      vertexColors: true,
+      map: dot,
+      size: radius * 0.66,
+      opacity: 0.5,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    const coreMat = new THREE.PointsMaterial({
+      vertexColors: true,
+      map: dot,
+      size: radius * 0.3,
+      opacity: 1,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    disposables.push(nodeGeo, haloMat, coreMat);
+    scene.add(new THREE.Points(nodeGeo, haloMat));
+    scene.add(new THREE.Points(nodeGeo, coreMat));
+
+    const dist = radius * 3.3 + shellR * 0.35;
+    camera.position.set(dist * 0.42, dist * 0.3, dist);
     camera.lookAt(0, 0, 0);
     renderer.render(scene, camera);
     const url = renderer.domElement.toDataURL("image/png");
