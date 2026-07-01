@@ -57,6 +57,7 @@ from app.routers.agentic_micro_os import router as agentic_micro_os_router
 from app.routers.agora import router as agora_router
 from app.routers.base_brain import router as base_brain_router
 from app.routers.brain_graph import router as brain_graph_router
+from app.routers.brain_link import router as brain_link_router
 from app.routers.cloud_brain import router as cloud_brain_router
 from app.routers.contribution import router as contribution_router
 from app.routers.construction_bank import router as construction_bank_router
@@ -181,6 +182,7 @@ app.include_router(agentic_micro_os_router)
 app.include_router(agora_router)
 app.include_router(base_brain_router)
 app.include_router(brain_graph_router)
+app.include_router(brain_link_router)
 app.include_router(harvest_router)
 app.include_router(hybrid_network_router)
 app.include_router(inner_voice_router)
