@@ -1338,6 +1338,24 @@ async function graphHubSnapshot(nodes: AnyRecord[]): Promise<string | null> {
         if (di && di === dj) linePos.push(pts[i].x, pts[i].y, pts[i].z, pts[j].x, pts[j].y, pts[j].z);
       }
     }
+    // Fallback for cartridges whose preview carries no domain/cluster (e.g. operator-authored
+    // cartridges): connect each node to its nearest neighbour so it still reads as a graph
+    // rather than scattered dots.
+    if (!linePos.length && pts.length > 1) {
+      for (let i = 0; i < pts.length; i += 1) {
+        let best = -1;
+        let bd = Infinity;
+        for (let j = 0; j < pts.length; j += 1) {
+          if (j === i) continue;
+          const d = pts[i].distanceToSquared(pts[j]);
+          if (d < bd) {
+            bd = d;
+            best = j;
+          }
+        }
+        if (best > i) linePos.push(pts[i].x, pts[i].y, pts[i].z, pts[best].x, pts[best].y, pts[best].z);
+      }
+    }
     if (linePos.length) {
       const lg = new THREE.BufferGeometry();
       lg.setAttribute("position", new THREE.Float32BufferAttribute(linePos, 3));
