@@ -560,11 +560,24 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
     # sentence (a fly, a family-tree line) can win. The LEAD is the first sentence that
     # is genuinely ABOUT the entity (defines it); fall back to the first definitional,
     # then the first candidate.
-    lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s) and is_def(s)), None)
+    # Coverage guard: the lead MUST contain the query's own key content terms. Without this,
+    # when the search returns only off-topic pages (no candidate is about the entity), the
+    # is_def fallback pastes any definitional sentence — e.g. "What is a black hole?" grabs
+    # "Black is a color…" ('black' ⊂ query but 'hole' absent), or "엔비디아" grabs a garbled
+    # fragment missing "엔비디아". Requiring every key term present makes it abstain instead of
+    # answering the wrong referent. Single-term queries (microsoft, 광합성) are unaffected.
+    def covers(s: str) -> bool:
+        low = s.lower()
+        return all(t.lower() in low for t in key_terms) if key_terms else True
+
+    lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s) and is_def(s) and covers(s)), None)
     if lead_idx is None:
-        lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s)), None)
+        lead_idx = next((i for i, (s, _) in enumerate(cands) if about(s) and covers(s)), None)
     if lead_idx is None:
-        lead_idx = next((i for i, (s, _) in enumerate(cands) if is_def(s)), 0)
+        lead_idx = next((i for i, (s, _) in enumerate(cands) if is_def(s) and covers(s)), None)
+    if lead_idx is None:
+        # nothing covers the query's key terms -> abstain rather than paste an off-topic fact
+        return None
     lead_sentence, lead_row = cands[lead_idx]
 
     def _shingles(s: str) -> set[str]:
