@@ -33,9 +33,15 @@ _COMPARE = re.compile(
 _PAIR = re.compile(r"([^\s,.。]+?)(?:와|과|랑|이랑)\s+([^\s,.。]+?)\s*중\b(.*)")
 
 # First-syllable antonym map: reconciles a question that mixes an adjective with its opposite
-# and lets a "가장 작은?" query target the minimum of a "…보다 크다" scale. Polarity morphology,
-# not world knowledge — it only flips a direction on one shared scale.
-_ANTONYMS = {"작": "크", "적": "많", "낮": "높", "느": "빠", "짧": "길", "어": "많", "좁": "넓", "얕": "깊", "약": "강"}
+# and lets a "가장 작은?" query target the minimum of a "…보다 크다" scale. The list is NOT
+# hard-coded here — it is loaded from the system-owned lexicon (data/lexicon), which the learner
+# can extend. Polarity morphology on one shared scale, not world knowledge.
+try:
+    from app.services.ko_lexicon import antonyms as _load_antonyms
+
+    _ANTONYMS = _load_antonyms()
+except Exception:  # pragma: no cover - defensive
+    _ANTONYMS = {"작": "크", "적": "많", "낮": "높", "느": "빠", "짧": "길", "어": "많", "좁": "넓", "얕": "깊", "약": "강"}
 
 
 def _syllable_key(ch: str) -> tuple[int, int] | str:

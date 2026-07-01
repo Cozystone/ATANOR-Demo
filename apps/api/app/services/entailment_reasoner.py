@@ -23,9 +23,15 @@ from typing import Any
 _ISA = re.compile(
     r"([^\s,.。]+?)(?:은|는|이|가)\s+([^\s,.。]+?)(?:의\s*(?:일종|하나|한\s*종류))?\s*(?:이다|이라고|다|에\s*속한다|입니다)\b"
 )
-# The causal predicate — enumerating common conjugated surfaces (native verbs like 부르다 →
-# 부른다/불러 shift the stem, so a bare stem match misses them). Morphology (LAD), not a rule.
-_CAUSE_VERB = r"(?:일으키|일으켜|일으킨|유발|초래|야기|불러|부른|부르|이끌|이끈|이어지|이어진|이어져|낳)"
+# The causal predicate — surface stems of X⇒Y causation, loaded from the system-owned lexicon
+# (data/lexicon) rather than hard-coded here, so the learner can extend it. Native verbs like
+# 부르다 → 부른다/불러 shift the stem, so the lexicon lists the conjugated surfaces too.
+try:
+    from app.services.ko_lexicon import causal_verb_pattern as _causal_pattern
+
+    _CAUSE_VERB = _causal_pattern()
+except Exception:  # pragma: no cover - defensive
+    _CAUSE_VERB = r"(?:일으키|일으켜|일으킨|유발|초래|야기|불러|부른|부르|이끌|이끈|이어지|이어진|이어져|낳)"
 # X는 Y를/을 일으킨다 / 유발한다 / 초래한다 / 부른다 / (으)로 이어진다  → X ⇒ Y (causes)
 _CAUSE = re.compile(
     r"([^\s,.。]+?)(?:은|는|이|가)\s+([^\s,.。]+?)(?:을|를|(?:으)?로)\s+" + _CAUSE_VERB + r"[가-힣]*"
