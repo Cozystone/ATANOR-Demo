@@ -44,7 +44,10 @@ def predicate_informativeness(relations: Iterable[dict[str, Any]]) -> dict[str, 
         s = r.get("source_concept_id")
         if not p or s is None:
             continue
-        if p == "IS_A":            # taxonomy is handled separately, not a predicate edge
+        # IS_A is taxonomy (scored 1.0 in plasticity_tick); {ROLE}_OF are parse-structure
+        # labels (OBJ_OF/SUBJ_OF), not knowledge — neither is a real predicate, so exclude
+        # both from the IDF base (else the ubiquitous _OF drags every real predicate's df up).
+        if p == "IS_A" or p.endswith("_OF"):
             continue
         subjects_by_pred.setdefault(p, set()).add(s)
         all_subjects.add(s)
@@ -152,7 +155,12 @@ def plasticity_tick(relations: list[dict[str, Any]], now: datetime, *,
     blended: list[dict[str, Any]] = []
     for r in relations:
         pred = str(r.get("relation") or "")
-        info = scores.get(pred, 0.5) if pred != "IS_A" else 1.0   # taxonomy stays strong
+        if pred == "IS_A":
+            info = 1.0                          # taxonomy stays strong
+        elif pred.endswith("_OF"):
+            info = 0.0                          # parse-structure role labels -> decay + prune
+        else:
+            info = scores.get(pred, 0.5)
         w0 = float(r.get("weight") if r.get("weight") is not None else info)
         new = dict(r)
         new["weight"] = round((1 - info_blend) * w0 + info_blend * info, 4)
