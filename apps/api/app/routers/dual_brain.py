@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import os
 from pathlib import Path
@@ -2303,7 +2304,9 @@ async def _verify_claim_about_entity(question: str, language: str) -> dict[str, 
         from app.services.web_search import (
             _lookup_terms, _normalize_lookup_query, compose_web_answer, wikipedia_search,
         )
-        rows = wikipedia_search(entity, 5) or []
+        # to_thread: keep this blocking urllib fetch OFF the event loop so concurrent
+        # dashboard polls are not frozen while the web request is in flight.
+        rows = (await asyncio.to_thread(wikipedia_search, entity, 5)) or []
     except Exception:  # pragma: no cover - network/optional
         return None
     # Anchor on the entity's OWN page, space-insensitively (wiki titles space words:
@@ -2388,7 +2391,7 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     # declaring the web unreachable. This is what makes the answer reflect search.
     if provider in ("", "static") or not rows_available:
         try:
-            wiki_rows = wikipedia_search(question, 5)
+            wiki_rows = await asyncio.to_thread(wikipedia_search, question, 5)
         except Exception:  # pragma: no cover - network/optional
             wiki_rows = []
         if wiki_rows:

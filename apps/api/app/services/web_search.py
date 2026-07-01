@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import time
@@ -1238,7 +1239,7 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
             # key, provider_api_search spends ~1-2s failing before we fall back to
             # Wikipedia anyway — skip it and go straight to the keyless Wikipedia path.
             api_rows = (
-                provider_api_search(_search_term, bounded_count + 2)
+                await asyncio.to_thread(provider_api_search, _search_term, bounded_count + 2)
                 if selected in {"brave", "serper", "tavily"}
                 else []
             )
@@ -1248,7 +1249,7 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
                 # result, while the open web still covers topics Wikipedia lacks.
                 wiki_rows: list[dict[str, Any]] = []
                 try:
-                    wiki_rows = wikipedia_search(_search_term, 3)  # entity ('사랑'), not '사랑이란'
+                    wiki_rows = await asyncio.to_thread(wikipedia_search, _search_term, 3)  # entity, not '사랑이란'
                 except Exception:
                     wiki_rows = []
                 ranked = _rank_web_rows(clean_query, api_rows + wiki_rows)[:bounded_count]
@@ -1264,7 +1265,7 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
         except Exception:
             pass
         try:
-            results = wikipedia_search(clean_query, bounded_count)
+            results = await asyncio.to_thread(wikipedia_search, clean_query, bounded_count)
             if results:
                 return {
                     "provider": "wikipedia",
