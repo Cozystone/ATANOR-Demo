@@ -571,16 +571,20 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
         return all(t.lower() in low for t in key_terms) if key_terms else True
 
     def subject_lead(s: str) -> bool:
-        # The lead should have the query's entity as its TOPIC — the phrase before the first
-        # topic/subject particle (은/는/이/가). "CUDA는 엔비디아가 만들었다" is ABOUT CUDA (topic
-        # = CUDA) even though it names 엔비디아; "엔비디아 코퍼레이션은 …기술 회사이다" is topic'd on
-        # 엔비디아. English (no particle): fall back to the sentence-initial span.
+        # The lead must be TOPIC'd on the query's entity as the HEAD of its subject phrase (the
+        # phrase before the first 은/는/이/가 particle). Two things this catches:
+        #  - object mentions: "CUDA는 엔비디아가 만들었다" is topic'd on CUDA, not 엔비디아.
+        #  - homonyms: for "테슬라가 뭐야?" a person page leads "니콜라 테슬라는 …" where 테슬라 is
+        #    NOT the head (니콜라 is) — so it is rejected and the company sense ("테슬라(기업)은 …")
+        #    is preferred. The entity must START the subject phrase (after an optional English
+        #    article), not merely appear inside it.
         head = max(key_terms, key=len) if key_terms else ""
         if not head:
             return True
         match = re.match(r"^(.{1,40}?)(은|는|이|가|께서)\s", s)
-        topic = match.group(1) if match else s[:24]
-        return head.lower() in topic.lower()
+        topic = (match.group(1) if match else s[:24]).strip().lower()
+        topic = re.sub(r"^(a|an|the)\s+", "", topic)
+        return topic.startswith(head.lower())
 
     # Lead selection leans on covers()+subject_lead()+is_def() rather than about(): about()
     # runs on query_subject_entity(query), which is the whole noisy query ("엔비디아가 뭐야"),
@@ -622,12 +626,12 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
         toks = _shingles(sentence)
         # A supporting fact is kept if it is a CONTINUATION from the lead's own source paragraph
         # (row is lead_row — follow-on sentences elaborate the subject via pronoun/ellipsis,
-        # "현재 …에서 뛰고 있다", "2025년 기준 …최다 득점자", and never re-name it) OR it independently
-        # COVERS the query's key terms. This makes a rich definitional paragraph yield several
-        # facts instead of one line, while dropping a different page that merely shares a word —
-        # "Black is a color…" for a black-hole query lacks 'hole' and is not from the lead's
-        # paragraph, so it is rejected. No entity list; the checks come from the query + source.
-        if not ((row is lead_row) or covers(sentence)):
+        # "현재 …에서 뛰고 있다", "2025년 기준 …최다 득점자", and never re-name it) OR it is a
+        # cross-source fact that both COVERS the query terms AND is HEAD-topic'd on the entity
+        # (subject_lead). The head requirement keeps a different referent out: for "테슬라가
+        # 뭐야?" the person sentence "니콜라 테슬라는 …발명가이다" covers 테슬라 but is headed by
+        # 니콜라, so it is dropped; "Black is a color…" for a black-hole query lacks 'hole' too.
+        if not ((row is lead_row) or (covers(sentence) and subject_lead(sentence))):
             continue
         # Char-bigram overlap (Korean-robust): a paraphrase of the same definition shares
         # most of its bigrams with one already chosen, so it is dropped and a genuinely
@@ -647,7 +651,25 @@ def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str 
         title = str(row.get("title") or "")
         if title and title not in sources:
             sources.append(title)
-    return {"answer": body.strip(), "lead": lead_sentence, "sources": sources[:3]}
+
+    # Follow-up topics: prefer clean related-page TITLES over token extraction — Korean word
+    # tokens carry bound particles ("손흥민은", "대한민국의"), so regex term-mining yields junk,
+    # not topics. Page titles are already clean named entities. Drop titles that contain a query
+    # key term (that removes the entity's own page AND a homonym's page, e.g. "니콜라 테슬라" for
+    # a Tesla-the-company answer), keep genuinely-related different-titled pages. Empty when the
+    # evidence carries no titles (a fact-bound path) — better none than particle-garbage chips.
+    kt_low = {t.lower() for t in key_terms}
+    follow_ups: list[str] = []
+    for row in rows[:8]:
+        title = _clean_web_title(str(row.get("title") or "")).strip()
+        if len(title) < 3 or title in follow_ups:
+            continue
+        if any(t in title.lower() for t in kt_low):
+            continue
+        follow_ups.append(title)
+        if len(follow_ups) >= 5:
+            break
+    return {"answer": body.strip(), "lead": lead_sentence, "sources": sources[:3], "follow_ups": follow_ups}
 
 
 # Korean particles are BOUND morphemes — they attach to the preceding word with no

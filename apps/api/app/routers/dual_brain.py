@@ -1976,6 +1976,7 @@ def _web_fact_bound_surface(
     route: Any,
     grounded_context: GroundedContext,
     language: str,
+    evidence_docs: list[dict[str, Any]] | None = None,
 ) -> str | None:
     """Prefer evidence-local facts over graph-token fragments for web answers.
 
@@ -2005,12 +2006,28 @@ def _web_fact_bound_surface(
     try:
         from app.services.web_search import compose_web_answer
 
-        pseudo_rows = [{"snippet": fact, "title": ""} for fact in grounded_context.facts]
-        composed = compose_web_answer(question, pseudo_rows, language=language)
+        # Prefer titled evidence docs so follow-up topics can be drawn from real page titles
+        # (grounded_context.facts are bare strings); fall back to the facts when unavailable.
+        if evidence_docs:
+            rows = [
+                {"snippet": str(d.get("snippet") or d.get("text") or ""), "title": str(d.get("title") or "")}
+                for d in evidence_docs
+                if (d.get("snippet") or d.get("text"))
+            ] or [{"snippet": fact, "title": ""} for fact in grounded_context.facts]
+        else:
+            rows = [{"snippet": fact, "title": ""} for fact in grounded_context.facts]
+        composed = compose_web_answer(question, rows, language=language)
         if composed and len(str(composed.get("answer") or "")) >= 40:
             # No "확인된 근거로 보면," / "From the verified sources," preamble — lead with
             # the content; the 🔒 reasoning certificate carries the grounding signal.
-            return str(composed["answer"])
+            answer_text = str(composed["answer"])
+            follow_ups = [str(f).strip() for f in (composed.get("follow_ups") or []) if str(f).strip()][:4]
+            if follow_ups:
+                answer_text += (
+                    ("\n\n관련해서 더 물어볼 수 있어요: " if language == "ko" else "\n\nYou could also ask about: ")
+                    + " · ".join(follow_ups)
+                )
+            return answer_text
     except Exception:  # pragma: no cover - composition must never break the answer
         pass
     return realize_grounded_context(question, grounded_context, language=language)
@@ -4195,6 +4212,7 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
             route=visual_route,
             grounded_context=visual_grounding,
             language=language,
+            evidence_docs=semantic_context.get("evidence") if isinstance(semantic_context.get("evidence"), list) else None,
         )
         if request.web_search and request.mode not in {"trace", "research"}
         else None
