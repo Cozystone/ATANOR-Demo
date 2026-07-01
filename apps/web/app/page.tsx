@@ -1704,6 +1704,7 @@ function FullApp() {
   const [graphHubSearch, setGraphHubSearch] = useState("");
   const [graphHubRunning, setGraphHubRunning] = useState<string | null>(null);
   const [graphHubError, setGraphHubError] = useState<string | null>(null);
+  const [graphHubLoading, setGraphHubLoading] = useState(false);
   const [remoteCloudProof, setRemoteCloudProof] = useState<AnyRecord | null>(null);
   const [remoteCloudProofRunning, setRemoteCloudProofRunning] = useState(false);
   const [remoteCloudProofError, setRemoteCloudProofError] = useState<string | null>(null);
@@ -2449,6 +2450,7 @@ function FullApp() {
 
   async function refreshGraphHub() {
     setGraphHubError(null);
+    setGraphHubLoading(true);
     const query = new URLSearchParams();
     if (graphHubPricingFilter !== "all") query.set("pricing_model", graphHubPricingFilter);
     if (graphHubSearch.trim()) query.set("query", graphHubSearch.trim());
@@ -2465,6 +2467,7 @@ function FullApp() {
     setGraphHubInstalled(Array.isArray(installed) ? installed : []);
     setGraphHubAttachments(Array.isArray(attachments) ? attachments : []);
     setGraphHubAudit(Array.isArray(audit) ? audit : []);
+    setGraphHubLoading(false);
   }
 
   async function runGraphHubAction(action: string, path: string, body?: AnyRecord) {
@@ -5928,10 +5931,10 @@ function FullApp() {
                     <i />
                   </div>
                   <header>
-                    <span>EMPTY</span>
+                    <span>{graphHubLoading ? "…" : "EMPTY"}</span>
                     <strong>Graph Hub</strong>
                   </header>
-                  <h3>{language === "ko" ? "검색 결과가 없습니다" : "No cartridges found"}</h3>
+                  <h3>{graphHubLoading ? (language === "ko" ? "불러오는 중…" : "Loading…") : (language === "ko" ? "검색 결과가 없습니다" : "No cartridges found")}</h3>
                   <p>{language === "ko" ? "검색어나 필터를 조정해보세요." : "Try adjusting your search or filters."}</p>
                 </article>
               ) : null}
@@ -5948,7 +5951,7 @@ function FullApp() {
                     <span>{String(item.cartridge_id)}</span>
                     <strong>{String(item.entitlement_status ?? "unknown")}</strong>
                   </p>
-                )) : <p>{language === "ko" ? "설치된 Graph Cartridge가 없습니다." : "No installed Graph Cartridges."}</p>}
+                )) : <p>{graphHubLoading ? (language === "ko" ? "불러오는 중…" : "Loading…") : (language === "ko" ? "설치된 Graph Cartridge가 없습니다." : "No installed Graph Cartridges.")}</p>}
               </article>
               ) : null}
               {graphHubTab === "attachments" ? (
