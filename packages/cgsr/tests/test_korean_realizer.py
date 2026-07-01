@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from cgsr.korean_realizer import attach_eomi, realize_simple_clause, select_eomi, select_josa
+from cgsr.korean_realizer import attach_eomi, realize_simple_clause, select_eomi, select_euro_ro, select_josa
 
 
 def test_select_josa_for_final_and_open_syllables() -> None:
@@ -19,6 +19,25 @@ def test_latin_acronym_josa_policy() -> None:
 
     assert all(select_josa(word, ("은", "는")) == "은" for word in final_like)
     assert all(select_josa(word, ("은", "는")) == "는" for word in open_like)
+
+
+def test_select_euro_ro_rieul_exception() -> None:
+    # 한글 맞춤법 phonology: '로' after a vowel or a ㄹ 받침, '으로' after any other 받침.
+    assert select_euro_ro("나무") == "로"     # vowel-final
+    assert select_euro_ro("서울") == "로"     # ㄹ 받침 — the exception
+    assert select_euro_ro("칼") == "로"       # ㄹ 받침
+    assert select_euro_ro("손") == "으로"     # ㄴ 받침
+    assert select_euro_ro("밥") == "으로"     # ㅂ 받침
+    assert select_euro_ro("천재") == "로"     # vowel-final
+    # routed through select_josa's ("으로","로") pair too
+    assert select_josa("서울", ("으로", "로")) == "로"
+    assert select_josa("석학", ("으로", "로")) == "으로"
+
+
+def test_realize_alryeojida_uses_euro_ro_allomorph() -> None:
+    # "…(으)로 알려지다" must respect the ㄹ exception, not emit "서울으로".
+    assert realize_simple_clause({"concept": "그", "predicate": "알려지다", "object": "서울"}) == "그는 서울로 알려집니다."
+    assert realize_simple_clause({"concept": "그", "predicate": "알려지다", "object": "석학"}) == "그는 석학으로 알려집니다."
 
 
 def test_select_eomi_minimal_patterns() -> None:

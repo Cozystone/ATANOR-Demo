@@ -81,13 +81,30 @@ def attach_eomi(stem: str, formality: str = "formal") -> str:
     raise ValueError(f"unsupported formality: {formality}")
 
 
+def select_euro_ro(preceding_word: str) -> str:
+    """으로/로 allomorph — the ㄹ exception a plain batchim rule misses.
+
+    한글 맞춤법 phonology: the instrumental/directional particle is '로' after a vowel
+    OR a ㄹ 받침 (나무로, 칼로, 서울로), and '으로' after any other 받침 (손으로, 밥으로).
+    ㄹ patterns with open syllables here, so a naive (with_batchim, without) split would
+    wrongly emit '서울으로'. Pure morphology (LAD), not a content rule.
+    """
+    if not has_final_consonant(preceding_word) or _has_final_rieul(preceding_word):
+        return "로"
+    return "으로"
+
+
 def select_josa(preceding_word: str, josa_pair: tuple[str, str]) -> str:
     """Select Korean josa by final consonant.
 
     ``josa_pair`` order is ``(with_final_consonant, without_final_consonant)``.
-    Examples: ``("은", "는")``, ``("이", "가")``, ``("을", "를")``.
+    Examples: ``("은", "는")``, ``("이", "가")``, ``("을", "를")``, ``("과", "와")``.
+    The 으로/로 pair is special-cased through :func:`select_euro_ro` because ㄹ 받침
+    behaves like an open syllable there (서울로, not 서울으로).
     """
 
+    if tuple(josa_pair) == ("으로", "로"):
+        return select_euro_ro(preceding_word)
     return josa_pair[0] if has_final_consonant(preceding_word) else josa_pair[1]
 
 
@@ -150,7 +167,7 @@ def realize_simple_clause(payload: RealizationInput | dict[str, str]) -> str:
     elif predicate_lemma == "물러나다" and item.object:
         object_phrase = f"{item.object}직에서" if item.object == "대통령" else f"{item.object}에서"
     elif predicate_lemma == "알려지다" and item.object:
-        object_phrase = f"{item.object}로"
+        object_phrase = f"{item.object}{select_euro_ro(item.object)}"
     elif predicate_lemma == "대응하다" and item.object:
         object_phrase = "" if item.object == "대응" else f"{item.object}에"
     elif item.object:

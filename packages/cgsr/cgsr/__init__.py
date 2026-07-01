@@ -7,7 +7,7 @@ connect to RHFC cleanup memory yet.
 
 from .canonicalize import canonicalize, dedupe_constructions
 from .induction import induce_constructions
-from .korean_realizer import realize_simple_clause, select_eomi, select_josa
+from .korean_realizer import realize_simple_clause, select_eomi, select_euro_ro, select_josa
 from .morphology import analyze, analyzer_status
 
 __all__ = [

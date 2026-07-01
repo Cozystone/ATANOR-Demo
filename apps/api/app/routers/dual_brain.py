@@ -1395,7 +1395,7 @@ def _clean_graph_count_payload(
         scope_en = "Local Brain plus Cloud Brain"
     status_unavailable = status_error is not None and (wants_cloud or not wants_local)
     if status_unavailable and language == "ko":
-        answer = "현재 그래프 상태를 읽을 수 없습니다. 일반 지식 답변으로 대체하지 않습니다."
+        answer = "지금은 그래프 상태를 읽을 수 없어요. 확실하지 않은 일반 지식으로 대체하지는 않을게요."
     elif status_unavailable:
         answer = "ATANOR cannot read the graph status right now. It will not substitute an unrelated general-knowledge answer."
     elif language == "ko":
@@ -1407,7 +1407,7 @@ def _clean_graph_count_payload(
                     f"이 화면 값에는 기본 Seed/Base 앵커가 포함될 수 있으며, Seed 앵커 {int(seed_anchor_count or 0):,}개와 Base 앵커 {int(base_anchor_count or 0):,}개는 개인 저장 메모리로 계산하지 않습니다."
                 )
             else:
-                answer = "현재 로컬 그래프 뷰포트 상태를 읽을 수 없습니다. 일반 지식 답변으로 대체하지 않습니다."
+                answer = "지금은 로컬 그래프 뷰포트 상태를 읽을 수 없어요. 확실하지 않은 일반 지식으로 대체하지는 않을게요."
         elif wants_local and not wants_cloud:
             answer = (
                 f"개인 Local Brain 저장 메모리는 {local_nodes:,}개 노드 / {local_edges:,}개 연결선입니다. "
@@ -2361,7 +2361,7 @@ async def _verify_claim_about_entity(question: str, language: str) -> dict[str, 
     if is_ko:
         _c = claim[-1] if claim else ""
         _rn = "이라는" if ("가" <= _c <= "힣" and (ord(_c) - 0xAC00) % 28 != 0) else "라는"  # 이형태
-        answer = f"‘{claim}’{_rn} 주장은 확인된 근거에서 찾지 못했습니다. {entity}에 대해 확인된 사실은 이렇습니다. {facts}"
+        answer = f"‘{claim}’{_rn} 주장은 확인된 근거에서 찾지 못했어요. 대신 {entity}에 대해 확인된 사실은 이래요. {facts}"
     else:
         answer = f"I found no evidence for the claim “{claim}.” Here is what is documented about {entity}: {facts}"
     return {
