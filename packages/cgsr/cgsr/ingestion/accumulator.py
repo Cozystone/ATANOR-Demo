@@ -191,8 +191,12 @@ class VerifiedStore:
         }
         self._append_jsonl(self.paths["rejected"], row)
 
-    def accumulate(self, decompositions: Iterable[DecompositionResult]) -> AccumulationResult:
-        """Append schema-valid decomposition rows and update manifest counts."""
+    def accumulate(self, decompositions: Iterable[DecompositionResult], update_manifest: bool = True) -> AccumulationResult:
+        """Append schema-valid decomposition rows and update manifest counts.
+
+        ``update_manifest`` defaults to True so every existing caller is unchanged.
+        The sharded contributed store passes False to skip the per-batch manifest
+        recount (O(store size)) on the peer-merge hot path and flushes on demand."""
 
         result = AccumulationResult()
         for decomposition in decompositions:
@@ -222,7 +226,8 @@ class VerifiedStore:
                     self._append_unique("case_frames", row, result)
                 except ValueError as exc:
                     result.errors.append(f"case_frame: {exc}")
-        self.update_manifest()
+        if update_manifest:
+            self.update_manifest()
         return result
 
     def update_manifest(self) -> None:
