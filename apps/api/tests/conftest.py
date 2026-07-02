@@ -7,6 +7,9 @@ from pathlib import Path
 
 os.environ.setdefault("ATANOR_DISABLE_DAEMON_SELF_HEAL", "1")
 os.environ.setdefault("ATANOR_WEB_SEED_FEEDER_ON_TICK", "0")
+# Tests run offline against the deterministic STATIC_RESULTS fixtures. In production these are
+# quarantined (search returns nothing → honest abstention); opt in explicitly for the suite.
+os.environ.setdefault("WEB_SEARCH_PROVIDER", "static")
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 API_ROOT = REPO_ROOT / "apps" / "api"

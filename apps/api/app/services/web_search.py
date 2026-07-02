@@ -147,6 +147,17 @@ def _provider_configured(provider: str) -> bool:
     return provider == "static"
 
 
+def _static_fixtures_allowed() -> bool:
+    """The hardcoded STATIC_RESULTS are offline dev/CI fixtures — NEVER a production evidence
+    source. Presenting a fixture as verified grounding ("확인된 근거로 보면 …") is the exact
+    No-환각 violation. So fixtures surface ONLY when explicitly opted in: WEB_SEARCH_PROVIDER=static
+    (tests set this) or ATANOR_ALLOW_STATIC_FIXTURES. With nothing configured, the search returns
+    NO results and the answer path abstains honestly instead of grounding on a fixture."""
+    raw = (os.getenv("WEB_SEARCH_PROVIDER") or "").strip().lower()
+    flag = (os.getenv("ATANOR_ALLOW_STATIC_FIXTURES") or "").strip().lower()
+    return raw == "static" or flag in {"1", "true", "yes", "on"}
+
+
 def provider_status(provider: str | None = None) -> dict[str, Any]:
     selected = _provider_from_env(provider)
     return {
@@ -1377,13 +1388,25 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
                 }
         except Exception:
             pass
+    if _static_fixtures_allowed():
+        return {
+            "provider": selected if _provider_configured(selected) else "static",
+            "query": clean_query,
+            "results": static_search(clean_query, bounded_count),
+            "configured": _provider_configured(selected),
+            "bing_query_url": f"https://www.bing.com/search?q={quote_plus(clean_query)}",
+            "status": "ok" if selected == "static" else "fallback_static",
+            "provider_status": provider_status(selected),
+        }
+    # No real source and fixtures are NOT opted in → return nothing so the answer path abstains
+    # honestly. A hardcoded fixture must never be dressed as verified evidence (No-환각).
     return {
-        "provider": selected if _provider_configured(selected) else "static",
+        "provider": "none",
         "query": clean_query,
-        "results": static_search(clean_query, bounded_count),
-        "configured": _provider_configured(selected),
+        "results": [],
+        "configured": False,
         "bing_query_url": f"https://www.bing.com/search?q={quote_plus(clean_query)}",
-        "status": "ok" if selected == "static" else "fallback_static",
+        "status": "no_grounded_source",
         "provider_status": provider_status(selected),
     }
 

@@ -2451,10 +2451,10 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         if wiki_rows:
             provider = str(wiki_rows[0].get("provider") or "wikipedia")
             payload = {"provider": provider, "results": wiki_rows}
-    # For a knowledge query the web search tries real retrieval first and only
-    # falls back to "static" when the live web could not be reached (offline /
-    # rate-limited / down). Say so honestly instead of pasting fixtures.
-    if provider in ("", "static"):
+    # For a knowledge query the web search tries real retrieval first. "none" = no real source
+    # configured and fixtures not opted in (the honest default); "static"/"" = same class. In all
+    # of these, say so honestly instead of pasting a fixture.
+    if provider in ("", "static", "none"):
         # Offline / unreachable: answer from a fact ATANOR looked up earlier, if it
         # has one (the agent remembers what it learned from the web).
         cached = _recall_web_fact(question)
