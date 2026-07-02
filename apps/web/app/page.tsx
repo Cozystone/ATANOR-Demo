@@ -1480,10 +1480,14 @@ function resourcePressureReason(system?: AnyRecord | null, gpu?: AnyRecord | nul
   if (gpu?.available && vramSoft !== null && vramUsed !== null && vramUsed >= vramSoft && Number(gpu?.utilization ?? 0) >= 92) {
     return "VRAM 사용량과 GPU 부하가 안전 한도를 넘었습니다.";
   }
+  // Disk: warn only on a REAL positive reading below the SOFT minimum (30–50GB).
+  // The 20% "desired growth reserve" is aspirational — the API itself says normal
+  // operation is safe below it — and a 0/null reading means telemetry is absent,
+  // not an empty disk, so neither may raise the red banner.
   const diskFree = numeric(system?.disk_free_gb);
-  const storageReserve = numeric(stability?.runtime_envelope?.storage_reserve_gb);
-  if (diskFree !== null && storageReserve !== null && diskFree <= storageReserve) {
-    return `디스크 여유 ${diskFree.toFixed(1)}GB가 reserve ${storageReserve.toFixed(1)}GB 이하입니다.`;
+  const softMinFree = numeric(stability?.runtime_envelope?.disk_budget?.soft_min_free_gb);
+  if (diskFree !== null && diskFree > 0 && softMinFree !== null && diskFree <= softMinFree) {
+    return `디스크 여유 ${diskFree.toFixed(1)}GB — 안전 최소치 ${softMinFree.toFixed(1)}GB 이하입니다.`;
   }
   return null;
 }
@@ -1886,7 +1890,7 @@ function LossChart({ losses }: { losses: Array<{ step: number; loss: number }> }
     })
     .join(" ");
   return (
-    <svg className="loss-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="?숈뒿 ?먯떎 怨≪꽑">
+    <svg className="loss-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="학습 손실 곡선">
       <polyline points={points} fill="none" stroke="currentColor" strokeWidth="3" vectorEffect="non-scaling-stroke" />
       {losses.map((loss, index) => {
         const x = losses.length === 1 ? 0 : (index / (losses.length - 1)) * 100;
@@ -2156,6 +2160,27 @@ function FullApp() {
     },
   ]);
   const [error, setError] = useState<string | null>(null);
+  // Engine reachability: polled so a dead backend shows ONE clear banner instead of
+  // every panel silently degrading (stuck sync %, empty graphs, "(no answer)").
+  const [engineDown, setEngineDown] = useState(false);
+  const [enginePingNonce, setEnginePingNonce] = useState(0);
+  useEffect(() => {
+    let stopped = false;
+    async function ping() {
+      try {
+        const r = await fetch("/api/base-brain/status", { cache: "no-store" });
+        if (!stopped) setEngineDown(!r.ok);
+      } catch {
+        if (!stopped) setEngineDown(true);
+      }
+    }
+    ping();
+    const t = setInterval(ping, 20000);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
+  }, [enginePingNonce]);
   // Conversation-log drawer: collapsed to a button by default; slides open
   // left→right over the render area (ChatGPT-style).
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -2253,7 +2278,8 @@ function FullApp() {
           || messages[0].text === INITIAL_ASSISTANT_MESSAGE.en
           || messages[0].text === INITIAL_ASSISTANT_MESSAGE.ko
           || messages[0].text.includes("dry-run")
-          || messages[0].text.includes("RAG 梨꾪똿 肄섏넄")
+          || messages[0].text.includes("RAG 梨꾪똿 肄섏넄") // legacy mojibake sessions
+          || messages[0].text.includes("RAG 채팅 콘솔")
         )
       ) {
         return [{ role: "assistant", text: EFFECTIVE_INITIAL_ASSISTANT_MESSAGE[language] }];
@@ -3334,7 +3360,7 @@ function FullApp() {
     if (aggregateSection || !didInitialAggregateRef.current) {
       didInitialAggregateRef.current = true;
       initialTimer = window.setTimeout(() => {
-      refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "BakeBoard瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??"));
+      refreshAll().catch((caught) => setError(caught instanceof Error ? caught.message : "BakeBoard를 불러오지 못했습니다."));
       }, deferFullRefresh ? 1600 : 0);
     }
     const timer = aggregateSection
@@ -3507,7 +3533,7 @@ function FullApp() {
       await action();
       await refreshAll();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "?묒뾽 ?ㅽ뻾???ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "작업 실행에 실패했습니다.");
     }
   }
 
@@ -3545,7 +3571,7 @@ function FullApp() {
         if (labStep === "learn") setActiveLabStage("output");
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "?숈뒿 怨쇱젙 ?ㅽ뻾???ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "학습 과정 실행에 실패했습니다.");
     } finally {
       if (progressTimerRef.current !== null) {
         window.clearInterval(progressTimerRef.current);
@@ -3914,7 +3940,7 @@ function FullApp() {
       }
       if (learnComplete) setStageProgress("output", 100);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "RAG 梨꾪똿???ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "RAG 채팅에 실패했습니다.");
     } finally {
       setIsGeneratingAnswer(false);
     }
@@ -3929,7 +3955,7 @@ function FullApp() {
       });
       setGuard(result);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "寃利앹뿉 ?ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "검증에 실패했습니다.");
     }
   }
 
@@ -3947,7 +3973,7 @@ function FullApp() {
       });
       setNeuro(plan);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "?⑥쑉 怨꾪쉷 怨꾩궛???ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "효율 계획 계산에 실패했습니다.");
     }
   }
 
@@ -4000,7 +4026,7 @@ function FullApp() {
       });
       setStability(plan);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "吏???댁쟾 怨꾪쉷 怨꾩궛???ㅽ뙣?덉뒿?덈떎.");
+      setError(caught instanceof Error ? caught.message : "안정성 계획 계산에 실패했습니다.");
     }
   }
 
@@ -5391,14 +5417,14 @@ function FullApp() {
     { label: language === "ko" ? "병합 개념" : "Concepts merged", value: String(semanticGrowthRun?.concepts_merged ?? 0) },
     { label: language === "ko" ? "생성 관계" : "Relations created", value: String(semanticGrowthRun?.relations_created ?? 0) },
     { label: language === "ko" ? "강화 관계" : "Relations strengthened", value: String(semanticGrowthRun?.relations_strengthened ?? 0) },
-    { label: language === "ko" ? "Local 기록" : "Local write", value: semanticGrowthRun?.honesty?.local_brain_write ? "true" : "false" },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: semanticGrowthRun?.honesty?.local_brain_write ? (language === "ko" ? "기록함" : "on") : (language === "ko" ? "기록 안 함" : "off") },
     { label: language === "ko" ? "외부 LLM" : "External LLM", value: semanticGrowthRun?.honesty?.external_llm_used ? "true" : "false" },
   ];
   const semanticAttachRows = [
     { label: language === "ko" ? "임시 노드" : "Attached nodes", value: String((semanticAttachResult?.attached_nodes as AnyRecord[] | undefined)?.length ?? 0) },
     { label: language === "ko" ? "임시 관계" : "Attached edges", value: String((semanticAttachResult?.attached_edges as AnyRecord[] | undefined)?.length ?? 0) },
     { label: language === "ko" ? "임시성" : "Temporary", value: semanticAttachResult?.temporary ? "true" : "-" },
-    { label: language === "ko" ? "Local 기록" : "Local write", value: semanticAttachResult?.local_brain_write ? "true" : "false" },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: semanticAttachResult?.local_brain_write ? (language === "ko" ? "기록함" : "on") : (language === "ko" ? "기록 안 함" : "off") },
   ];
   const graphOverlay = (graph?.working_memory_overlay && typeof graph.working_memory_overlay === "object" && !Array.isArray(graph.working_memory_overlay))
     ? graph.working_memory_overlay as AnyRecord
@@ -5523,7 +5549,7 @@ function FullApp() {
     { label: language === "ko" ? "오차" : "Error", value: `${Math.round(Number(cortexLastCycle.prediction_error ?? 0) * 100)}%` },
     { label: language === "ko" ? "Crystal 후보" : "Crystal candidate", value: cortexLastCycle.knowledge_crystal_candidate ? "true" : "false" },
     { label: language === "ko" ? "Dream 질문" : "Dream questions", value: String(cortexStatus?.dream_questions ?? 0) },
-    { label: language === "ko" ? "Local 기록" : "Local write", value: cortexLastCycle.local_brain_write ? "true" : "false" },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: cortexLastCycle.local_brain_write ? (language === "ko" ? "기록함" : "on") : (language === "ko" ? "기록 안 함" : "off") },
   ];
   const cortexPanelState = cortexLastCycle.enabled
     ? (language === "ko" ? "활성 trace" : "TRACE ACTIVE")
@@ -5542,7 +5568,7 @@ function FullApp() {
     { label: language === "ko" ? "목적값" : "Objective", value: Number.isFinite(Number(qCortexLastRun.objective_value)) ? Number(qCortexLastRun.objective_value).toFixed(2) : "0.00" },
     { label: language === "ko" ? "Baseline Δ" : "Baseline delta", value: Number.isFinite(Number(qCortexTrace.baseline_delta)) ? Number(qCortexTrace.baseline_delta).toFixed(2) : "0.00" },
     { label: language === "ko" ? "양자 HW" : "Quantum HW", value: qCortexStatus?.real_quantum_hardware_used ? "true" : "false" },
-    { label: language === "ko" ? "Local 기록" : "Local write", value: qCortexStatus?.local_brain_write ? "true" : "false" },
+    { label: language === "ko" ? "Local 기록" : "Local write", value: qCortexStatus?.local_brain_write ? (language === "ko" ? "기록함" : "on") : (language === "ko" ? "기록 안 함" : "off") },
   ];
   const qCortexPanelState = qCortexStatus?.state === "active"
     ? (language === "ko" ? "고전 최적화" : "CLASSICAL OPTIMIZER")
@@ -6100,7 +6126,19 @@ function FullApp() {
           </div>
         </header>
 
-        {error ? (
+        {engineDown ? (
+          <div className="atanor-engine-banner" role="alert">
+            <span>
+              {language === "ko"
+                ? "로컬 엔진에 연결할 수 없어요 — 엔진이 꺼져 있을 수 있습니다. 그래프·채팅·학습 상태가 표시되지 않습니다."
+                : "Can't reach the local engine — it may be offline. Graph, chat, and learning status are unavailable."}
+            </span>
+            <button type="button" onClick={() => setEnginePingNonce((n) => n + 1)}>
+              {language === "ko" ? "다시 연결" : "Reconnect"}
+            </button>
+          </div>
+        ) : null}
+        {error && !engineDown ? (
           <p className="atanor-user-error" title={error}>
             {language === "ko" ? "로컬 엔진 동기화 대기" : "Local engine sync pending"}
           </p>
@@ -6586,7 +6624,7 @@ function FullApp() {
                 <span><small>{language === "ko" ? "활성 링크" : "Active links"}</small><strong>{graphHubAttachments.length + (contributionIsActive ? 1 : 0)}</strong></span>
                 <span><small>{language === "ko" ? "부착 노드" : "Attached nodes"}</small><strong>{graphHubAttachments.reduce((total, item) => total + Number(item.working_memory_nodes ?? 0), 0)}</strong></span>
                 <span><small>{language === "ko" ? "읽기 전용" : "Read-only"}</small><strong>ON</strong></span>
-                <span><small>Local write</small><strong>false</strong></span>
+                <span><small>Local write</small><strong>{language === "ko" ? "기록 안 함" : "off"}</strong></span>
               </div>
             </header>
             {brainLinkPool ? (
@@ -6952,7 +6990,7 @@ function FullApp() {
                   <span>{language === "ko" ? "Working Memory Overlay Active" : "Working Memory Overlay Active"}</span>
                   <strong>{`Cloud attached nodes: ${cloudAttachedNodeCount}`}</strong>
                   <small>{`Seed anchors: ${Number(graphOverlay.seed_anchor_nodes ?? 0)}`}</small>
-                  <small>{`Local write: ${String(Boolean(graphOverlay.writes_to_local_brain)).toLowerCase()}`}</small>
+                  <small>{`Local write: ${Boolean(graphOverlay.writes_to_local_brain) ? (language === "ko" ? "기록함" : "on") : (language === "ko" ? "기록 안 함" : "off")}`}</small>
                   <small>{language === "ko" ? "임시 부착 · Local Brain 저장 안 함" : "Temporary attachment · not saved to Local Brain"}</small>
                   {cortexLastCycle.enabled ? (
                     <small>CORTEX-G2 · {language === "ko" ? "활성" : "active"} {String(cortexLastCycle.activated_nodes ?? 0)} · error {Math.round(Number(cortexLastCycle.prediction_error ?? 0) * 100)}%</small>
@@ -6986,7 +7024,7 @@ function FullApp() {
                   <span><small>{language === "ko" ? "표시 노드" : "Rendered nodes"}</small><strong>{tabBrainGraphPending ? "..." : activeBrainRenderedNodes.toLocaleString()}</strong></span>
                   <span><small>{language === "ko" ? "표시 관계" : "Rendered edges"}</small><strong>{tabBrainGraphPending ? "..." : activeBrainRenderedEdges.toLocaleString()}</strong></span>
                   <span><small>Overlay</small><strong>{activeBrainOverlay?.working_memory_active ? "active" : "idle"}</strong></span>
-                  <span><small>Local write</small><strong>{String(Boolean(activeBrainOverlay?.local_brain_write)).toLowerCase()}</strong></span>
+                  <span><small>Local write</small><strong>{Boolean(activeBrainOverlay?.local_brain_write) ? (language === "ko" ? "기록함" : "on") : (language === "ko" ? "기록 안 함" : "off")}</strong></span>
                 </div>
                 <div className="atanor-brain-layer-list">
                   {activeBrainGraphRows.map((row) => (

@@ -7497,11 +7497,87 @@ p {
   letter-spacing: 0.04em;
   margin: 0;
   padding: 8px 12px;
+  pointer-events: none; /* status only — must never block header controls */
   position: fixed;
   right: 24px;
   text-transform: uppercase;
-  top: 82px;
+  top: 116px; /* below the header row so it can't collide with Web On / Sync */
   z-index: 40;
+}
+
+/* Global engine-reachability banner: the ONE clear signal when :8502 is down. */
+.atanor-engine-banner {
+  align-items: center;
+  background: rgba(210, 82, 31, 0.14);
+  border: 1px solid rgba(210, 82, 31, 0.55);
+  border-radius: 12px;
+  color: #ffc3a3;
+  display: flex;
+  font-size: 0.82rem;
+  gap: 14px;
+  justify-content: space-between;
+  letter-spacing: 0.02em;
+  margin: 10px 18px 0;
+  padding: 10px 16px;
+}
+.atanor-engine-banner button {
+  background: #d2521f;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  flex: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 14px;
+}
+.atanor-engine-banner button:hover {
+  filter: brightness(1.1);
+}
+
+/* Chat error bubble retry action */
+.atanor-demochat-retry {
+  margin-top: 8px;
+}
+.atanor-demochat-retry button {
+  background: transparent;
+  border: 1px solid rgba(210, 82, 31, 0.6);
+  border-radius: 999px;
+  color: #d2521f;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 14px;
+}
+.atanor-demochat-retry button:hover {
+  background: rgba(210, 82, 31, 0.08);
+}
+
+/* Session rows: item + delete affordance (delete appears on hover) */
+.atanor-demochat-session-row {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+}
+.atanor-demochat-session-row .atanor-demochat-session-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.atanor-demochat-session-del {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: rgba(120, 120, 120, 0.0);
+  cursor: pointer;
+  flex: none;
+  line-height: 0;
+  padding: 4px;
+}
+.atanor-demochat-session-row:hover .atanor-demochat-session-del {
+  color: rgba(120, 120, 120, 0.9);
+}
+.atanor-demochat-session-del:hover {
+  background: rgba(120, 120, 120, 0.15);
 }
 
 @media (max-width: 1180px) {

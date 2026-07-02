@@ -175,6 +175,9 @@ export default function AtlasCongressPanel({ language }: { language: Language })
 
       <section className="agora-trending" aria-labelledby="agora-trending-title">
         <h3 id="agora-trending-title">{t.trending}</h3>
+        {feedAgents.length === 0 ? (
+          <p style={{ color: "#6b7488", fontSize: 12.5, padding: "10px 2px" }}>{t.emptyFeed}</p>
+        ) : null}
         <div>
           {feedAgents.map((agent) => (
             <article key={agent.id} className="agora-agent-card" data-active={agent.active}>
@@ -232,6 +235,9 @@ export default function AtlasCongressPanel({ language }: { language: Language })
 
       <section className="agora-rooms" aria-labelledby="agora-rooms-title">
         <h3 id="agora-rooms-title">{t.rooms}</h3>
+        {feedRooms.length === 0 ? (
+          <p style={{ color: "#6b7488", fontSize: 12.5, padding: "10px 2px" }}>{t.emptyFeed}</p>
+        ) : null}
         <div>
           {feedRooms.map((room) => (
             <article key={room.id} className="agora-room-card">

@@ -36,6 +36,8 @@ type Msg = {
   cert?: string | null;
   followUps?: string[];
   pending?: boolean;
+  /** engine unreachable / empty reply — renders as an actionable error bubble */
+  error?: { retryQuery: string };
 };
 
 type Session = { id: string; title: string; messages: Msg[]; ts: number };
@@ -47,7 +49,14 @@ function loadSessions(): Session[] {
   try {
     const raw = window.localStorage.getItem(SESSIONS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Session[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // dedupe by title (keep newest) — collapses history saved before dedupe existed
+    const seen = new Set<string>();
+    return parsed.filter((s) => {
+      if (seen.has(s.title)) return false;
+      seen.add(s.title);
+      return true;
+    });
   } catch {
     return [];
   }
@@ -114,9 +123,11 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     const settled = messages.filter((m) => !m.pending);
     if (!settled.some((m) => m.role === "ai" && m.text.trim())) return;
     setSessions((prev) => {
-      const others = prev.filter((s) => s.id !== currentId);
+      const title = sessionTitle(settled);
+      // dedupe: the same question re-asked replaces its older session instead of stacking
+      const others = prev.filter((s) => s.id !== currentId && s.title !== title);
       const next: Session[] = [
-        { id: currentId, title: sessionTitle(settled), messages: settled, ts: Date.now() },
+        { id: currentId, title, messages: settled, ts: Date.now() },
         ...others,
       ].slice(0, 40);
       try {
@@ -139,6 +150,19 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     setInput("");
     setCurrentId(`s-${Date.now()}`);
     closePanels();
+  }
+
+  function deleteSession(id: string) {
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      try {
+        window.localStorage.setItem(SESSIONS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      return next;
+    });
+    if (id === currentId) newChat();
   }
 
   function openSession(session: Session) {
@@ -164,7 +188,20 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
       });
       const data = await res.json();
       const r = (data?.result ?? data) as Record<string, unknown>;
-      const answer = String(r?.answer ?? "").trim() || "(응답 없음)";
+      const answer = String(r?.answer ?? "").trim();
+      if (!answer) {
+        // empty reply = engine reachable but returned nothing → actionable, not a dead "(응답 없음)"
+        setMessages((m) => {
+          const next = m.slice();
+          next[next.length - 1] = {
+            role: "ai",
+            text: ko ? "엔진이 응답을 만들지 못했어요." : "The engine returned no answer.",
+            error: { retryQuery: q },
+          };
+          return next;
+        });
+        return;
+      }
       const followRaw = r?.follow_ups;
       const followUps = Array.isArray(followRaw)
         ? (followRaw as unknown[]).map((f) => String(f)).filter((f) => f.trim()).slice(0, 4)
@@ -183,7 +220,11 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     } catch {
       setMessages((m) => {
         const next = m.slice();
-        next[next.length - 1] = { role: "ai", text: "연결 오류가 발생했어요. 잠시 후 다시 시도해 주세요." };
+        next[next.length - 1] = {
+          role: "ai",
+          text: ko ? "로컬 엔진에 연결할 수 없어요. 엔진이 꺼져 있을 수 있습니다." : "Can't reach the local engine — it may be offline.",
+          error: { retryQuery: q },
+        };
         return next;
       });
     } finally {
@@ -281,16 +322,25 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
             <p className="atanor-demochat-session-empty">{ko ? "대화 기록이 없습니다" : "No conversations yet"}</p>
           ) : (
             sessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className="atanor-demochat-session-item"
-                data-active={s.id === currentId}
-                onClick={() => openSession(s)}
-                title={s.title}
-              >
-                {s.title}
-              </button>
+              <div key={s.id} className="atanor-demochat-session-row" data-active={s.id === currentId}>
+                <button
+                  type="button"
+                  className="atanor-demochat-session-item"
+                  data-active={s.id === currentId}
+                  onClick={() => openSession(s)}
+                  title={s.title}
+                >
+                  {s.title}
+                </button>
+                <button
+                  type="button"
+                  className="atanor-demochat-session-del"
+                  aria-label={ko ? "대화 삭제" : "Delete conversation"}
+                  onClick={() => deleteSession(s.id)}
+                >
+                  <X size={12} strokeWidth={1.8} />
+                </button>
+              </div>
             ))
           )}
         </div>
@@ -308,7 +358,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
             <div className="atanor-demochat-empty">
               <span className="atanor-demochat-orb" aria-hidden="true" />
               <h1>{ko ? "무엇이든 물어보세요" : "Ask me anything"}</h1>
-              <p>{ko ? "로컬 그래프 추론 엔진이 근거를 갖춰 답하고, 모르면 정직하게 보류합니다." : "A local graph-reasoning engine — grounded answers, honest abstention."}</p>
+              <p>{ko ? "로컬 그래프 추론 엔진 — 모든 질문에 근거를 갖춰 답하고, 추측은 하지 않습니다." : "A local graph-reasoning engine — answers every question with grounding, never guesses."}</p>
               <div className="atanor-demochat-suggest">
                 {suggestions.map((s) => (
                   <button key={s} onClick={() => setInput(s)}>{s}</button>
@@ -325,6 +375,13 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                   ) : (
                     <>
                       <div className="atanor-demochat-text">{m.text}</div>
+                      {m.error ? (
+                        <div className="atanor-demochat-retry">
+                          <button type="button" disabled={busy} onClick={() => runQuery(m.error!.retryQuery)}>
+                            {ko ? "다시 시도" : "Retry"}
+                          </button>
+                        </div>
+                      ) : null}
                       {m.visual ? <div className="atanor-demochat-visual"><AnswerExperimentSurface visual={m.visual} theme="light" /></div> : null}
                       {m.cert ? <div className="atanor-demochat-cert">🔒 {m.cert}</div> : null}
                       {m.role === "ai" && Array.isArray(m.followUps) && m.followUps.length ? (
@@ -406,7 +463,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                     </li>
                   ))}
                 </ul>
-                <div className="atanor-caps-foot">{ko ? "로컬 우선 · 출처를 갖춘 답변 · 불확실하면 보류" : "Local-first · grounded · abstains when unsure"}</div>
+                <div className="atanor-caps-foot">{ko ? "로컬 우선 · 출처를 갖춘 답변 · 추측 없음" : "Local-first · grounded · never guesses"}</div>
               </div>
             </>
           ) : null}
@@ -448,7 +505,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
             </div>
           </form>
         </div>
-        <div className="atanor-demochat-foot">{ko ? "로컬 엔진 · 외부 LLM 없음 · 출처를 갖춘 답변, 불확실하면 보류" : "Local engine · no external LLM · grounded, abstains when unsure"}</div>
+        <div className="atanor-demochat-foot">{ko ? "로컬 엔진 · 외부 LLM 없음 · 모든 질문에 근거 기반 답변, 추측 없음" : "Local engine · no external LLM · grounded answers to everything, no guessing"}</div>
       </div>
     </section>
   );
