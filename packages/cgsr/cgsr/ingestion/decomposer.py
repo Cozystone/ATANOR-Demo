@@ -222,16 +222,24 @@ def predicate_lemma_from_tokens(tokens: list[Any]) -> str:
     return ""
 
 
+_DATE_UNIT_FORMS = frozenset({"일", "월", "년", "시", "분", "초", "세기", "요일", "주", "세", "차"})
+
+
 def extract_case_roles(sentence: str) -> tuple[list[dict[str, str]], str]:
     """Return case-role heads and predicate lemma from a Korean sentence."""
 
+    # Strip parentheticals (漢字 gloss, birthdate) and 'YYYY년 … ~' date ranges BEFORE analysis so a
+    # person bio 'NAME(漢字, 1992년 8월 28일 ~ )은 … 선수이다' yields the subject NAME, not the birthdate
+    # noun '일' — the root of thousands of garbage edges (일 IS_A 선수/가수/…).
+    sentence = re.sub(r"\([^)]*\)", " ", sentence)
+    sentence = re.sub(r"\d{3,4}\s*년[^~)]*~\s*", " ", sentence)
     tokens = analyze(sentence)
     roles: list[dict[str, str]] = []
     last_noun = ""
     for token in tokens:
         form = str(getattr(token, "form", ""))
         tag = str(getattr(token, "tag", ""))
-        if tag.startswith(NOUN_TAG_PREFIXES) and form not in GENERIC_HEADS:
+        if tag.startswith(NOUN_TAG_PREFIXES) and form not in GENERIC_HEADS and form not in _DATE_UNIT_FORMS:
             last_noun = form
             continue
         if tag in CASE_TAG_TO_ROLE and last_noun:
@@ -252,7 +260,11 @@ def _english_tokens(sentence: str) -> list[str]:
 def _english_head(tokens: list[str]) -> str:
     for token in reversed(tokens):
         lowered = token.casefold()
-        if lowered not in ENGLISH_STOPWORDS and lowered not in ENGLISH_VERB_LEMMAS:
+        if (
+            lowered not in ENGLISH_STOPWORDS
+            and lowered not in ENGLISH_VERB_LEMMAS
+            and lowered not in _ENGLISH_FUNCTION_WORDS  # It/This/He/She are coreferences, not entities
+        ):
             return token
     return ""
 
@@ -278,6 +290,10 @@ def _english_definition_subject(sentence: str) -> str:
         head = parts[1]
     tokens = _english_tokens(head)
     while tokens and tokens[0].casefold() in {"a", "an", "the"}:
+        tokens = tokens[1:]
+    # A bare pronoun/demonstrative subject ("It is a village…", "This was …", "She is …") is a
+    # coreference, not an entity — strip it so It/This/They/She never become concept subjects.
+    while tokens and tokens[0].casefold() in _ENGLISH_FUNCTION_WORDS:
         tokens = tokens[1:]
     # A clean definitional subject is a short noun phrase, not a whole clause.
     if not tokens or len(tokens) > 5:
