@@ -1855,6 +1855,24 @@ def cloud_brain_candidate_graph(
     return candidate_cloud_graph(candidate_store_path or _resolve_candidate_store_path(), max_nodes=max_nodes, max_edges=max_edges)
 
 
+@router.get("/graph-answer-learn")
+def cloud_brain_graph_answer_learn(
+    query: str = Query(..., max_length=200),
+    candidate_store_path: str | None = Query(default=None, max_length=800),
+) -> dict[str, Any]:
+    """Answer from the learned candidate graph and REINFORCE the edges used (online Hebbian, LTP).
+    Mutates only the learnable candidate store; never the curated pack. Abstains when nothing
+    matches (no fabrication)."""
+    from datetime import datetime, timezone
+
+    from packages.cloud_brain.graph_answer import graph_answer_and_learn
+
+    store = candidate_store_path or _resolve_candidate_store_path()
+    if not store:
+        return {"answer": None, "reason": "no_candidate_store", "reinforced": []}
+    return graph_answer_and_learn(store, query, datetime.now(timezone.utc))
+
+
 @router.get("/surface-graph/graph")
 def cloud_brain_surface_graph(
     candidate_store_path: str | None = Query(default=None, max_length=800),

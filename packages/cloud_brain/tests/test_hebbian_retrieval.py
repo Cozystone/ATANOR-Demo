@@ -77,6 +77,26 @@ def test_apply_reinforcement_missing_store_is_safe():
     assert apply_answer_reinforcement("/nonexistent/relations.jsonl", "c1", NOW)["reinforced"] == 0
 
 
+def test_graph_answer_learns_and_abstains(tmp_path):
+    from cloud_brain.graph_answer import graph_answer_and_learn
+
+    (tmp_path / "concepts.jsonl").write_text(
+        "\n".join(json.dumps(c) for c in [
+            {"concept_id": "c1", "canonical_name": "엔비디아"},
+            {"concept_id": "c2", "canonical_name": "기업"},
+        ]), encoding="utf-8")
+    (tmp_path / "relations.jsonl").write_text(
+        json.dumps({"relation_id": "r1", "source_concept_id": "c1", "target_concept_id": "c2",
+                    "relation": "IS_A", "weight": 0.5, "updated_at": NOW.isoformat()}), encoding="utf-8")
+    out = graph_answer_and_learn(tmp_path, "엔비디아가 뭐야", NOW)
+    assert out["answer"] and "엔비디아" in out["answer"] and out["reinforced"] == ["r1"]
+    # the edge is now stronger on disk (learned from being asked)
+    persisted = json.loads((tmp_path / "relations.jsonl").read_text(encoding="utf-8").strip())
+    assert persisted["weight"] > 0.5 and persisted["usage_count"] == 1
+    # no matching concept → honest abstain, no fabrication, no mutation
+    assert graph_answer_and_learn(tmp_path, "존재하지않는개념xyz", NOW)["answer"] is None
+
+
 @pytest.mark.skipif(not _REL.exists(), reason="real graph not present")
 def test_on_real_relations_learning_reorders_a_concepts_edges():
     by_src: dict[str, list[dict]] = {}
