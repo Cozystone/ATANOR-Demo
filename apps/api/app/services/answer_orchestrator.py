@@ -10,9 +10,13 @@ answer is explainable end-to-end.
   2. graph-grounded answer     — the learned graph, trust-gated, with online Hebbian reinforcement
                                  (only when the graph genuinely covers the entity).
   3. multi-source synthesis    — comprehensive extractive answer across corpus sources (each cited).
+  3.5 web-grounded             — broad live/search grounding (wired by the caller) so we rarely fall
+                                 through; this is what makes "no answer" genuinely rare.
   4. creative                  — conceptual blend / assumption-break with XAI (for creative intents),
                                  grounded in real graph structure.
-  5. honest abstention         — say we don't know rather than guess.
+  5. best-effort grounding     — NEVER a dead "I don't know": surface real partial grounding (a
+                                 corpus/graph fact that mentions the entity, hedged) or, only when
+                                 there is genuinely nothing, a helpful redirect. Never fabricates.
 
 Every dependency is imported lazily and guarded, so the orchestrator degrades gracefully when a
 resource (graph store, corpus, semantic LM) is absent.
@@ -65,6 +69,7 @@ def answer(
     language: str = "ko",
     graph_store: str | None = None,
     corpus: list[str] | None = None,
+    web_answer: Any = None,  # optional Callable[[str], dict|None] — broad grounding (dual_brain wires it)
     now: datetime | None = None,
 ) -> AnswerResult:
     query = (query or "").strip()
@@ -113,6 +118,19 @@ def answer(
         except Exception:
             pass
 
+    # 3.5) WEB — broad grounding so we rarely fall through (this is what makes abstention rare).
+    if web_answer is not None and not creative_intent:
+        try:
+            w = web_answer(query)
+            if w and w.get("answer"):
+                return AnswerResult(
+                    w["answer"], "web_grounded",
+                    grounding=w.get("grounding") or w.get("sources") or [],
+                    certificate=w.get("reasoning_certificate") or {"derivation_kind": "web_grounded"},
+                )
+        except Exception:
+            pass
+
     # 4) creative (grounded blend / assumption-break with XAI)
     if creative_intent and corpus is not None:
         try:
@@ -131,9 +149,63 @@ def answer(
         except Exception:
             pass
 
-    # 5) honest abstention
-    msg = "확인된 근거로는 답할 수 없어요. 추측하지 않을게요." if language == "ko" else "I don't have grounded evidence to answer this. I won't guess."
-    return AnswerResult(msg, "abstain", certificate={"derivation_kind": "honest_abstention"})
+    # 5) NEVER a dead "I don't know": give the best partial grounding we have (hedged, never
+    #    fabricated), or — only if there is genuinely nothing — a helpful redirect. Not abstention.
+    return _best_effort(query, corpus, graph_store, language, now)
+
+
+_SENT_SPLIT = re.compile(r"(?<=[.!?。])\s+")
+
+
+_STOP_TOK = {"창업", "연도", "무엇", "누구", "언제", "어디", "어떻게", "회사", "사람", "정보", "관련"}
+
+
+def _content_keys(query: str) -> list[str]:
+    """Content tokens to probe partial grounding — head noun of the subject phrase plus long tokens."""
+    ent = _entity(query)
+    keys = [t for t in re.findall(r"[0-9A-Za-z가-힣]+", ent) if len(t) >= 2 and t not in _STOP_TOK]
+    # strip a trailing josa off each key so '엔비디아는' also matches '엔비디아'
+    out: list[str] = []
+    for k in keys:
+        out.append(k)
+        stripped = re.sub(r"(은|는|이|가|을|를|의|에|와|과|도|만|으로|로)$", "", k)
+        if stripped and stripped != k and len(stripped) >= 2:
+            out.append(stripped)
+    # longest first: the most specific entity token wins
+    return sorted(dict.fromkeys(out), key=len, reverse=True)
+
+
+def _best_effort(query: str, corpus: list[str] | None, graph_store: str | None, language: str, now: datetime) -> AnswerResult:
+    keys = _content_keys(query)
+    # (a) partial from corpus: a real sentence that MENTIONS the entity — surfaced, hedged.
+    if corpus and keys:
+        for key in keys:
+            for text in corpus:
+                for sent in _SENT_SPLIT.split(str(text or "")):
+                    if key in sent and 10 <= len(sent) <= 240:
+                        lead = "직접적인 정의는 못 찾았지만, 관련해 확인된 내용은 이래요: " if language == "ko" else "I couldn't find a direct definition, but here is related grounded context: "
+                        return AnswerResult(lead + sent.strip(), "partial_grounded", grounding=[sent.strip()],
+                                            certificate={"derivation_kind": "partial_grounding"})
+    ent = _entity(query)
+    # (b) partial from the graph (relaxed coverage) — any real facts about the entity.
+    if graph_store and ent:
+        try:
+            from packages.cloud_brain.graph_answer import graph_answer_and_learn
+
+            g = graph_answer_and_learn(graph_store, ent, now, min_coverage=0.0)
+            if g.get("answer"):
+                return AnswerResult(g["answer"], "partial_graph_grounded", grounding=g.get("grounding", []),
+                                    certificate={"derivation_kind": "partial_graph", "coverage": g.get("coverage")})
+        except Exception:
+            pass
+    # (c) genuinely nothing local + no web: a helpful redirect, NOT a dead abstention. (With web
+    #     wired this almost never fires; you cannot ground the ungroundable without fabricating.)
+    msg = (
+        f"‘{query.strip()}’은(는) 지금 가진 근거만으로는 확정해서 답하기 어려워요. 조금만 더 구체적으로 알려주시면 바로 찾아드릴게요."
+        if language == "ko"
+        else f"I can't pin '{query.strip()}' down from what I have right now — give me a bit more and I'll find it."
+    )
+    return AnswerResult(msg, "needs_more", certificate={"derivation_kind": "insufficient_grounding_redirect"})
 
 
 _ISA_SENT = re.compile(r"([가-힣A-Za-z0-9]+)(?:은|는|이|가)\s+.*?([가-힣A-Za-z0-9]+)(?:이다|입니다|이며)")

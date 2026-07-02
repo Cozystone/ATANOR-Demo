@@ -41,10 +41,20 @@ def test_creative_intent_routes_to_creative_engine():
     assert "파괴된 전제" in r.answer and r.grounding  # grounded creativity with XAI
 
 
-def test_unknown_query_abstains_without_fabrication():
+def test_unknown_query_never_dead_abstains_and_never_fabricates():
+    # No dead "I don't know": route to a helpful redirect, but still fabricate nothing.
     r = answer("외계인이 어제 뭐 먹었어?", corpus=CORPUS)
-    assert r.kind == "abstain"
+    assert r.kind == "needs_more"          # not "abstain" — asks for more, doesn't give up
+    assert r.answer and "모른" not in r.answer  # no dead abstention wording
     assert r.guarantees["fabricated_facts"] is False
+
+
+def test_partial_grounding_when_entity_is_mentioned_but_undefined():
+    # Entity appears in corpus but no clean definition → surface the real related sentence, hedged.
+    corpus = ["엔비디아는 젠슨 황이 이끈다."]
+    r = answer("엔비디아 창업 연도는?", corpus=corpus)
+    assert r.kind in {"partial_grounded", "multisource_synthesis"}
+    assert r.grounding and r.guarantees["fabricated_facts"] is False
 
 
 def test_every_result_declares_no_llm():
