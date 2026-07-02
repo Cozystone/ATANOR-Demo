@@ -84,17 +84,53 @@ def test_graph_answer_learns_and_abstains(tmp_path):
         "\n".join(json.dumps(c) for c in [
             {"concept_id": "c1", "canonical_name": "엔비디아"},
             {"concept_id": "c2", "canonical_name": "기업"},
+            {"concept_id": "c3", "canonical_name": "반도체회사"},
         ]), encoding="utf-8")
-    (tmp_path / "relations.jsonl").write_text(
-        json.dumps({"relation_id": "r1", "source_concept_id": "c1", "target_concept_id": "c2",
-                    "relation": "IS_A", "weight": 0.5, "updated_at": NOW.isoformat()}), encoding="utf-8")
+    (tmp_path / "relations.jsonl").write_text("\n".join(json.dumps(r) for r in [
+        {"relation_id": "r1", "source_concept_id": "c1", "target_concept_id": "c2", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "r2", "source_concept_id": "c1", "target_concept_id": "c3", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+    ]), encoding="utf-8")
     out = graph_answer_and_learn(tmp_path, "엔비디아가 뭐야", NOW)
-    assert out["answer"] and "엔비디아" in out["answer"] and out["reinforced"] == ["r1"]
-    # the edge is now stronger on disk (learned from being asked)
-    persisted = json.loads((tmp_path / "relations.jsonl").read_text(encoding="utf-8").strip())
-    assert persisted["weight"] > 0.5 and persisted["usage_count"] == 1
+    assert out["answer"] and "엔비디아" in out["answer"] and len(out["reinforced"]) == 2
+    # the used edges are now stronger on disk (learned from being asked)
+    persisted = [json.loads(l) for l in (tmp_path / "relations.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert all(p["weight"] > 0.9 for p in persisted) and all(p["usage_count"] == 1 for p in persisted)
     # no matching concept → honest abstain, no fabrication, no mutation
     assert graph_answer_and_learn(tmp_path, "존재하지않는개념xyz", NOW)["answer"] is None
+
+
+def _store(tmp_path, concepts, relations):
+    (tmp_path / "concepts.jsonl").write_text("\n".join(json.dumps(c) for c in concepts), encoding="utf-8")
+    (tmp_path / "relations.jsonl").write_text("\n".join(json.dumps(r) for r in relations), encoding="utf-8")
+    return tmp_path
+
+
+def test_trust_gate_answers_only_when_graph_covers_the_concept(tmp_path):
+    from cloud_brain.graph_answer import graph_answer_and_learn
+
+    concepts = [{"concept_id": f"c{i}", "canonical_name": n} for i, n in enumerate(["엔비디아", "기업", "반도체회사", "GPU", "홀로개념"])]
+    rels = [
+        {"relation_id": "a", "source_concept_id": "c0", "target_concept_id": "c1", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "b", "source_concept_id": "c0", "target_concept_id": "c2", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "c", "source_concept_id": "c0", "target_concept_id": "c3", "relation": "USED_FOR", "weight": 0.8, "updated_at": NOW.isoformat()},
+        # a single sparse edge → below the gate
+        {"relation_id": "d", "source_concept_id": "c4", "target_concept_id": "c1", "relation": "IS_A", "weight": 0.5, "updated_at": NOW.isoformat()},
+    ]
+    st = _store(tmp_path, concepts, rels)
+    good = graph_answer_and_learn(st, "엔비디아", NOW)
+    assert good["answer"] and "엔비디아는" in good["answer"]     # covered → fluent graph answer, correct josa
+    assert good["coverage"]["distinct_facts"] == 3
+    assert graph_answer_and_learn(st, "홀로개념", NOW)["answer"] is None  # 1 edge → defer
+
+
+def test_trust_gate_defers_a_noise_hub(tmp_path):
+    from cloud_brain.graph_answer import graph_answer_and_learn
+
+    # a stopword/parse-noise hub: IS_A to MANY unrelated parents → must NOT answer (would be garbage)
+    concepts = [{"concept_id": "hub", "canonical_name": "일"}] + [{"concept_id": f"t{i}", "canonical_name": n} for i, n in enumerate(["무신", "디자이너", "장군", "느낌", "마을", "기록"])]
+    rels = [{"relation_id": f"r{i}", "source_concept_id": "hub", "target_concept_id": f"t{i}", "relation": "IS_A", "weight": 0.5, "updated_at": NOW.isoformat()} for i in range(6)]
+    out = graph_answer_and_learn(_store(tmp_path, concepts, rels), "일", NOW)
+    assert out["answer"] is None and out["reason"] == "low_graph_coverage"  # hub penalty → defer
 
 
 @pytest.mark.skipif(not _REL.exists(), reason="real graph not present")
