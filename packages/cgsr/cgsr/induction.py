@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 import hashlib
+import re
 from typing import Iterable
 
 from .canonicalize import canonicalize, dedupe_constructions, family_id
@@ -109,18 +110,27 @@ def _argument_before(forms: list[str], tags: list[str], case_idx: int) -> str:
     return " ".join(reversed(parts)).strip()
 
 
+_DATE_UNIT_HEAD = re.compile(r"^\d*\s*(일|월|년|시|분|초|세기|년대|주|요일)$")
+
+
 def _argument_head(argument: str) -> str:
     """Return a small lexical head for a case argument.
 
-    This is intentionally conservative: Stage 2.0 only uses the head to make
-    broad core case frames less anonymous, not to implement dependency parsing.
+    Conservative head extraction (last token). Two guards prevent a very common noise class:
+    a person-bio subject 'NAME(漢字, 1992년 8월 28일 ~ )' whose LAST token is the birthdate unit
+    '일' — which made thousands of garbage edges (일 IS_A 선수/가수/…). Strip parentheticals and
+    date ranges first so the head is the real name, and reject a bare date-unit/number head.
     """
 
-    tokens = [token for token in argument.split() if token.strip()]
+    cleaned = re.sub(r"\([^)]*\)", " ", argument)          # drop parentheticals (漢字, birthdate)
+    cleaned = re.sub(r"\d{3,4}\s*년[^~]*~\s*\)?", " ", cleaned)  # drop 'YYYY년 … ~ )' date ranges
+    tokens = [token for token in cleaned.split() if token.strip()]
     if not tokens:
         return ""
-    head = tokens[-1].strip()
+    head = tokens[-1].strip(" )(,.~·]")
     if len(head) < 2:
+        return ""
+    if _DATE_UNIT_HEAD.match(head) or head.isdigit():        # a date unit / number is not a concept
         return ""
     return head
 
