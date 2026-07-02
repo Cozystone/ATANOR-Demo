@@ -84,7 +84,7 @@ class HolographicLM:
     def __init__(
         self,
         *,
-        dim: int = 1024,
+        dim: int = 256,
         window: int = 3,
         decay: float = 0.7,
         seed: int = 7,

@@ -106,8 +106,29 @@ corpus is why this is not a toy result.)
 - Absolute accuracy is still low (0.166) — this beats the current baseline but is a *substrate*,
   not a finished generator; **fluent long-form generation needs a much larger corpus** (density)
   and integration. The win is real and directional, not "solved".
-- Memory scales with corpus (one vector per training position). Next: **cluster** near-duplicate
-  contexts to bound memory without losing the kernel behaviour.
+## Memory scaling — measured levers (honest)
+
+The kernel memory is one vector per training position (linear in corpus). Measured on the real
+corpus for what bounds it WITHOUT losing accuracy:
+
+- **Context clustering does NOT compress** — a greedy radius merge keeps 92–97% of traces even at
+  a loose 0.7 threshold and *lowers* accuracy (0.166→0.152). In 256–512 dims real contexts are
+  near-orthogonal, so there is little to merge: the traces are genuinely diverse (that diversity
+  is what makes the model work). An honest negative result.
+- **Dimension**: D=256 matches D=512 (0.168 vs 0.160, within noise) → default lowered to 256 (2×).
+- **uint8 phase quantization**: storing each component's phase as 1 byte holds accuracy
+  (D=256 → 0.160) → ~256 B/trace, a 32× per-trace reduction vs D=512 complex128.
+
+Net: per-trace footprint is now small, but memory stays **linear in corpus**. Constant factors do
+not reach trillion scale — that needs a **sharded / disk-backed approximate-nearest-neighbour
+index** over the quantized codes (a systems problem, not a representation one). Flagged, out of
+this scope.
+
+## Next steps
+- Live integration of `predict()` into `_walk_for_frame` / the answer path (Claude, brief §7).
+- Sharded ANN retrieval for large-scale memory (systems).
+- Absolute accuracy (0.166) rises with corpus density — the substrate is validated; fluent
+  long-form generation is a scale + integration problem now, not an architecture one.
 - Integration into the live `_walk_for_frame` / answer path is Claude's job (brief §7); the module
   exposes a clean `predict(context) → scores` interface for a bounded additive term, exactly like
   the existing `Superposition.interference` nudge.
