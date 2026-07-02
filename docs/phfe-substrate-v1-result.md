@@ -124,8 +124,26 @@ not reach trillion scale — that needs a **sharded / disk-backed approximate-ne
 index** over the quantized codes (a systems problem, not a representation one). Flagged, out of
 this scope.
 
+## Fluent free-text generation (`generate_fluent`, done)
+
+`predict()` gives next-token scores; `generate_fluent()` turns them into a fluent, COMPLETE,
+COHERENT sentence: the window kernel-vote proposes corpus-attested next tokens, a GLOBAL
+superposition of everything emitted re-ranks them by coherence (kills the topic-drift a pure
+window shows at clause boundaries), a repetition penalty avoids loops, and decoding stops at a
+sentence-final token. Only ever emits corpus tokens (`fabricated_facts: False`).
+
+Measured on the real corpus:
+- 광합성 → "광합성 … 빛에너지를 화학 에너지로 전환하기 위해 사용하는 과정이다" (complete, fluent).
+- 대한민국 → greedy DRIFTS ("민법 제53조 … 조문이다 → 전라남도 해남군 초등학교", two entities
+  stitched); `generate_fluent` STOPS at "…조문이다" — coherent + complete. The anti-drift fix.
+
+Honest scope: this is fluent **grounded** generation — fluent, coherent, complete sentences drawn
+from and coherent with real sources. It is NOT yet novel free composition from nothing (that would
+need cross-source blending under the same coherence guard + a real grammar, and remains a
+fabrication risk to control). Some seeds still hit max_len before a sentence end (tuning).
+
 ## Next steps
-- Live integration of `predict()` into `_walk_for_frame` / the answer path (Claude, brief §7).
+- Live integration of `predict()` / `generate_fluent()` into `_walk_for_frame` / the answer path (Claude, brief §7).
 - Sharded ANN retrieval for large-scale memory (systems).
 - Absolute accuracy (0.166) rises with corpus density — the substrate is validated; fluent
   long-form generation is a scale + integration problem now, not an architecture one.

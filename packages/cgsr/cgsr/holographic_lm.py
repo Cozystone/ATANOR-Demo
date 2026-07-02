@@ -238,3 +238,42 @@ class HolographicLM:
                 break
             out.append(nxt)
         return out
+
+    @staticmethod
+    def _is_sentence_final(tok: str) -> bool:
+        return tok.endswith(("다", "요", "음", "함", "임", "죠", "됨")) or tok in {"이다", "입니다", "한다", "된다"}
+
+    def generate_fluent(self, seed: str | list[str], *, max_len: int = 24, coherence: float = 0.6, rep_penalty: float = 0.6) -> list[str]:
+        """Fluent, COMPLETE, COHERENT grounded generation. The kernel vote (window) proposes
+        corpus-attested next tokens; a GLOBAL superposition of everything emitted so far re-ranks
+        them by coherence (resonance with the running topic state), which stops the topic-drift a
+        pure window shows at clause boundaries; a repetition penalty avoids loops; and decoding
+        stops at a sentence-final token. Only ever emits corpus tokens (fabricated_facts: False)."""
+        out = tokens(seed if isinstance(seed, str) else " ".join(seed))
+        if not out:
+            return out
+        acc = np.zeros(self.space.dim, dtype=np.complex128)
+        for tok in out:
+            acc = acc + self._filler(tok)
+        recent: Counter[str] = Counter(out)
+        for _ in range(max(0, max_len)):
+            scores = self.predict(out)
+            if not scores:
+                break
+            na = float(np.linalg.norm(acc))
+            anchor = acc / na if na > 0 else acc
+            best: str | None = None
+            best_val = -1e18
+            for tok, vote in scores.items():
+                coh = resonance(anchor, self._filler(tok)) if na > 0 else 0.0
+                val = vote + coherence * coh - rep_penalty * recent[tok]
+                if val > best_val:
+                    best_val, best = val, tok
+            if best is None:
+                break
+            out.append(best)
+            recent[best] += 1
+            acc = acc * 0.95 + self._filler(best)  # decaying global topic memory (anti-drift)
+            if self._is_sentence_final(best):
+                break
+        return out

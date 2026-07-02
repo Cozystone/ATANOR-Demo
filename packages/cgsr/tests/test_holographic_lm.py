@@ -165,6 +165,36 @@ def test_beats_bigram_on_real_held_out_sentences():
     assert holo_hits / total > bigram_hits / total, (holo_hits / total, bigram_hits / total)
 
 
+def test_generate_fluent_completes_and_is_grounded():
+    corpus = [
+        "광합성 은 빛 에너지 를 화학 에너지 로 바꾸는 과정 이다",
+        "호흡 은 산소 를 사용 하는 과정 이다",
+    ]
+    lm = HolographicLM(dim=256, window=4, seed=7, semantic=True).fit(corpus)
+    out = lm.generate_fluent("광합성", max_len=20)
+    vocab = set(tokens(" ".join(corpus)))
+    assert set(out) <= vocab                    # grounded — only corpus tokens
+    assert lm._is_sentence_final(out[-1])        # stops at a complete sentence
+
+
+def test_generate_fluent_stays_coherent_no_topic_drift():
+    # Two disjoint topics sharing pivot tokens (은/는/에서). A pure window walk can stitch across
+    # them; the global-superposition coherence must keep generation inside ONE topic.
+    corpus = [
+        "물고기 는 물 에서 헤엄친다", "물 은 강 에서 흐른다", "강 에서 물고기 가 헤엄친다",
+        "로켓 은 우주 로 날아간다", "우주 에서 로켓 이 날아간다", "우주 는 넓다",
+    ]
+    lm = HolographicLM(dim=256, window=4, seed=7, semantic=True).fit(corpus)
+    out = lm.generate_fluent("물고기", max_len=12)
+    assert not ({"로켓", "우주"} & set(out)), out   # stayed in the water topic, no drift
+
+
+def test_generate_fluent_deterministic():
+    corpus = ["광합성 은 빛 을 화학 에너지 로 바꾸는 과정 이다"]
+    lm = HolographicLM(dim=256, window=4, seed=7, semantic=True).fit(corpus)
+    assert lm.generate_fluent("광합성") == lm.generate_fluent("광합성")
+
+
 def test_bind_unbind_recovers():
     lm = HolographicLM(dim=2048, seed=7)
     role = lm.space.vec("role")
