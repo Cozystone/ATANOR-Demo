@@ -1345,12 +1345,15 @@ async def search_web(query: str | None = None, count: int = 5, provider: str | N
                 _search_term = _ent if (2 <= len(_ent) <= 24 and is_definitional_question(clean_query)) else clean_query
             except Exception:
                 _search_term = clean_query
-            # Only attempt the external search API when a real key is configured. With no
-            # key, provider_api_search spends ~1-2s failing before we fall back to
-            # Wikipedia anyway — skip it and go straight to the keyless Wikipedia path.
+            # PRIMARY = real multi-source search whenever available: SearXNG (keyless — aggregates
+            # Google/Bing/DuckDuckGo/Namuwiki/news/blogs, the agreed diverse source, NOT just a
+            # static encyclopedia) or a configured key (Tavily/Brave). provider_api_search prefers
+            # SearXNG when reachable. Only when NEITHER is available do we fall to keyless
+            # Wikipedia. This is what makes news/articles actively feed the answer.
+            use_real_search = _searxng_reachable() or selected in {"brave", "serper", "tavily"}
             api_rows = (
                 await asyncio.to_thread(provider_api_search, _search_term, bounded_count + 2)
-                if selected in {"brave", "serper", "tavily"}
+                if use_real_search
                 else []
             )
             if api_rows:
