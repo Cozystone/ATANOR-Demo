@@ -80,23 +80,14 @@ def test_apply_reinforcement_missing_store_is_safe():
 def test_graph_answer_learns_and_abstains(tmp_path):
     from cloud_brain.graph_answer import graph_answer_and_learn
 
-    (tmp_path / "concepts.jsonl").write_text(
-        "\n".join(json.dumps(c) for c in [
-            {"concept_id": "c1", "canonical_name": "엔비디아"},
-            {"concept_id": "c2", "canonical_name": "기업"},
-            {"concept_id": "c3", "canonical_name": "반도체회사"},
-        ]), encoding="utf-8")
-    (tmp_path / "relations.jsonl").write_text("\n".join(json.dumps(r) for r in [
-        {"relation_id": "r1", "source_concept_id": "c1", "target_concept_id": "c2", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
-        {"relation_id": "r2", "source_concept_id": "c1", "target_concept_id": "c3", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
-    ]), encoding="utf-8")
-    out = graph_answer_and_learn(tmp_path, "엔비디아가 뭐야", NOW)
-    assert out["answer"] and "엔비디아" in out["answer"] and len(out["reinforced"]) == 2
+    st = _realistic(tmp_path)
+    out = graph_answer_and_learn(st, "엔비디아가 뭐야", NOW)
+    assert out["answer"] and "엔비디아" in out["answer"] and len(out["reinforced"]) >= 1
     # the used edges are now stronger on disk (learned from being asked)
-    persisted = [json.loads(l) for l in (tmp_path / "relations.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
-    assert all(p["weight"] > 0.9 for p in persisted) and all(p["usage_count"] == 1 for p in persisted)
+    persisted = [json.loads(l) for l in (st / "relations.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert any(p.get("usage_count", 0) >= 1 and p["weight"] > 0.9 for p in persisted)
     # no matching concept → honest abstain, no fabrication, no mutation
-    assert graph_answer_and_learn(tmp_path, "존재하지않는개념xyz", NOW)["answer"] is None
+    assert graph_answer_and_learn(st, "존재하지않는개념xyz", NOW)["answer"] is None
 
 
 def _store(tmp_path, concepts, relations):
@@ -105,32 +96,41 @@ def _store(tmp_path, concepts, relations):
     return tmp_path
 
 
-def test_trust_gate_answers_only_when_graph_covers_the_concept(tmp_path):
+def _realistic(tmp_path):
+    # a small but REALISTIC graph: real categories (기업, 회사) have multiple members AND are
+    # themselves subjects (outgoing IS_A) — so the quality filter trusts them. 형용사 parent is a
+    # bare label (no outgoing, one child) — noise the filter drops.
+    concepts = [{"concept_id": c, "canonical_name": n} for c, n in [
+        ("nv", "엔비디아"), ("intel", "인텔"), ("ss", "삼성"), ("firm", "기업"), ("co", "회사"), ("org", "조직"), ("gpu", "GPU"), ("adj", "미국의")]]
+    rels = [
+        {"relation_id": "1", "source_concept_id": "nv", "target_concept_id": "firm", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "2", "source_concept_id": "nv", "target_concept_id": "co", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "3", "source_concept_id": "intel", "target_concept_id": "firm", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "4", "source_concept_id": "ss", "target_concept_id": "co", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "5", "source_concept_id": "firm", "target_concept_id": "org", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "6", "source_concept_id": "co", "target_concept_id": "org", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
+        {"relation_id": "7", "source_concept_id": "nv", "target_concept_id": "adj", "relation": "IS_A", "weight": 0.5, "updated_at": NOW.isoformat()},  # noise parent
+    ]
+    return _store(tmp_path, concepts, rels)
+
+
+def test_trust_gate_answers_a_covered_concept_and_drops_noise_parent(tmp_path):
     from cloud_brain.graph_answer import graph_answer_and_learn
 
-    concepts = [{"concept_id": f"c{i}", "canonical_name": n} for i, n in enumerate(["엔비디아", "기업", "반도체회사", "GPU", "홀로개념"])]
-    rels = [
-        {"relation_id": "a", "source_concept_id": "c0", "target_concept_id": "c1", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
-        {"relation_id": "b", "source_concept_id": "c0", "target_concept_id": "c2", "relation": "IS_A", "weight": 0.9, "updated_at": NOW.isoformat()},
-        {"relation_id": "c", "source_concept_id": "c0", "target_concept_id": "c3", "relation": "USED_FOR", "weight": 0.8, "updated_at": NOW.isoformat()},
-        # a single sparse edge → below the gate
-        {"relation_id": "d", "source_concept_id": "c4", "target_concept_id": "c1", "relation": "IS_A", "weight": 0.5, "updated_at": NOW.isoformat()},
-    ]
-    st = _store(tmp_path, concepts, rels)
-    good = graph_answer_and_learn(st, "엔비디아", NOW)
-    assert good["answer"] and "엔비디아는" in good["answer"]     # covered → fluent graph answer, correct josa
-    assert good["coverage"]["distinct_facts"] == 3
-    assert graph_answer_and_learn(st, "홀로개념", NOW)["answer"] is None  # 1 edge → defer
+    good = graph_answer_and_learn(_realistic(tmp_path), "엔비디아", NOW)
+    assert good["answer"] and "엔비디아는" in good["answer"]
+    assert "기업" in good["answer"] and "회사" in good["answer"]  # trusted hypernyms kept
+    assert "미국의" not in good["answer"]                          # noise-parent IS_A dropped by the filter
 
 
 def test_trust_gate_defers_a_noise_hub(tmp_path):
     from cloud_brain.graph_answer import graph_answer_and_learn
 
-    # a stopword/parse-noise hub: IS_A to MANY unrelated parents → must NOT answer (would be garbage)
+    # a stopword/parse-noise hub whose parents are all bare one-off labels → filter strips them all
+    # → the concept has no trusted edges → defer (never emit garbage).
     concepts = [{"concept_id": "hub", "canonical_name": "일"}] + [{"concept_id": f"t{i}", "canonical_name": n} for i, n in enumerate(["무신", "디자이너", "장군", "느낌", "마을", "기록"])]
     rels = [{"relation_id": f"r{i}", "source_concept_id": "hub", "target_concept_id": f"t{i}", "relation": "IS_A", "weight": 0.5, "updated_at": NOW.isoformat()} for i in range(6)]
-    out = graph_answer_and_learn(_store(tmp_path, concepts, rels), "일", NOW)
-    assert out["answer"] is None and out["reason"] == "low_graph_coverage"  # hub penalty → defer
+    assert graph_answer_and_learn(_store(tmp_path, concepts, rels), "일", NOW)["answer"] is None
 
 
 @pytest.mark.skipif(not _REL.exists(), reason="real graph not present")

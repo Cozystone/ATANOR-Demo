@@ -105,7 +105,12 @@ def graph_answer_and_learn(
         return {"answer": None, "reason": "no_matching_concept", "reinforced": []}
     cid, name = resolved
     rels = [json.loads(l) for l in rel_path.read_text(encoding="utf-8").splitlines() if l.strip()]
-    concept_rels = [r for r in rels if str(r.get("source_concept_id")) == cid]
+    # QUALITY FILTER: drop extraction-noise IS_A edges (adjective/fragment/polysemy parents) using
+    # graph statistics before the concept is even scored — so noise can't reach the answer.
+    from .relation_quality import filter_trusted_relations, graph_stats
+
+    stats = graph_stats(rels, id_to_name)
+    concept_rels = filter_trusted_relations([r for r in rels if str(r.get("source_concept_id")) == cid], id_to_name, stats)
     if not concept_rels:
         return {"answer": None, "reason": "concept_has_no_edges", "reinforced": []}
     # TRUST GATE: only answer from the graph when it genuinely covers the concept — else defer
@@ -119,6 +124,9 @@ def graph_answer_and_learn(
     seen: set[tuple[str, str]] = set()
     for r in ranked:
         rel, tgt = str(r.get("relation") or ""), id_to_name.get(str(r.get("target_concept_id")), "")
+        # skip copula / auxiliary parse artifacts ("be", "is", "was", "의") — not real relations
+        if rel.lower() in {"be", "is", "are", "was", "were", "been", "have", "has", "의", "가"}:
+            continue
         key = (rel, tgt)
         if tgt and key not in seen:
             seen.add(key)
