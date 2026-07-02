@@ -1,7 +1,19 @@
 """Holographic associative substrate: generalizes + uses wide context, beating the bigram baseline."""
 from __future__ import annotations
 
+import json
+import pathlib
+from collections import Counter, defaultdict
+
+import numpy as np
+import pytest
+
 from cgsr.holographic_lm import HolographicLM, resonance, tokens
+
+_EVIDENCE = (
+    pathlib.Path(__file__).resolve().parents[3]
+    / "data" / "cloud_brain" / "candidate_runs" / "clean_retrain_v1" / "evidence.jsonl"
+)
 
 # Shapes are decided by the NOUN, which sits BEFORE the shared token "IS". A last-token bigram
 # therefore cannot tell round from square (it only sees "IS"); the holographic window can.
@@ -110,6 +122,47 @@ def test_semantic_mode_is_deterministic():
     a = HolographicLM(window=1, seed=7, semantic=True).fit(train).predict(["dog"], candidates=["runs", "drives"])
     b = HolographicLM(window=1, seed=7, semantic=True).fit(train).predict(["dog"], candidates=["runs", "drives"])
     assert a == b
+
+
+@pytest.mark.skipif(not _EVIDENCE.exists(), reason="real corpus not present in this checkout")
+def test_beats_bigram_on_real_held_out_sentences():
+    # The honest bar: on REAL encyclopedic sentences, kernel-vote top-1 next-token accuracy must
+    # beat the last-token bigram the surface walk uses today. No training, no LLM.
+    sents = []
+    for line in _EVIDENCE.open(encoding="utf-8"):
+        try:
+            text = json.loads(line).get("text") or ""
+        except Exception:
+            continue
+        toks = tokens(text)
+        if 4 <= len(toks) <= 40:
+            sents.append(toks)
+    rng = np.random.default_rng(0)
+    rng.shuffle(sents)
+    cut = int(len(sents) * 0.85)
+    train, test = sents[:cut], sents[cut:]
+    lm = HolographicLM(dim=512, window=4, seed=7, semantic=True, bandwidth=3.0).fit([" ".join(s) for s in train])
+    bigram: dict[str, Counter] = defaultdict(Counter)
+    for s in train:
+        for i in range(1, len(s)):
+            bigram[s[i - 1]][s[i]] += 1
+    bigram_top = {k: c.most_common(1)[0][0] for k, c in bigram.items()}
+    holo_hits = bigram_hits = total = 0
+    for s in test:
+        for i in range(1, len(s)):
+            if s[i] not in lm._successors:
+                continue
+            scores = lm.predict(s[max(0, i - 4):i])
+            holo = max(scores, key=scores.get) if scores else None
+            holo_hits += holo == s[i]
+            bigram_hits += bigram_top.get(s[i - 1]) == s[i]
+            total += 1
+            if total >= 600:
+                break
+        if total >= 600:
+            break
+    assert total > 200
+    assert holo_hits / total > bigram_hits / total, (holo_hits / total, bigram_hits / total)
 
 
 def test_bind_unbind_recovers():

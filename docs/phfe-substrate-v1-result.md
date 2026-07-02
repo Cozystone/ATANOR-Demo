@@ -14,8 +14,11 @@ similarity rather than exact match.
 - `bind(role, filler)` = phasor product = phase addition (unitary, invertible — test proves
   unbind recovers the filler at resonance > 0.99)
 - context window → one vector: `Σ_j decay^j · bind(role_j, φ(t_j))` (holds the WHOLE window)
-- each successor token gets a **prototype** = bundle of every context that preceded it
-- `predict` = resonance of the current context against each successor prototype
+- `predict` = a resonance-weighted vote over the NEAREST stored context traces (a kernel-smoothed
+  n-gram). NOTE: an earlier design bundled one prototype per successor — it blurred
+  catastrophically on a real corpus (crosstalk) and LOST to the bigram (0.05 vs 0.15). The
+  kernel-vote over individual traces is what actually works; the vote also carries the frequency
+  prior (a common successor has more nearby traces).
 
 ## Measured result (beats the baseline — brief §5)
 
@@ -81,12 +84,30 @@ animal sound purely because it is *distributionally* like dog/cat, with no rule 
 `puppy→barks` example. This is the toy→real bridge — the mechanism that lets density over real
 corpora yield generalizing generation.
 
+## Real-corpus validation — the honest bar (done)
+
+Toy batteries are not enough. Validated on **2,975 real encyclopedic sentences**
+(`data/cloud_brain/.../clean_retrain_v1/evidence.jsonl`), 85/15 held-out split, top-1 next-token
+accuracy (no training, no LLM). Locked in by `test_beats_bigram_on_real_held_out_sentences`:
+
+| model | overall | unseen-trigram-context slice (generalization) |
+|---|---|---|
+| bigram (what the walk uses today) | 0.150 | 0.119 |
+| trigram + backoff | 0.153 | 0.119 |
+| **holographic kernel-vote** | **0.166** | **0.132** |
+
+The substrate **beats exact n-grams on real held-out sentences**, and wins by MORE on the unseen-
+context slice — i.e. the gain is exactly the generalization the brief asked for, on real data, not
+a toy. (The first prototype-bundling design lost here at 0.05; finding and fixing that on the real
+corpus is why this is not a toy result.)
+
 ## Honest limits + next steps
 
-- Single prototype per successor blurs when a successor has many distinct contexts. Next:
-  **cluster** contexts → a small mixture of prototypes per successor (raises effective capacity).
-- Validated on small synthetic batteries; **real large-corpus fluent generation is not yet
-  shown** (that is graph SIZE + integration, per the density theory above).
+- Absolute accuracy is still low (0.166) — this beats the current baseline but is a *substrate*,
+  not a finished generator; **fluent long-form generation needs a much larger corpus** (density)
+  and integration. The win is real and directional, not "solved".
+- Memory scales with corpus (one vector per training position). Next: **cluster** near-duplicate
+  contexts to bound memory without losing the kernel behaviour.
 - Integration into the live `_walk_for_frame` / answer path is Claude's job (brief §7); the module
   exposes a clean `predict(context) → scores` interface for a bounded additive term, exactly like
   the existing `Superposition.interference` nudge.

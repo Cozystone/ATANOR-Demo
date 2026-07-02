@@ -98,10 +98,16 @@ class HolographicLM:
         self.semantic = bool(semantic)
         self.cooc_window = int(cooc_window)
         self.bandwidth = float(bandwidth)
+        self.top_k = 40
+        self.temp = 12.0
         self._roles = [self.space.vec(f"__role_pos_{j}__") for j in range(self.window)]
         self._filler_vec: dict[str, np.ndarray] = {}  # distributional fillers (semantic mode)
-        self._proto: dict[str, np.ndarray] = {}      # successor → bundled context phasor
-        self._count: Counter[str] = Counter()
+        # Kernel memory: normalized context vectors + their observed successors. Prediction is a
+        # resonance-weighted vote over the NEAREST stored contexts (kernel-smoothed n-gram) — NOT
+        # a single bundled prototype per successor, which blurs catastrophically on a real corpus.
+        self._ctx_mat = np.zeros((0, self.space.dim), dtype=np.complex128)
+        self._nxt = np.array([], dtype=object)
+        self._successors: set[str] = set()
         self._bigram: dict[str, Counter[str]] = defaultdict(Counter)  # last-token baseline
 
     def _filler(self, token: str) -> np.ndarray:
@@ -139,19 +145,24 @@ class HolographicLM:
             for ctx in cooc[t]:
                 df[ctx] += 1
         idf = np.array([np.log((1.0 + v) / (1.0 + df.get(t, 0))) + 1.0 for t in vocab], dtype=np.float64)
-        emb = np.zeros((v, v), dtype=np.float64)
-        for t in vocab:
-            row = emb[index[t]]
-            for ctx, c in cooc[t].items():
-                row[index[ctx]] = c * idf[index[ctx]]
-            n = np.linalg.norm(row)
-            if n > 0:
-                row /= n
+        # Random projection rows, one per context token: proj is (V, dim). We accumulate each
+        # token's phase from its SPARSE co-occurrence row (θ_t = Σ_ctx w · proj[ctx]) instead of
+        # materializing a dense V×V embedding — O(nnz·dim), scales to a real corpus.
         rng = np.random.default_rng(self.space.seed ^ 0x5DEECE66D)
         proj = self.bandwidth * rng.standard_normal((v, self.space.dim))
-        theta = emb @ proj  # (v, dim)
-        phasors = np.exp(1j * theta)
-        self._filler_vec = {t: phasors[index[t]] for t in vocab}
+        self._filler_vec = {}
+        for t in vocab:
+            items = cooc[t]
+            if not items:
+                self._filler_vec[t] = self.space.vec(t)
+                continue
+            idxs = np.fromiter((index[ctx] for ctx in items), dtype=np.int64, count=len(items))
+            weights = np.fromiter((c * idf[index[ctx]] for ctx, c in items.items()), dtype=np.float64, count=len(items))
+            norm = np.linalg.norm(weights)
+            if norm > 0:
+                weights /= norm
+            theta = weights @ proj[idxs]  # (dim,)
+            self._filler_vec[t] = np.exp(1j * theta)
 
     def encode_context(self, ctx_tokens: list[str]) -> np.ndarray:
         """Bundle the recent window into one phasor: newest token bound to role 0."""
@@ -164,23 +175,45 @@ class HolographicLM:
     def fit(self, corpus: list[str] | tuple[str, ...]) -> "HolographicLM":
         if self.semantic:
             self._build_distributional_base(corpus)
+        rows: list[np.ndarray] = []
+        nxt: list[str] = []
         for line in corpus:
             toks = tokens(line)
             for i in range(1, len(toks)):
-                nxt = toks[i]
-                ctx = toks[max(0, i - self.window):i]
-                cvec = self.encode_context(ctx)
-                prev = self._proto.get(nxt)
-                self._proto[nxt] = cvec if prev is None else prev + cvec
-                self._count[nxt] += 1
-                self._bigram[toks[i - 1]][nxt] += 1
+                rows.append(self.encode_context(toks[max(0, i - self.window):i]))
+                nxt.append(toks[i])
+                self._bigram[toks[i - 1]][toks[i]] += 1
+        if rows:
+            mat = np.stack(rows)
+            self._ctx_mat = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + 1e-9)
+            self._nxt = np.array(nxt, dtype=object)
+            self._successors = set(nxt)
         return self
 
     def predict(self, ctx_tokens: list[str], *, candidates: list[str] | None = None) -> dict[str, float]:
-        """Resonance score per candidate successor for the given context."""
+        """Resonance-weighted vote over the NEAREST stored contexts (kernel-smoothed n-gram).
+
+        A held-out context still finds similar stored contexts (semantic base) → generalizes; the
+        vote naturally carries the frequency prior (a common successor has more nearby traces).
+        Restrict to `candidates` for slot decisions."""
+        n = self._ctx_mat.shape[0]
+        if n == 0:
+            return {}
         q = self.encode_context(ctx_tokens)
-        pool = candidates if candidates is not None else list(self._proto)
-        return {t: resonance(q, self._proto[t]) for t in pool if t in self._proto}
+        nq = float(np.linalg.norm(q))
+        if nq == 0.0:
+            return {}
+        sims = (np.conj(q / nq) @ self._ctx_mat.T).real  # resonance to every stored context
+        k = min(self.top_k, n)
+        idx = np.argpartition(sims, -k)[-k:]
+        weights = np.exp(self.temp * sims[idx])
+        total = float(weights.sum()) + 1e-12
+        allowed = set(candidates) if candidates is not None else None
+        votes: dict[str, float] = defaultdict(float)
+        for w, tok in zip(weights, self._nxt[idx]):
+            if allowed is None or tok in allowed:
+                votes[tok] += float(w) / total
+        return dict(votes)
 
     def predict_bigram(self, ctx_tokens: list[str]) -> dict[str, float]:
         """Baseline: last-token transition frequencies (what the walk uses today)."""
