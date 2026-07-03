@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import json
+import os
 from pathlib import Path
 import time
 from typing import Any, Iterable
@@ -86,11 +87,13 @@ class CloudSurfaceLearningResult:
     production_store_mutated: bool
     pair_edges_sent: int = 0
     private_data_used_for_cloud_learning: bool = False
+    consensus: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a public status payload."""
 
         return {
+            "consensus": self.consensus,
             "active_learning_state": self.active_learning_state,
             "current_learning_phase": self.current_learning_phase,
             "last_tick_at": self.last_tick_at,
@@ -342,6 +345,16 @@ class CloudSurfaceLearningLoop:
         if not self.promote_to_verified:
             ensure_candidate_store_initialized(self.candidate_store_root)
         store = VerifiedStore(self.candidate_store_root)
+        # Consensus gate (난제 P1): relations are quarantined in the evidence ledger and
+        # only enter the candidate store once independently re-confirmed. Concepts,
+        # evidence, surface graph and frames keep flowing directly as before.
+        consensus_gate = os.environ.get("ATANOR_CONSENSUS_GATE", "1") != "0"
+        ledger = None
+        if consensus_gate:
+            from .consensus_ledger import ConsensusLedger
+
+            min_sources = max(1, int(os.environ.get("ATANOR_CONSENSUS_MIN_SOURCES", "2")))
+            ledger = ConsensusLedger(self.candidate_store_root / "consensus_ledger", min_sources=min_sources)
         decompositions: list[DecompositionResult] = []
         rejected = 0
         reasons: list[str] = []
@@ -359,8 +372,24 @@ class CloudSurfaceLearningLoop:
             decompositions.append(decompose_sentence(sentence, decision, ingest_run_id=f"cloud_surface_learning_{now}"))
 
         accumulation = None
+        consensus_stats: dict[str, Any] | None = None
         if decompositions and not dry_run:
-            accumulation = store.accumulate(decompositions)
+            if ledger is not None:
+                # record relations as quarantined evidence, then strip them from the
+                # direct write; consensus promotion re-adds the confirmed ones.
+                for dec in decompositions:
+                    ledger.record_decomposition(dec)
+                stripped = [
+                    DecompositionResult(concepts=d.concepts, relations=[], case_frames=d.case_frames, evidence=d.evidence)
+                    for d in decompositions
+                ]
+                accumulation = store.accumulate(stripped)
+                promotion = ledger.promote_into(store)
+                if promotion.promoted:
+                    store.update_manifest()
+                consensus_stats = {**ledger.stats(), **promotion.to_dict()}
+            else:
+                accumulation = store.accumulate(decompositions)
         surface = project_decompositions_to_surface(decompositions) if self.update_surface_graph else SurfaceGraphProjectionResult()
         cgsr = surface_candidates_to_frames(surface.candidates) if self.update_rhfc_candidate else None
         cgsr_status = cgsr.to_dict() if cgsr else {
@@ -372,6 +401,9 @@ class CloudSurfaceLearningLoop:
         }
         concepts_added = int(getattr(accumulation, "concepts_added", 0) or 0)
         relations_added = int(getattr(accumulation, "relations_added", 0) or 0)
+        if consensus_stats:
+            # under the consensus gate, relations enter the store only via promotion
+            relations_added += int(consensus_stats.get("promoted") or 0)
         evidence_added = int(getattr(accumulation, "evidence_added", 0) or 0)
         case_frames_added = int(getattr(accumulation, "case_frames_added", 0) or 0)
         semantic = SemanticLearningBatchResult(
@@ -404,4 +436,5 @@ class CloudSurfaceLearningLoop:
             idle_waiting_seconds=0 if accepted else max(1, int(duration / 1000)),
             cumulative_learning_seconds=active_seconds,
             production_store_mutated=self.promote_to_verified and not self.require_review_before_production,
+            consensus=consensus_stats,
         )

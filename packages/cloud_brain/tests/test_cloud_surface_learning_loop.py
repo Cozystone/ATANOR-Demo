@@ -8,15 +8,27 @@ from packages.cloud_brain.verified_payload_feeder import PayloadSourcePolicy, Ve
 
 
 def _payload_file(path: Path) -> Path:
-    row = {
-        "source_type": "manual_public_sentence",
-        "source_id": "manual:cloud-surface:1",
-        "text": "GraphRAG는 근거 문서를 검증합니다.",
-        "language": "ko",
-        "license": "CC BY-SA 4.0",
-        "source_url_or_path": "manual://public/cloud-surface/1",
-    }
-    path.write_text(json.dumps(row, ensure_ascii=False) + "\n", encoding="utf-8")
+    # Two INDEPENDENT paraphrases of the same fact: under the consensus gate (난제 P1)
+    # a relation enters the candidate store only after independent re-confirmation.
+    rows = [
+        {
+            "source_type": "manual_public_sentence",
+            "source_id": "manual:cloud-surface:1",
+            "text": "GraphRAG는 근거 문서를 검증합니다.",
+            "language": "ko",
+            "license": "CC BY-SA 4.0",
+            "source_url_or_path": "manual://public/cloud-surface/1",
+        },
+        {
+            "source_type": "manual_public_sentence",
+            "source_id": "manual:cloud-surface:2",
+            "text": "GraphRAG는 답변의 근거 문서를 검증합니다.",
+            "language": "ko",
+            "license": "CC BY-SA 4.0",
+            "source_url_or_path": "manual://public/cloud-surface/2",
+        },
+    ]
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
     return path
 
 
@@ -44,10 +56,11 @@ def test_verified_payload_grows_candidate_surface_and_rhfc_without_production_mu
     result = loop.run_once()
     payload = result.to_dict()
     assert payload["active_learning_state"] == "learning"
-    assert payload["semantic"]["payloads_accepted"] == 1
+    assert payload["semantic"]["payloads_accepted"] == 2
     assert payload["semantic"]["concepts_added"] > 0
-    assert payload["semantic"]["relations_added"] > 0
-    assert payload["semantic"]["evidence_added"] == 1
+    assert payload["semantic"]["relations_added"] > 0  # promoted via 2-source consensus
+    assert payload["semantic"]["evidence_added"] == 2
+    assert payload["consensus"] is not None and payload["consensus"]["promoted"] >= 1
     assert payload["semantic"]["case_frames_added"] > 0
     assert payload["surface"]["accepted_surface_candidates"] > 0
     assert payload["cgsr_rhfc"]["frames_added"] > 0

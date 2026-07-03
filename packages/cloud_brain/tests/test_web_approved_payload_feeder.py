@@ -224,9 +224,12 @@ def test_quality_gate_rejects_private_generated_eval_mojibake_and_duplicates(tmp
 
 def test_generated_payloads_feed_bounded_candidate_learning_without_production_mutation(tmp_path: Path) -> None:
     corpus = tmp_path / "public_corpus.txt"
+    # the 3rd sentence independently re-confirms sentence 2's fact so the consensus
+    # gate (난제 P1) promotes at least one relation into the candidate store.
     corpus.write_text(
         "의미 검색은 질문과 공개 근거를 연결합니다. "
-        "지식 그래프는 개념과 관계와 출처 근거를 저장합니다.",
+        "지식 그래프는 개념과 관계와 출처 근거를 저장합니다. "
+        "지식 그래프는 모든 개념과 출처 근거를 저장합니다.",
         encoding="utf-8",
     )
     feeder_result = collect_approved_payloads(
@@ -269,9 +272,9 @@ def test_generated_payloads_feed_bounded_candidate_learning_without_production_m
         feeder=approved_feeder,
     )
     assert run_result.state == "completed"
-    assert run_result.payloads_accepted == 2
+    assert run_result.payloads_accepted == 3
     assert run_result.concepts_added_candidate > 0
-    assert run_result.relations_added_candidate > 0
+    assert run_result.relations_added_candidate > 0  # promoted via 2-source consensus
     assert run_result.surface_candidates > 0
     assert run_result.rhfc_candidates > 0
     assert run_result.production_store_mutated is False
