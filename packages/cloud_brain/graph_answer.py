@@ -154,8 +154,15 @@ _REL_PHRASE = {
 
 
 def _realize(name: str, facts: list[tuple[str, str]]) -> str:
-    """Surface realization (LAD) of graph facts — generic per-relation phrasing, not per-entity
-    rules. Groups by relation so '회사, 기업의 한 종류' reads once."""
+    """Surface realization of graph facts. 2+ facts go through the discourse planner
+    (난제 P3: plan-then-realize — definition first, zero-subject anaphora, connectives);
+    a single fact keeps the compact one-clause form."""
+    if len(facts) >= 2:
+        try:
+            from cgsr.discourse_planner import plan_and_realize
+        except ImportError:
+            from packages.cgsr.cgsr.discourse_planner import plan_and_realize
+        return plan_and_realize(name, facts).text
     by_rel: dict[str, list[str]] = {}
     for rel, tgt in facts:
         by_rel.setdefault(rel, [])
