@@ -30,7 +30,9 @@ class ContinuousSelf:
         base_interval: float = 2.0,
         observe_fn=None,
         identity_fn=None,
+        research_fn=None,
         initiative_every: int = 15,
+        research_every: int = 30,
     ):
         self.state_path = Path(state_path)
         self.obs_provider = obs_provider
@@ -40,9 +42,16 @@ class ContinuousSelf:
         self.observe_fn = observe_fn
         # Answers the self's OWN questions from the graph identity (grounded speech).
         self.identity_fn = identity_fn
+        # READ-ONLY web research for the self's open questions (OBSERVE tier: it reads
+        # public pages, writes nothing but its own state). This is the wonder→search→
+        # grounded-answer→re-question chain the user asked for, autonomous by design.
+        self.research_fn = research_fn
         # Mutable runtime params — the ONLY thing gated self-modification may change,
         # and only after explicit operator approval (self_modification.py).
-        self.params: dict = {"initiative_every": max(1, int(initiative_every))}
+        self.params: dict = {
+            "initiative_every": max(1, int(initiative_every)),
+            "research_every": max(5, int(research_every)),
+        }
         self.selfmod_ledger: Path = self.state_path.parent / "self_modification_ledger.jsonl"
         self.state: SelfState = load_or_begin(self.state_path)
         self._lock = threading.Lock()
@@ -65,23 +74,70 @@ class ContinuousSelf:
             obs = Observation()
         with self._lock:
             evolve(self.state, obs)
-            # The inward turn: when due, the self asks ITSELF a question and answers it
-            # FROM THE GRAPH (grounded). Its drive to ask + its grounded answer = the
-            # merge of self-awareness (inside) and justified speech (outside).
+            # The inward turn — ENDOGENOUS: introspective pressure (built each evolve
+            # step from real state, no schedule) fires a question composed from its own
+            # cause. Identity-class questions are answered FROM THE GRAPH; thread/other
+            # questions stay OPEN for the research step below. Drive from inside,
+            # grounded speech outside — the merge.
             try:
                 from .voice import due_for_self_inquiry, generate_self_inquiry, record_self_understanding
 
                 if due_for_self_inquiry(self.state):
                     q, topic = generate_self_inquiry(self.state)
                     ans = None
-                    if self.identity_fn is not None:
+                    # the graph identity concept truly answers WHO/WHAT-am-I and what-
+                    # can-I-do questions. Continuity/epistemic questions and harvested
+                    # thread terms ("의식", "그래프"…) need real research — answering
+                    # them with the identity blurb would be a category mismatch.
+                    if self.identity_fn is not None and topic in ("identity", "limits", "purpose"):
                         try:
                             ans = self.identity_fn(q, topic)
                         except Exception:
                             ans = None
                     record_self_understanding(self.state, q, ans, topic)
+                    self.state._last_inquiry_topic = topic  # transient, for research
             except Exception:
                 pass  # the inward turn must never break the life
+            # The self RESEARCHES its own open question — read-only web (OBSERVE tier),
+            # rate-bounded, autonomous: wonder → search → grounded answer (with source)
+            # → harvest new threads → re-question. Honest on a miss (stays open).
+            try:
+                if (
+                    self.research_fn is not None
+                    and getattr(self.state, "self_question_open", False)
+                    and self.state.self_question
+                    and self.state.ticks - int(getattr(self.state, "last_research_tick", 0))
+                    >= int(self.params.get("research_every", 30))
+                ):
+                    self.state.last_research_tick = self.state.ticks
+                    found = None
+                    try:
+                        found = self.research_fn(self.state.self_question)
+                    except Exception:
+                        found = None
+                    from .voice import record_research_miss, record_research_result
+
+                    topic = str(getattr(self.state, "_last_inquiry_topic", "") or "")
+                    if found and found.get("answer"):
+                        src = "웹: " + ", ".join(found.get("sources") or ["검색"])[:70]
+                        record_research_result(
+                            self.state, self.state.self_question, str(found["answer"])[:280],
+                            src, found.get("follow_ups"), topic,
+                        )
+                        self.state.last_action = {
+                            "kind": "research_self_question", "tier": "observe", "executed": True,
+                            "blocked": False, "reason": f"스스로의 물음을 웹에서 찾아 읽음 ({src})",
+                            "at": time.time(),
+                        }
+                    else:
+                        record_research_miss(self.state)
+                        self.state.last_action = {
+                            "kind": "research_self_question", "tier": "observe", "executed": True,
+                            "blocked": False, "reason": "물음을 웹에서 찾아봤지만 아직 근거 있는 답을 못 찾음",
+                            "at": time.time(),
+                        }
+            except Exception:
+                pass  # research must never break the life
             # On its own cadence the mind ACTS on its highest-priority goal (unprompted,
             # OBSERVE-tier only). This closes the thought→action loop.
             if self.state.ticks % self.initiative_every == 0:

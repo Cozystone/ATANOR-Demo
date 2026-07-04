@@ -31,6 +31,9 @@ type SelfSnap = {
   attention_bid?: { kind?: string; text?: string; proposal_id?: string } | null;
   self_question?: string;
   self_understanding?: string;
+  self_understanding_source?: string;
+  self_question_open?: boolean;
+  open_threads?: { term?: string; from?: string; at?: number }[];
   narrative?: Thought[];
 };
 
@@ -150,11 +153,21 @@ export default function LivingMindPanel({ compact = false }: { compact?: boolean
             {snap?.self_question ? (
               <div className="atanor-mind-inquiry">
                 <p className="atanor-mind-inquiry-q">{snap.self_question}</p>
-                {snap.self_understanding ? (
-                  <p className="atanor-mind-inquiry-a"><b>근거로 아는 답</b> {snap.self_understanding}</p>
+                {snap.self_understanding && !snap.self_question_open ? (
+                  <p className="atanor-mind-inquiry-a">
+                    <b>근거로 아는 답</b> {snap.self_understanding}
+                    {snap.self_understanding_source ? (
+                      <span className="atanor-mind-inquiry-src"> · {snap.self_understanding_source}</span>
+                    ) : null}
+                  </p>
                 ) : (
-                  <p className="atanor-mind-inquiry-open">아직 이 물음에 근거로 댈 답이 부족하다 — 지어내지 않는다.</p>
+                  <p className="atanor-mind-inquiry-open">아직 근거로 댈 답이 부족하다 — 지어내지 않고, 스스로 찾아 읽어보는 중.</p>
                 )}
+                {snap.open_threads?.length ? (
+                  <p className="atanor-mind-threads">
+                    <b>다음 물음거리</b> {snap.open_threads.map((t) => t.term).filter(Boolean).join(" · ")}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             {snap?.meta_thought ? (

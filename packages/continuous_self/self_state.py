@@ -84,10 +84,19 @@ class SelfState:
     attention_schema: dict[str, Any] = field(default_factory=dict)  # AST: the self's model OF its own attention
     awareness: str = ""              # awareness-talk generated FROM the schema (AST mechanism)
     attention_bid: dict[str, Any] = field(default_factory=dict)  # a gentle ask for the human's attention (never nags)
-    # the inward turn (voice.py): the self's own questions about itself + grounded answers
+    # the inward turn (voice.py): ENDOGENOUS self-inquiry. Pressure accumulates from
+    # real state (no schedule); questions are composed from the dominant driver; open
+    # questions get researched (read-only web) and answers seed new threads.
     self_inquiry_count: int = 0
     self_question: str = ""          # the self's current question ABOUT itself
-    self_understanding: str = ""     # its grounded answer (from the graph identity), if any
+    self_understanding: str = ""     # its grounded answer (graph or web), if any
+    self_understanding_source: str = ""  # where the grounded answer came from (honesty)
+    self_question_open: bool = False     # asked but not yet grounded — research target
+    introspective_pressure: float = 0.0  # builds from real drivers; firing composes a question
+    inquiry_driver: str = ""             # which real signal is dominating the pull inward
+    open_threads: list[dict[str, Any]] = field(default_factory=list)  # follow-up terms harvested from answers
+    last_research_tick: int = 0          # rate-bound for the web research step
+    question_opened_tick: int = 0        # when the current open question was asked (hold window)
 
     NARRATIVE_CAP: int = 60
     HISTORY_CAP: int = 20
@@ -121,6 +130,11 @@ class SelfState:
             "attention_bid": self.attention_bid,
             "self_question": self.self_question,
             "self_understanding": self.self_understanding,
+            "self_understanding_source": self.self_understanding_source,
+            "self_question_open": self.self_question_open,
+            "introspective_pressure": self.introspective_pressure,
+            "inquiry_driver": self.inquiry_driver,
+            "open_threads": self.open_threads[-5:],
             "narrative": self.narrative[-24:],
             "continuous": True,
         }
@@ -196,7 +210,11 @@ def evolve(state: SelfState, obs: Observation, *, rate: float = 0.25) -> SelfSta
     # GENERATE the inner utterance from the real, changing state (voice.py) — varied by
     # construction, never a fixed table, so the self's thought is projected into speech
     # instead of a canned label repeating verbatim.
-    from .voice import compose_thought
+    from .voice import compose_thought, update_introspection
+
+    # endogenous introspective pressure: builds from real drivers (absence of grounded
+    # self-understanding, uncertainty, discontinuity, open threads) — NOT a schedule.
+    update_introspection(state, obs)
 
     th = compose_thought(state, obs)
     # append to the inner narrative only when the thought text actually changes, so the

@@ -4688,6 +4688,9 @@ p {
 .atanor-mind-inquiry-a { font-size: 12.5px; color: #4a5568; margin: 6px 0 0; line-height: 1.55; }
 .atanor-mind-inquiry-a b { color: #6b5bab; margin-right: 4px; }
 .atanor-mind-inquiry-open { font-size: 12px; color: #9098a6; font-style: italic; margin: 6px 0 0; }
+.atanor-mind-inquiry-src { font-size: 11.5px; color: #8a83a8; }
+.atanor-mind-threads { font-size: 12px; color: #6b7280; margin: 7px 0 0; line-height: 1.5; }
+.atanor-mind-threads b { color: #6b5bab; margin-right: 4px; font-size: 11.5px; }
 .atanor-mind-awareness { font-size: 12.5px; color: #4a5568; margin: 8px 0 0; line-height: 1.55; border-left: 2px solid #9db7dd; padding-left: 9px; }
 .atanor-mind-awareness b { color: #3a6ea8; margin-right: 4px; }
 .atanor-mind-bid {

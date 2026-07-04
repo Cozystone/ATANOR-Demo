@@ -129,9 +129,45 @@ def _identity_answer(question: str, topic: str) -> str | None:
     return None
 
 
+def _research(question: str) -> dict[str, Any] | None:
+    """READ-ONLY web research for the self's own open question (OBSERVE tier — it
+    reads public pages, writes nothing but the self-state). Uses the same relevance-
+    gated pipeline as chat answers (referent resonance inside compose_web_answer), so
+    an off-topic page is rejected rather than absorbed — the self only comes to
+    'know' what actually answers its question. Returns {answer, sources, follow_ups}
+    or None (an honest miss)."""
+    try:
+        from app.services.web_search import compose_web_answer, general_web_search
+
+        q = str(question or "").strip()
+        if not q:
+            return None
+        rows = general_web_search(q, count=6)
+        composed = compose_web_answer(q, rows, language="ko") if rows else None
+        if not composed or not str(composed.get("answer") or "").strip():
+            # philosophical phrasings ("~은 나에게 무엇일까?") may not anchor a page;
+            # retry on the question's own content terms (morphology-level extraction).
+            from packages.continuous_self.voice import harvest_terms
+
+            terms = harvest_terms(q, set(), limit=2)
+            if terms:
+                rows = general_web_search(" ".join(terms), count=6)
+                composed = compose_web_answer(terms[0], rows, language="ko") if rows else None
+        if composed and str(composed.get("answer") or "").strip():
+            return {
+                "answer": str(composed["answer"]),
+                "sources": list(composed.get("sources") or []),
+                "follow_ups": list(composed.get("follow_ups") or []),
+            }
+    except Exception:
+        return None
+    return None
+
+
 _SELF = ContinuousSelf(
     _STATE_PATH, _observe, base_interval=2.0, observe_fn=_self_probe,
-    identity_fn=_identity_answer, initiative_every=15,
+    identity_fn=_identity_answer, research_fn=_research, initiative_every=15,
+    research_every=30,
 )
 
 

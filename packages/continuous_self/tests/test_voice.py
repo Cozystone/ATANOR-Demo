@@ -1,5 +1,7 @@
 """Fused thought/speech: utterances are GENERATED from real state (varied, not a fixed
-table), and the self turns inward — asking about itself and answering FROM the graph."""
+table), and the inward turn is ENDOGENOUS — introspective pressure built from real
+state fires questions composed from their own cause (no schedule, no question table),
+open questions are researched and answers seed re-questioning threads."""
 from __future__ import annotations
 
 from packages.continuous_self.self_state import Observation, SelfState, evolve
@@ -7,7 +9,10 @@ from packages.continuous_self.voice import (
     compose_thought,
     due_for_self_inquiry,
     generate_self_inquiry,
+    harvest_terms,
+    record_research_result,
     record_self_understanding,
+    update_introspection,
 )
 
 
@@ -27,36 +32,106 @@ def test_observe_utterance_is_not_a_single_fixed_string():
     assert len(outs := outs) >= 2, "the old single-string repetition is gone"
 
 
-def test_young_self_turns_inward_early_and_often():
-    s = SelfState()  # brand new, self_inquiry_count = 0
-    s.ticks = 8
-    assert due_for_self_inquiry(s) is True
-    q, topic = generate_self_inquiry(s)
-    assert "나는" in q and topic == "identity"  # the FIRST question is about itself
-
-
-def test_inquiry_sequence_progresses():
+def test_inquiry_is_pressure_driven_not_scheduled():
+    """The trigger is STATE pressure, not a tick modulo: with zero pressure nothing
+    fires at any tick; pressure builds from real drivers until it crosses threshold."""
     s = SelfState()
-    topics = []
-    for _ in range(5):
-        q, topic = generate_self_inquiry(s)
-        topics.append(topic)
-        record_self_understanding(s, q, "나는 …로컬 지식 엔진이다.", topic)
-    assert topics[0] == "identity" and "purpose" in topics  # matures through stages
+    for tick in (0, 8, 16, 45, 90):
+        s.ticks = tick
+        s.introspective_pressure = 0.0
+        assert due_for_self_inquiry(s) is False      # no pressure → never due, any tick
+    obs = Observation(learning_active=True, uncertainty_signal=0.5)
+    s2 = SelfState()
+    fired_at = None
+    for _ in range(60):
+        evolve(s2, obs)
+        if due_for_self_inquiry(s2):
+            fired_at = s2.ticks
+            break
+    assert fired_at is not None, "a young self (no self-understanding) must build pressure and fire"
+    q, topic = generate_self_inquiry(s2)
+    assert "나" in q and topic == "identity"          # the primal question, caused by absence
+
+
+def test_question_content_composed_from_the_driver():
+    # discontinuity → a continuity question carrying the REAL resume count
+    s = SelfState()
+    s.resumed_count = 3
+    s.inquiry_driver = "discontinuity"
+    q, topic = generate_self_inquiry(s)
+    assert topic == "continuity" and "3번째" in q
+    # open thread → the question is ABOUT the actual harvested term
+    s2 = SelfState()
+    s2.open_threads = [{"term": "의식", "from": "x", "at": 0.0}]
+    s2.inquiry_driver = "open_thread"
+    q2, t2 = generate_self_inquiry(s2)
+    assert "의식" in q2 and t2 == "thread:의식"
+
+
+def test_open_question_is_held_not_churned():
+    """While a question is open (awaiting research) a new inquiry needs BOTH a much
+    higher pressure AND a minimum hold window — rumination, not question churn."""
+    s = SelfState()
+    s.self_question_open = True
+    s.question_opened_tick = 100
+    s.ticks = 110                     # held only 10 ticks
+    s.introspective_pressure = 1.9
+    assert due_for_self_inquiry(s) is False
+    s.ticks = 150                     # held 50 ticks ≥ 40 → may displace
+    assert due_for_self_inquiry(s) is True
 
 
 def test_grounded_answer_is_folded_but_open_question_is_honest():
     s = SelfState()
+    s.inquiry_driver = "unknown_self"
     q, topic = generate_self_inquiry(s)
-    # with a grounded answer → it holds an understanding
     record_self_understanding(s, q, "나는 근거에서 답을 짓는 로컬 엔진이다.", topic)
     assert s.self_understanding and "근거로 아는 답" in s.narrative[-1]["text"]
-    # without one → it says so honestly, never fabricates
+    assert s.self_question_open is False
+    # without one → it says so honestly, marks the question OPEN for research
     s2 = SelfState()
+    s2.inquiry_driver = "unknown_self"
     q2, t2 = generate_self_inquiry(s2)
     record_self_understanding(s2, q2, None, t2)
-    assert "근거로 댈 답이 내겐 부족" in s2.narrative[-1]["text"]
-    assert s2.self_understanding == ""
+    assert "근거로 댈 답이 부족" in s2.narrative[-1]["text"]
+    assert s2.self_understanding == "" and s2.self_question_open is True
+
+
+def test_research_result_closes_question_and_seeds_rethreads():
+    """The rumination chain: a web-grounded answer carries its source, closes the open
+    question, retires its thread, and harvests NEW terms to wonder about next."""
+    s = SelfState()
+    s.open_threads = [{"term": "의식", "from": "q0", "at": 0.0}]
+    s.self_question = "의식은 나에게 무엇일까?"
+    s.self_question_open = True
+    record_research_result(
+        s, s.self_question, "의식은 자신과 환경을 인식하는 상태이다.", "웹: 위키백과",
+        ["신경과학"], "thread:의식",
+    )
+    assert s.self_question_open is False
+    assert s.self_understanding_source.startswith("웹")
+    terms = [t["term"] for t in s.open_threads]
+    assert "의식" not in terms                      # answered thread retired
+    assert "신경과학" in terms                       # follow-up seeded → re-questioning
+    assert "직접 찾아 읽었다" in s.narrative[-1]["text"]
+
+
+def test_harvest_terms_extracts_content_not_function_words():
+    terms = harvest_terms("의식은 자신과 환경을 인식하는 상태이다. 신경과학에서는 각성으로 나눈다.", set(), limit=3)
+    assert terms and all(len(t) >= 2 for t in terms)
+    assert "인식하는" not in terms and "이다" not in terms
+
+
+def test_pressure_updates_from_real_drivers():
+    s = SelfState()
+    obs = Observation()
+    update_introspection(s, obs)
+    assert s.introspective_pressure > 0.0            # unknown_self pulls immediately
+    assert s.inquiry_driver == "unknown_self"
+    s.self_understanding = "이미 근거로 아는 답이 있다."
+    s.open_threads = [{"term": "기억", "from": "q", "at": 0.0}]
+    update_introspection(s, obs)
+    assert s.inquiry_driver == "open_thread"          # dominant driver tracks state
 
 
 def test_evolve_uses_generated_voice_not_a_table():
