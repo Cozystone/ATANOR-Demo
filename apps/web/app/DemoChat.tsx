@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import AnswerExperimentSurface, { AnswerVisual } from "./AnswerExperimentSurface";
+import AnswerPathScene from "./AnswerPathScene";
 import PluginGallery, { PLUGIN_ICONS } from "./PluginGallery";
 
 type MenuPlugin = { id: string; name: string; icon: string; composer: { slash: string } };
@@ -34,6 +35,8 @@ type Msg = {
   text: string;
   visual?: AnswerVisual | null;
   cert?: string | null;
+  /** P5-⑪: the full reasoning_certificate, for the semantic-zoom answer-path view */
+  certFull?: Record<string, unknown> | null;
   followUps?: string[];
   pending?: boolean;
   /** live stage label while pending (P5: real state transitions, never fake progress) */
@@ -91,6 +94,15 @@ function certSummary(cert: unknown): string | null {
   return map[kind] || (kind ? kind.replace(/_/g, " ") : null);
 }
 
+/** P5-⑪: a certificate is worth drawing when it carries a real graph derivation
+ * (an anchor + at least one relation hop). Thin/abstained/web certs get no toggle. */
+function hasDrawablePath(cert: Record<string, unknown> | null | undefined): boolean {
+  if (!cert || typeof cert !== "object") return false;
+  if (String(cert.derivation_kind || "") !== "ontology_graph_derivation") return false;
+  const steps = Array.isArray(cert.steps) ? (cert.steps as Record<string, unknown>[]) : [];
+  return steps.some((s) => String(s.type || "").startsWith("graph_relation"));
+}
+
 export default function DemoChat({ language }: { language: "ko" | "en" }) {
   const ko = language === "ko";
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -103,6 +115,8 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
   const [menuPlugins, setMenuPlugins] = useState<MenuPlugin[]>([]);
   const [capsOpen, setCapsOpen] = useState(false);
   const [attaching, setAttaching] = useState(false);
+  // P5-⑪: which answers have their semantic-zoom derivation path expanded.
+  const [openPaths, setOpenPaths] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -290,6 +304,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
           text: answer,
           visual: (r?.answer_visual as AnswerVisual | undefined) ?? null,
           cert: certSummary(r?.reasoning_certificate),
+          certFull: (r?.reasoning_certificate as Record<string, unknown> | undefined) ?? null,
           followUps,
         };
         return next;
@@ -473,6 +488,26 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                       ) : null}
                       {m.visual ? <div className="atanor-demochat-visual"><AnswerExperimentSurface visual={m.visual} theme="light" /></div> : null}
                       {m.cert ? <div className="atanor-demochat-cert">🔒 {m.cert}</div> : null}
+                      {hasDrawablePath(m.certFull) ? (
+                        <div className="atanor-demochat-path">
+                          <button
+                            type="button"
+                            className="atanor-demochat-path-toggle"
+                            aria-expanded={openPaths.has(i)}
+                            onClick={() =>
+                              setOpenPaths((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(i)) next.delete(i);
+                                else next.add(i);
+                                return next;
+                              })
+                            }
+                          >
+                            {openPaths.has(i) ? "▾ 근거 경로 접기" : "▸ 근거 경로 보기 (시맨틱 줌)"}
+                          </button>
+                          {openPaths.has(i) ? <AnswerPathScene cert={m.certFull as Record<string, unknown>} /> : null}
+                        </div>
+                      ) : null}
                       {m.role === "ai" && Array.isArray(m.followUps) && m.followUps.length ? (
                         <div className="atanor-demochat-followups">
                           <span className="atanor-demochat-followups-label">{ko ? "관련해서 더 물어보기" : "Ask a related question"}</span>
