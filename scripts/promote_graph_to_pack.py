@@ -78,6 +78,136 @@ def _clean_desc(text: str) -> str | None:
     return t
 
 
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", str(s or "")).strip().lower()
+
+
+# Single-token leading subject (no internal spaces): "광합성은 …", "Algeria is …".
+# Language-agnostic — the token before the first Korean subject particle, or an
+# English/Latin leading word, is the bare subject.
+_LEAD_SUBJ = re.compile(r"^\s*([^\s()]{2,20}?)(?:은|는|이|가)\s")
+
+# Korean MODIFIED leading subject: a multi-token noun phrase (has at least one
+# internal space) ending in a subject particle — "머신러닝 알고리즘은 …". Only the
+# HEAD noun (last token) is the concept; the preceding tokens are modifiers.
+_LEAD_SUBJ_KO_MULTI = re.compile(r"^\s*([^()]{2,40}?)(?:은|는|이|가)\s")
+
+# A KOREAN sentence is DEFINITIONAL only if it ends with a categorial copula
+# ("…이다", "…입니다") or a defining verb ("…말한다/뜻한다/가리킨다/일컫는다",
+# "…라고 한다"). This rejects the leading-subject-but-not-a-definition class that
+# a subject heuristic otherwise imports as descriptions: casual ("…가고 싶지
+# 않아요"), negation ("…어렵지 않습니다!"), news events ("…발간했다."), questions
+# ("…건가요?"), and off-topic similes ("…JPEG-LS하고 비슷하다."). Leading-subject
+# ≠ definition, and precision (never answer a "…란?" with a travel blurb) is the
+# identity here. English/Latin sentences are exempt — the startswith path already
+# only maps sentences that LEAD with the concept, which in this corpus are
+# overwhelmingly "X is a/was a …" definitions.
+_KO_DEF_ENDING = re.compile(
+    r"(?:이다|입니다|이었다|이었습니다|였다|였습니다"
+    r"|말한다|말합니다|뜻한다|뜻합니다|가리킨다|가리킵니다|일컫는다|일컫습니다"
+    r"|이라고\s*한다|라고\s*한다|이라\s*한다"
+    r"|불린다|불립니다|불리운다|불리는\s*말이다"          # "is called X"
+    r"|알려져\s*있다|알려져\s*있습니다)[.\"'”’)\]]*$"       # "is known as X"
+)
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _is_definitional(txt: str) -> bool:
+    t = str(txt or "").strip()
+    if not _HANGUL.search(t):
+        return True  # non-Korean: exempt (handled by startswith precision)
+    return bool(_KO_DEF_ENDING.search(t))
+
+
+def build_lead_def_by_name(
+    text_by_hash: dict[str, str], topics_by_hash: dict[str, set]
+) -> dict[str, str]:
+    """name -> a definitional sentence where the name is the LEADING subject.
+
+    Decoupled from each concept's recorded source_hashes, which can be
+    INCOMPLETE: a concept first created from a worse sentence may never record
+    its clean definition's hash. (The coverage killer: 광합성's good "광합성은
+    …과정이다" existed in evidence but wasn't in the concept's hashes, so it
+    never promoted.) Search ALL evidence with the same quality gate.
+
+    Three ADDITIVE topic sources (a concept promotes if ANY holds):
+      (a) case_frame TOPIC/SUBJ head AND the sentence starts with it as a real
+          subject. Language-agnostic (English "Algeria is a country…" -> algeria;
+          Korean "세포는 …단위이다" -> 세포). A boundary check rejects a Korean
+          genitive/prefix match ("엔비디아의 …", "미국인은 …").
+      (b) the sentence's own single-token leading subject (regex), for subjects
+          not recorded in any case_frame (pure-copula defs yield no frame).
+      (c) NEW: the HEAD noun of a Korean MODIFIED leading subject —
+          "머신러닝 알고리즘은 …" -> 알고리즘, "컴퓨터 바이러스는 …" -> 바이러스.
+          The old rule required the sentence to start with the *bare* concept
+          name, so any modifier in front ("머신러닝 알고리즘") silently discarded
+          the definition — the systematic killer of common-noun coverage. The
+          modifier tokens themselves are never treated as the subject.
+
+    (c) is deliberately Korean-particle-gated and does NOT loosen (a)/(b): it
+    only ADDS the head noun of an already-particle-terminated leading NP, so it
+    cannot drop the English/clean-Korean matches (a)/(b) already produce.
+    """
+    out: dict[str, str] = {}
+
+    def _offer(key: str, txt: str) -> None:
+        if not key or not _is_definitional(txt):
+            return
+        cur = out.get(key)
+        if cur is None or len(txt) < len(cur):
+            out[key] = txt
+
+    def _subject_boundary_ok(tn: str, topic: str) -> bool:
+        # The sentence starts with `topic`; is `topic` the SUBJECT? Look at the
+        # very next char. If it is a Korean subject/topic particle (은/는/이/가),
+        # yes. If it is another Hangul syllable, `topic` is only a PREFIX — either
+        # a genitive modifier ("엔비디아의 …"/"미국의 …") or a longer word
+        # ("미국인은 …"), so NO. Non-Hangul (space, comma, Latin, punctuation)
+        # means an English/clean boundary -> yes ("Algeria, officially …").
+        rest = tn[len(topic):]
+        if not rest:
+            return True
+        c = rest[0]
+        if c in "은는이가":
+            return True
+        return not ("가" <= c <= "힣")
+
+    for h, txt in text_by_hash.items():
+        tn = _norm(txt)
+        # (a) case_frame topic that the sentence leads with, as a real subject.
+        for topic in topics_by_hash.get(h, set()):
+            if topic and tn.startswith(topic) and _subject_boundary_ok(tn, topic):
+                _offer(topic, txt)
+        # (b) single-token leading subject.
+        m = _LEAD_SUBJ.match(txt)
+        if m:
+            _offer(_norm(m.group(1)), txt)
+        # (c) head noun of a Korean modified (multi-token) leading subject.
+        # HANGUL HEADS ONLY: "머신러닝 알고리즘은 …" -> 알고리즘 (a real common-noun
+        # head). Latin/numeric last tokens come from multi-word PROPER nouns the
+        # decomposer mis-splits ("Spring Boot" -> boot, "맨헌트 인터내셔널 1993" ->
+        # 1993, "Gemini Enterprise" -> enterprise): the whole name is one rigid
+        # entity, so its last token is NOT a standalone head. Those are left to
+        # path (a), which requires the sentence to start with the concept and so
+        # never maps the wrong tail. (The decomposer's proper-noun mis-split is a
+        # separate upstream issue, not patched here.)
+        mk = _LEAD_SUBJ_KO_MULTI.match(txt)
+        if mk:
+            lead_np = _norm(mk.group(1))
+            toks = lead_np.split(" ")
+            if len(toks) >= 2:  # modified only; single-token handled by (b)
+                head = toks[-1]
+                prev = toks[-2]
+                hangul_head = bool(head) and "가" <= head[0] <= "힣"
+                # A Latin/other head is a real head ONLY when the preceding token
+                # is a Korean genitive-marked modifier ("엔비디아의 CUDA" -> CUDA);
+                # a bare space-joined proper noun ("Spring Boot") is not split.
+                genitive_marked = prev.endswith("의")
+                if len(head) >= 2 and (hangul_head or genitive_marked):
+                    _offer(head, txt)
+    return out
+
+
 def promote(dry_run: bool = False) -> dict:
     # curated stays authoritative
     curated = build_general_semantic_pack_v0()
@@ -99,9 +229,6 @@ def promote(dry_run: bool = False) -> dict:
     # (subject). Build source_hash -> set(topic heads) from case_frames, so we never
     # attach a sentence about Nvidia to the concept "델라웨어" just because it is
     # mentioned. Only definitional/subject sentences become descriptions.
-    def _norm(s: str) -> str:
-        return re.sub(r"\s+", " ", str(s or "")).strip().lower()
-
     topics_by_hash: dict[str, set] = {}
     for fr in _read("case_frames.jsonl"):
         h = fr.get("source_hash")
@@ -131,29 +258,7 @@ def promote(dry_run: bool = False) -> dict:
             in_degree[t] = in_degree.get(t, 0) + 1
     pred_info = predicate_informativeness(all_rels)
 
-    # name -> a definitional sentence where the name is the LEADING topic. Decoupled from
-    # each concept's recorded source_hashes, which can be INCOMPLETE: a concept first created
-    # from a worse sentence may never record its clean definition's hash. (The coverage
-    # killer: 광합성's good "광합성은 …과정이다" existed in evidence but wasn't in the concept's
-    # hashes, so it never promoted.) Search ALL evidence with the same quality gate (name is a
-    # TOPIC and the sentence leads with it); keep the shortest match (cleanest definition).
-    # Topic sources: (a) case_frame TOPIC/SUBJ roles, AND (b) the sentence's own leading
-    # subject "X는/은/이/가 …". (b) is essential because a PURE-COPULA definition
-    # ("세포는 …단위이다", no verb) yields NO case_frame, so it had no recorded TOPIC and
-    # could never promote — the systematic killer of dictionary-style "X는 …이다" definitions.
-    _lead_subj = re.compile(r"^\s*([^\s()]{2,20}?)(?:은|는|이|가)\s")
-    lead_def_by_name: dict[str, str] = {}
-    for h, txt in text_by_hash.items():
-        tn = _norm(txt)
-        cands = set(topics_by_hash.get(h, set()))
-        m = _lead_subj.match(txt)
-        if m:
-            cands.add(_norm(m.group(1)))
-        for topic in cands:
-            if topic and tn.startswith(topic):
-                cur = lead_def_by_name.get(topic)
-                if cur is None or len(txt) < len(cur):
-                    lead_def_by_name[topic] = txt
+    lead_def_by_name = build_lead_def_by_name(text_by_hash, topics_by_hash)
 
     # Time-deixis / discourse words are closed-class grammar (LAD layer), not knowledge
     # entities — but casual sentences ("오늘은 …해볼게요") make them look like topics, so
