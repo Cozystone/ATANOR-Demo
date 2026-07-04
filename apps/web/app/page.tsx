@@ -17,6 +17,7 @@ import BrainConnectionStatus from "./BrainConnectionStatus";
 import type { CloudBrainSphereStats } from "./CloudBrainSphereScene";
 const CloudBrainSphereScene = dynamic(() => import("./CloudBrainSphereScene"), { ssr: false, loading: () => null });
 import LiveLearningPanel from "./LiveLearningPanel";
+import { useCloudLearningMetrics } from "./useCloudLearningMetrics";
 import LiveSelfhoodSchedulerPanel from "./LiveSelfhoodSchedulerPanel";
 import MemoryApprovalPanel from "./MemoryApprovalPanel";
 import type { Rag3DControl, Rag3DEdge, Rag3DGraph, Rag3DNode, Rag3DVisualState } from "./Rag3DScene";
@@ -2036,6 +2037,10 @@ function FullApp() {
   const [brainGraphCloud, setBrainGraphCloud] = useState<AnyRecord | null>(null);
   const [cloudArrivals, setCloudArrivals] = useState<CloudArrival[]>([]);
   const cloudArrivalPrevRef = useRef<number | null>(null);
+  // Shared cloud-brain learning metrics (one app-wide SSE/poll subscription — 난제
+  // P4). Drives the cloud arrival flashes + surface arrivals + synapse rate below
+  // instead of this page keeping its own duplicate 2.2s poll of the same endpoint.
+  const cloudLearnMetrics = useCloudLearningMetrics();
   const [cloudGraphView, setCloudGraphView] = useState<"concept" | "surface">("concept");
   // Render gate for the live activity overlay (new-node orange branches, blue
   // verification flashes, pulses, bloom). OFF = calmer + power-efficient; the
@@ -4527,74 +4532,60 @@ function FullApp() {
       setSurfaceArrivals((prev) => (prev.length ? [] : prev));
       return;
     }
-    let alive = true;
     // New nodes flash orange, freeze to white, then linger as part of the body
     // (they "stay where they appeared"); the cap rotates the oldest out within
-    // the render budget.
+    // the render budget. Driven by the SHARED metrics subscription (no own poll).
+    const data = cloudLearnMetrics as AnyRecord | null;
+    if (!data) return;
     const ARRIVAL_TTL = 45000;
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/cloud-brain/learning/continuous/metrics", { cache: "no-store" });
-        const data = (await res.json()) as AnyRecord;
-        if (!alive) return;
-        const total = (Number(data.concepts_added) || 0) + (Number(data.relations_added) || 0);
-        const titles = Array.isArray(data.last_titles) ? (data.last_titles as unknown[]).map(String) : [];
-        const now = Date.now();
-        // Drive the sky-blue activation density from the REAL relation-check rate
-        // (scaled up so the sweep reads as a fast, lively verification pass).
-        setSynapseRate(Math.min(280, Math.round((Number(data.relation_checks_per_second) || 0) * 1.8)));
-        if (cloudArrivalPrevRef.current === null) {
-          cloudArrivalPrevRef.current = total;
-          return;
-        }
-        const delta = Math.max(0, total - cloudArrivalPrevRef.current);
-        cloudArrivalPrevRef.current = total;
-        setCloudArrivals((prev) => {
-          const live = prev.filter((arrival) => now - arrival.born < ARRIVAL_TTL);
-          if (delta <= 0) return live.length === prev.length ? prev : live;
-          const spawnCount = Math.min(delta, 16);
-          const fresh: CloudArrival[] = Array.from({ length: spawnCount }, (_, i) => ({
-            id: `cloud-arrival-${now}-${i}`,
-            label: titles.length ? titles[i % titles.length] : "새 개념",
-            born: now,
-            anchorSeed: Math.floor(Math.random() * 1_000_000_000),
-            seq: arrivalSeqRef.current++,
-          }));
-          return [...live, ...fresh].slice(-180);
-        });
-        // Surface (construction) graph learns from the SAME sentences — spawn
-        // surface arrivals from the surface_added delta so both grow together.
-        const surfaceTotal = Number(data.surface_added) || 0;
-        if (surfaceArrivalPrevRef.current === null) {
-          surfaceArrivalPrevRef.current = surfaceTotal;
-        } else {
-          const sDelta = Math.max(0, surfaceTotal - surfaceArrivalPrevRef.current);
-          surfaceArrivalPrevRef.current = surfaceTotal;
-          setSurfaceArrivals((prev) => {
-            const live = prev.filter((arrival) => now - arrival.born < ARRIVAL_TTL);
-            if (sDelta <= 0) return live.length === prev.length ? prev : live;
-            const spawnCount = Math.min(sDelta, 16);
-            const fresh: CloudArrival[] = Array.from({ length: spawnCount }, (_, i) => ({
-              id: `surface-arrival-${now}-${i}`,
-              label: titles.length ? titles[i % titles.length] : "새 문장",
-              born: now,
-              anchorSeed: Math.floor(Math.random() * 1_000_000_000),
-              seq: arrivalSeqRef.current++,
-            }));
-            return [...live, ...fresh].slice(-180);
-          });
-        }
-      } catch {
-        /* keep last */
-      }
-    };
-    poll();
-    const id = setInterval(poll, 2200);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [mainSection]);
+    const total = (Number(data.concepts_added) || 0) + (Number(data.relations_added) || 0);
+    const titles = Array.isArray(data.last_titles) ? (data.last_titles as unknown[]).map(String) : [];
+    const now = Date.now();
+    // Drive the sky-blue activation density from the REAL relation-check rate
+    // (scaled up so the sweep reads as a fast, lively verification pass).
+    setSynapseRate(Math.min(280, Math.round((Number(data.relation_checks_per_second) || 0) * 1.8)));
+    if (cloudArrivalPrevRef.current === null) {
+      cloudArrivalPrevRef.current = total;
+    } else {
+      const delta = Math.max(0, total - cloudArrivalPrevRef.current);
+      cloudArrivalPrevRef.current = total;
+      setCloudArrivals((prev) => {
+        const live = prev.filter((arrival) => now - arrival.born < ARRIVAL_TTL);
+        if (delta <= 0) return live.length === prev.length ? prev : live;
+        const spawnCount = Math.min(delta, 16);
+        const fresh: CloudArrival[] = Array.from({ length: spawnCount }, (_, i) => ({
+          id: `cloud-arrival-${now}-${i}`,
+          label: titles.length ? titles[i % titles.length] : "새 개념",
+          born: now,
+          anchorSeed: Math.floor(Math.random() * 1_000_000_000),
+          seq: arrivalSeqRef.current++,
+        }));
+        return [...live, ...fresh].slice(-180);
+      });
+    }
+    // Surface (construction) graph learns from the SAME sentences — spawn
+    // surface arrivals from the surface_added delta so both grow together.
+    const surfaceTotal = Number(data.surface_added) || 0;
+    if (surfaceArrivalPrevRef.current === null) {
+      surfaceArrivalPrevRef.current = surfaceTotal;
+    } else {
+      const sDelta = Math.max(0, surfaceTotal - surfaceArrivalPrevRef.current);
+      surfaceArrivalPrevRef.current = surfaceTotal;
+      setSurfaceArrivals((prev) => {
+        const live = prev.filter((arrival) => now - arrival.born < ARRIVAL_TTL);
+        if (sDelta <= 0) return live.length === prev.length ? prev : live;
+        const spawnCount = Math.min(sDelta, 16);
+        const fresh: CloudArrival[] = Array.from({ length: spawnCount }, (_, i) => ({
+          id: `surface-arrival-${now}-${i}`,
+          label: titles.length ? titles[i % titles.length] : "새 문장",
+          born: now,
+          anchorSeed: Math.floor(Math.random() * 1_000_000_000),
+          seq: arrivalSeqRef.current++,
+        }));
+        return [...live, ...fresh].slice(-180);
+      });
+    }
+  }, [mainSection, cloudLearnMetrics]);
   const energyReduction = asPercent(neuro?.energy_estimate?.reduction_ratio);
   const eventSparsity = asPercent(neuro?.event_gate?.sparsity);
   const ramSoftGb = stability?.runtime_envelope?.ram_soft_gb ?? 23;

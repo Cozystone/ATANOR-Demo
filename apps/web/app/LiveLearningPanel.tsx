@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useCloudLearningMetrics } from "./useCloudLearningMetrics";
 
 /**
- * Live view of the infinite cumulative-learning loop. Polls
- * /api/cloud-brain/learning/continuous/metrics and shows real, measured growth —
- * a toggle switches between the CONCEPT graph and the SURFACE graph growth. No
- * fabricated numbers: these are the loop's own per-tick added counts.
+ * Live view of the infinite cumulative-learning loop. Reads the SHARED cloud
+ * learning metrics (one app-wide SSE/poll subscription — 난제 P4) and shows real,
+ * measured growth — a toggle switches between the CONCEPT graph and the SURFACE
+ * graph growth. No fabricated numbers: these are the loop's own per-tick added
+ * counts.
  */
 
 type Metrics = {
@@ -45,7 +47,7 @@ export default function LiveLearningPanel({
   view?: View;
   onViewChange?: (view: View) => void;
 }) {
-  const [m, setM] = useState<Metrics | null>(null);
+  const m = (useCloudLearningMetrics() as Metrics | null) ?? null;
   const [internalView, setInternalView] = useState<View>("concept");
   const view = controlledView ?? internalView;
   const setView = (next: View) => {
@@ -73,31 +75,23 @@ export default function LiveLearningPanel({
     return () => clearInterval(id);
   }, [view]);
 
+  // Reset the sparkline baseline whenever the view (concept↔surface) changes so the
+  // delta series tracks the currently-selected metric.
   useEffect(() => {
-    let alive = true;
-    const tick = async () => {
-      try {
-        const res = await fetch(`${apiBase}/api/cloud-brain/learning/continuous/metrics`, { cache: "no-store" });
-        const d = (await res.json()) as Metrics;
-        if (!alive) return;
-        setM(d);
-        const total = view === "concept" ? d.concepts_added : d.surface_added;
-        const delta = Math.max(0, total - prevRef.current);
-        prevRef.current = total;
-        setSeries((s) => [...s.slice(-59), delta]);
-      } catch {
-        /* keep last */
-      }
-    };
     prevRef.current = 0;
     setSeries([]);
-    tick();
-    const id = setInterval(tick, 2000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [apiBase, view]);
+  }, [view]);
+
+  // Append a per-update delta whenever the shared metrics change (no own polling —
+  // the subscription in useCloudLearningMetrics is the single app-wide transport).
+  useEffect(() => {
+    if (!m) return;
+    const total = view === "concept" ? m.concepts_added : m.surface_added;
+    if (typeof total !== "number") return;
+    const delta = Math.max(0, total - prevRef.current);
+    prevRef.current = total;
+    setSeries((s) => [...s.slice(-59), delta]);
+  }, [m, view]);
 
   const primary = m ? (view === "concept" ? m.concepts_added : m.surface_added) : 0;
   const rate = m ? (view === "concept" ? m.concepts_per_minute : Math.round((m.surface_added / Math.max(1, m.uptime_seconds)) * 60)) : 0;

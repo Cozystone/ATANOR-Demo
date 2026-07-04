@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { browserMemorySafeMode, chromeHeapSnapshot, graphRenderFpsCap, resolveGraphPixelRatio, shouldRenderGraphFrame, writeGraphTelemetry } from "./graphRendererGuardrails";
+import { useCloudLearningMetrics } from "./useCloudLearningMetrics";
 
 type AnyRecord = Record<string, any>;
 
@@ -390,40 +391,28 @@ export default function CloudBrainSphereScene({ edgeOpacity = 0.2, highEnd = fal
     });
   }, [budgets.edges, budgets.nodes, edgeOpacity, manifest, materialized, onStats, zoomLevel]);
 
-  // Poll the live cumulative-learning metrics; spawn a fresh-node spark for every
-  // newly learned concept/relation so growth is visible on the sphere per second.
+  // Spawn a fresh-node spark for every newly learned concept/relation so growth is
+  // visible on the sphere per second. Reads the SHARED cloud-learning metrics
+  // (one app-wide subscription — 난제 P4) instead of its own 2s poll.
+  const learnMetrics = useCloudLearningMetrics();
+  const lastTotalRef = useRef<number>(-1);
   useEffect(() => {
-    let alive = true;
-    let last = -1;
-    const poll = async () => {
-      try {
-        const d = await apiJson<AnyRecord>("/api/cloud-brain/learning/continuous/metrics");
-        if (!alive) return;
-        const total = Number(d.concepts_added ?? 0) + Number(d.relations_added ?? 0);
-        if (last >= 0) {
-          const delta = Math.max(0, Math.min(120, total - last));
-          const state = sceneRef.current;
-          if (state && delta > 0) {
-            const now = performance.now();
-            for (let i = 0; i < delta; i += 1) {
-              const p = randomSurfacePoint();
-              state.sparks.push({ ...p, born: now + i * 60 }); // slight stagger
-            }
-            if (state.sparks.length > SPARK_MAX) state.sparks.splice(0, state.sparks.length - SPARK_MAX);
-          }
+    if (!learnMetrics) return;
+    const total = Number(learnMetrics.concepts_added ?? 0) + Number(learnMetrics.relations_added ?? 0);
+    if (lastTotalRef.current >= 0) {
+      const delta = Math.max(0, Math.min(120, total - lastTotalRef.current));
+      const state = sceneRef.current;
+      if (state && delta > 0) {
+        const now = performance.now();
+        for (let i = 0; i < delta; i += 1) {
+          const p = randomSurfacePoint();
+          state.sparks.push({ ...p, born: now + i * 60 }); // slight stagger
         }
-        last = total;
-      } catch {
-        /* keep last */
+        if (state.sparks.length > SPARK_MAX) state.sparks.splice(0, state.sparks.length - SPARK_MAX);
       }
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
+    }
+    lastTotalRef.current = total;
+  }, [learnMetrics]);
 
   return (
     <div
