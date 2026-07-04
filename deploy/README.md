@@ -27,7 +27,7 @@ Docker volume, so it survives restarts and redeploys — the brain only grows.
    machine, etc.) and install Docker + the compose plugin.
 2. **One-line setup** — SSH into the VM and paste:
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/main/deploy/setup-vm.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/demo/deploy/setup-vm.sh | bash
    ```
    (installs Docker, pulls the public repo, builds + starts the brain). Or do it
    manually: copy the repo and run

@@ -17,10 +17,11 @@ fi
 echo "==> [2/3] Source"
 cd "${HOME}"
 if [ ! -d ATANOR-Demo ]; then
-  git clone --depth 1 https://github.com/Cozystone/ATANOR-Demo.git
+  git clone --depth 1 --branch demo https://github.com/Cozystone/ATANOR-Demo.git
 fi
 cd ATANOR-Demo
-git pull --ff-only || true
+git fetch origin demo
+git checkout -B demo FETCH_HEAD
 
 echo "==> [3/3] Build + run"
 sudo docker compose -f deploy/docker-compose.yml up -d --build
@@ -29,5 +30,6 @@ echo
 echo "Done. The cloud brain is starting. Verify in ~60s:"
 echo "  curl http://localhost:8500/api/cloud-brain/learning/continuous/metrics"
 echo
-echo "Next: open port 8500 in the VM firewall (or front it with the Caddy service"
-echo "in deploy/docker-compose.yml for HTTPS), then set API_BASE_URL in the frontend."
+echo "Caddy is enabled by default in docker-compose.yml, fronting the brain with"
+echo "HTTPS on 80/443 (edit deploy/Caddyfile's domain to match this VM before"
+echo "first boot). Set CLOUD_BRAIN_BASE in the frontend to that HTTPS URL."
