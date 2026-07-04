@@ -31,12 +31,21 @@ data/*/**
 !data/*/proofs/**
 !data/*/catalog/
 !data/*/catalog/**
+# sealed holdout eval batteries are tracked (Goodhart defence); running log stays ignored
+!data/eval/holdout_v1.jsonl
+!data/eval/holdout_v2.jsonl
+!data/eval/holdout_v1.manifest.json
+!data/eval/holdout_v2.manifest.json
+!data/eval/holdout_exclusions.json
 reports/
 .tmp-msix-inspect*/
 homage-bench-*.bin
 /main.exe
 /main.pdb
-data/ontology/
+# data/ontology: ignore generated contents but TRACK the 4D relation-type schema
+# (config, not generated data). Dir itself is not excluded so the file can be re-included.
+data/ontology/*
+!data/ontology/relation_type_schema.jsonl
 data/memory/
 checkpoints/
 *.log

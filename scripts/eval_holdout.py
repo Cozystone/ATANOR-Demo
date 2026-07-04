@@ -8,6 +8,7 @@ a widening gap means self_improve is overfitting the working battery (Goodhart).
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import urllib.request
@@ -17,12 +18,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 EVAL_DIR = REPO / "data" / "eval"
 BATTERY = EVAL_DIR / "holdout_v1.jsonl"
+BATTERY2 = EVAL_DIR / "holdout_v2.jsonl"
 HISTORY = EVAL_DIR / "holdout_history.jsonl"
 URL = "http://127.0.0.1:8502/api/base-brain/answer"
 ABSTAIN = ("근거가 부족", "실시간", "확인된 근거로는", "찾아드릴게요")
 
 sys.path.insert(0, str(REPO / "scripts"))
 from build_holdout_battery import check as seal_check  # noqa: E402
+from build_holdout_battery import check_v2 as seal_check_v2  # noqa: E402
 
 
 def ask(question: str) -> str:
@@ -35,11 +38,18 @@ def ask(question: str) -> str:
         return f"__ERR__ {exc}"
 
 
-def main() -> int:
-    if seal_check() != 0:
-        print("[EVAL] refusing to score: seal invalid")
-        return 2
-    rows = [json.loads(l) for l in BATTERY.read_text(encoding="utf-8").splitlines() if l.strip()]
+def main(v2: bool = False) -> int:
+    if v2:
+        battery, label = BATTERY2, "HOLDOUT-v2"
+        if seal_check_v2() != 0:
+            print("[EVAL] refusing to score: v2 seal invalid")
+            return 2
+    else:
+        battery, label = BATTERY, "HOLDOUT"
+        if seal_check() != 0:
+            print("[EVAL] refusing to score: seal invalid")
+            return 2
+    rows = [json.loads(l) for l in battery.read_text(encoding="utf-8").splitlines() if l.strip()]
     answered = abstained = errors = 0
     hard: list[str] = []
     for row in rows:
@@ -52,17 +62,20 @@ def main() -> int:
         else:
             answered += 1
     total = len(rows)
-    print(f"[HOLDOUT] answered {answered}/{total} ({answered/total:.0%}) | abstained {abstained} | errors {errors}")
+    print(f"[{label}] answered {answered}/{total} ({answered/total:.0%}) | abstained {abstained} | errors {errors}")
     if hard:
-        print(f"[HOLDOUT] abstaining terms: {hard[:15]}")
+        print(f"[{label}] abstaining terms: {hard[:15]}")
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     with HISTORY.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps({
-            "t": datetime.now(timezone.utc).isoformat(), "total": total,
-            "answered": answered, "abstained": abstained, "errors": errors,
+            "t": datetime.now(timezone.utc).isoformat(), "battery": battery.stem,
+            "total": total, "answered": answered, "abstained": abstained, "errors": errors,
         }, ensure_ascii=False) + "\n")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--v2", action="store_true", help="score the fair should-answer battery")
+    args = ap.parse_args()
+    raise SystemExit(main(v2=args.v2))
