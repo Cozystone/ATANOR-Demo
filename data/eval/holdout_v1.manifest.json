@@ -1,6 +1,6 @@
 {
  "battery": "holdout_v1.jsonl",
- "sha256": "70325212a1208dbec3fb356a3a077cbc414eb571b104efd447d35bc4cb1623b1",
+ "sha256": "978f5bb5d2e67710ec20a22980e492f13613fa6584db43731d439ba0bf5bd3f8",
  "items": 60,
  "rng_seed": 20260704,
  "sealed_at": "2026-07-04T00:34:24+00:00",

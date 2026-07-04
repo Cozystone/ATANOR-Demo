@@ -104,7 +104,8 @@ def build(sample_size: int = 60) -> int:
     ]
 
     EVAL_DIR.mkdir(parents=True, exist_ok=True)
-    BATTERY.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8")
+    # LF-only bytes: the seal hash must be identical across OS checkouts
+    BATTERY.write_bytes(("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n").encode("utf-8"))
     MANIFEST.write_text(json.dumps({
         "battery": BATTERY.name,
         "sha256": _sha256(BATTERY),
