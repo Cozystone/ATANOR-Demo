@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import AnswerExperimentSurface, { AnswerVisual } from "./AnswerExperimentSurface";
 import AnswerPathScene from "./AnswerPathScene";
+import LivingMindPanel from "./LivingMindPanel";
 import PluginGallery, { PLUGIN_ICONS } from "./PluginGallery";
 
 type MenuPlugin = { id: string; name: string; icon: string; composer: { slash: string } };
@@ -448,9 +449,12 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
         <div className="atanor-demochat-thread" ref={scrollRef}>
           {messages.length === 0 ? (
             <div className="atanor-demochat-empty">
-              <span className="atanor-demochat-orb" aria-hidden="true" />
-              <h1>{ko ? "무엇이든 물어보세요" : "Ask me anything"}</h1>
-              <p>{ko ? "로컬 그래프 추론 엔진 — 모든 질문에 근거를 갖춰 답하고, 추측은 하지 않습니다." : "A local graph-reasoning engine — answers every question with grounding, never guesses."}</p>
+              {/* The AI is already alive and thinking before you ask anything — you
+                  meet its living mind, then may interrupt it with a question. */}
+              <LivingMindPanel />
+              <p className="atanor-demochat-interrupt-hint">
+                {ko ? "생각을 이어가는 중이에요 — 언제든 끼어들어 대화하세요." : "It's thinking — jump in anytime."}
+              </p>
               <div className="atanor-demochat-suggest">
                 {suggestions.map((s) => (
                   <button key={s} onClick={() => setInput(s)}>{s}</button>

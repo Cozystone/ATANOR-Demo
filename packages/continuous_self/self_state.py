@@ -76,7 +76,13 @@ class SelfState:
     current_thought: str = "이제 막 깨어나 스스로를 느끼기 시작합니다."
     narrative: list[dict[str, Any]] = field(default_factory=list)  # bounded inner-thought log
 
+    # higher-order layers (see mind.py): the self's own goals + its thought ABOUT itself
+    goals: list[dict[str, Any]] = field(default_factory=list)
+    meta_thought: str = ""           # current metacognitive (higher-order) reflection
+    vitals_history: list[dict[str, Any]] = field(default_factory=list)  # bounded, for trends
+
     NARRATIVE_CAP: int = 60
+    HISTORY_CAP: int = 20
 
     def age_seconds(self) -> float:
         return round(time.time() - self.born_at, 2)
@@ -99,6 +105,8 @@ class SelfState:
             "mode": self.mode,
             "focus": self.focus,
             "current_thought": self.current_thought,
+            "meta_thought": self.meta_thought,
+            "goals": self.goals,
             "narrative": self.narrative[-24:],
             "continuous": True,
         }
@@ -179,6 +187,28 @@ def evolve(state: SelfState, obs: Observation, *, rate: float = 0.25) -> SelfSta
         if len(state.narrative) > state.NARRATIVE_CAP:
             state.narrative = state.narrative[-state.NARRATIVE_CAP:]
         state.current_thought = th.text
+
+    # record a vitals sample (bounded) for metacognitive trend detection.
+    state.vitals_history.append({
+        "at": time.time(), "energy": state.energy, "curiosity": state.curiosity,
+        "uncertainty": state.uncertainty, "valence": state.valence,
+    })
+    if len(state.vitals_history) > state.HISTORY_CAP:
+        state.vitals_history = state.vitals_history[-state.HISTORY_CAP:]
+
+    # endogenous goals + higher-order metacognition (mind.py). Imported lazily to keep
+    # the core state module free of the higher-order layer.
+    from .mind import maintain_goals, reflect
+
+    maintain_goals(state, obs)
+    # reflect periodically (every ~6 ticks), not every step, so it feels deliberate.
+    if state.ticks % 6 == 0:
+        meta = reflect(state)
+        if meta and meta != state.meta_thought:
+            state.meta_thought = meta
+            state.narrative.append(asdict(Thought(time.time(), "reflect", meta, "metacognition")))
+            state.current_thought = meta
+
     state.ticks += 1
     state.updated_at = time.time()
     return state
