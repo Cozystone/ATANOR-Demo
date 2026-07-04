@@ -208,18 +208,31 @@ def normalize_concept(text: str) -> str:
 
 
 def predicate_lemma_from_tokens(tokens: list[Any]) -> str:
-    """Extract a conservative Korean predicate lemma from Kiwi tokens."""
+    """Extract a conservative Korean predicate lemma from Kiwi tokens.
 
+    The MAIN predicate in Korean is sentence-final, and a verb immediately followed
+    by an adnominal ending (ETM: -은/-는/-던/-을) is a MODIFIER, not the predicate —
+    '검증된 개념과 …를 저장합니다' must yield 저장하다, never 검증하다. So we collect
+    all verbal candidates, drop the ETM-modified ones, and keep the LAST survivor."""
+
+    candidates: list[tuple[int, str, bool]] = []  # (index, lemma, is_modifier)
     for index, token in enumerate(tokens):
         form = str(getattr(token, "form", ""))
         tag = str(getattr(token, "tag", ""))
+        lemma = ""
         if tag in {"XSV", "XSA"} and index > 0:
             previous = str(getattr(tokens[index - 1], "form", ""))
             if previous:
-                return previous + "하다"
-        if tag.startswith(PREDICATE_TAG_PREFIXES):
-            return form + "다"
-    return ""
+                lemma = previous + "하다"
+        elif tag.startswith(PREDICATE_TAG_PREFIXES):
+            lemma = form + "다"
+        if lemma:
+            next_tag = str(getattr(tokens[index + 1], "tag", "")) if index + 1 < len(tokens) else ""
+            candidates.append((index, lemma, next_tag == "ETM"))
+    mains = [lemma for _, lemma, is_mod in candidates if not is_mod]
+    if mains:
+        return mains[-1]
+    return candidates[-1][1] if candidates else ""
 
 
 _DATE_UNIT_FORMS = frozenset({"일", "월", "년", "시", "분", "초", "세기", "요일", "주", "세", "차"})

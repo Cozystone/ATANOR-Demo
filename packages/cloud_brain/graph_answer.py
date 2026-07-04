@@ -133,6 +133,20 @@ def graph_answer_and_learn(
             facts.append(key)
         if len(facts) >= max_relations:
             break
+    # PREDICATE ALGEBRA (P3 wiring): derive bounded inferences over the concept's
+    # 1-hop neighborhood — IS_A transitive closure + inheritable-property inheritance
+    # ("진돗개 IS_A 개 IS_A 포유류 CAN 호흡" ⊢ 진돗개 CAN 호흡). Derived facts carry
+    # their derivation trace and are marked, never silently mixed with observed ones.
+    derived_facts: list[dict[str, Any]] = []
+    try:
+        derived_facts = _derive_neighborhood_facts(name, cid, rels, id_to_name, max_derived=2)
+        for d in derived_facts:
+            key = (str(d["fact"][1]), str(d["fact"][2]))
+            if key not in seen and len(facts) < max_relations + 2:
+                seen.add(key)
+                facts.append(key)
+    except Exception:  # inference must never break answering
+        derived_facts = []
     answer = _realize(name, facts)
     result = apply_answer_reinforcement(rel_path, cid, now, max_relations=max_relations)  # LTP + persist
     return {
@@ -141,9 +155,49 @@ def graph_answer_and_learn(
         "concept_id": cid,
         "coverage": cov,
         "grounding": [{"relation": rel, "target": tgt} for rel, tgt in facts],
+        "derived": derived_facts,  # algebra inferences with full traces (XAI)
         "reinforced": result.get("relation_ids", []),
         "guarantees": {"external_llm": False, "fabricated_facts": False, "learnable_store_only": True},
     }
+
+
+def _derive_neighborhood_facts(name: str, cid: str, rels: list[dict[str, Any]],
+                               id_to_name: dict[str, str], *, max_derived: int = 2) -> list[dict[str, Any]]:
+    """Run the fixed operator algebra over the concept's 1-hop label facts.
+    Only derivations whose SUBJECT is the asked concept are surfaced."""
+    try:
+        from cgsr.predicate_algebra import PredicateProperties, infer
+    except ImportError:
+        from packages.cgsr.cgsr.predicate_algebra import PredicateProperties, infer
+
+    # label-facts: the concept's own edges + edges of its direct IS_A parents
+    label_facts: list[tuple[str, str, str]] = []
+    parents: set[str] = set()
+    for r in rels:
+        if str(r.get("source_concept_id")) == cid:
+            tgt = id_to_name.get(str(r.get("target_concept_id")), "")
+            rel = str(r.get("relation") or "")
+            if tgt and rel:
+                label_facts.append((name, rel, tgt))
+                if rel == "IS_A":
+                    parents.add(str(r.get("target_concept_id")))
+    for r in rels:
+        if str(r.get("source_concept_id")) in parents:
+            src = id_to_name.get(str(r.get("source_concept_id")), "")
+            tgt = id_to_name.get(str(r.get("target_concept_id")), "")
+            rel = str(r.get("relation") or "")
+            if src and tgt and rel:
+                label_facts.append((src, rel, tgt))
+    if not label_facts:
+        return []
+    res = infer(label_facts, PredicateProperties.load(), max_depth=3, max_derived=50)
+    out = []
+    for d in res.derived:
+        if d.fact[0] == name:
+            out.append(d.to_dict())
+        if len(out) >= max_derived:
+            break
+    return out
 
 
 _REL_PHRASE = {

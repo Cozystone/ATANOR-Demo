@@ -223,15 +223,16 @@ def test_quality_gate_rejects_private_generated_eval_mojibake_and_duplicates(tmp
 
 
 def test_generated_payloads_feed_bounded_candidate_learning_without_production_mutation(tmp_path: Path) -> None:
+    # consensus now counts VOICES (independent sources), so the re-confirming
+    # sentence must come from a SECOND corpus file — one file is one voice.
     corpus = tmp_path / "public_corpus.txt"
-    # the 3rd sentence independently re-confirms sentence 2's fact so the consensus
-    # gate (난제 P1) promotes at least one relation into the candidate store.
     corpus.write_text(
         "의미 검색은 질문과 공개 근거를 연결합니다. "
-        "지식 그래프는 개념과 관계와 출처 근거를 저장합니다. "
-        "지식 그래프는 모든 개념과 출처 근거를 저장합니다.",
+        "지식 그래프는 개념과 관계와 출처 근거를 저장합니다.",
         encoding="utf-8",
     )
+    corpus_b = tmp_path / "public_corpus_b.txt"
+    corpus_b.write_text("지식 그래프는 모든 개념과 출처 근거를 저장합니다.", encoding="utf-8")
     feeder_result = collect_approved_payloads(
         [
             SourceSpec(
@@ -239,7 +240,13 @@ def test_generated_payloads_feed_bounded_candidate_learning_without_production_m
                 source_id="fixture:candidate-run",
                 source_url_or_path=str(corpus),
                 license_hint="CC BY-SA 4.0 test fixture",
-            )
+            ),
+            SourceSpec(
+                source_type="local_public_corpus_file",
+                source_id="fixture:candidate-run-b",
+                source_url_or_path=str(corpus_b),
+                license_hint="CC BY-SA 4.0 test fixture",
+            ),
         ],
         output_dir=tmp_path / "approved",
         rejected_dir=tmp_path / "rejected",

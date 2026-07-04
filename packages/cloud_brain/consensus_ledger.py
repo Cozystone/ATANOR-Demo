@@ -35,7 +35,13 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def canonical_relation_key(source_label: str, relation: str, target_label: str) -> str:
+def canonical_relation_key(source_label: str, relation: str, target_label: str,
+                           resolver: Any = None) -> str:
+    """Canonical claim key. With a resolver, surface forms collapse first
+    (엔비디아 == Nvidia), so evidence for the same fact never splits (난제 1위)."""
+    if resolver is not None:
+        source_label = resolver.resolve(source_label)
+        target_label = resolver.resolve(target_label)
     raw = f"{source_label.strip().lower()}|{relation.strip().lower()}|{target_label.strip().lower()}"
     return "cons_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
@@ -81,7 +87,11 @@ class ConsensusLedger:
         self.ledger_path = self.root / "evidence_ledger.jsonl"
         self.promoted_path = self.root / "promoted_keys.jsonl"
         self.min_sources = max(1, int(min_sources))
-        # aggregates: key -> {sources: set, row: representative relation row, labels}
+        from .alias_resolution import AliasResolver
+
+        self.resolver = AliasResolver(self.root / "aliases.jsonl")
+        # aggregates: key -> {sources: set(sentence hashes), voices: set(provenance
+        # source ids — the Sybil-capped consensus unit), row, labels}
         self._agg: dict[str, dict[str, Any]] = {}
         self._promoted: set[str] = set()
         self._load()
@@ -106,13 +116,21 @@ class ConsensusLedger:
                         continue
 
     def _apply(self, ev: dict[str, Any]) -> None:
-        key = ev["key"]
-        slot = self._agg.setdefault(key, {"sources": set(), "row": ev.get("row") or {},
+        # the key is RECOMPUTED through the current alias resolver rather than
+        # trusted from the event, so newly learned aliases merge OLD evidence too.
+        row = ev.get("row") or {}
+        key = canonical_relation_key(str(ev.get("source_label") or ""),
+                                     str(row.get("relation") or ""),
+                                     str(ev.get("target_label") or ""),
+                                     resolver=self.resolver)
+        slot = self._agg.setdefault(key, {"sources": set(), "voices": set(), "row": row,
                                           "source_label": ev.get("source_label"),
                                           "target_label": ev.get("target_label")})
         slot["sources"].add(ev["evidence_id"])
-        if ev.get("row"):
-            slot["row"] = ev["row"]
+        voice = str((row.get("provenance") or {}).get("source_id") or ev["evidence_id"])
+        slot["voices"].add(voice)
+        if row:
+            slot["row"] = row
 
     def _append(self, ev: dict[str, Any]) -> None:
         with self.ledger_path.open("a", encoding="utf-8") as fh:
@@ -127,6 +145,10 @@ class ConsensusLedger:
         sentence_text = str(evidence.get("text") or "")
         evidence_id = str(evidence.get("source_hash") or evidence.get("dedupe_key") or
                           hashlib.sha256(sentence_text.encode("utf-8")).hexdigest())
+        # harvest inline alias pairs ("엔비디아 코퍼레이션(Nvidia Corporation)…") so
+        # surface forms of the same entity merge — including retroactively on reload.
+        if sentence_text:
+            self.resolver.learn_from_sentence(sentence_text)
         for rel in getattr(decomposition, "relations", []):
             result.relations_seen += 1
             src = concepts.get(rel.get("source_concept_id"), {})
@@ -137,7 +159,8 @@ class ConsensusLedger:
                                       and head_roundtrip_ok(tgt_label, sentence_text)):
                 result.events_rejected_roundtrip += 1
                 continue
-            key = canonical_relation_key(src_label, str(rel.get("relation") or ""), tgt_label)
+            key = canonical_relation_key(src_label, str(rel.get("relation") or ""), tgt_label,
+                                         resolver=self.resolver)
             slot = self._agg.get(key)
             if slot and evidence_id in slot["sources"]:
                 result.events_duplicate += 1
@@ -151,8 +174,11 @@ class ConsensusLedger:
 
     # ---------- promotion ----------
     def promotable(self) -> list[tuple[str, dict[str, Any]]]:
+        """Consensus counts VOICES (distinct provenance sources), not sentences —
+        one website saying something twice is still one voice (Sybil cap ⑧)."""
         return [(k, v) for k, v in self._agg.items()
-                if k not in self._promoted and len(v["sources"]) >= self.min_sources]
+                if k not in self._promoted
+                and len(v.get("voices") or v["sources"]) >= self.min_sources]
 
     def promote_into(self, store: Any) -> PromotionResult:
         """Write consensus-confirmed relations into the verified candidate store.
@@ -170,10 +196,26 @@ class ConsensusLedger:
         if is_frozen(self.root):
             result.still_quarantined = sum(1 for k in self._agg if k not in self._promoted)
             return result
+        # truth-discovery gate (P2 wiring): a claim that LOST its exclusion group
+        # (low belief despite source count) stays quarantined — unmarked, so it can
+        # still promote later if new evidence raises its belief.
+        beliefs: dict[str, float] = {}
+        scores_path = self.root / "truth_scores.json"
+        if scores_path.exists():
+            try:
+                beliefs = json.loads(scores_path.read_text(encoding="utf-8")).get("claim_belief") or {}
+            except json.JSONDecodeError:
+                beliefs = {}
+        import os as _os
+
+        min_belief = float(_os.environ.get("ATANOR_TRUTH_MIN_BELIEF", "0.34"))
         agg = AccumulationResult()
         for key, slot in self.promotable():
+            if key in beliefs and beliefs[key] < min_belief:
+                continue  # held by truth discovery; evidence keeps accumulating
             row = dict(slot["row"])
-            row["evidence_count"] = len(slot["sources"])
+            row["evidence_count"] = len(slot.get("voices") or slot["sources"])
+            row["truth_belief"] = beliefs.get(key)
             row["consensus_key"] = key
             row["consensus_promoted_at"] = _utc_now()
             appended = store._append_unique("relations", row, agg)  # noqa: SLF001 - store API
@@ -190,12 +232,17 @@ class ConsensusLedger:
         return result
 
     def stats(self) -> dict[str, Any]:
-        counts = [len(v["sources"]) for v in self._agg.values()]
+        def _n(v: dict[str, Any]) -> int:
+            return len(v.get("voices") or v["sources"])
+
+        counts = [_n(v) for v in self._agg.values()]
         return {
             "relations_quarantined": sum(1 for k in self._agg if k not in self._promoted),
             "relations_promoted_total": len(self._promoted),
             "min_sources": self.min_sources,
             "max_evidence_count": max(counts) if counts else 0,
             "pending_at_threshold": sum(1 for k, v in self._agg.items()
-                                        if k not in self._promoted and len(v["sources"]) >= self.min_sources),
+                                        if k not in self._promoted and _n(v) >= self.min_sources),
+            "alias_clusters": len({self.resolver.resolve(str(v.get("source_label") or ""))
+                                   for v in self._agg.values()}),
         }

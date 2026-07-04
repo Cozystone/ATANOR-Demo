@@ -2305,3 +2305,59 @@ def cloud_brain_prune(request: CloudBrainPruneRequest) -> dict[str, Any]:
         },
         "result": prune,
     }
+
+
+# ---- consensus trust audit (난제 ⑧ operator surface) ----
+
+def _active_ledger():
+    from packages.cloud_brain.candidate_read_model import resolve_candidate_store
+    from packages.cloud_brain.consensus_ledger import ConsensusLedger
+
+    ref = resolve_candidate_store()
+    if not ref.path:
+        return None
+    root = ref.path / "consensus_ledger"
+    if not (root / "evidence_ledger.jsonl").exists():
+        return None
+    return ConsensusLedger(root)
+
+
+@router.get("/consensus/status")
+def consensus_status() -> dict[str, Any]:
+    """Quarantine/promotion counters + freeze state — the ⑧ dashboard source."""
+    from packages.cloud_brain.trust_audit import is_frozen
+
+    ledger = _active_ledger()
+    if ledger is None:
+        return {"available": False}
+    return {"available": True, **ledger.stats(), "promotion_frozen": is_frozen(ledger.root)}
+
+
+@router.get("/consensus/audit-sample")
+def consensus_audit_sample(n: int = Query(default=5, ge=1, le=25)) -> dict[str, Any]:
+    """Random promoted claims with evidence — the operator's spot-audit feed."""
+    from packages.cloud_brain.trust_audit import sample_for_review
+
+    ledger = _active_ledger()
+    if ledger is None:
+        return {"available": False, "sample": []}
+    return {"available": True, "sample": sample_for_review(ledger, n=n)}
+
+
+class ConsensusFreezeClearRequest(BaseModel):
+    confirm: str = Field(min_length=1, max_length=40)
+
+
+@router.post("/consensus/clear-freeze")
+def consensus_clear_freeze(request: ConsensusFreezeClearRequest) -> dict[str, Any]:
+    """Operator-only: reopen promotion after reviewing a CUSUM surge freeze.
+    Requires the literal confirmation phrase — same named-action discipline as
+    the other production gates."""
+    if request.confirm != "CLEAR_FREEZE":
+        raise HTTPException(status_code=400, detail='confirmation phrase must be "CLEAR_FREEZE"')
+    from packages.cloud_brain.trust_audit import clear_freeze
+
+    ledger = _active_ledger()
+    if ledger is None:
+        return {"cleared": False, "reason": "no_active_ledger"}
+    return {"cleared": clear_freeze(ledger.root)}

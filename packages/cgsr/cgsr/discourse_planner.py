@@ -87,6 +87,14 @@ def _cause_sentence(targets: list[str], connective: str) -> str:
 
 def _other_sentence(rel: str, targets: list[str], connective: str) -> str:
     joined = _join(targets)
+    # Korean verb predicates from the live store (저장하다, 발견하다, 위치하다 …)
+    # conjugate to the polite present instead of falling to the '관계에 있습니다'
+    # frame — deterministic morphology, no word list.
+    if rel.endswith("하다"):
+        oj = select_josa(joined, ("을", "를"))
+        return f"{connective} {joined}{oj} {rel[:-2]}합니다."
+    if rel.endswith("되다"):
+        return f"{connective} {joined}(으)로 {rel[:-2]}됩니다."
     wj = select_josa(joined, ("과", "와"))
     return f"{connective} {joined}{wj} {rel} 관계에 있습니다."
 
