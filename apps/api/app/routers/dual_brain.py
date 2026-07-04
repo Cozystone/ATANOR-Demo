@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.services.alpha_services import alpha_service
@@ -3479,6 +3479,64 @@ def _attach_holographic_fold_trace(response: dict[str, Any], request: AtanorChat
     except Exception:  # pragma: no cover - never break the answer path
         return response
     return response
+
+
+@router.post("/api/chat/atanor/stream")
+async def chat_atanor_stream(request: AtanorChatRequest) -> StreamingResponse:
+    """Stage/evidence streaming (난제 P5-⑫): only IRREVOCABLE parts are streamed.
+
+    Contract: nothing shown to the user is ever retracted. Stage badges are true
+    state transitions; EVIDENCE (grounding quotes / sources / certificate kind) is
+    emitted BEFORE the composed answer — evidence is safe to show early because it
+    is labelled as evidence, not as a claim. Deeper in-pipeline emit hooks can be
+    added later without changing this wire contract.
+
+    Events (SSE): {type:"stage"} → {type:"evidence"} → {type:"answer"} | {type:"error"}
+    """
+
+    async def _events():
+        import asyncio as _aio
+        import json as _json
+
+        def _ev(obj: dict[str, Any]) -> str:
+            return "data: " + _json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+        yield _ev({"type": "stage", "stage": "analyzing"})
+        task = _aio.ensure_future(chat_atanor(request))
+        # heartbeat stages while the engine genuinely works (true waiting state)
+        waited = 0.0
+        while not task.done():
+            await _aio.sleep(0.25)
+            waited += 0.25
+            if abs(waited - 1.5) < 0.126:
+                yield _ev({"type": "stage", "stage": "grounding"})
+        try:
+            result = task.result()
+        except HTTPException as exc:
+            yield _ev({"type": "error", "detail": str(exc.detail)})
+            return
+        except Exception as exc:  # noqa: BLE001 - stream must terminate cleanly
+            yield _ev({"type": "error", "detail": str(exc)[:200]})
+            return
+        # 1) evidence first — irrevocable, labelled as evidence. The chat payload is an
+        #    envelope {state, result:{answer, evidence_docs, ...}}; read the inner doc.
+        inner = result.get("result") if isinstance(result.get("result"), dict) else result
+        cert = (inner.get("reasoning_certificate") or result.get("reasoning_certificate") or {})
+        evidence_items: list[dict[str, Any]] = []
+        for doc in (inner.get("evidence_docs") or [])[:4]:
+            if isinstance(doc, dict):
+                evidence_items.append({"kind": "source",
+                                       "value": str(doc.get("title") or doc.get("url") or doc.get("snippet") or "")[:120]})
+        for g in (inner.get("grounding") or [])[:4]:
+            evidence_items.append({"kind": "grounding", "value": g})
+        if cert.get("derivation_kind"):
+            evidence_items.append({"kind": "derivation", "value": cert.get("derivation_kind")})
+        yield _ev({"type": "evidence", "items": evidence_items})
+        # 2) the composed answer last
+        yield _ev({"type": "answer", "result": result})
+
+    return StreamingResponse(_events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.post("/api/chat/atanor")

@@ -155,13 +155,21 @@ class ConsensusLedger:
                 if k not in self._promoted and len(v["sources"]) >= self.min_sources]
 
     def promote_into(self, store: Any) -> PromotionResult:
-        """Write consensus-confirmed relations into the verified candidate store."""
+        """Write consensus-confirmed relations into the verified candidate store.
+
+        Respects the drift-freeze flag (난제 P5-⑧): if the CUSUM monitor tripped on a
+        promotion surge, nothing promotes until the operator clears the flag — the
+        quarantine keeps accumulating evidence meanwhile, so nothing is lost."""
         try:  # local import: avoid cycle; tolerate both path styles
             from cgsr.ingestion.accumulator import AccumulationResult
         except ImportError:
             from packages.cgsr.cgsr.ingestion.accumulator import AccumulationResult
+        from .trust_audit import is_frozen, update_drift
 
         result = PromotionResult()
+        if is_frozen(self.root):
+            result.still_quarantined = sum(1 for k in self._agg if k not in self._promoted)
+            return result
         agg = AccumulationResult()
         for key, slot in self.promotable():
             row = dict(slot["row"])
@@ -178,6 +186,7 @@ class ConsensusLedger:
                 result.promoted_keys.append(key)
         result.still_quarantined = sum(1 for k, v in self._agg.items()
                                        if k not in self._promoted)
+        update_drift(self.root, result.promoted)  # CUSUM surge monitor (may trip freeze)
         return result
 
     def stats(self) -> dict[str, Any]:

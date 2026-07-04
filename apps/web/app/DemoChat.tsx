@@ -36,6 +36,10 @@ type Msg = {
   cert?: string | null;
   followUps?: string[];
   pending?: boolean;
+  /** live stage label while pending (P5: real state transitions, never fake progress) */
+  stage?: string | null;
+  /** evidence items streamed BEFORE the answer — irrevocable, labelled as evidence */
+  evidence?: { kind: string; value: unknown }[];
   /** engine unreachable / empty reply — renders as an actionable error bubble */
   error?: { retryQuery: string };
 };
@@ -172,6 +176,71 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     closePanels();
   }
 
+  /** P5-⑫: consume the stage/evidence SSE stream. Returns the final result, or null
+   * to signal fallback to the plain JSON endpoint. Only irrevocable content is
+   * surfaced early (stage labels = true engine states; evidence = labelled quotes). */
+  async function streamQuery(q: string, lang: string): Promise<Record<string, unknown> | null> {
+    const res = await fetch("http://127.0.0.1:8502/api/chat/atanor/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, language: lang, web_search: true }),
+    });
+    if (!res.ok || !res.body) return null;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: Record<string, unknown> | null = null;
+    const stageLabel: Record<string, string> = {
+      analyzing: lang === "ko" ? "질문 분석 중" : "analyzing",
+      grounding: lang === "ko" ? "근거 확인 중" : "grounding",
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+      for (const ev of events) {
+        const line = ev.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+        if (payload.type === "stage") {
+          const label = stageLabel[String(payload.stage)] ?? String(payload.stage);
+          setMessages((m) => {
+            const next = m.slice();
+            const last = next[next.length - 1];
+            if (last?.pending) next[next.length - 1] = { ...last, stage: label };
+            return next;
+          });
+        } else if (payload.type === "evidence") {
+          const items = (payload.items as { kind: string; value: unknown }[]) ?? [];
+          if (items.length) {
+            setMessages((m) => {
+              const next = m.slice();
+              const last = next[next.length - 1];
+              if (last?.pending) next[next.length - 1] = { ...last, evidence: items };
+              return next;
+            });
+          }
+        } else if (payload.type === "answer") {
+          const envelope = (payload.result as Record<string, unknown>) ?? null;
+          const inner = envelope && typeof envelope.result === "object" && envelope.result
+            ? (envelope.result as Record<string, unknown>)
+            : envelope;
+          result = inner;
+        } else if (payload.type === "error") {
+          return null;
+        }
+      }
+    }
+    return result;
+  }
+
   async function runQuery(q: string) {
     q = q.trim();
     if (!q || busy) return;
@@ -181,13 +250,21 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     const lang = /[가-힣]/.test(q) ? "ko" : "en";
     setMessages((m) => [...m, { role: "user", text: q }, { role: "ai", text: "", pending: true }]);
     try {
-      const res = await fetch("/api/chat/atanor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, language: lang, web_search: true }),
-      });
-      const data = await res.json();
-      const r = (data?.result ?? data) as Record<string, unknown>;
+      let r: Record<string, unknown> | null = null;
+      try {
+        r = await streamQuery(q, lang);
+      } catch {
+        r = null; // stream unavailable → legacy path below
+      }
+      if (!r) {
+        const res = await fetch("/api/chat/atanor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: q, language: lang, web_search: true }),
+        });
+        const data = await res.json();
+        r = (data?.result ?? data) as Record<string, unknown>;
+      }
       const answer = String(r?.answer ?? "").trim();
       if (!answer) {
         // empty reply = engine reachable but returned nothing → actionable, not a dead "(응답 없음)"
@@ -371,7 +448,19 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                 {m.role === "ai" ? <span className="atanor-demochat-orb" aria-hidden="true" /> : null}
                 <div className="atanor-demochat-bubble">
                   {m.pending ? (
-                    <span className="atanor-demochat-typing"><i /><i /><i /></span>
+                    <>
+                      <span className="atanor-demochat-typing"><i /><i /><i /></span>
+                      {m.stage ? <span className="atanor-demochat-stage">{m.stage}…</span> : null}
+                      {m.evidence?.length ? (
+                        <div className="atanor-demochat-evidence">
+                          {m.evidence.slice(0, 4).map((e, j) => (
+                            <span key={j} className="atanor-demochat-evidence-chip">
+                              {e.kind === "derivation" ? `🔒 ${String(e.value)}` : typeof e.value === "string" ? e.value : JSON.stringify(e.value).slice(0, 60)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </>
                   ) : (
                     <>
                       <div className="atanor-demochat-text">{m.text}</div>
