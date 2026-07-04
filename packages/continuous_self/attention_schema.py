@@ -39,6 +39,29 @@ _ATTENDABLE = [
     ("frontier", "지식의 빈 경계"),
 ]
 
+def _has_final_consonant(word: str) -> bool | None:
+    """True/False if the last char is a Hangul syllable with/without 받침; None if the
+    last char is not Hangul (so the caller can pick a sensible default)."""
+    if not word:
+        return None
+    ch = word.strip()[-1]
+    if "가" <= ch <= "힣":
+        return (ord(ch) - 0xAC00) % 28 != 0
+    return None
+
+
+def _obj(word: str) -> str:
+    """Object particle 을/를 with correct 받침 agreement (LAD layer)."""
+    fin = _has_final_consonant(word)
+    return f"{word}을" if fin else f"{word}를"
+
+
+def _topic(word: str) -> str:
+    """Topic particle 은/는 with correct 받침 agreement (LAD layer)."""
+    fin = _has_final_consonant(word)
+    return f"{word}은" if fin else f"{word}는"
+
+
 _MODE_TO_OBJECT = {
     "observing": "incoming_knowledge",
     "learning": "incoming_knowledge",
@@ -107,10 +130,11 @@ def awareness_report(schema: dict[str, Any]) -> str:
     reports awareness BY reading its attention model, not by magic introspection."""
     stability = schema.get("stability_ticks", 1)
     dur = "방금부터" if stability <= 1 else ("한동안" if stability < 5 else "꽤 오래")
+    unattended = schema.get("not_attending_to", [])[:2]
+    tail = _topic(", ".join(unattended)) if unattended else "그 밖의 것은"
     return (
-        f"나는 지금 {schema['attending_to']}를 {schema['manner']} 의식하고 있다 "
-        f"({dur}). 그동안 {', '.join(schema['not_attending_to'][:2])} 쪽은 "
-        f"내 주의 밖에 있다."
+        f"나는 지금 {_obj(schema['attending_to'])} {schema['manner']} 의식하고 있다 "
+        f"({dur}). 그동안 {tail} 내 주의 밖에 있다."
     )
 
 

@@ -2,7 +2,7 @@
 awareness-talk is generated FROM the schema."""
 from __future__ import annotations
 
-from packages.continuous_self.attention_schema import awareness_report, build_schema
+from packages.continuous_self.attention_schema import _obj, _topic, awareness_report, build_schema
 from packages.continuous_self.self_state import Observation, SelfState, evolve
 
 
@@ -40,6 +40,23 @@ def test_awareness_report_is_generated_from_the_schema():
     rep = awareness_report(sch)
     assert sch["attending_to"] in rep
     assert "주의 밖" in rep  # the report includes what it is NOT aware of
+
+
+def test_korean_object_particle_agreement():
+    # 받침 있음 → 을 ; 받침 없음 → 를 (LAD layer, no "지식를" bugs)
+    assert _obj("지식") == "지식을"      # 식 has 받침 ㄱ
+    assert _obj("목표") == "목표를"      # 표 has no 받침
+    assert _obj("사람") == "사람을"
+    assert _topic("불확실함") == "불확실함은"
+    assert _topic("목표") == "목표는"
+
+
+def test_awareness_report_has_no_particle_bug():
+    s = SelfState(attention=0.5)
+    s.mode = "learning"
+    s.narrative.append({"at": 0, "kind": "learn", "text": "x", "driver": "growth"})
+    rep = awareness_report(build_schema(s))
+    assert "지식를" not in rep and "지식을" in rep
 
 
 def test_manner_follows_real_attention_intensity():
