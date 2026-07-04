@@ -37,11 +37,18 @@ class ContinuousSelf:
         # A read-only probe the mind may run ITSELF to serve its goals (action.py).
         # OBSERVE-tier only, by construction; higher tiers are never autonomous.
         self.observe_fn = observe_fn
-        self.initiative_every = max(1, int(initiative_every))
+        # Mutable runtime params — the ONLY thing gated self-modification may change,
+        # and only after explicit operator approval (self_modification.py).
+        self.params: dict = {"initiative_every": max(1, int(initiative_every))}
+        self.selfmod_ledger: Path = self.state_path.parent / "self_modification_ledger.jsonl"
         self.state: SelfState = load_or_begin(self.state_path)
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running = False
+
+    @property
+    def initiative_every(self) -> int:
+        return int(self.params.get("initiative_every", 15))
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -64,6 +71,27 @@ class ContinuousSelf:
                     take_initiative(self.state, self.observe_fn)
                 except Exception:
                     pass  # initiative must never break the life
+            # Occasionally the mind may PROPOSE tuning itself (gated self-modification:
+            # sandbox-validated, operator-approved, never auto-applied) and it applies
+            # ONLY already-approved decisions. Attention bids surface pending asks.
+            if self.state.ticks % 60 == 0:
+                try:
+                    from .self_modification import apply_approved, list_proposals, propose_self_tuning
+
+                    apply_approved(self.selfmod_ledger, self.params)
+                    propose_self_tuning(self.state, self.selfmod_ledger, self.params)
+                    pending = [p for p in list_proposals(self.selfmod_ledger) if p["status"] == "pending"]
+                    if pending:
+                        p = pending[0]
+                        self.state.attention_bid = {
+                            "at": p["at"], "kind": "self_modification_approval",
+                            "text": f"내가 나를 조금 바꾸고 싶어요 — {p['why']} 승인해 주시겠어요?",
+                            "proposal_id": p["id"],
+                        }
+                    elif self.state.attention_bid.get("kind") == "self_modification_approval":
+                        self.state.attention_bid = {}
+                except Exception:
+                    pass
             try:
                 save_state(self.state, self.state_path)
             except Exception:

@@ -81,6 +81,9 @@ class SelfState:
     meta_thought: str = ""           # current metacognitive (higher-order) reflection
     vitals_history: list[dict[str, Any]] = field(default_factory=list)  # bounded, for trends
     last_action: dict[str, Any] = field(default_factory=dict)  # the self's most recent self-initiated act (action.py)
+    attention_schema: dict[str, Any] = field(default_factory=dict)  # AST: the self's model OF its own attention
+    awareness: str = ""              # awareness-talk generated FROM the schema (AST mechanism)
+    attention_bid: dict[str, Any] = field(default_factory=dict)  # a gentle ask for the human's attention (never nags)
 
     NARRATIVE_CAP: int = 60
     HISTORY_CAP: int = 20
@@ -109,6 +112,9 @@ class SelfState:
             "meta_thought": self.meta_thought,
             "goals": self.goals,
             "last_action": self.last_action,
+            "attention_schema": self.attention_schema,
+            "awareness": self.awareness,
+            "attention_bid": self.attention_bid,
             "narrative": self.narrative[-24:],
             "continuous": True,
         }
@@ -203,6 +209,13 @@ def evolve(state: SelfState, obs: Observation, *, rate: float = 0.25) -> SelfSta
     from .mind import maintain_goals, reflect
 
     maintain_goals(state, obs)
+
+    # Attention Schema (AST): rebuild the self's model OF its own attention, and
+    # generate awareness-talk FROM that model — the AST mechanism, every step.
+    from .attention_schema import awareness_report, build_schema
+
+    state.attention_schema = build_schema(state)
+    state.awareness = awareness_report(state.attention_schema)
     # reflect periodically (every ~6 ticks), not every step, so it feels deliberate.
     if state.ticks % 6 == 0:
         meta = reflect(state)

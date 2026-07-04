@@ -127,6 +127,37 @@ def selfhood_live() -> dict[str, Any]:
     return _SELF.snapshot()
 
 
+# ---- gated self-modification: operator approval API -------------------------------
+# The mind proposes; ONLY a human decides here. Nothing auto-applies anywhere.
+@router.get("/self-modification/proposals")
+def selfmod_proposals() -> dict[str, Any]:
+    from packages.continuous_self.self_modification import list_proposals
+
+    rows = list_proposals(_SELF.selfmod_ledger)
+    return {"proposals": rows[-20:], "pending": [r for r in rows if r["status"] == "pending"],
+            "current_params": dict(_SELF.params)}
+
+
+@router.post("/self-modification/decide")
+def selfmod_decide(payload: dict[str, Any]) -> dict[str, Any]:
+    """Operator decision. Body: {proposal_id, approve: bool, confirm: "SELF_MOD",
+    note?}. The confirm phrase is a deliberate friction — a human must mean it."""
+    from packages.continuous_self.self_modification import apply_approved, decide
+
+    if str(payload.get("confirm") or "") != "SELF_MOD":
+        return {"ok": False, "reason": "confirm phrase 'SELF_MOD' required — operator only"}
+    hit = decide(_SELF.selfmod_ledger, str(payload.get("proposal_id") or ""),
+                 bool(payload.get("approve")), str(payload.get("note") or ""))
+    if hit is None:
+        return {"ok": False, "reason": "proposal not found or not pending"}
+    applied = apply_approved(_SELF.selfmod_ledger, _SELF.params) if hit["status"] == "approved" else []
+    # clear the bid once decided
+    if _SELF.state.attention_bid.get("proposal_id") == hit["id"]:
+        _SELF.state.attention_bid = {}
+    return {"ok": True, "decision": hit["status"], "applied": [a["id"] for a in applied],
+            "current_params": dict(_SELF.params)}
+
+
 @router.get("/stream")
 async def selfhood_stream() -> StreamingResponse:
     _ensure_alive()
