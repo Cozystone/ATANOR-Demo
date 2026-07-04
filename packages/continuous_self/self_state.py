@@ -80,6 +80,7 @@ class SelfState:
     goals: list[dict[str, Any]] = field(default_factory=list)
     meta_thought: str = ""           # current metacognitive (higher-order) reflection
     vitals_history: list[dict[str, Any]] = field(default_factory=list)  # bounded, for trends
+    last_action: dict[str, Any] = field(default_factory=dict)  # the self's most recent self-initiated act (action.py)
 
     NARRATIVE_CAP: int = 60
     HISTORY_CAP: int = 20
@@ -107,6 +108,7 @@ class SelfState:
             "current_thought": self.current_thought,
             "meta_thought": self.meta_thought,
             "goals": self.goals,
+            "last_action": self.last_action,
             "narrative": self.narrative[-24:],
             "continuous": True,
         }

@@ -25,6 +25,7 @@ type SelfSnap = {
   current_thought?: string;
   meta_thought?: string;
   goals?: Goal[];
+  last_action?: { kind?: string; tier?: string; executed?: boolean; blocked?: boolean; reason?: string } | null;
   narrative?: Thought[];
 };
 
@@ -150,6 +151,16 @@ export default function LivingMindPanel({ compact = false }: { compact?: boolean
                   <span className="atanor-mind-goal-bar"><i style={{ width: `${Math.round(g.progress * 100)}%` }} /></span>
                 </div>
               ))}
+            </div>
+          ) : null}
+
+          {!compact && snap?.last_action?.kind ? (
+            <div className="atanor-mind-action">
+              <span className="atanor-mind-section">스스로 한 일</span>
+              <p>
+                <b>{snap.last_action.executed ? "직접 실행" : snap.last_action.blocked ? "승인 필요 (제안만)" : "시도"}</b>
+                {" · "}{snap.last_action.reason || snap.last_action.kind}
+              </p>
             </div>
           ) : null}
 

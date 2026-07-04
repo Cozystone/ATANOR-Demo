@@ -80,7 +80,40 @@ def _observe() -> Observation:
     )
 
 
-_SELF = ContinuousSelf(_STATE_PATH, _observe, base_interval=2.0)
+def _self_probe(kind: str) -> dict[str, Any]:
+    """A READ-ONLY probe the mind runs on ITSELF to serve a goal. OBSERVE-tier only —
+    it never writes to the graph, a store, or code. It measures; it does not change."""
+    if kind == "measure_coverage_gaps":
+        try:
+            hist = _STATE_PATH.parent.parent.parent / "data" / "self_improve_history.jsonl"
+            last = json.loads(hist.read_text(encoding="utf-8").strip().splitlines()[-1])
+            return {"open_gaps": int(last.get("hard_remaining") or 0),
+                    "answered": int(last.get("answered_after") or 0)}
+        except Exception:
+            return {}
+    if kind == "probe_uncertainty":
+        try:
+            from .cloud_brain import cloud_brain_continuous_metrics
+
+            m = cloud_brain_continuous_metrics()
+            return {"accept_rate": m.get("accept_rate"), "last_error": m.get("last_error")}
+        except Exception:
+            return {}
+    if kind == "scan_frontier":
+        # a read-only peek at what the learner is reaching toward next (no side effects).
+        try:
+            from .cloud_brain import cloud_brain_continuous_metrics
+
+            titles = cloud_brain_continuous_metrics().get("last_titles") or []
+            return {"frontier": titles[0]} if titles else {}
+        except Exception:
+            return {}
+    return {"observed": True}
+
+
+_SELF = ContinuousSelf(
+    _STATE_PATH, _observe, base_interval=2.0, observe_fn=_self_probe, initiative_every=15,
+)
 
 
 def _ensure_alive() -> None:

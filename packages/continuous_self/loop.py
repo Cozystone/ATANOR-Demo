@@ -22,10 +22,22 @@ ObsProvider = Callable[[], Observation]
 
 
 class ContinuousSelf:
-    def __init__(self, state_path: Path, obs_provider: ObsProvider, *, base_interval: float = 2.0):
+    def __init__(
+        self,
+        state_path: Path,
+        obs_provider: ObsProvider,
+        *,
+        base_interval: float = 2.0,
+        observe_fn=None,
+        initiative_every: int = 15,
+    ):
         self.state_path = Path(state_path)
         self.obs_provider = obs_provider
         self.base_interval = float(base_interval)
+        # A read-only probe the mind may run ITSELF to serve its goals (action.py).
+        # OBSERVE-tier only, by construction; higher tiers are never autonomous.
+        self.observe_fn = observe_fn
+        self.initiative_every = max(1, int(initiative_every))
         self.state: SelfState = load_or_begin(self.state_path)
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
@@ -43,6 +55,15 @@ class ContinuousSelf:
             obs = Observation()
         with self._lock:
             evolve(self.state, obs)
+            # On its own cadence the mind ACTS on its highest-priority goal (unprompted,
+            # OBSERVE-tier only). This closes the thought→action loop.
+            if self.state.ticks % self.initiative_every == 0:
+                try:
+                    from .action import take_initiative
+
+                    take_initiative(self.state, self.observe_fn)
+                except Exception:
+                    pass  # initiative must never break the life
             try:
                 save_state(self.state, self.state_path)
             except Exception:
