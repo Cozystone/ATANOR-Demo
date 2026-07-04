@@ -1,0 +1,8 @@
+{
+ "battery": "holdout_v1.jsonl",
+ "sha256": "70325212a1208dbec3fb356a3a077cbc414eb571b104efd447d35bc4cb1623b1",
+ "items": 60,
+ "rng_seed": 20260704,
+ "sealed_at": "2026-07-04T00:34:24+00:00",
+ "rule": "NEVER seed these terms; rotate quarterly to holdout_v2; score gap vs working battery = Goodhart signal"
+}

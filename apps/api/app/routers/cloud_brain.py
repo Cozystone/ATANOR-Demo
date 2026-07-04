@@ -1594,6 +1594,23 @@ def _run_plasticity_maintenance() -> dict[str, Any]:
         half_life_days=float(os.getenv("ATANOR_PLASTICITY_HALFLIFE_DAYS", "60") or 60),
         prune_floor=float(os.getenv("ATANOR_PLASTICITY_FLOOR", "0.04") or 0.04),
     )
+    # reversible forgetting (난제 P2): pruned edges are DEMOTED to the cold archive,
+    # never deleted — restore_archived can bring them back if pruning was wrong.
+    if res["pruned"]:
+        from packages.cloud_brain.neuroplasticity import archive_pruned
+
+        archive_pruned(ref.path, res["pruned"], datetime.now(timezone.utc))
+    # truth discovery (난제 P2): refresh source-trust / claim-belief scores over the
+    # consensus ledger so promotion and answering can weight evidence by reliability.
+    try:
+        from packages.cloud_brain.consensus_ledger import ConsensusLedger
+        from packages.cloud_brain.truth_discovery import score_and_persist
+
+        ledger_root = ref.path / "consensus_ledger"
+        if (ledger_root / "evidence_ledger.jsonl").exists():
+            score_and_persist(ConsensusLedger(ledger_root))
+    except Exception:  # scoring must never break maintenance
+        pass
     # atomic rewrite (worker thread is the only writer of this file)
     tmp = rel_path.with_suffix(".jsonl.tmp")
     body = "\n".join(json.dumps(r, ensure_ascii=False) for r in res["kept"])

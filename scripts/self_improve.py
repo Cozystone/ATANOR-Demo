@@ -64,11 +64,26 @@ def measure(terms: list[str]) -> tuple[int, list[str]]:
     return answered, gaps
 
 
+def _holdout_exclusions() -> set[str]:
+    """Terms in the SEALED holdout battery must never be seeded (Goodhart defence,
+    난제 P2). Built by scripts/build_holdout_battery.py."""
+    path = REPO_ROOT / "data" / "eval" / "holdout_exclusions.json"
+    try:
+        return set(json.loads(path.read_text(encoding="utf-8")).get("never_seed_terms", []))
+    except Exception:
+        return set()
+
+
 def main() -> int:
     terms = cov.TERMS
     print(f"[SELF-IMPROVE] pool = {len(terms)} concepts")
     before_ans, gaps = measure(terms)
     print(f"[MEASURE] answered {before_ans}/{len(terms)} ({before_ans/len(terms):.0%}) | gaps: {len(gaps)}")
+    sealed = _holdout_exclusions()
+    blocked = [t for t in gaps if t in sealed]
+    if blocked:
+        print(f"[SEAL] {len(blocked)} gap terms are in the sealed holdout — NOT seeding: {blocked[:10]}")
+        gaps = [t for t in gaps if t not in sealed]
     if not gaps:
         print("[DONE] no coverage gaps.")
         return 0

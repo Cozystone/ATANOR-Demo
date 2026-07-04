@@ -173,6 +173,61 @@ def plasticity_tick(relations: list[dict[str, Any]], now: datetime, *,
                       "distinct_predicates": len(scores)}}
 
 
+# ---- reversible forgetting (난제 P2: stability-plasticity, CLS-style) ----
+#
+# The stability-plasticity dilemma has no perfect solution; what removes its TOXICITY
+# is making forgetting a DEMOTION instead of a deletion. Pruned edges go to a cold
+# archive (disk, append-only) with a forgetting log, and can be restored if pruning
+# turns out to have been wrong — bounded hot memory, zero irreversible loss.
+
+def archive_pruned(store_root: Any, pruned: list[dict[str, Any]], now: datetime,
+                   *, reason: str = "plasticity_prune") -> int:
+    """Append pruned rows to the cold archive + forgetting log. Returns rows archived."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    root = _Path(store_root)
+    root.mkdir(parents=True, exist_ok=True)
+    archive = root / "pruned_archive.jsonl"
+    log = root / "forgetting_log.jsonl"
+    stamp = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    with archive.open("a", encoding="utf-8") as fh:
+        for row in pruned:
+            fh.write(_json.dumps({**row, "archived_at": stamp, "archive_reason": reason},
+                                 ensure_ascii=False) + "\n")
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(_json.dumps({"at": stamp, "reason": reason, "count": len(pruned),
+                              "sample_keys": [str(r.get("dedupe_key") or "") for r in pruned[:5]]},
+                             ensure_ascii=False) + "\n")
+    return len(pruned)
+
+
+def restore_archived(store_root: Any, dedupe_keys: set[str]) -> list[dict[str, Any]]:
+    """Recover archived rows by dedupe_key (weight reset above the prune floor so the
+    next tick does not instantly re-prune them). The archive itself is never mutated —
+    restore is an append-elsewhere read, so history stays intact."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    archive = _Path(store_root) / "pruned_archive.jsonl"
+    if not archive.exists():
+        return []
+    restored: dict[str, dict[str, Any]] = {}
+    for line in archive.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = _json.loads(line)
+        except _json.JSONDecodeError:
+            continue
+        key = str(row.get("dedupe_key") or "")
+        if key in dedupe_keys:
+            row = {k: v for k, v in row.items() if k not in {"archived_at", "archive_reason"}}
+            row["weight"] = max(float(row.get("weight") or 0.0), 0.2)
+            restored[key] = row  # last archived version wins
+    return list(restored.values())
+
+
 # ---- self-test ----
 
 def _self_test() -> dict[str, Any]:
