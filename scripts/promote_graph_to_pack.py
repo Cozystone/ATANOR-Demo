@@ -111,12 +111,64 @@ _KO_DEF_ENDING = re.compile(
 )
 _HANGUL = re.compile(r"[가-힣]")
 
+# Parenthetical / bracket noise: Korean encyclopedic first sentences wrap the
+# subject with etymology / romanization / dates ("수소(水素, 영어: hydrogen)는 …",
+# "이순신(李舜臣, 1545년~1598년)은 …"). That parenthetical sits BETWEEN the subject
+# and its particle, so leading-subject extraction never sees "수소는"/"이순신은" and
+# the real definition is lost. Strip "(…)" and "[…]" before extraction (mirrors
+# coverage_seed._first_sentence) — it also makes the stored description cleaner.
+_PARENS = re.compile(r"\([^()]*\)")
+_BRACKETS = re.compile(r"\[[^\[\]]*\]")
+# Korean wiki disambiguation / redirect header that leaks in front of the real
+# sentence: "일론 머스크: 일론 리브 머스크는 …", "세종대왕급 구축함: 세종 대왕 급
+# 구축함은 …". A short "제목: " prefix followed by a clause whose own subject
+# particle appears soon after — strip the redundant title so the leading subject
+# is the sentence's real subject. The following-particle lookahead means a
+# legitimate "X: Y이다" colon definition (no early particle) is left intact.
+_DISAMBIG_HEADER = re.compile(r"^[가-힣A-Za-z0-9·\s]{2,20}:\s+(?=.{1,25}?(?:은|는|이|가)\s)")
+
+
+def _strip_parens(text: str) -> str:
+    t = str(text or "")
+    for _ in range(3):  # a few passes to unwrap simple nesting
+        new = _BRACKETS.sub("", _PARENS.sub("", t))
+        if new == t:
+            break
+        t = new
+    t = re.sub(r"\s+", " ", t).strip()
+    return _DISAMBIG_HEADER.sub("", t).strip()
+
 
 def _is_definitional(txt: str) -> bool:
     t = str(txt or "").strip()
     if not _HANGUL.search(t):
         return True  # non-Korean: exempt (handled by startswith precision)
     return bool(_KO_DEF_ENDING.search(t))
+
+
+def strip_leading_subject(name: str, desc: str) -> str:
+    """Remove the description's leading subject so the answer engine's own
+    "{name}은/는 …" prefix does not double it.
+
+    Two cases:
+      1. desc starts with the bare concept name — "종족은 종족은 테란이며" →
+         "종족은 테란이며".
+      2. desc starts with a MODIFIED subject whose HEAD is the concept —
+         "파이썬 미사일은 …계열이다" (name 미사일) → "…계열이다";
+         "일론 리브 머스크는 …기업인이다" (name 머스크) → "…기업인이다".
+         Only when the modified subject is SHORT (a real leading NP, ≤25 chars)
+         and enough predicate remains, so a mid-sentence mention is never cut.
+    """
+    n = re.escape(name)
+    m = re.match(n + r"\s*(?:은|는|이|가|란|이란|도|을|를|와|과)?\s*", desc)
+    if m and (len(desc) - m.end()) >= 12:
+        return desc[m.end():].strip()
+    # \s* before the particle: tokenization sometimes splits the 조사 off the head
+    # ("대규모 언어 모델 은 …" — space before 은).
+    m2 = re.match(r".{0,25}?" + n + r"\s*(?:은|는|이|가)\s+", desc)
+    if m2 and (len(desc) - m2.end()) >= 12:
+        return desc[m2.end():].strip()
+    return desc
 
 
 def build_lead_def_by_name(
@@ -172,7 +224,13 @@ def build_lead_def_by_name(
             return True
         return not ("가" <= c <= "힣")
 
-    for h, txt in text_by_hash.items():
+    for h, raw in text_by_hash.items():
+        # Strip parentheticals so "수소(水素, 영어: hydrogen)는 …" becomes "수소는 …"
+        # and the leading subject is visible. The stripped form is also what we
+        # store as the (cleaner) description.
+        txt = _strip_parens(raw)
+        if not (12 <= len(txt) <= 220):
+            continue
         tn = _norm(txt)
         # (a) case_frame topic that the sentence leads with, as a real subject.
         for topic in topics_by_hash.get(h, set()):
@@ -312,12 +370,11 @@ def promote(dry_run: bool = False) -> dict:
         desc = lead_def_by_name.get(_norm(name))
         if not desc:
             continue  # no definitional sentence leads with this concept -> do not promote
-        # desc leads with the concept name; strip that leading subject + particle so
-        # the answer engine's own "{name}는" prefix does not double it
-        # ("종족은 종족은 테란이며" -> "종족은 테란이며").
-        m = re.match(re.escape(name) + r"\s*(?:은|는|이|가|란|이란|도|을|를|와|과)?\s*", desc)
-        if m and (len(desc) - m.end()) >= 12:
-            desc = desc[m.end():].strip()
+        # desc leads with the concept (bare or as the head of a modified NP);
+        # strip that leading subject + particle so the answer engine's own
+        # "{name}는" prefix does not double it ("종족은 종족은 테란이며" ->
+        # "종족은 테란이며"; "파이썬 미사일은 …계열이다" -> "…계열이다").
+        desc = strip_leading_subject(name, desc)
         cid = str(c["concept_id"])
         if cid in taken_ids:
             continue

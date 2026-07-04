@@ -23,7 +23,10 @@ for p in (str(REPO_ROOT), str(REPO_ROOT / "scripts")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from promote_graph_to_pack import build_lead_def_by_name  # noqa: E402
+from promote_graph_to_pack import (  # noqa: E402
+    build_lead_def_by_name,
+    strip_leading_subject,
+)
 
 
 def _run(texts, topics_by_hash=None):
@@ -47,6 +50,61 @@ def test_non_definitional_korean_sentences_rejected():
     ]
     out = _run(cases)
     assert out == {}, f"non-definitional sentences leaked: {out}"
+
+
+def test_parenthetical_between_subject_and_particle_is_stripped():
+    # P1: a romanization/date parenthetical sits BETWEEN the subject and its
+    # particle, hiding the real definition. Stripping "(...)" rescues it.
+    out = _run([
+        "수소(水素, 영어: hydrogen 하이드러전)는 주기율표의 첫 번째 화학 원소이다.",
+        "이순신(李舜臣, 1545년~1598년)은 조선 중기 한국의 무신이다.",
+    ])
+    assert "수소" in out
+    assert "이순신" in out
+    # the stored description is the cleaned form (no parenthetical noise)
+    assert "(" not in out["수소"] and "水素" not in out["수소"]
+    assert out["이순신"].startswith("이순신은 조선 중기")
+
+
+def test_disambiguation_header_stripped():
+    # "일론 머스크: 일론 리브 머스크는 …" — the "제목:" wiki header leaks in front of
+    # the real sentence; stripping it makes 머스크 the real leading subject.
+    out = _run(["일론 머스크: 일론 리브 머스크는 남아프리카 공화국 출신 미국의 기업인이다."])
+    assert "머스크" in out
+    assert out["머스크"].startswith("일론 리브 머스크는")
+    assert ":" not in out["머스크"]
+
+
+def test_colon_definition_not_mangled():
+    # A legitimate copula def with no early subject particle after the colon must
+    # NOT be treated as a header (nothing before the colon is stripped wrongly).
+    out = _run(["원소는 물질을 이루는 기본 성분이다."])
+    assert out.get("원소", "").startswith("원소는")
+
+
+def test_strip_leading_subject_bare_and_modified():
+    # bare concept subject (predicate must be long enough to keep)
+    assert strip_leading_subject(
+        "종족", "종족은 스타크래프트의 세 진영 중 하나로 테란과 저그와 프로토스가 있다."
+    ) == "스타크래프트의 세 진영 중 하나로 테란과 저그와 프로토스가 있다."
+    # modified NP whose head is the concept -> strip the whole leading subject so
+    # the engine's "{name}은/는" prefix does not double it
+    assert strip_leading_subject(
+        "미사일", "파이썬 미사일은 이스라엘이 개발한 공대공 미사일 계열이다."
+    ) == "이스라엘이 개발한 공대공 미사일 계열이다."
+    assert strip_leading_subject(
+        "머스크", "일론 리브 머스크는 남아프리카 공화국 출신 미국의 기업인이다."
+    ) == "남아프리카 공화국 출신 미국의 기업인이다."
+    # tokenization split the 조사 off the head ("… 모델 은 …")
+    assert strip_leading_subject(
+        "모델", "대규모 언어 모델 은 방대한 데이터를 학습하는 AI 모델입니다."
+    ) == "방대한 데이터를 학습하는 AI 모델입니다."
+
+
+def test_strip_leading_subject_leaves_midsentence_mention():
+    # the concept only appears deep in the sentence -> nothing is stripped
+    d = "이 문서는 여러 곳에서 미사일 방어 체계를 길게 논한 뒤 결론에 이른다."
+    assert strip_leading_subject("미사일", d) == d
 
 
 def test_definitional_korean_sentences_kept():
