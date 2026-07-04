@@ -1573,3 +1573,41 @@ def test_web_fact_cache_persists_across_instances(tmp_path, monkeypatch) -> None
     # a fresh instance (simulating a restart) still has the looked-up fact
     monkeypatch.setattr(dual_brain, "WEB_FACT_MEMORY", LocalBrainMemory(path))
     assert dual_brain._recall_web_fact("what is dna")["answer"] == "DNA carries genetic instructions."
+
+
+def test_stream_emits_real_pipeline_stages_in_order() -> None:
+    """난제 P3: streamed stages are TRUE pipeline milestones (not a timer), and the
+    honest contract holds — every 'stage' precedes 'evidence' which precedes the
+    single terminal 'answer', nothing is retracted, no stage repeats."""
+    client = TestClient(app)
+    with client.stream(
+        "POST", "/api/chat/atanor/stream",
+        json={"question": "광합성이란?", "language": "ko", "web_search": False},
+    ) as resp:
+        assert resp.status_code == 200
+        events = []
+        for line in resp.iter_lines():
+            if line and line.startswith("data: "):
+                events.append(json.loads(line[len("data: "):]))
+    types = [e["type"] for e in events]
+    # at least one real stage, then evidence, then exactly one terminal answer/error
+    assert "stage" in types
+    assert types[-1] in ("answer", "error")
+    if types[-1] == "answer":
+        assert types.count("answer") == 1
+        assert "evidence" in types
+        assert types.index("evidence") < types.index("answer")
+        # every stage comes before evidence (stages are the "still working" phase)
+        last_stage = max(i for i, t in enumerate(types) if t == "stage")
+        assert last_stage < types.index("evidence")
+    # the first stage is the real 'analyzing' milestone the pipeline emits itself
+    stages = [e.get("stage") for e in events if e["type"] == "stage"]
+    assert stages and stages[0] == "analyzing"
+    assert len(stages) == len(set(stages)), "a committed stage must never repeat"
+
+
+def test_emit_stage_is_noop_without_a_sink() -> None:
+    """Non-streaming callers set no sink, so the hook is a no-op (never raises)."""
+    assert dual_brain._STAGE_SINK.get() is None
+    dual_brain._emit_stage("analyzing")  # must not raise
+    dual_brain._emit_stage("web_grounding", extra="x")

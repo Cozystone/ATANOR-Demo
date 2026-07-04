@@ -60,6 +60,36 @@ router = APIRouter(tags=["dual-brain"])
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
+# ----- Real streaming stage hooks (난제 P3) -----------------------------------
+# The stream endpoint used timer-based fake stages ("grounding" @1.5s). To make the
+# stages TRUE (the honest-streaming contract), the pipeline reports its actual
+# milestones via a per-request sink held in a ContextVar. The streaming endpoint
+# sets an asyncio.Queue as the sink and drains it live; a task started with
+# ensure_future inherits the same sink (context copy shares the queue object). For
+# the non-streaming caller the sink is None and every _emit_stage() is a no-op, so
+# no signature threads through the large chat_atanor pipeline.
+import contextvars as _contextvars  # noqa: E402
+
+_STAGE_SINK: "_contextvars.ContextVar[Any]" = _contextvars.ContextVar(
+    "atanor_stage_sink", default=None
+)
+
+
+def _emit_stage(stage: str, **extra: Any) -> None:
+    """Report a REAL pipeline milestone to the active stream sink (if any).
+
+    Only call this at a point the engine has genuinely reached — a stage badge is a
+    committed true state, never retracted. No-op when not streaming.
+    """
+    sink = _STAGE_SINK.get()
+    if sink is None:
+        return
+    try:
+        sink.put_nowait({"type": "stage", "stage": stage, **extra})
+    except Exception:  # pragma: no cover - a full/closed queue must never break chat
+        pass
+
+
 # ----- Local Brain cumulative memory (private on-device) ----------------------
 from packages.local_brain import LocalBrainMemory, extract_user_facts
 
@@ -3501,23 +3531,38 @@ async def chat_atanor_stream(request: AtanorChatRequest) -> StreamingResponse:
         def _ev(obj: dict[str, Any]) -> str:
             return "data: " + _json.dumps(obj, ensure_ascii=False) + "\n\n"
 
-        yield _ev({"type": "stage", "stage": "analyzing"})
-        task = _aio.ensure_future(chat_atanor(request))
-        # heartbeat stages while the engine genuinely works (true waiting state)
-        waited = 0.0
-        while not task.done():
-            await _aio.sleep(0.25)
-            waited += 0.25
-            if abs(waited - 1.5) < 0.126:
-                yield _ev({"type": "stage", "stage": "grounding"})
+        # REAL stages (난제 P3): the pipeline reports its own milestones onto this
+        # queue via _emit_stage(); we drain and forward them live. ensure_future
+        # copies the current context, so the task shares this exact sink.
+        queue: "_aio.Queue[dict[str, Any]]" = _aio.Queue()
+        token = _STAGE_SINK.set(queue)
+        seen_stages: set[str] = set()
         try:
-            result = task.result()
-        except HTTPException as exc:
-            yield _ev({"type": "error", "detail": str(exc.detail)})
-            return
-        except Exception as exc:  # noqa: BLE001 - stream must terminate cleanly
-            yield _ev({"type": "error", "detail": str(exc)[:200]})
-            return
+            task = _aio.ensure_future(chat_atanor(request))
+            idle = 0.0
+            while not task.done() or not queue.empty():
+                try:
+                    ev = await _aio.wait_for(queue.get(), timeout=0.25)
+                    idle = 0.0
+                    stage = ev.get("stage")
+                    if stage and stage not in seen_stages:  # never repeat a committed state
+                        seen_stages.add(stage)
+                        yield _ev(ev)
+                except _aio.TimeoutError:
+                    idle += 0.25
+                    if idle >= 5.0:  # keepalive comment so proxies don't drop an idle stream
+                        idle = 0.0
+                        yield ": keepalive\n\n"
+            try:
+                result = task.result()
+            except HTTPException as exc:
+                yield _ev({"type": "error", "detail": str(exc.detail)})
+                return
+            except Exception as exc:  # noqa: BLE001 - stream must terminate cleanly
+                yield _ev({"type": "error", "detail": str(exc)[:200]})
+                return
+        finally:
+            _STAGE_SINK.reset(token)
         # 1) evidence first — irrevocable, labelled as evidence. The chat payload is an
         #    envelope {state, result:{answer, evidence_docs, ...}}; read the inner doc.
         inner = result.get("result") if isinstance(result.get("result"), dict) else result
@@ -3541,6 +3586,7 @@ async def chat_atanor_stream(request: AtanorChatRequest) -> StreamingResponse:
 
 @router.post("/api/chat/atanor")
 async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
+    _emit_stage("analyzing")  # real: parsing the question + resolving context
     question = request.question_text()
     language = request.language or ("ko" if any("가" <= c <= "힣" for c in (question or "")) else "en")
     # A context-resolved query so a follow-up ("where is it?") carries the prior
@@ -3624,6 +3670,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # web search is off, and pre-empts the web-dependent reasoners below.
     reasoning_vm = None
     if not (self_state or self_knowledge or recall):
+        _emit_stage("reasoning")  # real: deterministic reasoning VM is running
         try:
             from app.services.reasoning_vm import solve_reasoning
 
@@ -3654,6 +3701,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # answer (definition) stands.
     attribution_answer = None
     if request.web_search and not (self_state or media_answer or self_knowledge or recall or reasoning_vm) and _detect_attribution_relation(question):
+        _emit_stage("web_grounding")  # real: about to hit the network for attribution
         try:
             _attrib = await _web_grounded_rescue(web_query, language)
             if _attrib and _attrib.get("reasoning_certificate", {}).get("derivation_kind") == "web_attribution_extraction":
@@ -3661,6 +3709,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         except Exception:  # pragma: no cover - network/optional
             attribution_answer = None
 
+    _emit_stage("composing")  # real: routing to the graph/base-brain answer path
     response = _demote_low_quality_to_base_brain(await _chat_atanor_dispatch(request), request)
     response = _attach_holographic_fold_trace(response, request)
 
@@ -3759,6 +3808,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result = response["result"]
         ans = str(result.get("answer") or "")
         if not ans or _answer_is_abstention(ans):
+            _emit_stage("web_grounding")  # real: local answer was thin, hitting the web
             rescue = await _web_grounded_rescue(web_query, language)
             if rescue:
                 result["answer"] = rescue["answer"]
@@ -4189,6 +4239,7 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
             if request.web_search and isinstance(fb_result, dict) and (
                 not fb_result.get("answer") or _answer_is_abstention(str(fb_result.get("answer") or ""))
             ):
+                _emit_stage("web_grounding")  # real: base brain was thin, hitting the web
                 rescue = await _web_grounded_rescue(question, language)
                 if rescue:
                     fb_result["answer"] = rescue["answer"]
@@ -4241,6 +4292,7 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
             # extractive composer; if even that has no matching source, abstain honestly rather
             # than emit a garbled fragment. No per-entity handling — the check is query-driven.
             if _grounded_answer_incoherent(grounded_web_answer, question):
+                _emit_stage("web_grounding")  # real: re-grounding an incoherent stitch from the web
                 rescue = await _web_grounded_rescue(question, language)
                 rescue_answer = str((rescue or {}).get("answer") or "").strip()
                 if rescue_answer and not _answer_is_abstention(rescue_answer) and not _grounded_answer_incoherent(rescue_answer, question):
