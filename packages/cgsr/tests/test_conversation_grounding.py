@@ -52,7 +52,9 @@ def test_local_cloud_grounding_has_correct_architecture_facts() -> None:
     assert "로컬 브레인은 사용자 개인 기억" in " ".join(context.facts)
     assert "클라우드 브레인은 출처와 검증 상태" in " ".join(context.facts)
     assert answer
-    assert "현재 확인된 상태" in answer
+    # preamble openers were removed by design (answers lead with content);
+    # assert the architecture facts themselves instead of the old phrasing
+    assert "로컬 브레인" in answer and "클라우드 브레인" in answer
     assert "로컬 브레인" in answer
     assert "클라우드 브레인" in answer
     assert context.safety_flags["local_brain_write"] is False
@@ -158,7 +160,9 @@ def test_grounded_discourse_prioritizes_causal_fact_for_why_followup() -> None:
     answer = realize_grounded_context(prompt, grounded)
 
     assert answer
-    assert answer.startswith("근거상 핵심 원인은")
+    # the "근거상 핵심 원인은" prefix was removed by design; what matters is that
+    # the CAUSAL fact leads the discourse for a why-follow-up
+    assert answer.startswith("중력의 크기는")
     assert "질량이 클수록" in answer
     assert "아이작 뉴턴" not in answer
 

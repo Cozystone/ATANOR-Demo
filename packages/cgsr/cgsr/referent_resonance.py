@@ -166,9 +166,15 @@ _Q_TAIL = re.compile(
 )
 
 
+_Q_HEAD_EN = re.compile(r"^(?:what|who|which)\s+(?:is|are|was|were)\s+(?:the\s+|a\s+|an\s+)?",
+                        re.IGNORECASE)
+
+
 def query_subject_entity(question: str) -> str:
-    """The noun phrase the question is ABOUT — '삼성전자가 뭐야' → '삼성전자'."""
+    """The noun phrase the question is ABOUT — '삼성전자가 뭐야' → '삼성전자',
+    'What is the law of gravity?' → 'law of gravity' (EN interrogatives lead)."""
     q = re.sub(r"\s+", " ", str(question or "")).strip().rstrip("?？!. ")
+    q = _Q_HEAD_EN.sub("", q)
     return _Q_TAIL.sub("", q).strip()
 
 
@@ -190,6 +196,16 @@ def answer_is_about_entity(entity: str, text: str, *, head: int = 24) -> bool:
     particle ('삼성전자는…')."""
     if len(entity) < 2:
         return True  # no clear single entity → don't filter
+    # Latin entities: word-boundary match on the RAW head window. The Korean
+    # glued-compound check below deglues spaces first, which would make every
+    # English 'X is …' look glued ('Next.jsis…') and wrongly reject it.
+    if re.fullmatch(r"[A-Za-z0-9\s'\-.]+", entity):
+        if len(entity.split()) > 1:
+            content = [t for t in entity.lower().split()
+                       if t not in {"the", "of", "a", "an", "and", "for"} and len(t) >= 2]
+            low_head = text[: head * 2].lower()
+            return any(t in low_head for t in content)
+        return bool(re.search(rf"(?i)(?<![A-Za-z0-9]){re.escape(entity)}", text[: head * 2]))
     deglue = lambda s: s.replace(" ", "")
     e = deglue(entity)
     head_text = deglue(text[:head])
@@ -200,7 +216,18 @@ def answer_is_about_entity(entity: str, text: str, *, head: int = 24) -> bool:
             return False  # glued into a longer noun → a different, related referent
         return True
     tokens = [deglue(t) for t in re.split(r"\s+", entity) if len(t) >= 2]
-    return bool(tokens) and all(t in head_text for t in tokens)
+    if not tokens:
+        return False
+    # Latin multi-word concepts ('law of gravity'): the defining sentence usually
+    # leads with ONE of the content words ('Gravity is a force …'), so requiring
+    # every token in the head window over-abstains. Any content token (function
+    # words dropped) in the head is enough. Korean stays strict — its failure
+    # mode is glued compounds, which the josa check above already handles.
+    if re.fullmatch(r"[A-Za-z\s'\-.]+", entity) and len(tokens) > 1:
+        content = [t.lower() for t in tokens if t.lower() not in {"the", "of", "an", "and", "for"}]
+        low_head = head_text.lower()
+        return any(t in low_head for t in content)
+    return all(t in head_text for t in tokens)
 
 
 def is_definitional_question(question: str) -> bool:

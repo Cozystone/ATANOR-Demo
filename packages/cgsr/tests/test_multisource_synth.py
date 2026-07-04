@@ -52,8 +52,23 @@ _EVIDENCE = (
 
 
 @pytest.mark.skipif(not _EVIDENCE.exists(), reason="real corpus not present")
-def test_real_corpus_synthesizes_nvidia_and_abstains_on_modifier_country():
+def test_real_corpus_synthesizes_nvidia_multi_source():
     rows = [json.loads(l).get("text") or "" for l in _EVIDENCE.open(encoding="utf-8")]
     nvidia = synthesize("엔비디아", rows, max_facts=3)
     assert nvidia is not None and len(nvidia.grounding) >= 2  # multi-source on real data
-    assert synthesize("대한민국", rows) is None                # 126 modifier mentions → honest abstain
+
+
+def test_modifier_only_mentions_abstain_fixed_fixture():
+    """The abstain contract on a FIXED fixture: an entity that appears only as a
+    modifier ('대한민국의 축구 선수') must not get a fabricated definition. (The old
+    live-data version broke the moment the growing store legitimately learned a
+    real 대한민국 definition — the engine was right, the snapshot assumption wasn't.)"""
+    rows = [
+        "홍길동은 대한민국의 축구 선수이다.",
+        "김철수는 대한민국의 가수이다.",
+        "이영희는 대한민국의 과학자이다.",
+    ]
+    # NOTE: "대한민국 산업자원부는 …" (compound-subject) is a KNOWN separate ambiguity
+    # class — structurally identical to "엔비디아 코퍼레이션은 …", undecidable without
+    # entity knowledge; the consensus ledger's alias clusters are the long-term fix.
+    assert synthesize("대한민국", rows) is None

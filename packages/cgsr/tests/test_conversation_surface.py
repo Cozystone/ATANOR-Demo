@@ -40,7 +40,9 @@ def test_conversation_surface_keeps_memory_request_in_approval_candidate() -> No
     assert result.answer
     assert result.diagnostics["top_act"] == "memory_question"
     assert result.diagnostics["selected_construction"] == "conv.memory.approval_candidate"
-    assert "바로 저장" not in result.answer
+    # the utterance NEGATES immediate saving ("바로 저장하지 않고") — assert the
+    # negation, not a naive substring absence
+    assert "바로 저장하지 않" in result.answer or "바로 저장" not in result.answer
     assert result.diagnostics["local_brain_write"] is False
 
 
