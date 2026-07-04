@@ -1,8 +1,8 @@
 # Automatic HTTPS reverse proxy for the ATANOR Cloud Brain.
-# Replace cloud.yourdomain.com with your domain (A record -> this VPS IP).
-# Caddy fetches/renews a real Let's Encrypt cert for you, no config needed.
+# Uses sslip.io so a real domain isn't required — it resolves
+# <ip>.sslip.io back to <ip>, and Caddy gets a Let's Encrypt cert for it.
 
-cloud.yourdomain.com {
+35.184.183.108.sslip.io {
     encode zstd gzip
     reverse_proxy atanor-cloud:8500
 }
