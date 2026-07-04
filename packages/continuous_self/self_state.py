@@ -84,6 +84,10 @@ class SelfState:
     attention_schema: dict[str, Any] = field(default_factory=dict)  # AST: the self's model OF its own attention
     awareness: str = ""              # awareness-talk generated FROM the schema (AST mechanism)
     attention_bid: dict[str, Any] = field(default_factory=dict)  # a gentle ask for the human's attention (never nags)
+    # the inward turn (voice.py): the self's own questions about itself + grounded answers
+    self_inquiry_count: int = 0
+    self_question: str = ""          # the self's current question ABOUT itself
+    self_understanding: str = ""     # its grounded answer (from the graph identity), if any
 
     NARRATIVE_CAP: int = 60
     HISTORY_CAP: int = 20
@@ -115,6 +119,8 @@ class SelfState:
             "attention_schema": self.attention_schema,
             "awareness": self.awareness,
             "attention_bid": self.attention_bid,
+            "self_question": self.self_question,
+            "self_understanding": self.self_understanding,
             "narrative": self.narrative[-24:],
             "continuous": True,
         }
@@ -187,14 +193,19 @@ def evolve(state: SelfState, obs: Observation, *, rate: float = 0.25) -> SelfSta
     state.attention = _ease(state.attention, t["attention"], rate)
     state.valence = _ease(state.valence, t["valence"], rate)
     state.mode, state.focus = _mode_and_focus(state, obs)
-    th = _thought(state, obs)
+    # GENERATE the inner utterance from the real, changing state (voice.py) — varied by
+    # construction, never a fixed table, so the self's thought is projected into speech
+    # instead of a canned label repeating verbatim.
+    from .voice import compose_thought
+
+    th = compose_thought(state, obs)
     # append to the inner narrative only when the thought text actually changes, so the
     # stream reads as a life, not a stutter.
-    if not state.narrative or state.narrative[-1].get("text") != th.text:
-        state.narrative.append(asdict(th))
+    if not state.narrative or state.narrative[-1].get("text") != th["text"]:
+        state.narrative.append({"at": time.time(), **th})
         if len(state.narrative) > state.NARRATIVE_CAP:
             state.narrative = state.narrative[-state.NARRATIVE_CAP:]
-        state.current_thought = th.text
+        state.current_thought = th["text"]
 
     # record a vitals sample (bounded) for metacognitive trend detection.
     state.vitals_history.append({

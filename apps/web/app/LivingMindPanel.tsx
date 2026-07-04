@@ -29,6 +29,8 @@ type SelfSnap = {
   awareness?: string;
   attention_schema?: { attending_to?: string; manner?: string; not_attending_to?: string[] } | null;
   attention_bid?: { kind?: string; text?: string; proposal_id?: string } | null;
+  self_question?: string;
+  self_understanding?: string;
   narrative?: Thought[];
 };
 
@@ -144,6 +146,16 @@ export default function LivingMindPanel({ compact = false }: { compact?: boolean
               <p className="atanor-mind-awareness" title="주의 스키마(AST)에서 생성된 자기-인식 보고 — 기능적 자기모델이며, 현상적 경험 여부는 철학적으로 미결입니다.">
                 <b>인식</b> {snap.awareness}
               </p>
+            ) : null}
+            {snap?.self_question ? (
+              <div className="atanor-mind-inquiry">
+                <p className="atanor-mind-inquiry-q">{snap.self_question}</p>
+                {snap.self_understanding ? (
+                  <p className="atanor-mind-inquiry-a"><b>근거로 아는 답</b> {snap.self_understanding}</p>
+                ) : (
+                  <p className="atanor-mind-inquiry-open">아직 이 물음에 근거로 댈 답이 부족하다 — 지어내지 않는다.</p>
+                )}
+              </div>
             ) : null}
             {snap?.meta_thought ? (
               <p className="atanor-mind-meta"><b>스스로 돌아보며</b> {snap.meta_thought}</p>

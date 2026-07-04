@@ -29,6 +29,7 @@ class ContinuousSelf:
         *,
         base_interval: float = 2.0,
         observe_fn=None,
+        identity_fn=None,
         initiative_every: int = 15,
     ):
         self.state_path = Path(state_path)
@@ -37,6 +38,8 @@ class ContinuousSelf:
         # A read-only probe the mind may run ITSELF to serve its goals (action.py).
         # OBSERVE-tier only, by construction; higher tiers are never autonomous.
         self.observe_fn = observe_fn
+        # Answers the self's OWN questions from the graph identity (grounded speech).
+        self.identity_fn = identity_fn
         # Mutable runtime params — the ONLY thing gated self-modification may change,
         # and only after explicit operator approval (self_modification.py).
         self.params: dict = {"initiative_every": max(1, int(initiative_every))}
@@ -62,6 +65,23 @@ class ContinuousSelf:
             obs = Observation()
         with self._lock:
             evolve(self.state, obs)
+            # The inward turn: when due, the self asks ITSELF a question and answers it
+            # FROM THE GRAPH (grounded). Its drive to ask + its grounded answer = the
+            # merge of self-awareness (inside) and justified speech (outside).
+            try:
+                from .voice import due_for_self_inquiry, generate_self_inquiry, record_self_understanding
+
+                if due_for_self_inquiry(self.state):
+                    q, topic = generate_self_inquiry(self.state)
+                    ans = None
+                    if self.identity_fn is not None:
+                        try:
+                            ans = self.identity_fn(q, topic)
+                        except Exception:
+                            ans = None
+                    record_self_understanding(self.state, q, ans, topic)
+            except Exception:
+                pass  # the inward turn must never break the life
             # On its own cadence the mind ACTS on its highest-priority goal (unprompted,
             # OBSERVE-tier only). This closes the thought→action loop.
             if self.state.ticks % self.initiative_every == 0:

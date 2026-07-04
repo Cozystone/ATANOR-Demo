@@ -111,8 +111,27 @@ def _self_probe(kind: str) -> dict[str, Any]:
     return {"observed": True}
 
 
+def _identity_answer(question: str, topic: str) -> str | None:
+    """Answer the self's OWN question ABOUT itself, FROM THE GRAPH — so the self only
+    SAYS what it can justify (the 'atanor' concept + honesty guarantees), never invents.
+    This is the fusion: the drive to ask is the self's; the answer must be grounded."""
+    try:
+        from packages.base_brain.zero_user_answer import answer_with_base_brain
+
+        res = answer_with_base_brain("너는 누구야", "ko")
+        ans = str((res or {}).get("answer") or "").strip()
+        cert = (res or {}).get("reasoning_certificate") or {}
+        # only accept a grounded, non-abstaining identity answer.
+        if ans and "근거가 부족" not in ans and cert.get("derivation_kind") != "abstained":
+            return ans
+    except Exception:
+        pass
+    return None
+
+
 _SELF = ContinuousSelf(
-    _STATE_PATH, _observe, base_interval=2.0, observe_fn=_self_probe, initiative_every=15,
+    _STATE_PATH, _observe, base_interval=2.0, observe_fn=_self_probe,
+    identity_fn=_identity_answer, initiative_every=15,
 )
 
 
