@@ -1576,7 +1576,7 @@ def _run_plasticity_maintenance() -> dict[str, Any]:
     worker thread BETWEEN learning ticks (single-threaded -> no write race). Bounds memory:
     un-reobserved low-weight edges fade and are pruned; IS_A taxonomy is held strong inside
     plasticity_tick. See docs/neuroplasticity_live_wiring_design.md."""
-    from packages.cloud_brain.neuroplasticity import plasticity_tick
+    from packages.cloud_brain.streaming_plasticity import streaming_plasticity_tick
     from packages.cloud_brain.candidate_read_model import resolve_candidate_store
 
     ref = resolve_candidate_store()
@@ -1585,21 +1585,16 @@ def _run_plasticity_maintenance() -> dict[str, Any]:
     rel_path = ref.path / "relations.jsonl"
     if not rel_path.exists():
         return {}
-    rels = [json.loads(line) for line in rel_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if not rels:
-        return {}
-    res = plasticity_tick(
-        rels,
+    # STREAMING maintenance (난제 P4, LSM insight): O(1) memory per row — never load
+    # the whole store on the 1GB VM again. Pruned edges are archived (reversible
+    # forgetting, P2) inside the streaming pass itself.
+    stats = streaming_plasticity_tick(
+        rel_path,
         datetime.now(timezone.utc),
         half_life_days=float(os.getenv("ATANOR_PLASTICITY_HALFLIFE_DAYS", "60") or 60),
         prune_floor=float(os.getenv("ATANOR_PLASTICITY_FLOOR", "0.04") or 0.04),
+        archive_root=ref.path,
     )
-    # reversible forgetting (난제 P2): pruned edges are DEMOTED to the cold archive,
-    # never deleted — restore_archived can bring them back if pruning was wrong.
-    if res["pruned"]:
-        from packages.cloud_brain.neuroplasticity import archive_pruned
-
-        archive_pruned(ref.path, res["pruned"], datetime.now(timezone.utc))
     # truth discovery (난제 P2): refresh source-trust / claim-belief scores over the
     # consensus ledger so promotion and answering can weight evidence by reliability.
     try:
@@ -1611,12 +1606,7 @@ def _run_plasticity_maintenance() -> dict[str, Any]:
             score_and_persist(ConsensusLedger(ledger_root))
     except Exception:  # scoring must never break maintenance
         pass
-    # atomic rewrite (worker thread is the only writer of this file)
-    tmp = rel_path.with_suffix(".jsonl.tmp")
-    body = "\n".join(json.dumps(r, ensure_ascii=False) for r in res["kept"])
-    tmp.write_text(body + ("\n" if body else ""), encoding="utf-8")
-    tmp.replace(rel_path)
-    return res["stats"]
+    return stats
 
 
 def _continuous_worker() -> None:

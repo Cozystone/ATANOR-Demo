@@ -2160,13 +2160,15 @@ function FullApp() {
     },
   ]);
   const [error, setError] = useState<string | null>(null);
-  // Engine reachability: polled so a dead backend shows ONE clear banner instead of
-  // every panel silently degrading (stuck sync %, empty graphs, "(no answer)").
+  // Engine reachability: SSE-first (난제 P4 — one push stream instead of polling),
+  // falling back to the 20s poll only when the stream cannot be established.
   const [engineDown, setEngineDown] = useState(false);
   const [enginePingNonce, setEnginePingNonce] = useState(0);
   useEffect(() => {
     let stopped = false;
-    async function ping() {
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let es: EventSource | null = null;
+    async function pollOnce() {
       try {
         const r = await fetch("/api/base-brain/status", { cache: "no-store" });
         if (!stopped) setEngineDown(!r.ok);
@@ -2174,11 +2176,34 @@ function FullApp() {
         if (!stopped) setEngineDown(true);
       }
     }
-    ping();
-    const t = setInterval(ping, 20000);
+    function startPolling() {
+      if (pollTimer) return;
+      pollOnce();
+      pollTimer = setInterval(pollOnce, 20000);
+    }
+    try {
+      es = new EventSource("http://127.0.0.1:8502/api/status/stream");
+      es.onmessage = () => {
+        if (!stopped) setEngineDown(false);
+      };
+      es.onerror = () => {
+        if (!stopped) setEngineDown(true); // EventSource auto-reconnects; banner shows meanwhile
+      };
+    } catch {
+      startPolling();
+    }
+    const fallback = setTimeout(() => {
+      if (es && es.readyState !== EventSource.OPEN) {
+        es.close();
+        es = null;
+        startPolling();
+      }
+    }, 30000);
     return () => {
       stopped = true;
-      clearInterval(t);
+      if (pollTimer) clearInterval(pollTimer);
+      clearTimeout(fallback);
+      es?.close();
     };
   }, [enginePingNonce]);
   // Conversation-log drawer: collapsed to a button by default; slides open

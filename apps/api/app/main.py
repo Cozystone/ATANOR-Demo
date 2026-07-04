@@ -52,6 +52,7 @@ _configure_runtime_data_dir_from_args()
 _configure_local_package_paths()
 
 from app.routers.brain_sync import router as brain_sync_router
+from app.routers.status_stream import router as status_stream_router
 from app.routers.answer_quality import router as answer_quality_router
 from app.routers.agentic_micro_os import router as agentic_micro_os_router
 from app.routers.agora import router as agora_router
@@ -196,6 +197,7 @@ app.include_router(harvest_router)
 app.include_router(hybrid_network_router)
 app.include_router(inner_voice_router)
 app.include_router(brain_sync_router)
+app.include_router(status_stream_router)
 app.include_router(learning_router)
 app.include_router(local_memory_approval_router)
 app.include_router(cloud_brain_router)
