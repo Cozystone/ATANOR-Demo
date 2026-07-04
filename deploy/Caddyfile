@@ -2,7 +2,7 @@
 # Uses sslip.io so a real domain isn't required — it resolves
 # <ip>.sslip.io back to <ip>, and Caddy gets a Let's Encrypt cert for it.
 
-35.184.183.108.sslip.io {
+136.114.69.152.sslip.io {
     encode zstd gzip
     reverse_proxy atanor-cloud:8500
 }
