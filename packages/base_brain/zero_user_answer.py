@@ -391,6 +391,14 @@ def _english_frame(label: str, description: str, audience_level: str) -> str:
 def _description_sentence(concept: dict[str, Any], language: str, audience_level: str) -> str:
     label = _label(concept, language)
     description = str(concept.get("short_description") or "")
+    # A curated Korean gloss (KO_DESCRIPTIONS) always wins in ko mode, even when the
+    # label/description are English (e.g. "CPU"/"GPU"): otherwise the English-frame
+    # shortcut below would leak "A CPU is a general-purpose processor …" into a Korean
+    # comparison answer. The fact stays faithful; only the surface is Koreanized.
+    if language == "ko":
+        _ko = KO_DESCRIPTIONS.get(str(concept.get("concept_id")))
+        if _ko:
+            return f"{_topic(label)} {_ko}"
     # Language-matched framing: an English concept/description must NOT receive a
     # Korean topic particle ("Marie Curie는 was the first …"). If the label is
     # non-Korean and the description carries no Hangul, frame it in English even when
@@ -528,6 +536,30 @@ def _korean_relation_sentence(
     return " ".join(parts)
 
 
+def _select_compare_pair(query: str, strong: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pick the TWO distinct concepts a comparison is actually about. A naive
+    top-2-by-score picks duplicates ("도커와 쿠버네티스 차이" → 쿠버네티스 + a promoted
+    쿠버네티스 duplicate, yielding "쿠버네티스와 쿠버네티스"). So prefer concepts the query
+    NAMES, and require two distinct surface labels — never the same concept twice."""
+    def _key(item: dict[str, Any]) -> str:
+        return (_label(item, "ko") or str(item.get("concept_id") or "")).strip().lower()
+
+    picked: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    # first pass: concepts explicitly named in the query, in query order of appearance
+    named = [it for it in strong if _named_in_query(query, it)]
+    named.sort(key=lambda it: min((query.lower().find(n.lower()) % 100000) for n in _concept_names(it) if n.lower() in query.lower()) if any(n.lower() in query.lower() for n in _concept_names(it)) else 99999)
+    for item in named + strong:
+        k = _key(item)
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        picked.append(item)
+        if len(picked) == 2:
+            break
+    return picked
+
+
 def _compare_answer(context: list[dict[str, Any]], language: str, audience_level: str) -> str:
     if len(context) < 2:
         return ""
@@ -623,7 +655,8 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
         ), False
 
     if intent == "compare":
-        compared = _compare_answer(strong, language, audience_level)
+        pair = _select_compare_pair(query, strong)
+        compared = _compare_answer(pair, language, audience_level) if len(pair) == 2 else ""
         if compared:
             return compared, True
 

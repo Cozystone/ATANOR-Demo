@@ -144,10 +144,15 @@ def _to_expr(text: str) -> str | None:
     s = text
     # Phrasal Korean arithmetic where the operator is a verb between two numbers:
     # "100에서 37을 빼면" / "5에 3을 더하면" / "6에 4를 곱하면" / "12를 4로 나누면".
-    s = re.sub(r"(\d[\d,]*)\s*에서\s*(\d[\d,]*)\s*(?:을|를)?\s*(?:빼|뺀|덜)", r"\1 - \2", s)
-    s = re.sub(r"(\d[\d,]*)\s*에\s*(\d[\d,]*)\s*(?:을|를)?\s*(?:더|추가|보태)", r"\1 + \2", s)
-    s = re.sub(r"(\d[\d,]*)\s*에\s*(\d[\d,]*)\s*(?:을|를)?\s*곱", r"\1 * \2", s)
-    s = re.sub(r"(\d[\d,]*)\s*(?:을|를)\s*(\d[\d,]*)\s*(?:으로|로)\s*나누", r"\1 / \2", s)
+    # A counter unit ("개/명/마리/…") may sit between the number and the postposition
+    # ("사과 5개에서 2개를 빼면"), so absorb an optional counter after each operand.
+    _C = r"(?:개|명|마리|권|장|살|원|병|잔|대|판|송이|그루|자루|쪽|편)?"
+    s = re.sub(r"(\d[\d,]*)\s*" + _C + r"\s*에서\s*(\d[\d,]*)\s*" + _C + r"\s*(?:을|를)?\s*(?:빼|뺀|덜)", r"\1 - \2", s)
+    s = re.sub(r"(\d[\d,]*)\s*" + _C + r"\s*에\s*(\d[\d,]*)\s*" + _C + r"\s*(?:을|를)?\s*(?:더|추가|보태)", r"\1 + \2", s)
+    s = re.sub(r"(\d[\d,]*)\s*" + _C + r"\s*에\s*(\d[\d,]*)\s*" + _C + r"\s*(?:을|를)?\s*곱", r"\1 * \2", s)
+    # "12를 4로 나누면" and "사탕 10개를 2명이 나누면" (divided AMONG 2). The 나누 verb
+    # disambiguates the divisor's marker (로/으로 or subject 이/가).
+    s = re.sub(r"(\d[\d,]*)\s*" + _C + r"\s*(?:을|를)\s*(\d[\d,]*)\s*" + _C + r"\s*(?:으로|로|이|가)?\s*나누", r"\1 / \2", s)
     has_word_op = False
     for pat, sym in _OP_WORDS:
         if re.search(pat, s, re.IGNORECASE):

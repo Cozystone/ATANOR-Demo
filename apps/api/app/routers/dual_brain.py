@@ -3662,6 +3662,67 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
                 },
                 "confidence": 0.9,
             }
+    # Creative-generation requests ("시/노래/소설/이야기 써줘", "그림 그려줘"): a No-LLM
+    # graph engine has no generative model, so it must NOT answer these by returning an
+    # off-target DEFINITION ("사랑 시 써줘" → the definition of 사랑 — worse than an honest
+    # decline). Detect the request and decline honestly, naming the real limit. This is
+    # the precision identity: an off-target answer is worse than a truthful "I can't".
+    creative_decline = None
+    if not (self_state or self_knowledge or recall):
+        _q = question.strip()
+        if re.search(r"(시|노래|가사|소설|이야기|스토리|동화|에세이|수필|글|편지|랩)\S*\s*(\S+\s+){0,2}(써|써줘|지어|지어줘|만들어|만들어줘|창작|작곡|작사)", _q) \
+           or re.search(r"(그림|그려|그려줘|drawing|draw|poem|write me a|compose)", _q, re.IGNORECASE):
+            creative_decline = {
+                "answer": (
+                    "저는 근거에서 답을 짓는 그래프 기반 엔진이라, 시나 이야기 같은 창작은 하지 않아요 — "
+                    "지어내지 않는 것이 제 원칙이거든요. 대신 어떤 대상의 뜻·유래·관계처럼 근거로 설명할 수 "
+                    "있는 것이라면 정확히 도와드릴 수 있어요."
+                ),
+                "reasoning_certificate": {
+                    "derivation_kind": "honest_capability_limit",
+                    "anchor_concept": None, "steps": [], "evidence_concepts": [],
+                    "confidence": 0.9, "confidence_basis": "no_generative_model_by_design",
+                    "guarantees": {"external_llm": False, "fabricated_facts": False, "web_used": False},
+                },
+                "confidence": 0.9,
+            }
+
+    # How-to / procedural requests ("파이썬으로 리스트 정렬하는 법", "~하려면 어떻게 해?"):
+    # the graph holds concept DEFINITIONS, not step-by-step procedures, so a how-to
+    # falls through to an off-target definition of the tool ("파이썬은 …프로그래밍 언어
+    # 입니다"). That's worse than admitting it. Flag it here; a post-dispatch guard
+    # replaces a bare-definition answer with an honest capability note (procedural
+    # answers need web/grounding, which the local graph doesn't provide offline).
+    howto_request = False
+    if not (self_state or self_knowledge or recall or creative_decline) and not request.web_search:
+        howto_request = bool(
+            re.search(r"(하는|하는)\s*(법|방법)\b|\b방법(을|좀|\s*알려|이\s*뭐)|하려면\s*어떻게|어떻게\s*하(면|는|나요|죠|지)|how\s+(to|do\s+i)\b", question, re.IGNORECASE)
+        )
+
+    # Contrast / "A와 B의 차이" questions: the grounded-conversation router only
+    # surfaces ONE side ("도커와 쿠버네티스 차이" → just 쿠버네티스). The base-brain
+    # compare path describes BOTH concepts grounded, so route confirmed two-concept
+    # comparisons through it. Only overrides when it yields a real two-sided compare
+    # answer (intent=compare + useful); otherwise the normal path stands.
+    concept_compare = None
+    if not (self_state or self_knowledge or recall or creative_decline) \
+       and re.search(r"차이|비교|vs\b|versus|difference\s+between|어떻게\s*다르|무엇이\s*다르", question, re.IGNORECASE):
+        try:
+            _cmp = answer_with_base_brain(question, language)
+            _is_cmp = bool(_cmp) and (_cmp.get("trace") or {}).get("intent") == "compare" and bool(_cmp.get("useful_answer"))
+            if _is_cmp:
+                _ans = str(_cmp.get("answer") or "")
+                # guard against a degenerate "X와 X" pair the base path might emit
+                _m = re.match(r"\s*(.+?)(?:와|과)\s+(.+?)의\s+핵심\s+차이", _ans)
+                if not _m or _m.group(1).strip() != _m.group(2).strip():
+                    concept_compare = {
+                        "answer": _ans,
+                        "reasoning_certificate": _cmp.get("reasoning_certificate"),
+                        "confidence": float(_cmp.get("confidence") or 0.75),
+                    }
+        except Exception:  # pragma: no cover - defensive
+            concept_compare = None
+
     # Deterministic multi-hop comparison ("A와 B 중 누가 먼저 태어났어?"): two real
     # lookups + a deterministic compare, no LLM. None when not a comparison or when
     # it can't extract both values (abstains, never guesses).
@@ -3751,6 +3812,51 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["confidence"] = greeting_answer["confidence"]
         result["answer_kind"] = "greeting"
         result["can_speak"] = True
+
+    # Creative request — honest decline (no generative model), never an off-target def.
+    if creative_decline and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = creative_decline["answer"]
+        result["reasoning_certificate"] = creative_decline["reasoning_certificate"]
+        result["confidence"] = creative_decline["confidence"]
+        result["answer_kind"] = "honest_capability_limit"
+        result["can_speak"] = True
+
+    # Contrast — describe BOTH concepts grounded, never just one side.
+    if concept_compare and isinstance(response.get("result"), dict):
+        _ans = response["result"].get("answer") or ""
+        # only override a one-sided / abstaining answer, never a richer real one
+        if _answer_is_abstention(_ans) or ("핵심 차이" not in str(_ans)):
+            result = response["result"]
+            result["answer"] = concept_compare["answer"]
+            result["reasoning_certificate"] = concept_compare["reasoning_certificate"]
+            result["confidence"] = concept_compare["confidence"]
+            result["answer_kind"] = "concept_comparison"
+            result["can_speak"] = True
+
+    # How-to — if the answer is a bare off-target DEFINITION (the graph defined the
+    # tool instead of giving steps), replace with an honest procedural-limit note.
+    # Leave real abstentions and any answer that already reads procedurally alone.
+    if howto_request and not concept_compare and isinstance(response.get("result"), dict):
+        _ans = str(response["result"].get("answer") or "")
+        _looks_procedural = bool(re.search(r"단계|먼저|다음|절차|1\.|①|우선|이렇게|하려면", _ans))
+        _is_definition = bool(re.search(r"(입니다|이다|말한다|뜻한다)\.?\s*$", _ans)) or "이는 " in _ans
+        if _ans and not _answer_is_abstention(_ans) and _is_definition and not _looks_procedural:
+            result = response["result"]
+            result["answer"] = (
+                "그 절차를 단계별로 알려드리려면 확인된 근거가 필요한데, 지금 로컬 그래프에는 그 방법에 대한 "
+                "단계별 근거가 없어요 — 지어내서 알려드리진 않을게요. 웹 검색을 켜 주시거나, 관련 개념의 뜻·용도라면 "
+                "근거로 설명해 드릴 수 있어요."
+            )
+            result["reasoning_certificate"] = {
+                "derivation_kind": "honest_capability_limit",
+                "anchor_concept": None, "steps": [], "evidence_concepts": [],
+                "confidence": 0.85, "confidence_basis": "no_procedural_grounding_offline",
+                "guarantees": {"external_llm": False, "fabricated_facts": False, "web_used": False},
+            }
+            result["confidence"] = 0.85
+            result["answer_kind"] = "honest_capability_limit"
+            result["can_speak"] = True
 
     # Reasoning VM answer (math / counting word problem) — authoritative,
     # deterministic, offline. Highest priority over the web-grounded engine.
