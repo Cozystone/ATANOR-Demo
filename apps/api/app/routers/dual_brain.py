@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field
 
 from app.services.alpha_services import alpha_service
 from packages.base_brain.scene_grounding import extract_scene_grounding
-from packages.base_brain.zero_user_answer import answer_with_base_brain, _is_identity_question
+from packages.base_brain.zero_user_answer import (
+    answer_with_base_brain, _is_identity_question, _question_shape, _shape_engage,
+)
 from packages.cgsr.cgsr.referent_resonance import is_self_reference_question as _is_self_reference_question
 from packages.base_brain.pack_loader import get_semantic_context, load_base_brain_pack
 from packages.holographic_fold import (
@@ -3611,7 +3613,10 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # below are skipped — otherwise "너 누구야" matches the film "너의 이름은" or a
     # dictionary entry for the pronoun 너.
     self_knowledge = None
-    if not self_state and (_is_identity_question(question) or _is_self_reference_question(question)):
+    # "자기소개", "자기 계발" etc. contain "자기" but are NOT about ATANOR — guard the
+    # self-reference route against these common false triggers.
+    _false_self = bool(re.search(r"자기\s*소개|자기\s*계발|자기\s*관리|자기\s*개발", question))
+    if not self_state and not _false_self and (_is_identity_question(question) or _is_self_reference_question(question)):
         try:
             # Realize from the atanor concept. For an explicit identity marker use the
             # question as-is; for other self-reference questions ("너 LLM 써?", "너 한계
@@ -4009,6 +4014,22 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             for key in ("render_iframe", "render_iframe_tabs"):
                 response["result"].pop(key, None)
 
+    # SHAPE CATCH-ALL (design keystone, both answer paths): if the final answer is a cold
+    # abstention and the question is CONVERSATIONAL (causal / advice / opinion / personal),
+    # replace the robotic "근거가 부족합니다" with a HELPFUL honest engage that names the
+    # real limit and offers web search — never a fabricated answer, never a cold dead-end.
+    # Only when web wasn't the source of a real answer and nothing better already fired.
+    if isinstance(response.get("result"), dict):
+        _res = response["result"]
+        _ans = str(_res.get("answer") or "")
+        _shape = _question_shape(question)
+        if (_answer_is_abstention(_ans) and _shape in ("causal", "advice", "opinion", "personal")
+                and _res.get("answer_kind") not in ("greeting", "concept_comparison", "reasoning_vm")):
+            _res["answer"] = _shape_engage(_shape, language)
+            _res["answer_kind"] = "conversational_engage"
+            _res["can_speak"] = True
+            _res["confidence"] = 0.55
+
     # Pick ONE primary answer modality so the dashboard renders a single thing —
     # a readable document (iframe), a particle scene, or plain text — instead of
     # stacking unrecognisable particles. A web-grounded factual/entity lookup
@@ -4183,8 +4204,12 @@ def media_read_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": False, "text": "", "error": "provide 'url' (video), 'image_b64' (upload), or 'image_path'"}
 
 
-_SELF_STATE_KO = ("지금 뭐", "뭐하고", "뭐 하고", "무엇을 하", "네 상태", "너 상태", "기분", "뭘 배웠", "무엇을 배웠", "뭐 배웠", "얼마나 알", "무슨 생각", "어떻게 지내")
+_SELF_STATE_KO = ("지금 뭐", "뭐하고", "뭐 하고", "무엇을 하", "네 상태", "너 상태", "기분이 어때", "뭘 배웠", "무엇을 배웠", "뭐 배웠", "얼마나 알", "무슨 생각", "어떻게 지내")
 _SELF_STATE_EN = ("what are you doing", "what have you learned", "how are you", "your state", "your mood", "what do you know", "how much do you know", "what are you thinking")
+# The self-state path fires only when the sentence is ADDRESSED to ATANOR — a
+# self-reference marker must be present. Otherwise "주말에 뭐 하고 놀지" / "매운 음식 왜
+# 기분이 좋아져" wrongly dumped ATANOR's internal state (measured 2026-07-05).
+_SELF_REF_KO = ("너", "네", "니", "당신", "atanor", "아타노르", "자기", "스스로")
 
 
 def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
@@ -4194,6 +4219,9 @@ def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
         raw = str(question or "")
         lowered = raw.lower()
         if not (any(m in raw for m in _SELF_STATE_KO) or any(m in lowered for m in _SELF_STATE_EN)):
+            return None
+        # require a self-reference so only questions ADDRESSED to ATANOR route here.
+        if not (any(m in lowered for m in _SELF_REF_KO) or "you" in lowered):
             return None
         s = _atanor_self_sense()
         cb = s.get("cloud_brain") or {}

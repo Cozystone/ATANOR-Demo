@@ -328,6 +328,65 @@ def _is_knowledge_query(query: str) -> bool:
         q, re.IGNORECASE))
 
 
+# --- question SHAPE: the design keystone. A bare concept definition only ANSWERS a
+# definitional question. Forcing it onto a causal / advice / opinion / personal question
+# ("고양이가 왜 물어?" -> "고양이는 …포유류이다") is the systemic confident-wrong class. The
+# shape decides whether the definition path may fire at all.
+_SHAPE_PERSONAL = re.compile(r"피곤|우울|번아웃|힘들|외로|슬프|배고프|잠이\s*안|집중이\s*안|불안|스트레스|지쳐|짜증|막막")
+_SHAPE_ADVICE = re.compile(
+    r"어떻게\s*(해|하면|해야|하지|할까|하나|시작|극복|연습|결정)|어떡|어떻해|하려면|되려면|방법|팁|추천|"
+    r"시작해야|뭐부터|어디부터|무엇부터|어떤\s*걸|골라|"
+    r"(게|건|것이|편이)\s*(맞|나아|낫|좋|유리|괜찮|이득)|"       # "…게 나아?/좋아?/유리해?"
+    r"(뭐가|무엇이|어느\s*(게|것|쪽)|어떤\s*게)\s*(나아|낫|좋|유리|맞|괜찮)|"  # "뭐가 유리해?"
+    r"[가-힣]야\s*(해|돼|되|하나|할까|할지)|"                   # "사야 돼?/해야 해?"
+    r"어떻게\b.*[?？]?$")
+_SHAPE_OPINION = re.compile(
+    r"생각(해|하니|이야|은|하나|해요)|어떻게\s*생각|라고\s*(봐|생각)|"
+    r"꼭\s*.*(해야|필요|하는)|맞(을까|는\s*걸까|다고\s*봐)|괜찮(을까|은\s*걸까)|"
+    r"비결|중요(할까|한가)|해야\s*(하는|할)\s*(걸까|까)|필요할까|"
+    r"[가-힣](을까|ㄹ까|일까)[?？]?\s*$|까[?？]\s*$")            # speculative endings: 뺏을까?/될까?
+_SHAPE_CAUSAL = re.compile(r"왜\b|어째서|때문|(면|으면)\s*(어떻게|어떡|무슨\s*일|어찌)|어떻게\s*(되|돼)")
+_SHAPE_DEFINITION = re.compile(r"(뭐야|뭔데|뭐냐|란\b|이란|무엇(인가|이야|이니)?|정의|"
+                               r"대해\s*(설명|알려)|무슨\s*뜻|what\s+is|define)")
+
+
+def _question_shape(query: str) -> str:
+    """definition | causal | advice | opinion | personal | factual. Strongest signal
+    wins (personal > advice > opinion > causal > definition > factual), so an advice
+    question that also names a concept is NOT treated as a definition request."""
+    q = str(query or "")
+    if _SHAPE_PERSONAL.search(q):
+        return "personal"
+    if _SHAPE_ADVICE.search(q):
+        return "advice"
+    if _SHAPE_OPINION.search(q):
+        return "opinion"
+    # a "왜" question is causal UNLESS it's really "왜 X가 중요?" (opinion handled above)
+    if _SHAPE_CAUSAL.search(q):
+        return "causal"
+    if _SHAPE_DEFINITION.search(q):
+        return "definition"
+    return "factual"
+
+
+def _shape_engage(shape: str, language: str) -> str:
+    """A HELPFUL honest response for a non-definitional question we can't ground —
+    engages the person and names the real limit, instead of a cold definition or a
+    robotic abstain. Never fabricates advice."""
+    ko = language == "ko"
+    table = {
+        "causal": ("'왜'를 묻는 질문이라 확인된 근거만으로 딱 잘라 답하긴 어려워요. 웹 검색을 켜 주시면 근거를 찾아 이유를 설명해 드릴게요."
+                   if ko else "This asks 'why', which I can't answer confidently from the base facts alone. Turn on web search and I'll find grounded reasons."),
+        "advice": ("이건 사람마다 상황이 달라서 하나의 정답으로 단정하긴 어려워요. 원하시면 웹에서 실제 조언과 사례를 찾아 정리해 드릴게요 — 웹 검색을 켜 보세요."
+                   if ko else "There's no single right answer here — it depends. If you turn on web search, I'll gather real, grounded advice for you."),
+        "opinion": ("이건 가치 판단이 섞인 물음이라 제가 단정해서 말하기보다는, 확인 가능한 근거를 찾아 함께 짚어 보는 게 맞아요. 웹 검색을 켜 주시면 근거를 모아 드릴게요."
+                    if ko else "This is a judgement call — rather than assert an opinion, I'd rather bring grounded evidence. Turn on web search and I'll gather it."),
+        "personal": ("많이 힘드셨겠어요. 저는 지어내서 조언하진 않지만, 원하시면 웹에서 도움이 될 만한 근거 있는 방법들을 찾아 정리해 드릴게요 — 웹 검색을 켜 보세요."
+                     if ko else "That sounds hard. I won't make up advice, but if you turn on web search I'll gather grounded, helpful suggestions for you."),
+    }
+    return table.get(shape, table["advice"])
+
+
 def _clean_label(value: str) -> str:
     return str(value or "").replace("_", " ").strip()
 
@@ -701,6 +760,17 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
                     return syn["answer"], True
             except Exception:  # pragma: no cover - synthesis must never break the answer path
                 pass
+
+    # SHAPE GATE (design keystone): a bare concept definition only answers a DEFINITIONAL
+    # question. For a causal / advice / opinion / personal question, the named concept's
+    # definition is off-target ("고양이가 왜 물어?" -> "고양이는 …포유류이다"), so DON'T return
+    # it — fall through (useful=False) so neighbourhood synthesis can try genuinely related
+    # facts, and if that also can't ground it, a HELPFUL honest engage stands (not a cold
+    # definition, not a robotic abstain). Definitional/factual shapes keep the definition.
+    _shape = _question_shape(query)
+    _true_identity = _is_identity_question(query) and not re.search(r"자기\s*(소개|계발|관리|개발)", query)
+    if _shape in ("causal", "advice", "opinion", "personal") and not _true_identity:
+        return _shape_engage(_shape, language), False
 
     primary = strong[0]
     # Precision gate: if the top concept is only a loose token-overlap match and
@@ -1117,7 +1187,9 @@ def answer_with_base_brain(
     pack = load_base_brain_pack()
     semantic_context = get_semantic_context(query, pack, limit=12)
     semantic_context = _disambiguate_memory_context(query, semantic_context)
-    if _is_identity_question(query):
+    # "자기소개 / 자기계발" contain "자기" but are NOT identity questions about ATANOR.
+    _false_identity = bool(re.search(r"자기\s*(소개|계발|관리|개발)", query))
+    if _is_identity_question(query) and not _false_identity:
         # "Who are you?" — answer from the grounded ATANOR concept (not a canned
         # string), so identity is graph-derived like any other answer.
         atanor = next(
@@ -1159,8 +1231,13 @@ def answer_with_base_brain(
     # (하드웨어 RAM for a personal-memory query). Those route through the local-brain /
     # disambiguation path, so the neighbourhood fallback skips them.
     _personal_ctx = bool(re.search(r"내\s|나의|제\s|로컬\s*(메모리|브레인)|\bmy\b|\bour\b", query, re.IGNORECASE))
+    # Neighbourhood synthesis composes DEFINITIONS of related concepts — that helps a
+    # "what is X (broadly)" question, but NOT advice/opinion/personal (a definition is not
+    # advice) and not most causal ("왜 …" -> a definition doesn't explain why). Restrict it
+    # to definitional/factual shapes; the other shapes already returned a helpful engage.
     neighborhood_used = False
-    if not useful and not _is_identity_question(query) and _is_knowledge_query(query) and not _personal_ctx:
+    if (not useful and not _is_identity_question(query) and _is_knowledge_query(query)
+            and not _personal_ctx and _question_shape(query) in ("definition", "factual")):
         try:
             from .neighborhood import gather_neighborhood
             from .grounded_generation import synthesize
