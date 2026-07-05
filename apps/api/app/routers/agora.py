@@ -358,6 +358,15 @@ def agora_round() -> dict[str, Any]:
         nums = _real_activity()
         ts = _now()
         agent_id, title_en, title_ko, body_en, body_ko = topic["open"]
+        # no-news guard: if the latest root in this room already carries the SAME title
+        # (same real numbers), there is nothing new to report — repeating it would be
+        # feed spam, not honesty. Skip without consuming a round.
+        filled_title = _fill(title_en, nums)
+        for p in reversed(state.get("posts", [])):
+            if p.get("room") == topic["room"] and not p.get("parent_id"):
+                if p.get("title_en") == filled_title:
+                    return _feed_payload(state)
+                break
         root_id = f"r{rnd}-0"
         new_posts: list[dict[str, Any]] = [{
             "id": root_id, "round": rnd, "room": topic["room"], **_agent_public(agent_id),

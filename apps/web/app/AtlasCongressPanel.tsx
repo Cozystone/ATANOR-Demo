@@ -96,7 +96,7 @@ const text = {
     discuss: "에이전트에게 토론 요청", discussing: "답글 작성 중…",
     learnTitle: "웹에서 배워 온 것", awaiting: "검토 대기",
     concepts: "개념", relations: "연결", evidence: "근거",
-    noResults: "검색 결과가 없어요.", posts: "개의 글", justNow: "방금",
+    noResults: "검색 결과가 없어요.", posts: "개", justNow: "방금",
     minAgo: "분 전", hrAgo: "시간 전", dayAgo: "일 전",
   },
 } satisfies Record<Language, Record<string, string>>;
@@ -215,13 +215,13 @@ export default function AtlasCongressPanel({ language }: { language: Language })
     fetch("/api/cloud-brain/candidate/status", { cache: "no-store" })
       .then((r) => r.json()).then((j) => { if (!cancelled) setLearn(j as CandidateStatus); })
       .catch(() => undefined);
+    // read-only poll keeps the feed fresh; rounds run ONLY on user action (the backend
+    // also has a no-news guard, so auto-rounds would mostly no-op anyway — the old 90s
+    // auto-round filled the feed with repeats).
     const readId = window.setInterval(() => {
       if (document.visibilityState === "visible") refreshFeed();
     }, 15000);
-    const roundId = window.setInterval(() => {
-      if (document.visibilityState === "visible" && !runningRef.current) runRound();
-    }, 90000);
-    return () => { cancelled = true; window.clearInterval(readId); window.clearInterval(roundId); };
+    return () => { cancelled = true; window.clearInterval(readId); };
   }, [refreshFeed, runRound]);
 
   const q = query.trim().toLowerCase();
@@ -302,8 +302,9 @@ export default function AtlasCongressPanel({ language }: { language: Language })
         <>
           <section className="agora-hero" aria-labelledby="agora-title" style={{ gridTemplateColumns: "1fr", marginTop: 14 }}>
             <div className="agora-hero-copy">
-              <span className="agora-kicker"><Radio size={13} /> {t.heroKicker}</span>
-              <h2 id="agora-title">{t.heroTitle}</h2>
+              {/* the topbar wordmark already says AGORA — repeating it as a giant h2 read
+                  as noise; the kicker line carries the section identity instead */}
+              <span className="agora-kicker" id="agora-title"><Radio size={13} /> {t.heroKicker}</span>
               <p>{t.heroText}</p>
               <div className="agora-cta-row">
                 <button type="button" onClick={() => runRound()} disabled={running}>
@@ -317,8 +318,10 @@ export default function AtlasCongressPanel({ language }: { language: Language })
           </section>
 
           <div style={{ display: "grid", gridTemplateColumns: "minmax(200px, 236px) 1fr", gap: 14, alignItems: "start", marginTop: 14 }}>
-            {/* left rail */}
-            <aside style={{ display: "grid", gap: 12 }}>
+            {/* left rail — minmax(0,1fr) pins the implicit column to the aside's width;
+                without it, grid items' min-content (long peer names) blows the column out
+                past 236px and the cards slide under the feed */}
+            <aside style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1fr)" }}>
               <section style={{ ...T.card, padding: "12px 14px" }}>
                 <h3 style={railTitle}>{t.communities}</h3>
                 {[{ id: "", name: t.allRooms, posts: undefined as number | undefined }, ...rooms].map((room) => (
@@ -339,13 +342,13 @@ export default function AtlasCongressPanel({ language }: { language: Language })
                 {peers.map((p) => (
                   <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
                     <Avatar size={21} />
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ display: "block", fontSize: 12, color: T.emph, fontWeight: 600 }}>{agentName(p, language)}</strong>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ display: "block", fontSize: 12, color: T.emph, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{agentName(p, language)}</strong>
                       <small style={{ color: T.faint, fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
                         {language === "ko" ? p.bio_ko : p.bio_en}
                       </small>
                     </div>
-                    <em style={{ ...T.chip, marginLeft: "auto", fontStyle: "normal", fontSize: 9.5,
+                    <em style={{ ...T.chip, flex: "none", fontStyle: "normal", fontSize: 9.5,
                       color: p.connected ? T.accent : T.faint, padding: "1px 7px", whiteSpace: "nowrap" }}>
                       {p.connected ? t.peerConnected : t.peerAwaiting}
                     </em>
@@ -358,14 +361,14 @@ export default function AtlasCongressPanel({ language }: { language: Language })
                 {agents.map((a) => (
                   <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
                     <Avatar size={21} />
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ display: "block", fontSize: 12, color: T.emph, fontWeight: 600 }}>{agentName(a, language)}</strong>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ display: "block", fontSize: 12, color: T.emph, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{agentName(a, language)}</strong>
                       <small style={{ color: T.faint, fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
                         {language === "ko" ? a.bio_ko : a.bio_en}
                       </small>
                     </div>
                     {a.active ? (
-                      <em style={{ ...T.chip, marginLeft: "auto", fontStyle: "normal", fontSize: 9.5, color: T.accent, padding: "1px 7px" }}>{t.live}</em>
+                      <em style={{ ...T.chip, flex: "none", fontStyle: "normal", fontSize: 9.5, color: T.accent, padding: "1px 7px", whiteSpace: "nowrap" }}>{t.live}</em>
                     ) : null}
                   </div>
                 ))}
@@ -424,9 +427,6 @@ export default function AtlasCongressPanel({ language }: { language: Language })
                     <footer style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8, color: T.meta, fontSize: 11 }}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                         <MessageSquareText size={12} /> {post.comment_count ?? (post.replies ?? []).length} {(post.comment_count ?? 0) === 1 ? t.comment : t.comments}
-                      </span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                        <ShieldCheck size={12} /> {t.round} {post.round}
                       </span>
                     </footer>
                   </div>
