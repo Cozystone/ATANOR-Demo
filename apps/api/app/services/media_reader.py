@@ -138,6 +138,34 @@ def read_image_ocr(image_path: str, *, lang: str = "kor+eng", max_chars: int = 6
     return {"ok": bool(text), "text": text[:max_chars], "source_type": "image_ocr", "error": None}
 
 
+def read_image_ocr_b64(image_b64: str, *, lang: str = "kor+eng", max_chars: int = 6000) -> dict[str, Any]:
+    """OCR an UPLOADED image given as base64 (data-URL or raw) — for the chat composer's
+    file attach. Decodes in-memory (no temp file)."""
+    cmd = _tesseract_cmd()
+    if cmd is None:
+        return {"ok": False, "text": "", "error": "ocr_not_available",
+                "enable": "Install Tesseract OCR (winget install UB-Mannheim.TesseractOCR) + Korean data."}
+    try:
+        import base64
+        import io
+
+        import pytesseract
+        from PIL import Image
+
+        raw = image_b64.split(",", 1)[1] if image_b64.startswith("data:") else image_b64
+        img = Image.open(io.BytesIO(base64.b64decode(raw)))
+        pytesseract.pytesseract.tesseract_cmd = cmd
+        tessdata = _tessdata_dir()
+        if tessdata:
+            os.environ["TESSDATA_PREFIX"] = tessdata
+        use_lang = lang if (tessdata or "kor" not in lang) else "eng"
+        text = pytesseract.image_to_string(img, lang=use_lang)
+    except Exception as exc:
+        return {"ok": False, "text": "", "error": f"ocr_failed:{type(exc).__name__}"}
+    text = re.sub(r"[ \t]+", " ", text).strip()
+    return {"ok": bool(text), "text": text[:max_chars], "source_type": "image_ocr", "error": None}
+
+
 def media_capabilities() -> dict[str, Any]:
     """What media ATANOR can currently read into text (honest capability report)."""
     try:
