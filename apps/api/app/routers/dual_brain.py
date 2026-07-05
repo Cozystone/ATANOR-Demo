@@ -3600,6 +3600,17 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Local Brain cumulative learning: accumulate user prefs/info from this turn.
     _accumulate_user_facts(question, language)
     recall = _local_brain_recall(question, language)
+    # Curated structured-triple lookup (the trillion-scale KG substrate): an exact fact
+    # from the bulk-loaded knowledge graph ("일본의 수도는?" -> 일본 capital 도쿄도). Highest
+    # quality (curated, verbatim, cited), so it takes priority. None when the store can't
+    # answer (empty store / no matching fact) — safe even before any bulk load.
+    triple_answer = None
+    try:
+        from packages.graph_scale.answer_bridge import answer_from_triples
+
+        triple_answer = answer_from_triples(question, language)
+    except Exception:  # pragma: no cover - never break chat
+        triple_answer = None
     # "Living creature" sense: answer questions about ATANOR's own live state by
     # pulling from every subsystem at once.
     self_state = _self_state_answer(question, language)
@@ -3862,6 +3873,16 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             result["confidence"] = 0.85
             result["answer_kind"] = "honest_capability_limit"
             result["can_speak"] = True
+
+    # Structured-triple answer — exact curated fact, verbatim + cited. Overrides the
+    # noisier engine paths (before reasoning_vm, which handles a disjoint set of math Qs).
+    if triple_answer and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = triple_answer["answer"]
+        result["reasoning_certificate"] = triple_answer["reasoning_certificate"]
+        result["confidence"] = triple_answer["confidence"]
+        result["answer_kind"] = "structured_triple_lookup"
+        result["can_speak"] = True
 
     # Reasoning VM answer (math / counting word problem) — authoritative,
     # deterministic, offline. Highest priority over the web-grounded engine.
