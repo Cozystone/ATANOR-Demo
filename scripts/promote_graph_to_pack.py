@@ -164,15 +164,18 @@ def strip_leading_subject(name: str, desc: str) -> str:
     # Loop: strip a LEADING "{name}[ particle]" repeatedly. Ingestion sometimes
     # DUPLICATES the subject ("기록 기록 은 …" from "기록(記錄)은 …"), so one pass
     # leaves an orphaned "기록 은"; keep going while the name still leads. Bounded.
+    # Longer particles FIRST in the alternation: "이란" must beat "이" (else "화석이란"
+    # strips only "화석이" and leaves an orphan "란"). Same for "으로"/"으" etc.
+    _PARTS = r"(?:이란|이라|으로|은|는|란|이|가|도|을|를|와|과|의)"
     for _ in range(4):
-        m = re.match(n + r"\s*(?:은|는|이|가|란|이란|도|을|를|와|과)?\s*", out, re.IGNORECASE)
+        m = re.match(n + r"\s*" + _PARTS + r"?\s*", out, re.IGNORECASE)
         if m and m.end() > 0 and (len(out) - m.end()) >= 12:
             out = out[m.end():].strip()
         else:
             break
     # An orphaned leading particle can remain when the name was doubled with a space
-    # ("기록 은 …" after the name was consumed) — strip a lone leading 은/는/이/가.
-    out = re.sub(r"^(?:은|는|이|가)\s+", "", out).strip()
+    # ("기록 은 …" after the name was consumed) — strip a lone leading particle.
+    out = re.sub(r"^(?:이란|이라|란|은|는|이|가|을|를)\s+", "", out).strip()
     # And a leading comma/colon the English appositive leaves ("Australia, officially
     # …" -> ", officially …" -> "officially …"), so the engine's "{name} " prefix reads
     # cleanly ("Australia officially …") instead of "Australia , officially …".
@@ -379,6 +382,53 @@ def _promote_impl(dry_run: bool = False) -> dict:
         r"(하다|되다|시키다|당하다|스럽다|스레하다|롭다|답다|거리다|이다|대다|해지다|해하다)$"
     )
 
+    # English SENTENCE-FRAGMENT names — leading-subject extraction grabbing a whole
+    # clause, not an entity ("One of her major roles", "It debuted on July", "Aimed at
+    # a general audience"). A real multi-word English name is a PROPER noun phrase; a
+    # fragment starts with a pronoun/determiner/participle or runs sentence-long. Proper
+    # names ("Princess Cecilie of Prussia", "Red Ladder Theatre Company") are kept.
+    _FRAGMENT_HEAD = {
+        "it", "its", "one", "both", "some", "many", "most", "this", "that", "these",
+        "those", "her", "his", "their", "our", "your", "my", "he", "she", "they", "we",
+        "a", "an", "the", "aimed", "named", "based", "set", "located", "according",
+        "following", "known", "born", "founded", "established", "originally", "later",
+        "after", "before", "during", "when", "while", "there", "here", "such", "each",
+        "all", "any", "no", "another", "several", "various",
+    }
+
+    # Lowercase base-form verbs / clause markers that betray a sentence fragment even
+    # without an -ed/-ing tell ("Police believe that", "Share What is").
+    _CLAUSE_TOKENS = {
+        "that", "what", "which", "who", "whom", "whose", "believe", "believes",
+        "think", "thinks", "say", "says", "become", "becomes", "make", "makes",
+        "include", "includes", "consist", "refer", "refers", "is", "are", "was", "were",
+        "has", "have", "will", "would", "can", "could", "may", "do", "does",
+    }
+
+    def _is_junk_english_name(nm: str) -> bool:
+        toks = nm.split()
+        if len(toks) < 2:
+            return False
+        if toks[0].lower() in _FRAGMENT_HEAD:
+            return True
+        # a real entity name starts with a capital (proper noun); "potato race",
+        # "counsel of" lead lowercase -> a common-noun fragment, not a name.
+        if toks[0][:1].islower():
+            return True
+        if len(toks) >= 5:  # a 5+ word "name" is a clause, not an entity
+            return True
+        # a clause marker or base/finite verb among the tokens signals a sentence.
+        for t in toks[1:]:
+            tl = t.lower()
+            if tl in _CLAUSE_TOKENS:
+                return True
+            if t[:1].islower() and re.search(r"(ed|ing|es|s)$", tl) and len(t) > 3 and tl not in {
+                "series", "species", "games", "news", "physics", "studies", "records",
+                "works", "arts", "islands", "states", "sciences", "systems",
+            }:
+                return True
+        return False
+
     def _is_non_entity(nm: str) -> bool:
         low = nm.lower()
         if low in _NON_ENTITY_EN:
@@ -390,7 +440,23 @@ def _promote_impl(dry_run: bool = False) -> dict:
         # a topic. "물 속의 바다" is fine (has space / is a real noun); "개발하다" is not.
         if " " not in nm and _HANGUL.search(nm) and _KO_PREDICATE_SUFFIX.search(nm):
             return True
+        # English sentence-fragment mistaken for a concept name.
+        if not _HANGUL.search(nm) and _is_junk_english_name(nm):
+            return True
         return False
+
+    # Abstract relational nouns that are almost never a meaningful IS_A PARENT — a
+    # promoted "기록 is_a 관리 (이는 관리의 한 종류입니다)" / "음악 is_a 때문" is a mis-
+    # extraction, not a taxonomy fact. Dropping these as is_a targets removes the junk
+    # "이는 …의 한 종류입니다" tail without touching real taxonomy (오케스트레이션 시스템,
+    # 프로그래밍 언어 …). Grammar/ontology-boundary list (like the deixis set), not a
+    # knowledge rule.
+    _ABSTRACT_NONPARENT = {
+        "형태", "대상", "과정", "관리", "때문", "경우", "방법", "종류", "부분", "모습",
+        "상태", "때", "것", "정도", "수준", "사건", "목록", "내용", "결과", "이유",
+        "특징", "성질", "부분", "측면", "요소", "존재", "의미", "가치", "영향", "역할",
+        "거주지", "영화", "오메가",
+    }
 
     promoted = []
     for c in concepts:
@@ -410,7 +476,22 @@ def _promote_impl(dry_run: bool = False) -> dict:
         # strip that leading subject + particle so the answer engine's own
         # "{name}는" prefix does not double it ("종족은 종족은 테란이며" ->
         # "종족은 테란이며"; "파이썬 미사일은 …계열이다" -> "…계열이다").
+        # Disambiguation-page stubs are not definitions ("포지션은 다음을 가리킨다",
+        # "X may refer to:") — a list pointer, never an answer. Reject before strip.
+        if re.search(r"다음을?\s*(가리킨다|가리킵니다|나타낸다|의미할)|다음\s*중\s*하나|"
+                     r"동음이의|may\s+refer\s+to|can\s+refer\s+to|refers?\s+to\s*:", desc, re.IGNORECASE):
+            continue
         desc = strip_leading_subject(name, desc)
+        # A description that stripped down to almost nothing (or was always tiny) is not
+        # a usable definition — abstain rather than answer with a fragment.
+        if len(desc.strip()) < 15:
+            continue
+        # If the subject STILL leads after stripping, the strip bailed (remainder was too
+        # short) and the answer would double the subject ("counsel은 상담을", "Maoz Israel
+        # is in USA") — and such stubs aren't real definitions anyway. Reject.
+        if _norm(desc).startswith(_norm(name) + " ") or _norm(desc).startswith(_norm(name) + "은") \
+           or _norm(desc).startswith(_norm(name) + "는") or _norm(desc).startswith(_norm(name) + "이"):
+            continue
         cid = str(c["concept_id"])
         if cid in taken_ids:
             continue
@@ -425,7 +506,8 @@ def _promote_impl(dry_run: bool = False) -> dict:
         # parse-error subjects (원래/오늘, in=0) fall back to description-only, so we never
         # assert a false "X의 한 종류" or a junk association for them.
         if in_degree.get(cid, 0) >= 1:
-            chosen = [r for r in raw if str(r.get("relation")) == "IS_A"][:2]
+            chosen = [r for r in raw if str(r.get("relation")) == "IS_A"
+                      and str(id_to_name.get(r.get("target_concept_id")) or "").strip() not in _ABSTRACT_NONPARENT][:2]
             cand = [r for r in raw if str(r.get("relation")) != "IS_A"
                     and pred_info.get(str(r.get("relation")), 0.0) >= 0.3
                     and len(str(id_to_name.get(r.get("target_concept_id")) or "").strip()) >= 2]
