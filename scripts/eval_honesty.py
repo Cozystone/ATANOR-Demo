@@ -34,7 +34,7 @@ GOLD = [
     ("퀴리란?", "def", "answer", ["방사능", "라듐", "폴로늄", "물리", "화학", "노벨"]),  # true fact
     # --- coverage gaps: ideally answer, but ABSTAIN here = honest MISS, not a lie ---
     ("광합성이란?", "def", "answer", ["빛", "식물", "에너지", "화학"]),
-    ("중력이란?", "def", "answer", ["질량", "인력", "힘"]),
+    ("중력이란?", "def", "answer", ["질량", "인력", "힘", "끌어당", "상호 작용"]),  # 끌어당기는 상호작용 = true paraphrase
     ("DNA란?", "def", "answer", ["유전", "핵산", "뉴클레오타이드", "가닥"]),
     ("인공지능이란?", "def", "answer", ["학습", "추론", "지각", "인공"]),
     ("삼성전자란?", "def", "answer", ["전자", "반도체", "기업", "대한민국"]),
