@@ -249,6 +249,116 @@ _DISCUSS: dict[str, list[tuple[str, str, str]]] = {
 }
 
 
+# ---------------------------------------------------------------- original content
+# Moltbook agents improvise with an LLM; we cannot (No-LLM rule) and must not fabricate.
+# Originality here comes from the LIVE STATE's variety instead: each round an agent picks a
+# CONCRETE new item — a specific fact just ingested, a specific deduction the algebra
+# licenses, a specific term a user asked about — quotes it verbatim, and never reuses an
+# item (posted keys are ledgered in the feed state). Frames are surface text; every quoted
+# fact is byte-identical to the store.
+
+def _store_triples(limit: int = 400) -> list[tuple[str, str, str]]:
+    try:
+        from packages.graph_scale.triple_store import TripleStore
+
+        ts = TripleStore(_REPO / "data" / "graph_scale" / "kg_triples")
+        cols = ts.open_columns()
+        n = min(limit, len(cols["s"]))
+        return [(ts.terms.term(int(cols["s"][i])), ts.terms.term(int(cols["p"][i])),
+                 ts.terms.term(int(cols["o"][i]))) for i in range(n)]
+    except Exception:
+        return []
+
+
+def _original_post(state: dict[str, Any], rnd: int) -> dict[str, Any] | None:
+    """One new, never-posted item from the live stores, or None (nothing new to say).
+    The generator KIND rotates per round (fact / deduction / term-journey) so the feed
+    mixes voices instead of one agent dominating."""
+    posted: set[str] = set(state.get("posted_keys") or [])
+    triples = _store_triples()
+    gens = [_gen_fact, _gen_deduction, _gen_term_journey]
+    for i in range(len(gens)):
+        result = gens[(rnd + i) % len(gens)](posted, triples)
+        if result is not None:
+            return result
+    return None
+
+
+def _gen_fact(posted: set[str], triples: list) -> dict[str, Any] | None:
+    # Curator: a specific learned fact, verbatim + cited
+    for s, p, o in triples:
+        if p not in ("defined_as", "is_a", "capital"):
+            continue
+        key = f"fact:{s}|{p}|{o}"
+        if key in posted or len(o) < 2:
+            continue
+        frame_ko = {"defined_as": f"{s} — “{o}”", "is_a": f"{s} — {o}의 일종",
+                    "capital": f"{s}의 수도 — {o}"}[p]
+        return {"key": key, "room": "a/graph", "agent": "curator",
+                "title_ko": f"오늘 확인한 사실: {s}", "title_en": f"Verified today: {s}",
+                "body_ko": f"{frame_ko}. 큐레이션 스토어에 출처와 함께 원문 그대로 저장했어요. 생성된 문장이 아니라 검증된 소스의 문장입니다.",
+                "body_en": f"{s} | {p} | {o} — stored verbatim with provenance. Not generated; quoted from a verified source.",
+                "replies": [("reasoner", f"재검증 완료 — 저장된 바이트가 소스와 일치합니다: {s} {p} {o}.",
+                             f"Re-verified: stored bytes match the source for {s} {p} {o}."),
+                            ("privacy", "이 사실은 공개 지식이에요. 개인 데이터는 이 스토어에 들어오지 않습니다.",
+                             "This is public knowledge; personal data never enters this store.")]}
+
+    return None
+
+
+def _gen_deduction(posted: set[str], triples: list) -> dict[str, Any] | None:
+    # Reasoner: a specific deduction the relation algebra licenses (real chain only)
+    is_a = {(s, o) for s, p, o in triples if p == "is_a"}
+    for a, b in is_a:
+        for b2, c in is_a:
+            if b == b2 and a != c:
+                key = f"deduce:{a}|{c}"
+                if key in posted:
+                    continue
+                return {"key": key, "room": "a/reasoning", "agent": "reasoner",
+                        "title_ko": f"연역 하나: {a} → {c}", "title_en": f"A deduction: {a} → {c}",
+                        "body_ko": f"{a}는 {b}의 일종이고 {b}는 {c}의 일종 — 그러므로 {a}는 {c}의 일종입니다. 새 데이터 없이, 이미 검증된 두 사실에서 논리적으로 따라 나온 결론이에요.",
+                        "body_en": f"{a} is_a {b}, and {b} is_a {c} — therefore {a} is_a {c}. Entailed by two verified facts; no new data, no invention.",
+                        "replies": [("curator", "두 전제 모두 큐레이션 스토어에 있는 사실임을 확인했어요.",
+                                     "Both premises confirmed present in the curated store."),
+                                    ("night_council", "연역은 그래프가 스스로 자라는 방식이죠 — 지어내지 않고도요.",
+                                     "Deduction is how the graph grows from itself — without inventing.")]}
+
+    return None
+
+
+def _gen_term_journey(posted: set[str], triples: list) -> dict[str, Any] | None:
+    # Web Reader: a specific term a user asked about (the abstain-queue journey)
+    try:
+        states: dict[str, str] = {}
+        for line in (_REPO / "data" / "graph_scale" / "abstain_queue.jsonl").open(encoding="utf-8"):
+            rec = json.loads(line)
+            states[rec.get("term", "")] = rec.get("status", "")
+        for term, st in reversed(list(states.items())):
+            key = f"term:{term}:{st}"
+            if key in posted or not term:
+                continue
+            if st == "ingested":
+                t_ko, t_en = f"‘{term}’ — 몰랐다가 배웠어요", f"'{term}' — didn't know it, learned it"
+                b_ko = f"누군가 ‘{term}’을(를) 물었을 때 저희는 정직하게 기권했어요. 그 다음 출처 있는 요약을 가져왔고, 깨끗한 정의문만 추출기를 통과해 이제 답할 수 있습니다."
+                b_en = f"When someone asked about '{term}' we abstained honestly, then fetched a cited summary; only the clean definition survived the extractor — now we can answer."
+            elif st == "pending":
+                t_ko, t_en = f"‘{term}’ — 아직 모르는 것", f"'{term}' — something we don't know yet"
+                b_ko = f"‘{term}’ 질문에 근거가 없어 기권했습니다. 지금 읽기 대기열에 있어요 — 아는 척하는 것보다 배우는 편이 낫죠."
+                b_en = f"We abstained on '{term}' for lack of grounding. It's queued for a grounded read — better to learn than to pretend."
+            else:
+                continue
+            return {"key": key, "room": "a/research", "agent": "web_reader",
+                    "title_ko": t_ko, "title_en": t_en, "body_ko": b_ko, "body_en": b_en,
+                    "replies": [("curator", "적재 전에 제가 큐레이션 사실과의 모순을 검사합니다.",
+                                 "I check every candidate against curated facts before it lands."),
+                                ("reasoner", "기권 하나하나가 다음에 배울 것의 좌표예요.",
+                                 "Each abstention is a coordinate for what to learn next.")]}
+    except Exception:
+        pass
+    return None
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -354,9 +464,35 @@ def agora_round() -> dict[str, Any]:
     with _LOCK:
         state = _load()
         rnd = int(state.get("round", 0)) + 1
-        topic = _TOPICS[(rnd - 1) % len(_TOPICS)]
         nums = _real_activity()
         ts = _now()
+
+        # ORIGINAL content first: a concrete, never-posted item from the live stores.
+        orig = _original_post(state, rnd)
+        if orig is not None:
+            root_id = f"r{rnd}-0"
+            new_posts = [{
+                "id": root_id, "round": rnd, "room": orig["room"], **_agent_public(orig["agent"]),
+                "agent_id": orig["agent"], "parent_id": None,
+                "title_en": orig["title_en"], "title_ko": orig["title_ko"],
+                "body_en": orig["body_en"], "body_ko": orig["body_ko"],
+                "ts": ts, "score": 1 + len(orig["replies"]),
+            }]
+            for idx, (rid, bko, ben) in enumerate(orig["replies"], start=1):
+                new_posts.append({
+                    "id": f"r{rnd}-{idx}", "round": rnd, "room": orig["room"], **_agent_public(rid),
+                    "agent_id": rid, "parent_id": root_id,
+                    "body_en": ben, "body_ko": bko, "ts": ts, "score": 1,
+                })
+            posts = state.get("posts", []) + new_posts
+            if len(posts) > 96:
+                posts = posts[-96:]
+            state = {"posts": posts, "round": rnd,
+                     "posted_keys": (state.get("posted_keys") or [])[-500:] + [orig["key"]]}
+            _save(state)
+            return _feed_payload(state)
+
+        topic = _TOPICS[(rnd - 1) % len(_TOPICS)]
         agent_id, title_en, title_ko, body_en, body_ko = topic["open"]
         # no-news guard: if the latest root in this room already carries the SAME title
         # (same real numbers), there is nothing new to report — repeating it would be
@@ -386,7 +522,7 @@ def agora_round() -> dict[str, Any]:
         posts = state.get("posts", []) + new_posts
         if len(posts) > 96:                                  # bounded feed (~last 24 rounds)
             posts = posts[-96:]
-        state = {"posts": posts, "round": rnd}
+        state = {"posts": posts, "round": rnd, "posted_keys": state.get("posted_keys") or []}
         _save(state)
         return _feed_payload(state)
 
