@@ -314,9 +314,37 @@ def harvest_stage() -> PipelineStage:
     )
 
 
+def _git_sha() -> str:
+    """Commit the RUNNING process was started from — read once at import. The chronic
+    ops-drift bug is a live server silently serving pre-fix code; exposing the SHA makes
+    'is the running code current?' a one-request check instead of a guess."""
+    try:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[3]
+        git = root / ".git"
+        if git.is_file():   # worktree: .git is a pointer file 'gitdir: <path>'
+            git = Path(git.read_text(encoding="utf-8").split(":", 1)[1].strip())
+        head = (git / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref:"):
+            ref = head.split(" ", 1)[1].strip()
+            ref_file = git / ref
+            if not ref_file.exists() and (git / "commondir").exists():
+                common = (git / (git / "commondir").read_text(encoding="utf-8").strip()).resolve()
+                ref_file = common / ref
+            return ref_file.read_text(encoding="utf-8").strip()[:12]
+        return head[:12]
+    except Exception:
+        return "unknown"
+
+
+_STARTED_SHA = _git_sha()
+_STARTED_AT = __import__("time").strftime("%Y-%m-%dT%H:%M:%S")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "git_sha": _STARTED_SHA, "started_at": _STARTED_AT}
 
 
 @app.get("/api/pipeline/status", response_model=PipelineStatus)

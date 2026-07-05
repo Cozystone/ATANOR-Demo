@@ -65,13 +65,33 @@ def base_brain_build() -> dict[str, Any]:
 
 @router.post("/answer")
 def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
-    return answer_with_base_brain(
+    result = answer_with_base_brain(
         request.query,
         language=request.language,  # type: ignore[arg-type]
         audience_level=request.audience_level,  # type: ignore[arg-type]
         mode=request.mode,  # type: ignore[arg-type]
         apply_persona=request.apply_persona,
     )
+    # abstain backstop 1: the curated triple store (facts ingested by the abstain-to-ingest
+    # loop land there) — verbatim, cited, never inferred. Only consulted on abstain, so the
+    # existing quality paths are untouched.
+    try:
+        answer_text = str(result.get("answer") or "")
+        if "근거가 부족" in answer_text and "실시간" not in answer_text:
+            from packages.graph_scale.answer_bridge import answer_from_triples
+
+            bridged = answer_from_triples(request.query, request.language or "ko")
+            if bridged:
+                result = {**result, **bridged}
+            else:
+                # abstain backstop 2: queue the query's knowledge terms as ingest targets
+                # (the abstain-to-ingest loop). Never affects the response.
+                from packages.graph_scale.abstain_queue import record_abstain
+
+                record_abstain(request.query)
+    except Exception:
+        pass
+    return result
 
 
 @router.post("/benchmark")

@@ -85,14 +85,9 @@ def load_base_brain_pack(pack_path: str | Path | None = None) -> BaseBrainPack:
     )
 
 
-# Korean particles (조사/어미 tails) that may legitimately follow a concept name. This is
-# the LAD/morphology surface layer (allowed in code): it encodes how Korean attaches
-# particles, not world knowledge.
-_JOSA_TAILS = frozenset({
-    "이", "가", "은", "는", "을", "를", "의", "에", "에서", "에게", "으로", "로", "와", "과",
-    "도", "만", "이나", "나", "부터", "까지", "처럼", "보다", "란", "이란", "라는", "이라는",
-    "요", "이요", "야", "이야", "인가", "인가요", "일까", "일까요", "입니다", "이에요", "예요",
-})
+# Korean particle tails come from the single LAD morphology layer (packages/lad_morphology)
+# so every module shares one closed-class list instead of drifting copies.
+from packages.lad_morphology import JOSA_TAILS as _JOSA_TAILS  # noqa: E402
 
 
 def _named_with_boundary(query_norm: str, name_norm: str) -> bool:

@@ -93,12 +93,10 @@ _KO_TEMPLATE: dict[str, str] = {
 
 
 def _ko_topic(label: str) -> str:
-    """Attach the correct 은/는 topic particle by final-consonant (받침)."""
-    chars = [c for c in label if "가" <= c <= "힣"]
-    if not chars:
-        return f"{label}는"
-    has_batchim = (ord(chars[-1]) - 0xAC00) % 28 != 0
-    return f"{label}{'은' if has_batchim else '는'}"
+    """Attach the correct 은/는 topic particle (delegates to the LAD morphology layer)."""
+    from packages.lad_morphology import topic
+
+    return topic(label)
 
 
 def _wanted_predicates(query: str) -> set[str]:

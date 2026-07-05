@@ -74,6 +74,12 @@ def extract_definition_triple(sentence: str) -> tuple[str, str, str] | None:
     """Return (subject, predicate, object) if the sentence is a clean definition, else None.
     predicate = 'is_a' for the taxonomic 'X의 일종 / a X' frame, else 'defined_as'."""
     s = sentence.strip()
+    if not s or len(s) > 160:
+        return None
+    # strip parenthetical glosses BEFORE matching: '성남시(城南市)는 ... 시이다' — the
+    # Hanja/romanization aside breaks the subject pattern but carries no assertion.
+    # Same normalization the promotion gate applies; conservative (removes, never adds).
+    s = re.sub(r"\s*\([^)]*\)", "", s).strip()
     if not s or len(s) > 120:
         return None
     for pat, pred in _KO_DEF + _EN_DEF:
