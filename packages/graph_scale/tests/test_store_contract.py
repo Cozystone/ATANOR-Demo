@@ -11,11 +11,10 @@ from pathlib import Path
 def test_triple_store_write_equals_read():
     """bulk ingest (writer) / answer bridge (reader) / abstain feeder (writer) — one store."""
     import scripts.bulk_ingest_kg as ingest
-    import scripts.feed_abstain_queue as feeder
-    from packages.graph_scale import answer_bridge
+    from packages.graph_scale import abstain_feeder, answer_bridge
 
     assert Path(ingest.DEFAULT_ROOT).resolve() == Path(answer_bridge._ROOT).resolve()
-    assert Path(feeder.STORE_ROOT).resolve() == Path(answer_bridge._ROOT).resolve()
+    assert Path(abstain_feeder.STORE_ROOT).resolve() == Path(answer_bridge._ROOT).resolve()
 
 
 def test_abstain_queue_single_path():

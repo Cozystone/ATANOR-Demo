@@ -1783,6 +1783,22 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"policy_tune: {type(exc).__name__}"[:120]
+        # Abstain-to-ingest DRAIN every K ticks: terms real users asked about but the
+        # engine abstained on are fetched (Wikipedia summary), pass the conservative
+        # definition extractor + curated judge, and land in the curated triple store —
+        # coverage grows along actual usage without an operator. Bounded (2 terms/tick).
+        try:
+            _ae = int(os.getenv("ATANOR_ABSTAIN_FEED_EVERY", "60") or 60)
+            if _ae > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _ae == 0:
+                from packages.graph_scale.abstain_feeder import drain as _drain_abstain
+
+                _ac = _drain_abstain(limit=2, log=lambda *_: None)
+                if _ac.get("ingested"):
+                    with _CONT_LOCK:
+                        _CONT["abstain_ingested"] = _CONT.get("abstain_ingested", 0) + _ac["ingested"]
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"abstain_feed_tick: {type(exc).__name__}"[:120]
         # Pace to respect the search-API free tier (default 60s; ATANOR_LEARN_INTERVAL_SEC).
         _time.sleep(_learn_interval)
 

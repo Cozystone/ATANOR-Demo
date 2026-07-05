@@ -71,10 +71,12 @@ class RecordResult:
 class PromotionResult:
     promoted: int = 0
     still_quarantined: int = 0
+    curated_quarantined: int = 0
     promoted_keys: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {"promoted": self.promoted, "still_quarantined": self.still_quarantined,
+                "curated_quarantined": self.curated_quarantined,
                 "promoted_keys": self.promoted_keys[:20]}
 
 
@@ -209,10 +211,34 @@ class ConsensusLedger:
         import os as _os
 
         min_belief = float(_os.environ.get("ATANOR_TRUTH_MIN_BELIEF", "0.34"))
+        # curated-KG judge (chronic-class #2): a claim the CURATED store contradicts never
+        # promotes, however many web voices agree — quality outranks quorum. Left unmarked
+        # so it can release if curated facts later change. Judge failure = judge silent.
+        judge_store = None
+        try:
+            from packages.graph_scale.answer_bridge import _ROOT as _kg_root
+            from packages.graph_scale.curated_judge import judge as _curated_judge
+            from packages.graph_scale.triple_store import TripleStore as _TS
+
+            if (_kg_root / "meta.json").exists():
+                judge_store = _TS(_kg_root)
+        except Exception:
+            judge_store = None
+
         agg = AccumulationResult()
         for key, slot in self.promotable():
             if key in beliefs and beliefs[key] < min_belief:
                 continue  # held by truth discovery; evidence keeps accumulating
+            if judge_store is not None:
+                verdict = _curated_judge(str(slot.get("source_label") or ""),
+                                         str((slot.get("row") or {}).get("relation") or ""),
+                                         str(slot.get("target_label") or ""), judge_store)
+                if verdict["verdict"] in ("contradicted", "type_conflict"):
+                    result.curated_quarantined += 1
+                    with (self.root / "curated_quarantine.jsonl").open("a", encoding="utf-8") as fh:
+                        fh.write(json.dumps({"key": key, "at": _utc_now(), **verdict},
+                                            ensure_ascii=False) + "\n")
+                    continue
             row = dict(slot["row"])
             row["evidence_count"] = len(slot.get("voices") or slot["sources"])
             row["truth_belief"] = beliefs.get(key)
