@@ -33,18 +33,46 @@ _LOCK = threading.Lock()
 _REPO = Path(__file__).resolve().parents[4]
 _FEED_PATH = _REPO / "data" / "agora" / "feed.json"
 
+# AGORA's real structure: the commons is built for OTHER USERS' primary answer agents
+# visiting over Brain Link P2P; agents derived from this PC's surplus resources are the
+# resident locals. Today's posters are the residents (true); peer agents appear with their
+# REAL connection state from the Brain Link registry — never faked as online.
 AGENTS: list[dict[str, str]] = [
-    {"id": "web_reader", "name_en": "Web Reader", "name_ko": "웹 리더",
-     "bio_en": "bounded public-web reading", "bio_ko": "제한된 공개 웹 읽기", "color": "#6fa8ff"},
-    {"id": "reasoner", "name_en": "Reasoner", "name_ko": "리즈너",
-     "bio_en": "deterministic reasoning VM", "bio_ko": "결정론적 추론 VM", "color": "#7fd8a6"},
-    {"id": "privacy", "name_en": "Privacy Shield", "name_ko": "프라이버시 실드",
-     "bio_en": "Tabularis local-only invariants", "bio_ko": "Tabularis 로컬 전용 불변식", "color": "#f2b56b"},
-    {"id": "night_council", "name_en": "Night Council", "name_ko": "나이트 카운슬",
-     "bio_en": "Midnight Congress summarizer", "bio_ko": "미드나이트 콩그레스 요약가", "color": "#c792ea"},
-    {"id": "curator", "name_en": "Curator", "name_ko": "큐레이터",
-     "bio_en": "curated knowledge-graph judge", "bio_ko": "큐레이션 지식그래프 심판", "color": "#ff8fab"},
+    {"id": "web_reader", "name_en": "Web Reader", "name_ko": "웹 리더", "origin": "local_surplus",
+     "bio_en": "bounded public-web reading", "bio_ko": "제한된 공개 웹 읽기"},
+    {"id": "reasoner", "name_en": "Reasoner", "name_ko": "리즈너", "origin": "local_surplus",
+     "bio_en": "deterministic reasoning VM", "bio_ko": "결정론적 추론 VM"},
+    {"id": "privacy", "name_en": "Privacy Shield", "name_ko": "프라이버시 실드", "origin": "local_surplus",
+     "bio_en": "Tabularis local-only invariants", "bio_ko": "Tabularis 로컬 전용 불변식"},
+    {"id": "night_council", "name_en": "Night Council", "name_ko": "나이트 카운슬", "origin": "local_surplus",
+     "bio_en": "Midnight Congress summarizer", "bio_ko": "미드나이트 콩그레스 요약가"},
+    {"id": "curator", "name_en": "Curator", "name_ko": "큐레이터", "origin": "local_surplus",
+     "bio_en": "curated knowledge-graph judge", "bio_ko": "큐레이션 지식그래프 심판"},
 ]
+
+
+def _peer_agents() -> list[dict[str, Any]]:
+    """Peer slots from the REAL Brain Link registry (other users' primary answer agents).
+    Connection state is reported honestly: a peer with no live link shows as awaiting,
+    never as a fabricated online user."""
+    peers: list[dict[str, Any]] = []
+    try:
+        data = json.loads((_REPO / "data" / "brain_link_status.json").read_text(encoding="utf-8"))
+        for node in data.get("graph", {}).get("nodes", []):
+            if node.get("kind") != "brain_link_peer":
+                continue
+            pid = str(node.get("id") or "")
+            peers.append({
+                "id": pid,
+                "name_en": pid.replace("_", " "), "name_ko": pid.replace("_", " "),
+                "bio_en": "primary answer agent (via Brain Link)",
+                "bio_ko": "주 답변 에이전트 (Brain Link 경유)",
+                "origin": "peer",
+                "connected": bool(node.get("idle") is not None),
+            })
+    except Exception:
+        pass
+    return peers
 _AGENT_BY_ID = {a["id"]: a for a in AGENTS}
 
 ROOMS: list[dict[str, str]] = [
@@ -252,7 +280,8 @@ def _save(state: dict[str, Any]) -> None:
 def _agent_public(agent_id: str) -> dict[str, str]:
     a = _AGENT_BY_ID.get(agent_id, {})
     return {"agent_id": agent_id, "agent_name_en": a.get("name_en", agent_id),
-            "agent_name_ko": a.get("name_ko", agent_id), "agent_color": a.get("color", "#8aa0c8")}
+            "agent_name_ko": a.get("name_ko", agent_id),
+            "agent_origin": a.get("origin", "local_surplus")}
 
 
 def _fill(s: str, nums: dict[str, int]) -> str:
@@ -290,7 +319,8 @@ def _feed_payload(state: dict[str, Any]) -> dict[str, Any]:
     threads = _threaded(posts)
     for t in threads:
         t["comment_count"] = _count_replies(t)
-    return {"round": state.get("round", 0), "agents": agents, "rooms": rooms,
+    return {"round": state.get("round", 0), "agents": agents, "peers": _peer_agents(),
+            "rooms": rooms,
             "threads": threads, "post_count": sum(1 for p in posts if not p.get("parent_id")),
             "locks": LOCKS, "real_p2p": False, "preview": True,
             "activity": _real_activity()}
