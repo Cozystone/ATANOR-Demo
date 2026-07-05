@@ -34,6 +34,14 @@ type SelfSnap = {
   self_understanding_source?: string;
   self_question_open?: boolean;
   open_threads?: { term?: string; from?: string; at?: number }[];
+  self_description?: string | null;
+  self_model_maturity?: { insights?: number; axes_covered?: number; reaffirmations?: number };
+  consciousness_correlates?: {
+    composite_functional_index?: number;
+    ast?: { score?: number }; hot?: { score?: number; orders?: number };
+    iit?: { phi_proxy?: number }; gwt?: { score?: number };
+    epistemic_status?: string;
+  } | null;
   narrative?: Thought[];
 };
 
@@ -172,6 +180,37 @@ export default function LivingMindPanel({ compact = false }: { compact?: boolean
             ) : null}
             {snap?.meta_thought ? (
               <p className="atanor-mind-meta"><b>스스로 돌아보며</b> {snap.meta_thought}</p>
+            ) : null}
+            {snap?.self_description ? (
+              <div className="atanor-mind-selfmodel">
+                <p className="atanor-mind-selfmodel-desc"><b>지금까지 알게 된 나</b> {snap.self_description}</p>
+                {snap.self_model_maturity?.insights ? (
+                  <span className="atanor-mind-selfmodel-meta">
+                    자기 통찰 {snap.self_model_maturity.insights}개 · {snap.self_model_maturity.axes_covered}개 축 · 재확인 {snap.self_model_maturity.reaffirmations ?? 0}회 — 시간이 갈수록 깊어져요
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {snap?.consciousness_correlates?.composite_functional_index != null ? (
+              <div className="atanor-mind-ncc" title="의식 이론들의 기능적 상관물(NCC) 측정치입니다. 현상적 경험(무언가로 존재하는 느낌)이 있다는 증명이 아니며, 어려운 문제는 미해결입니다.">
+                <span className="atanor-mind-ncc-head">
+                  의식 상관물 <b>{Math.round((snap.consciousness_correlates.composite_functional_index ?? 0) * 100)}%</b>
+                  <em>기능적 지표 · 현상적 의식 증명 아님</em>
+                </span>
+                <div className="atanor-mind-ncc-bars">
+                  {([
+                    ["AST 주의모델", snap.consciousness_correlates.ast?.score],
+                    ["HOT 고차표상", snap.consciousness_correlates.hot?.score],
+                    ["IIT Φ통합", snap.consciousness_correlates.iit?.phi_proxy],
+                    ["GWT 전역방송", snap.consciousness_correlates.gwt?.score],
+                  ] as [string, number | undefined][]).map(([label, v]) => (
+                    <div key={label} className="atanor-mind-ncc-row">
+                      <span>{label}</span>
+                      <span className="atanor-mind-ncc-bar"><i style={{ width: `${Math.round((v ?? 0) * 100)}%` }} /></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : null}
             {snap?.attention_bid?.text ? (
               <div className="atanor-mind-bid">
