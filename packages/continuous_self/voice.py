@@ -232,6 +232,27 @@ def _strip_particle(token: str) -> str:
     return token
 
 
+# A thread term must be a clean content word — never a handle (@…), URL fragment,
+# nav-bar text (| / :), or an id-like token with digits. Junk here self-perpetuates:
+# a garbage term becomes the next self-question becomes the next garbage search.
+_BAD_TERM = re.compile(r"[@|/#:_\\]|https?|www\.|\d")
+
+
+_URL_FRAGMENTS = {"com", "www", "http", "https", "net", "org", "href", "html", "kr", "co"}
+
+
+def is_clean_term(term: str) -> bool:
+    t = str(term or "").strip()
+    if not (2 <= len(t) <= 40) or _BAD_TERM.search(t):
+        return False
+    if t.lower() in _STOP_TOKENS or t.lower() in _URL_FRAGMENTS:
+        return False
+    # a particle-stripped VERB STEM/FORM ("인식하", "개선하거나") is not a topic
+    if t[-1] in ("하", "되") or re.search(r"(거나|면서|든지|지만)$", t):
+        return False
+    return True
+
+
 def harvest_terms(text: str, exclude: set[str], *, limit: int = 2) -> list[str]:
     """Salient content terms from a grounded answer — the seeds of re-questioning.
     Salience heuristic: longer tokens first (content nouns tend to be longer than
@@ -239,7 +260,7 @@ def harvest_terms(text: str, exclude: set[str], *, limit: int = 2) -> list[str]:
     cands: list[str] = []
     for m in re.finditer(r"[가-힣A-Za-z][가-힣A-Za-z0-9\-]{1,18}", str(text or "")):
         tok = _strip_particle(m.group(0))
-        if len(tok) < 2 or tok.lower() in _STOP_TOKENS or tok in exclude or tok in cands:
+        if not is_clean_term(tok) or tok in exclude or tok in cands:
             continue
         # skip pure-verbal/adjectival Korean tokens (rough: ends in common endings)
         if re.search(r"(합니다|입니다|한다|이다|했다|하는|되는|위한|같은|있는|없는)$", tok):
@@ -253,8 +274,14 @@ def harvest_terms(text: str, exclude: set[str], *, limit: int = 2) -> list[str]:
 
 def _push_threads(state: Any, question: str, answer: str, follow_ups: list[str] | None) -> None:
     exclude = {str(t.get("term")) for t in getattr(state, "open_threads", [])}
-    exclude |= set(re.findall(r"[가-힣A-Za-z]{2,}", str(getattr(state, "self_question", "") or "")))
-    seeds = [t for t in (follow_ups or []) if t and t not in exclude][:2]
+    # exclude the question's own words in BOTH surface and particle-stripped form,
+    # or the just-answered topic ("의식은…?" → "의식") re-enters as a "new" thread.
+    for w in re.findall(r"[가-힣A-Za-z]{2,}", str(getattr(state, "self_question", "") or "")):
+        exclude.add(w)
+        exclude.add(_strip_particle(w))
+    # follow_ups come from web page TITLES — validate them like any harvested term, or
+    # a handle/nav-junk title becomes the next self-question (seen live: "@_catchfooty").
+    seeds = [t for t in (follow_ups or []) if is_clean_term(str(t)) and t not in exclude][:2]
     if len(seeds) < 2:
         seeds += harvest_terms(answer, exclude | set(seeds), limit=2 - len(seeds))
     for term in seeds:

@@ -1459,27 +1459,23 @@ function numeric(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// HARD resource limits only — these PAUSE compute sharing (and auto-resume: the
+// reason is re-derived on every telemetry refresh, so it clears by itself). Soft
+// pressure must NOT block sharing — that made Brain Link read as "용량 부족이라 공유
+// 불가" whenever the PC was merely busy. Copy is user-facing: what's happening and
+// that it resumes on its own — no watermark jargon.
 function resourcePressureReason(system?: AnyRecord | null, gpu?: AnyRecord | null, stability?: AnyRecord | null, benchmark?: AnyRecord | null) {
   if (!isRealTelemetrySource(system, benchmark)) return null;
-  const ramSoft = numeric(stability?.runtime_envelope?.ram_soft_gb);
   const ramHard = numeric(stability?.runtime_envelope?.ram_hard_gb);
   const ramUsed = numeric(system?.ram_used_gb);
-  const ramPercent = numeric(system?.ram_used_percent);
   if (ramHard !== null && ramUsed !== null && ramUsed >= ramHard) {
-    return `RAM ${ramUsed.toFixed(1)}GB가 hard watermark ${ramHard.toFixed(1)}GB를 넘었습니다.`;
+    return `메모리가 거의 가득 차서(${ramUsed.toFixed(1)}GB 사용 중) 연산 공유를 잠시 쉬고 있어요.`;
   }
-  if (ramSoft !== null && ramUsed !== null && ramUsed >= ramSoft && ramPercent !== null && ramPercent >= 88) {
-    return `RAM 사용률 ${ramPercent.toFixed(1)}%가 안전 한도를 넘었습니다.`;
-  }
-  const vramSoft = numeric(stability?.runtime_envelope?.vram_soft_gb);
   const vramHard = numeric(stability?.runtime_envelope?.vram_hard_gb);
   const vramUsedMb = numeric(gpu?.vram_used);
   const vramUsed = vramUsedMb === null ? null : vramUsedMb / 1024;
   if (gpu?.available && vramHard !== null && vramUsed !== null && vramUsed >= vramHard) {
-    return `VRAM ${vramUsed.toFixed(1)}GB가 hard watermark ${vramHard.toFixed(1)}GB를 넘었습니다.`;
-  }
-  if (gpu?.available && vramSoft !== null && vramUsed !== null && vramUsed >= vramSoft && Number(gpu?.utilization ?? 0) >= 92) {
-    return "VRAM 사용량과 GPU 부하가 안전 한도를 넘었습니다.";
+    return `그래픽 메모리가 가득 차서(${vramUsed.toFixed(1)}GB 사용 중) 연산 공유를 잠시 쉬고 있어요.`;
   }
   // Disk: warn only on a REAL positive reading below the SOFT minimum (30–50GB).
   // The 20% "desired growth reserve" is aspirational — the API itself says normal
@@ -1488,7 +1484,26 @@ function resourcePressureReason(system?: AnyRecord | null, gpu?: AnyRecord | nul
   const diskFree = numeric(system?.disk_free_gb);
   const softMinFree = numeric(stability?.runtime_envelope?.disk_budget?.soft_min_free_gb);
   if (diskFree !== null && diskFree > 0 && softMinFree !== null && diskFree <= softMinFree) {
-    return `디스크 여유 ${diskFree.toFixed(1)}GB — 안전 최소치 ${softMinFree.toFixed(1)}GB 이하입니다.`;
+    return `저장 공간 여유가 ${diskFree.toFixed(1)}GB뿐이라 연산 공유를 잠시 쉬고 있어요.`;
+  }
+  return null;
+}
+
+// SOFT pressure — informational only: sharing keeps running, the machine is just
+// busy, so the UI says contribution may slow down instead of blocking it.
+function resourceSoftNotice(system?: AnyRecord | null, gpu?: AnyRecord | null, stability?: AnyRecord | null, benchmark?: AnyRecord | null) {
+  if (!isRealTelemetrySource(system, benchmark)) return null;
+  const ramSoft = numeric(stability?.runtime_envelope?.ram_soft_gb);
+  const ramUsed = numeric(system?.ram_used_gb);
+  const ramPercent = numeric(system?.ram_used_percent);
+  if (ramSoft !== null && ramUsed !== null && ramUsed >= ramSoft && ramPercent !== null && ramPercent >= 88) {
+    return "지금 PC가 바빠서 연산 공유가 느려질 수 있어요. 공유는 계속 켜져 있습니다.";
+  }
+  const vramSoft = numeric(stability?.runtime_envelope?.vram_soft_gb);
+  const vramUsedMb = numeric(gpu?.vram_used);
+  const vramUsed = vramUsedMb === null ? null : vramUsedMb / 1024;
+  if (gpu?.available && vramSoft !== null && vramUsed !== null && vramUsed >= vramSoft && Number(gpu?.utilization ?? 0) >= 92) {
+    return "그래픽카드가 바빠서 연산 공유가 느려질 수 있어요. 공유는 계속 켜져 있습니다.";
   }
   return null;
 }
@@ -4626,6 +4641,7 @@ function FullApp() {
   const budgetLocalPct = Math.round(Number(syncLocalWeight ?? cloudBalance?.local ?? 1) * 100);
   const budgetCloudPct = Math.round(Number(syncCloudWeight ?? cloudBalance?.cloud ?? 0) * 100);
   const resourceStopReason = resourcePressureReason(system, gpu, stability, benchmark);
+  const resourceSlowNotice = resourceStopReason ? null : resourceSoftNotice(system, gpu, stability, benchmark);
   const diskFreeGb = numeric(system?.disk_free_gb);
   const ramUsedGb = numeric(system?.ram_used_gb);
   const vramUsedGb = numeric(gpu?.vram_used) === null ? null : (numeric(gpu?.vram_used) ?? 0) / 1024;
@@ -6645,24 +6661,27 @@ function FullApp() {
             </header>
             {brainLinkPool ? (
               <article style={{ border: "1px solid rgba(99,102,241,0.4)", borderRadius: 12, padding: 16, margin: "0 0 16px", background: "rgba(99,102,241,0.06)" }}>
-                <h3 style={{ margin: "0 0 10px", color: "#6366f1" }}>{language === "ko" ? "실시간 P2P 연산 풀 (Brain Link 코디네이터)" : "Live P2P compute pool (Brain Link coordinator)"}</h3>
+                <h3 style={{ margin: "0 0 10px", color: "#6366f1" }}>{language === "ko" ? "함께 계산하는 기기들" : "Devices computing together"}</h3>
                 <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 12 }}>
-                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "피어(온라인/전체)" : "Peers"}</small><br /><strong>{String(brainLinkPool.online_peers ?? 0)}/{String(brainLinkPool.peer_count ?? 0)}</strong></span>
-                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "작업 대기" : "Queue"}</small><br /><strong>{Number(brainLinkPool.queue_remaining ?? 0).toLocaleString()}</strong></span>
-                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "완료 배치" : "Batches"}</small><br /><strong>{String(brainLinkPool.batches_completed ?? 0)}</strong></span>
-                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "기여 개념" : "Concepts"}</small><br /><strong>{Number(brainLinkPool.store_concepts_total ?? 0).toLocaleString()}</strong></span>
-                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "기여 관계" : "Relations"}</small><br /><strong>{Number(brainLinkPool.store_relations_total ?? 0).toLocaleString()}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "연결된 기기" : "Devices"}</small><br /><strong>{String(brainLinkPool.online_peers ?? 0)}/{String(brainLinkPool.peer_count ?? 0)}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "남은 작업" : "Work left"}</small><br /><strong>{Number(brainLinkPool.queue_remaining ?? 0).toLocaleString()}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "처리한 작업" : "Done"}</small><br /><strong>{String(brainLinkPool.batches_completed ?? 0)}</strong></span>
+                  <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "함께 쌓은 지식" : "Knowledge built"}</small><br /><strong>{(Number(brainLinkPool.store_concepts_total ?? 0) + Number(brainLinkPool.store_relations_total ?? 0)).toLocaleString()}</strong></span>
                 </div>
                 <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   {(Array.isArray(brainLinkPool.peers) ? brainLinkPool.peers : []).map((peer: AnyRecord) => (
                     <li key={String(peer.peer_id)} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13 }}>
                       <span style={{ width: 9, height: 9, borderRadius: "50%", background: peer.online ? "#22c55e" : "#94a3b8", flexShrink: 0 }} />
                       <strong style={{ color: "#6366f1" }}>{String(peer.label ?? peer.peer_id)}</strong>
-                      <span style={{ opacity: 0.7 }}>{language === "ko" ? "청구" : "claimed"} {String(peer.claimed ?? 0)} · {language === "ko" ? "완료" : "done"} {String(peer.completed ?? 0)} · {language === "ko" ? "개념" : "concepts"} {String(peer.concepts ?? 0)} · {language === "ko" ? "관계" : "rel"} {String(peer.relations ?? 0)}</span>
+                      <span style={{ opacity: 0.7 }}>
+                        {peer.online ? (language === "ko" ? "지금 참여 중" : "online") : (language === "ko" ? "쉬는 중" : "offline")}
+                        {" · "}{language === "ko" ? "작업" : "done"} {String(peer.completed ?? 0)}
+                        {" · "}{language === "ko" ? "지식 기여" : "contributed"} {(Number(peer.concepts ?? 0) + Number(peer.relations ?? 0)).toLocaleString()}
+                      </span>
                     </li>
                   ))}
                   {(!Array.isArray(brainLinkPool.peers) || brainLinkPool.peers.length === 0) ? (
-                    <li style={{ opacity: 0.6, fontSize: 13 }}>{language === "ko" ? "연결된 피어 없음 — deploy/brain_link_peer로 피어를 띄우면 여기 실시간으로 나타납니다." : "No peers connected — start one via deploy/brain_link_peer."}</li>
+                    <li style={{ opacity: 0.6, fontSize: 13 }}>{language === "ko" ? "아직 함께 계산하는 다른 기기가 없어요. 다른 PC에서 ATANOR를 켜면 자동으로 연결됩니다." : "No other devices yet — open ATANOR on another PC and it joins automatically."}</li>
                   ) : null}
                 </ul>
               </article>
@@ -6697,7 +6716,13 @@ function FullApp() {
                         : (language === "ko" ? "재개" : "Resume")}
                   </button>
                 </div>
-                {resourceStopReason ? <small className="atanor-contribution-hold">{resourceStopReason}</small> : null}
+                {resourceStopReason ? (
+                  <small className="atanor-contribution-hold">
+                    {resourceStopReason} {language === "ko" ? "여유가 생기면 자동으로 다시 시작돼요." : "Sharing resumes automatically."}
+                  </small>
+                ) : resourceSlowNotice ? (
+                  <small className="atanor-contribution-hold" style={{ color: "#8a93a8" }}>{resourceSlowNotice}</small>
+                ) : null}
               </div>
               <div className="atanor-contribution-credit-summary">
                 <span>{language === "ko" ? "브레인 링크 크레딧" : "Brain Link Credits"}</span>

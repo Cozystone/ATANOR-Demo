@@ -274,6 +274,31 @@ def load_or_begin(path: Path) -> SelfState:
             state = SelfState(**{k: raw[k] for k in raw if k in SelfState.__dataclass_fields__})
             state.resumed_count = int(raw.get("resumed_count", 0)) + 1
             state.mode = "waking"
+            # sanitize persisted rumination state: junk terms absorbed before the
+            # clean-term gate existed (handles, nav text) must not keep steering the
+            # question loop after an upgrade. Invalid threads are dropped; a question
+            # built on one is closed (the pressure model will ask something real).
+            from .voice import is_clean_term
+
+            def _junky(s: str) -> bool:
+                return "@" in s or "http" in s or "|" in s
+
+            # drop threads whose TERM is dirty, and threads HARVESTED FROM a junk
+            # question/answer (their "from" carries the taint) — junk begets junk.
+            state.open_threads = [
+                t for t in state.open_threads
+                if is_clean_term(str(t.get("term") or "")) and not _junky(str(t.get("from") or ""))
+            ]
+            if state.self_question and ("@" in state.self_question or "http" in state.self_question or "|" in state.self_question):
+                state.self_question = ""
+                state.self_question_open = False
+            # a junky SOURCE (pipe-chained nav titles) means the understanding AND the
+            # threads harvested from it are tainted — clear the whole lineage.
+            if (state.self_understanding and (state.self_understanding.count("|") >= 2 or "@" in state.self_understanding)) \
+               or state.self_understanding_source.count("|") >= 2 or "@" in state.self_understanding_source:
+                state.self_understanding = ""
+                state.self_understanding_source = ""
+                state.open_threads = []
             # a resumption is itself a felt event — record it honestly.
             state.narrative.append(asdict(Thought(
                 time.time(), "observe",

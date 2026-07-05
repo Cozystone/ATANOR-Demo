@@ -4848,6 +4848,10 @@ p {
   background: none; cursor: pointer; text-align: left;
 }
 .atanor-cm-item:hover { background: #f3f5f9; }
+.atanor-cm-switch { margin-left: auto; width: 30px; height: 17px; border-radius: 9px; background: #d5dae3; position: relative; flex-shrink: 0; transition: background .15s; }
+.atanor-cm-switch[data-on="true"] { background: #d2521f; }
+.atanor-cm-switch i { position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left .15s; }
+.atanor-cm-switch[data-on="true"] i { left: 15px; }
 .atanor-cm-ico { width: 22px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: #586173; }
 .atanor-cm-item:hover .atanor-cm-ico { color: #d2521f; }
 .atanor-cm-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }

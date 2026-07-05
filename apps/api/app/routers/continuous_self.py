@@ -154,8 +154,15 @@ def _research(question: str) -> dict[str, Any] | None:
                 rows = general_web_search(" ".join(terms), count=6)
                 composed = compose_web_answer(terms[0], rows, language="ko") if rows else None
         if composed and str(composed.get("answer") or "").strip():
+            ans = str(composed["answer"]).strip()
+            # junk gate: navigation/link-list text is not knowledge. A real prose
+            # answer doesn't carry pipe-separated menus or long middot chains, and
+            # it has enough body to say something (seen live: a 국립국어원 nav bar
+            # absorbed as "self-understanding").
+            if ans.count("|") >= 2 or ans.count("·") >= 6 or len(ans) < 40:
+                return None
             return {
-                "answer": str(composed["answer"]),
+                "answer": ans,
                 "sources": list(composed.get("sources") or []),
                 "follow_ups": list(composed.get("follow_ups") or []),
             }

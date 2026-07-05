@@ -4,8 +4,8 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   ChevronDown,
-  Command,
   FileText,
+  Globe,
   Loader2,
   Paperclip,
   Plus,
@@ -116,6 +116,9 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
   const [menuPlugins, setMenuPlugins] = useState<MenuPlugin[]>([]);
   const [capsOpen, setCapsOpen] = useState(false);
   const [attaching, setAttaching] = useState(false);
+  // Web-search tool toggle (mainstream composer pattern): on = grounded web answers,
+  // off = local graph only. Wired to the real web_search flag on every request.
+  const [webSearch, setWebSearch] = useState(true);
   // P5-⑪: which answers have their semantic-zoom derivation path expanded.
   const [openPaths, setOpenPaths] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -198,7 +201,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     const res = await fetch("http://127.0.0.1:8502/api/chat/atanor/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, language: lang, web_search: true }),
+      body: JSON.stringify({ question: q, language: lang, web_search: webSearch }),
     });
     if (!res.ok || !res.body) return null;
     const reader = res.body.getReader();
@@ -275,7 +278,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
         const res = await fetch("/api/chat/atanor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: q, language: lang, web_search: true }),
+          body: JSON.stringify({ question: q, language: lang, web_search: webSearch }),
         });
         const data = await res.json();
         r = (data?.result ?? data) as Record<string, unknown>;
@@ -368,10 +371,6 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     { Icon: Paperclip, name: ko ? "파일 · 이미지 첨부" : "Attach file · image", desc: ko ? "ATANOR가 읽어요 (OCR)" : "ATANOR reads it (OCR)", onClick: () => fileRef.current?.click() },
     { Icon: Video, name: ko ? "영상 · 링크" : "Video · link", desc: ko ? "유튜브/이미지 URL 붙여넣기" : "paste a YouTube/image URL", onClick: () => { setMenuOpen(false); setInput((v) => v + " https://youtu.be/"); } },
   ];
-  const toolRows: MenuRow[] = [
-    { Icon: ShieldCheck, name: ko ? "권한 · 기능" : "Permissions · capabilities", desc: ko ? "ATANOR가 할 수 있는 것" : "what ATANOR may do", onClick: () => { setMenuOpen(false); setCapsOpen(true); } },
-    { Icon: Command, name: ko ? "슬래시 명령어" : "Slash commands", desc: "/새대화 · /도움말", onClick: () => { setMenuOpen(false); setInput("/"); } },
-  ];
   const pluginRows: MenuRow[] = menuPlugins.slice(0, 5).map((p) => ({
     Icon: PLUGIN_ICONS[p.icon] ?? Puzzle,
     name: p.name,
@@ -379,12 +378,12 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     onClick: () => { setMenuOpen(false); setInput((v) => (v ? v.trimEnd() + " " : "") + (p.composer?.slash ?? "") + " "); },
   }));
   const capabilities: { on: boolean; label: string; note: string }[] = [
-    { on: true, label: ko ? "로컬 그래프 추론" : "Local graph reasoning", note: ko ? "외부 LLM 없음" : "no external LLM" },
-    { on: true, label: ko ? "웹 검색 (SearXNG)" : "Web search (SearXNG)", note: ko ? "다양한 소스 · 무제한" : "diverse · unlimited" },
-    { on: true, label: ko ? "이미지 읽기 (OCR)" : "Image read (OCR)", note: ko ? "한국어 · 영어" : "Korean · English" },
-    { on: true, label: ko ? "영상 자막 읽기" : "Video transcript", note: "YouTube" },
-    { on: true, label: ko ? "실시간 누적 학습" : "Continuous learning", note: ko ? "그래프 성장" : "graph grows" },
-    { on: false, label: ko ? "개인 데이터 외부 전송" : "Send private data out", note: ko ? "차단됨" : "blocked" },
+    { on: true, label: ko ? "내 기기에서 생각하기" : "Thinks on your device", note: ko ? "외부 LLM 없음" : "no external LLM" },
+    { on: webSearch, label: ko ? "웹 검색" : "Web search", note: ko ? (webSearch ? "출처를 달아 답해요" : "꺼짐 — + 메뉴에서 켜기") : (webSearch ? "answers with sources" : "off — enable in +") },
+    { on: true, label: ko ? "이미지 읽기" : "Read images", note: ko ? "첨부하면 글자를 읽어요" : "OCR on attach" },
+    { on: true, label: ko ? "영상 자막 읽기" : "Video transcripts", note: "YouTube" },
+    { on: true, label: ko ? "스스로 학습" : "Learns on its own", note: ko ? "새 지식을 계속 익혀요" : "keeps learning" },
+    { on: false, label: ko ? "내 개인 데이터 외부 전송" : "Send your private data out", note: ko ? "항상 차단" : "always blocked" },
   ];
 
   const suggestions = ko
@@ -565,12 +564,20 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                 <section className="atanor-cm-sec">
                   <div className="atanor-cm-section">{ko ? "도구" : "Tools"}</div>
                   <div className="atanor-cm-items">
-                    {toolRows.map((it) => (
-                      <button key={it.name} type="button" className="atanor-cm-item" onClick={it.onClick} role="menuitem">
-                        <span className="atanor-cm-ico" aria-hidden="true"><it.Icon size={17} strokeWidth={1.6} /></span>
-                        <span className="atanor-cm-row"><span className="atanor-cm-name">{it.name}</span><span className="atanor-cm-desc">{it.desc}</span></span>
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      className="atanor-cm-item"
+                      role="menuitemcheckbox"
+                      aria-checked={webSearch}
+                      onClick={() => setWebSearch((v) => !v)}
+                    >
+                      <span className="atanor-cm-ico" aria-hidden="true"><Globe size={17} strokeWidth={1.6} /></span>
+                      <span className="atanor-cm-row">
+                        <span className="atanor-cm-name">{ko ? "웹 검색" : "Web search"}</span>
+                        <span className="atanor-cm-desc">{ko ? "출처를 달아 답해요" : "answers with sources"}</span>
+                      </span>
+                      <span className="atanor-cm-switch" data-on={webSearch} aria-hidden="true"><i /></span>
+                    </button>
                   </div>
                 </section>
               </div>
