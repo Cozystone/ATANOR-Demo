@@ -181,6 +181,9 @@ def main() -> int:
     ap.add_argument("--derive", action="store_true",
                     help="after ingest, run derived-edge inference (transitive/symmetric/"
                          "inverse) to multiply edges deductively from the stored structure")
+    ap.add_argument("--dict", choices=["ram", "sharded"], default="ram",
+                    help="term-dictionary backend: 'ram' (fast, vocab must fit memory) or "
+                         "'sharded' (sqlite shards on disk — bounded RAM for 1e9+ vocab)")
     ap.add_argument("--no-dedup", action="store_true",
                     help="disable the in-RAM dedup set (bounded memory for billion-row dumps "
                          "that are already deduplicated at source, e.g. a Wikidata truthy dump)")
@@ -188,7 +191,7 @@ def main() -> int:
                     help="print a throughput heartbeat every N rows (0 = off)")
     args = ap.parse_args()
 
-    store = TripleStore(args.root)
+    store = TripleStore(args.root, dict_backend=args.dict)
     if args.no_dedup:
         store._dedupe_enabled = False
     if args.benchmark:

@@ -85,6 +85,41 @@ def load_base_brain_pack(pack_path: str | Path | None = None) -> BaseBrainPack:
     )
 
 
+# Korean particles (조사/어미 tails) that may legitimately follow a concept name. This is
+# the LAD/morphology surface layer (allowed in code): it encodes how Korean attaches
+# particles, not world knowledge.
+_JOSA_TAILS = frozenset({
+    "이", "가", "은", "는", "을", "를", "의", "에", "에서", "에게", "으로", "로", "와", "과",
+    "도", "만", "이나", "나", "부터", "까지", "처럼", "보다", "란", "이란", "라는", "이라는",
+    "요", "이요", "야", "이야", "인가", "인가요", "일까", "일까요", "입니다", "이에요", "예요",
+})
+
+
+def _named_with_boundary(query_norm: str, name_norm: str) -> bool:
+    """True iff the name appears in the query at a MORPHEME BOUNDARY — the maximal-match
+    principle. A raw substring test is the measured chronic wrong-referent bug: '탄소' is
+    inside '방탄소년단', '전자' inside '삼성전자', so the engine confidently defined carbon
+    when asked about BTS. A match only counts when (a) nothing Hangul precedes it (else it
+    is the interior of a longer word — Korean compounds are left-headed strings) and (b) the
+    Hangul run following it is empty or a known particle (else the user named a LONGER term,
+    e.g. '탄소' followed by '나노튜브')."""
+    start = 0
+    n = len(query_norm)
+    while True:
+        i = query_norm.find(name_norm, start)
+        if i < 0:
+            return False
+        left_ok = i == 0 or not ("가" <= query_norm[i - 1] <= "힣")
+        j = i + len(name_norm)
+        k = j
+        while k < n and "가" <= query_norm[k] <= "힣":
+            k += 1
+        run = query_norm[j:k]
+        if left_ok and (run == "" or run in _JOSA_TAILS):
+            return True
+        start = i + 1
+
+
 def _concept_score(query: str, concept: dict[str, Any]) -> float:
     query_norm = _norm(query)
     query_tokens = _tokens(query)
@@ -96,7 +131,7 @@ def _concept_score(query: str, concept: dict[str, Any]) -> float:
         name_norm = _norm(str(name))
         if not name_norm:
             continue
-        if name_norm in query_norm:
+        if _named_with_boundary(query_norm, name_norm):
             score += 2.2
         name_tokens = _tokens(str(name))
         score += len(query_tokens & name_tokens) * 0.75

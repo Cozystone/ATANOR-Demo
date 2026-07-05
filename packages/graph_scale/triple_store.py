@@ -70,6 +70,10 @@ class TermDict:
     def term(self, i: int) -> str:
         return self._i2s[i] if 0 <= i < len(self._i2s) else ""
 
+    def lookup(self, term: str) -> int | None:
+        """id for an existing term without creating it (query path)."""
+        return self._s2i.get(term)
+
     def __len__(self) -> int:
         return len(self._i2s)
 
@@ -90,10 +94,27 @@ class TripleStore:
 
     _MAGIC = b"ATTRPL01"
 
-    def __init__(self, root: str | Path):
+    def __init__(self, root: str | Path, dict_backend: str = "ram"):
+        """dict_backend: 'ram' (fast, vocabulary must fit memory) or 'sharded' (sqlite
+        shards on disk — bounded RAM at any vocabulary size, slower ingest). A store
+        remembers its backend in meta.json so reopen picks the right one automatically."""
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
-        self.terms = TermDict(self.root / "terms.txt")
+        meta_path = self.root / "meta.json"
+        if meta_path.exists():
+            try:
+                stored = json.loads(meta_path.read_text(encoding="utf-8")).get("dict_backend")
+                if stored:
+                    dict_backend = stored
+            except Exception:
+                pass
+        self.dict_backend = dict_backend
+        if dict_backend == "sharded":
+            from .sharded_term_dict import ShardedTermDict
+
+            self.terms = ShardedTermDict(self.root / "term_shards")
+        else:
+            self.terms = TermDict(self.root / "terms.txt")
         self._buf_s: list[int] = []
         self._buf_p: list[int] = []
         self._buf_o: list[int] = []
@@ -113,7 +134,8 @@ class TripleStore:
         return 0
 
     def _write_meta(self, extra: dict[str, Any] | None = None) -> None:
-        meta = {"count": self._count, "terms": len(self.terms), "format": "int32_columnar_spo"}
+        meta = {"count": self._count, "terms": len(self.terms), "format": "int32_columnar_spo",
+                "dict_backend": self.dict_backend}
         if extra:
             meta.update(extra)
         (self.root / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -186,7 +208,7 @@ class TripleStore:
     def facts_about(self, subject: str, limit: int = 20) -> list[tuple[str, str, str]]:
         """All stored (s, p, o) with this subject — a bounded memmap scan, no full load."""
         self.flush()
-        sid = self.terms._s2i.get(subject)
+        sid = self.terms.lookup(subject)
         if sid is None:
             return []
         cols = self.open_columns()
