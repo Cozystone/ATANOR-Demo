@@ -312,6 +312,22 @@ def _seed(query: str) -> int:
     return int(hashlib.sha256(query.encode("utf-8", errors="ignore")).hexdigest()[:8], 16)
 
 
+def _is_knowledge_query(query: str) -> bool:
+    """A 'what is / explain / why' style KNOWLEDGE question — the class the neighbourhood
+    synthesis may serve. Excludes fresh/real-time queries (지금/오늘/실시간, handled by the
+    abstain gate) and greetings/commands. Kept broad but not a catch-all: it needs an
+    explanatory shape so we don't synthesise for a bare fragment."""
+    q = str(query or "").strip()
+    if len(q) < 3:
+        return False
+    if _contains_any(q, UNSUPPORTED_HINTS_KO) or any(w in q.lower() for w in ("지금", "오늘", "실시간", "now", "today")):
+        return False
+    return bool(re.search(
+        r"뭐야|무엇|뭔가|이란|란\b|인가|대해|설명|알려|어떻게|왜|의미|차이|무슨|"
+        r"what\s+is|what\s+are|explain|why|how|meaning|about|tell me",
+        q, re.IGNORECASE))
+
+
 def _clean_label(value: str) -> str:
     return str(value or "").replace("_", " ").strip()
 
@@ -1132,6 +1148,37 @@ def answer_with_base_brain(
         _cart = _cartridge_expert_answer(query, language)
         if _cart:
             answer, useful, cartridge_source = _cart[0], True, _cart[1]
+    # NEIGHBOURHOOD SYNTHESIS (probabilistic reasoning, last resort before abstaining):
+    # the pack has no exact concept for the query, but it may hold several RELATED facts
+    # (16 AI facts for "인공지능이 뭐야?", none named 인공지능). Gather that neighbourhood
+    # across the WHOLE pack (name + description + a bounded domain bridge) and let the
+    # grounded-constrained generator weave the related clauses into a composed answer —
+    # honestly framed as "정확한 정의는 없지만 관련 근거로", never a fabricated definition.
+    # Personal / local-context queries ("내 로컬 메모리 구조") are NOT general-knowledge
+    # questions — they must not be answered by pulling loosely-related public concepts
+    # (하드웨어 RAM for a personal-memory query). Those route through the local-brain /
+    # disambiguation path, so the neighbourhood fallback skips them.
+    _personal_ctx = bool(re.search(r"내\s|나의|제\s|로컬\s*(메모리|브레인)|\bmy\b|\bour\b", query, re.IGNORECASE))
+    neighborhood_used = False
+    if not useful and not _is_identity_question(query) and _is_knowledge_query(query) and not _personal_ctx:
+        try:
+            from .neighborhood import gather_neighborhood
+            from .grounded_generation import synthesize
+
+            neigh = gather_neighborhood(query, pack.semantic_graph.get("concepts") or [], limit=6)
+            if len(neigh) >= 2:
+                facts = [{"name": _label(c, language),
+                          "description": _description_sentence(c, language, audience_level).lstrip()}
+                         for c in neigh]
+                syn = synthesize(query, facts, language, min_facts=2, max_facts=5, include_opener=False)
+                if syn and syn.get("answer"):
+                    lead = ("정확한 정의는 확인된 근거에 없지만, 관련해서 확인된 것들로 미루어 보면 이렇습니다. "
+                            if language == "ko"
+                            else "There isn't a single grounded definition, but from the related evidence: ")
+                    answer, useful = lead + syn["answer"], True
+                    neighborhood_used = True
+        except Exception:  # pragma: no cover - synthesis must never break the answer path
+            pass
     # Persona styling is OPT-IN (apply_persona=True), NOT automatic on attach. General
     # QA must stay in a neutral lab voice — an attached persona (e.g. socratic) should
     # only color answers when the caller explicitly asks to speak AS that persona, so a
@@ -1148,6 +1195,11 @@ def answer_with_base_brain(
     strong_context = [item for item in semantic_context if float(item.get("match_score") or 0.0) > 0]
     confidence = _answer_confidence(query, strong_context, useful)
     reasoning_certificate = _reasoning_certificate(query, strong_context, language, confidence, useful)
+    if neighborhood_used and isinstance(reasoning_certificate, dict):
+        # honest provenance: the answer is a probabilistic synthesis of RELATED grounded
+        # facts (no exact concept), not an abstention and not a single-concept derivation.
+        reasoning_certificate["derivation_kind"] = "grounded_neighborhood_synthesis"
+        reasoning_certificate["confidence_basis"] = "related_grounded_facts_woven_no_exact_definition"
     trace = {
         "mode": mode,
         "pack_id": pack.pack_id,

@@ -131,6 +131,7 @@ def synthesize(
     *,
     min_facts: int = 2,
     max_facts: int = 5,
+    include_opener: bool = True,
 ) -> dict[str, Any] | None:
     """Weave grounded fact clauses (BONES) with generated discourse (FLESH) into a
     composed answer. `grounded_facts` = [{name, description, ...}] already retrieved
@@ -163,9 +164,10 @@ def synthesize(
     generated_spans: list[str] = []
     parts: list[str] = []
 
-    opener = _pick(disc["hedge_open"] if speculative else disc["opener"], seed)
-    generated_spans.append(opener)
-    parts.append(opener)
+    if include_opener:
+        opener = _pick(disc["hedge_open"] if speculative else disc["opener"], seed)
+        generated_spans.append(opener)
+        parts.append(opener)
 
     used_bridges: set[str] = set()
     n = len(picked)
