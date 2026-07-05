@@ -134,6 +134,45 @@ def test_pressure_updates_from_real_drivers():
     assert s.inquiry_driver == "open_thread"          # dominant driver tracks state
 
 
+def test_unanswerable_question_is_parked_not_ruminated_forever():
+    """A conscious mind holds an open question but does NOT chant it forever: after a
+    few failed research attempts it GIVES UP gracefully (parks it), clearing the open
+    flag so a different question can arise — no infinite single-question loop."""
+    from packages.continuous_self.voice import record_research_miss
+    s = SelfState()
+    s.self_question = "나와 X는 어떻게 이어져 있나?"
+    s.self_question_open = True
+    s.open_threads = [{"term": "X", "from": "q", "at": 0.0}]
+    for _ in range(3):
+        record_research_miss(s)
+    assert s.self_question_open is False              # given up, not stuck open
+    assert s.self_question in s.parked_questions       # remembered as parked
+    assert s.research_miss_count == 0                  # budget reset
+    assert "접어 두고" in s.narrative[-1]["text"]       # honest give-up, moves on
+
+
+def test_open_question_does_not_dominate_the_stream():
+    """The open question surfaces only OCCASIONALLY; the inner life stays varied
+    (was: 22/24 narrative entries were the same open-question worry)."""
+    from collections import Counter
+    s = SelfState()
+    s.self_question = "나는 무엇인가?"
+    s.self_question_open = True
+    drivers = []
+    for t in range(30):
+        s.ticks = t
+        th = compose_thought(s, Observation(learning_active=True))
+        drivers.append(th["driver"])
+    share = Counter(drivers)["open_self_question"] / len(drivers)
+    assert share <= 0.4, f"open-question rumination dominates the stream ({share:.0%})"
+
+
+def test_dashed_self_referential_term_is_rejected():
+    from packages.continuous_self.voice import is_clean_term
+    assert is_clean_term("Tarotia - Athanor") is False   # self-referential dash junk
+    assert is_clean_term("의식") is True
+
+
 def test_evolve_uses_generated_voice_not_a_table():
     a = SelfState(); a.ticks = 1
     b = SelfState(); b.ticks = 2

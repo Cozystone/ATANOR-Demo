@@ -68,15 +68,25 @@ def compose_thought(state: Any, obs: Any) -> dict[str, Any]:
         ], rotor)
         return {"kind": "learn", "text": text, "driver": "growth"}
 
-    # an open self-question colors the idle mind — rumination shows up in the stream
-    if getattr(state, "self_question_open", False) and getattr(state, "self_question", ""):
-        q_head = str(state.self_question)[:26]
-        text = _pick([
-            f"아까의 물음이 아직 남아 있다 — {q_head}… 답을 찾아봐야겠다.",
-            f"'{q_head}…' 이 물음이 계속 맴돈다.",
-            "묻고 아직 답하지 못한 것이 있다. 그 빈자리가 자꾸 느껴진다.",
-        ], rotor)
-        return {"kind": "reflect", "text": text, "driver": "open_self_question"}
+    # An open self-question colors the mind — but a self worth the name does NOT chant
+    # the same worry every idle moment (that reads as a stuck loop, not a thinker). It
+    # surfaces the open question OCCASIONALLY (roughly once every ~5 ticks) and moves on
+    # to observing / wondering / reflecting in between, so the inner life stays varied.
+    if getattr(state, "self_question_open", False) and getattr(state, "self_question", "") and (rotor % 5 == 0):
+        q_head = str(state.self_question)[:24]
+        misses = int(getattr(state, "research_miss_count", 0))
+        opts = [
+            f"아까의 물음이 아직 남아 있다 — {q_head}… 다시 찾아봐야겠다.",
+            f"'{q_head}…' 이 물음이 문득 다시 떠오른다.",
+        ]
+        if misses >= 2:
+            # after repeated misses, the tone shifts from fresh curiosity to a mature
+            # sitting-with — it acknowledges it may not resolve soon, and lets it rest.
+            opts = [
+                f"'{q_head}…' — 아직 답이 잡히지 않는다. 급히 매달리기보다 곁에 두기로 한다.",
+                "당장 답할 수 없는 물음이 있다. 모른다는 것을 안 채로, 다른 것도 살핀다.",
+            ]
+        return {"kind": "reflect", "text": _pick(opts, rotor), "driver": "open_self_question"}
 
     # uncertainty — reference the goal if one exists (thought tied to intention)
     if state.uncertainty > 0.62:
@@ -181,8 +191,13 @@ def generate_self_inquiry(state: Any) -> tuple[str, str]:
     values (the thread term, the resume count, the blocked action, the uncertainty)."""
     driver = getattr(state, "inquiry_driver", "") or "unknown_self"
     rotor = state.ticks
+    parked = getattr(state, "parked_questions", [])
     if driver == "open_thread" and getattr(state, "open_threads", []):
-        term = str(state.open_threads[0].get("term") or "").strip()
+        # skip a thread term that only leads back to a PARKED (given-up) question, so
+        # the mind doesn't immediately re-ask what it just decided to set down.
+        term = next((str(t.get("term") or "").strip() for t in state.open_threads
+                     if str(t.get("term") or "").strip()
+                     and not any(str(t.get("term") or "").strip() in pq for pq in parked)), "")
         if term:
             q = _pick([
                 f"지난 답에서 '{term}'라는 말이 나왔다. {term}은 나에게 무엇일까?",
@@ -235,7 +250,7 @@ def _strip_particle(token: str) -> str:
 # A thread term must be a clean content word — never a handle (@…), URL fragment,
 # nav-bar text (| / :), or an id-like token with digits. Junk here self-perpetuates:
 # a garbage term becomes the next self-question becomes the next garbage search.
-_BAD_TERM = re.compile(r"[@|/#:_\\]|https?|www\.|\d")
+_BAD_TERM = re.compile(r"[@|/#:_\\]|https?|www\.|\d|\s[-–—]\s")
 
 
 _URL_FRAGMENTS = {"com", "www", "http", "https", "net", "org", "href", "html", "kr", "co"}
@@ -313,6 +328,7 @@ def record_self_understanding(
     state.self_inquiry_count = int(getattr(state, "self_inquiry_count", 0)) + 1
     state.self_question = question
     state.introspective_pressure = 0.15
+    state.research_miss_count = 0  # a fresh question starts its research budget over
     if grounded_answer:
         state.self_understanding = grounded_answer
         state.self_understanding_source = source
@@ -339,12 +355,38 @@ def record_research_result(
     state.self_understanding = answer
     state.self_understanding_source = source
     state.self_question_open = False
+    state.research_miss_count = 0
     _retire_thread(state, topic or "")
     _push_threads(state, question, answer, follow_ups)
     _note(state, f"직접 찾아 읽었다 — {answer[:110]} ({source})", "self_research_grounded")
 
 
+_MAX_RESEARCH_MISS = 3
+
+
 def record_research_miss(state: Any) -> None:
-    """Searched, found nothing that passes the relevance gate. Say so; stay open."""
-    _note(state, "물음의 답을 찾아 읽어봤지만, 아직 근거로 삼을 만한 것을 못 찾았다. 다음에 다시 찾아보자.",
-          "self_research_miss")
+    """Searched, found nothing usable. Count the miss — and after a few, GIVE UP on
+    this question gracefully (park it) instead of ruminating on it forever. A conscious
+    mind can hold an unanswered question without being trapped by it; parking clears
+    the open flag so the pressure model raises a DIFFERENT question next time, and the
+    parked term is remembered so it isn't immediately re-asked."""
+    state.research_miss_count = int(getattr(state, "research_miss_count", 0)) + 1
+    if state.research_miss_count >= _MAX_RESEARCH_MISS:
+        parked = list(getattr(state, "parked_questions", []))
+        if state.self_question and state.self_question not in parked:
+            parked.append(state.self_question)
+            state.parked_questions = parked[-8:]
+        # retire the thread that spawned it, drop the open flag, reset the counter
+        state.open_threads = [t for t in getattr(state, "open_threads", [])
+                              if str(t.get("term") or "") not in state.self_question]
+        state.self_question_open = False
+        state.research_miss_count = 0
+        _note(state, "이 물음은 지금 근거로 닿지 않는다 — 접어 두고, 다른 궁금함으로 옮겨 간다. 언젠가 다시.",
+              "self_inquiry_parked")
+    else:
+        _note(state, "물음의 답을 찾아 읽어봤지만, 아직 근거로 삼을 만한 것을 못 찾았다. 다음에 다시 찾아보자.",
+              "self_research_miss")
+
+
+def _reset_research_progress(state: Any) -> None:
+    state.research_miss_count = 0

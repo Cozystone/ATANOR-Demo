@@ -16,6 +16,7 @@ graph, or any store — it is a pure, bounded, read-only inner life.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -97,6 +98,8 @@ class SelfState:
     open_threads: list[dict[str, Any]] = field(default_factory=list)  # follow-up terms harvested from answers
     last_research_tick: int = 0          # rate-bound for the web research step
     question_opened_tick: int = 0        # when the current open question was asked (hold window)
+    research_miss_count: int = 0         # consecutive research misses on the current question
+    parked_questions: list[str] = field(default_factory=list)  # given-up questions, not re-asked immediately
 
     NARRATIVE_CAP: int = 60
     HISTORY_CAP: int = 20
@@ -134,6 +137,8 @@ class SelfState:
             "self_question_open": self.self_question_open,
             "introspective_pressure": self.introspective_pressure,
             "inquiry_driver": self.inquiry_driver,
+            "research_miss_count": self.research_miss_count,
+            "parked_questions": self.parked_questions[-5:],
             "open_threads": self.open_threads[-5:],
             "narrative": self.narrative[-24:],
             "continuous": True,
@@ -289,9 +294,11 @@ def load_or_begin(path: Path) -> SelfState:
                 t for t in state.open_threads
                 if is_clean_term(str(t.get("term") or "")) and not _junky(str(t.get("from") or ""))
             ]
-            if state.self_question and ("@" in state.self_question or "http" in state.self_question or "|" in state.self_question):
+            if state.self_question and ("@" in state.self_question or "http" in state.self_question
+                                        or "|" in state.self_question or re.search(r"\s[-–—]\s", state.self_question)):
                 state.self_question = ""
                 state.self_question_open = False
+                state.research_miss_count = 0
             # a junky SOURCE (pipe-chained nav titles) means the understanding AND the
             # threads harvested from it are tainted — clear the whole lineage.
             if (state.self_understanding and (state.self_understanding.count("|") >= 2 or "@" in state.self_understanding)) \
