@@ -3249,11 +3249,42 @@ def _concepts_for_fold(question: str) -> list[dict[str, Any]]:
     pack = load_base_brain_pack()
     matched = get_semantic_context(question, pack, limit=24)
     concepts: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
     for concept in matched:
         score = float(concept.get("match_score") or 0.0)
         hop = 0 if score >= 4.0 else (1 if score >= 1.0 else 2)
         importance = min(1.0, max(0.1, 0.3 + score * 0.12))
-        concepts.append({**concept, "importance": importance, "hop_depth": hop})
+        # pack concepts carry source_type but no provenance STRING; the field adapter
+        # honestly drops provenance-less nodes ("never invent it") — which silently
+        # dropped EVERY concept, leaving only the emotion node in the fold (measured:
+        # constant coherence, agreement structurally 0). The pack itself IS the real
+        # origin, so name it — this is labelling, not invention.
+        prov = str(concept.get("provenance") or "") or f"base_pack:{concept.get('source_type') or 'curated_base_pack'}"
+        concepts.append({**concept, "importance": importance, "hop_depth": hop,
+                         "provenance": prov})
+        seen_ids.add(str(concept.get("concept_id") or ""))
+    # 1-hop relation neighbours: a single matched concept gives the fold nothing to
+    # interfere WITH (measured: 1-node fields fold to coherence 0 and the emotion node
+    # dominates the core, forcing agreement to 0). Pull the matched concepts' relation
+    # targets from the pack so the field carries the question's real neighbourhood.
+    if concepts:
+        by_id = {str(c.get("concept_id") or ""): c
+                 for c in (pack.semantic_graph.get("concepts") or [])}
+        for concept in list(concepts):
+            for rel in (concept.get("relations") or [])[:6]:
+                target_id = str(rel.get("target") or "")
+                neighbour = by_id.get(target_id)
+                if neighbour is None or target_id in seen_ids:
+                    continue
+                seen_ids.add(target_id)
+                n_prov = str(neighbour.get("provenance") or "") or \
+                    f"base_pack:{neighbour.get('source_type') or 'curated_base_pack'}"
+                concepts.append({**neighbour, "importance": 0.25, "provenance": n_prov,
+                                 "hop_depth": int(concept.get("hop_depth") or 0) + 1})
+                if len(concepts) >= 24:
+                    break
+            if len(concepts) >= 24:
+                break
     return concepts
 
 

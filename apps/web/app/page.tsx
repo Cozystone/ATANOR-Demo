@@ -7258,6 +7258,47 @@ function FullApp() {
                   </p>
                   {controlledGrowthError ? <p>{controlledGrowthError}</p> : null}
                 </section>
+                {(() => {
+                  // PHFE compare-mode diagnostic: the wave-interference fold runs on every
+                  // eligible answer as a HIDDEN TRACE (it never changes the answer) and logs
+                  // how well its folded core agrees with the evidence the answer actually
+                  // used. This panel surfaces that report for the latest answer.
+                  let fold: AnyRecord | null = null;
+                  for (let i = chatMessages.length - 1; i >= 0; i -= 1) {
+                    const candidate = (chatMessages[i] as AnyRecord)?.diagnostics?.compact_trace?.holographic_fold;
+                    if (candidate) { fold = candidate as AnyRecord; break; }
+                  }
+                  const rows: [string, string][] = fold ? [
+                    [language === "ko" ? "일치도 (Jaccard)" : "Agreement (Jaccard)", String(fold.agreement_jaccard ?? "—")],
+                    [language === "ko" ? "재현율" : "Recall", String(fold.agreement_recall ?? "—")],
+                    [language === "ko" ? "겹친 증거" : "Overlap", String(fold.agreement_overlap ?? "—")],
+                    [language === "ko" ? "전역 결맞음" : "Global coherence", typeof fold.folded_global_coherence === "number" ? fold.folded_global_coherence.toFixed(3) : "—"],
+                    [language === "ko" ? "접힘 시간" : "Fold time", fold.fold_timing_ms != null ? `${fold.fold_timing_ms}ms` : "—"],
+                    [language === "ko" ? "답변 변경" : "Answer changed", fold.answer_changed ? "TRUE" : "false"],
+                  ] : [];
+                  return (
+                    <section className="atanor-user-panel atanor-cloud-viewer-panel" aria-label="PHFE compare mode">
+                      <h2>{language === "ko" ? "위상 접힘 (PHFE) 진단" : "Phase Fold (PHFE) Diagnostic"}</h2>
+                      <span className="atanor-user-readonly-badge">{fold ? "COMPARE MODE" : (language === "ko" ? "대기" : "IDLE")}</span>
+                      {fold ? (
+                        <div className="atanor-user-viewer-grid">
+                          {rows.map((row) => (
+                            <span key={row[0]}><small>{row[0]}</small><strong>{row[1]}</strong></span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p>{language === "ko"
+                          ? "아직 접힘이 실행된 답변이 없어요. 개념이 매칭되는 질문을 하면 파동 코어와 실제 답변 근거의 일치도가 여기 표시됩니다."
+                          : "No folded answer yet. Ask a concept-matching question and this shows how well the wave core agreed with the real answer evidence."}</p>
+                      )}
+                      <p>
+                        {language === "ko"
+                          ? "숨은 트레이스 전용입니다 — 파동 코어는 답변을 바꾸지 않으며(compare_mode), 배터리 일치도가 지속적으로 높을 때에만 드라이버 승격을 논의합니다."
+                          : "Hidden trace only — the wave core never changes the answer (compare_mode); driver promotion is discussed only if battery agreement stays consistently high."}
+                      </p>
+                    </section>
+                  );
+                })()}
                 <section className="atanor-user-panel atanor-cloud-viewer-panel">
                   <h2>{language === "ko" ? "Renderer Stress Shell" : "Renderer Stress Shell"}</h2>
                   <span className="atanor-user-readonly-badge">{cloudSphereStats?.actualNodeMode ? "ACTUAL NODES" : "SHELL CHUNKS"}</span>
