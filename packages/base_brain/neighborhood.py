@@ -73,13 +73,64 @@ def _strip_ko_tail(token: str) -> str:
     return token
 
 
+_STOP = {"무엇", "뭐야", "뭔가", "이란", "란", "인가", "대해", "설명", "알려", "어떻게", "왜",
+         "무슨", "설명해", "알려줘", "되려면", "the", "what", "is", "are", "a", "an", "of",
+         "about", "how", "why", "것", "게", "거"}
+
+# Kiwi (morphological analyser) is OPTIONAL: when installed it gives robust Korean noun
+# extraction (proper 조사/어미 stripping, incl. cases the regex misses like 철학이라는);
+# when absent we fall back to the regex. Lazy singleton — the ~1s init happens once, and
+# warm throughput is ~30k queries/sec, so it never slows the retrieval hot path. It does
+# NOT replace the domain bridge: morphology can't know 인공지능 ≈ AI (that is semantics).
+_KIWI = None
+_KIWI_TRIED = False
+
+
+def _kiwi():
+    global _KIWI, _KIWI_TRIED
+    if _KIWI_TRIED:
+        return _KIWI
+    _KIWI_TRIED = True
+    try:
+        from kiwipiepy import Kiwi
+
+        _KIWI = Kiwi()
+    except Exception:
+        _KIWI = None
+    return _KIWI
+
+
+def _kiwi_noun_phrases(text: str) -> set[str]:
+    """Compound-preserving noun extraction: JOIN adjacent noun morphemes so 인공+지능 ->
+    인공지능 (not split), while particles/endings are dropped by the analyser. Returns an
+    empty set if Kiwi is unavailable (caller falls back to the regex)."""
+    kw = _kiwi()
+    if kw is None:
+        return set()
+    out: set[str] = set()
+    cur = ""
+    try:
+        for tok in kw.tokenize(text):
+            if tok.tag in ("NNG", "NNP", "SL"):   # 일반/고유명사 + 외국어(Latin) run together
+                cur += tok.form
+            else:
+                if len(cur) >= 2:
+                    out.add(cur.lower())
+                cur = ""
+        if len(cur) >= 2:
+            out.add(cur.lower())
+    except Exception:
+        return set()
+    return {t for t in out if t not in _STOP}
+
+
 def _content_tokens(text: str) -> set[str]:
     latin = set(re.findall(r"[a-z0-9]{2,}", _norm(text)))
-    korean = {_strip_ko_tail(t) for t in re.findall(r"[가-힣]{2,}", str(text or ""))}
-    stop = {"무엇", "뭐야", "뭔가", "이란", "란", "인가", "대해", "설명", "알려", "어떻게", "왜",
-            "무슨", "설명해", "알려줘", "되려면", "the", "what", "is", "are", "a", "an", "of",
-            "about", "how", "why"}
-    return {t for t in (latin | korean) if t not in stop and len(t) >= 2}
+    # prefer Kiwi's morphological nouns; fall back to particle-stripped regex tokens.
+    korean = _kiwi_noun_phrases(str(text or ""))
+    if not korean:
+        korean = {_strip_ko_tail(t) for t in re.findall(r"[가-힣]{2,}", str(text or ""))}
+    return {t for t in (latin | korean) if t not in _STOP and len(t) >= 2}
 
 
 def _expand_query_terms(query: str) -> tuple[set[str], set[str]]:
