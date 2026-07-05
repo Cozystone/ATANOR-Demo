@@ -767,10 +767,26 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
     # it — fall through (useful=False) so neighbourhood synthesis can try genuinely related
     # facts, and if that also can't ground it, a HELPFUL honest engage stands (not a cold
     # definition, not a robotic abstain). Definitional/factual shapes keep the definition.
-    _shape = _question_shape(query)
+    # The DECISION is now a SOFT weighted policy (answer_policy.decide_mode), not a hard
+    # regex gate: continuous features (shape cues + grounding strength) → a mode. Default
+    # weights reproduce the shape-router behaviour (behaviour-preserving); self_tuning moves
+    # them. When the policy picks 'engage' we give the honest conversational response (the
+    # shape only chooses WHICH engage message). Other modes fall through to the paths below.
     _true_identity = _is_identity_question(query) and not re.search(r"자기\s*(소개|계발|관리|개발)", query)
-    if _shape in ("causal", "advice", "opinion", "personal") and not _true_identity:
-        return _shape_engage(_shape, language), False
+    if not _true_identity:
+        try:
+            from .answer_policy import decide_mode
+
+            _sig = {
+                "named_match": min(1.0, float(strong[0].get("match_score") or 0.0) / 5.0),
+                "has_definition": bool(str(strong[0].get("short_description")
+                                           or KO_DESCRIPTIONS.get(str(strong[0].get("concept_id")), "")).strip()),
+            }
+            _mode = decide_mode(query, _sig)[0]
+        except Exception:  # pragma: no cover - policy must never break the answer path
+            _mode = "engage" if _question_shape(query) in ("causal", "advice", "opinion", "personal") else "define"
+        if _mode == "engage":
+            return _shape_engage(_question_shape(query), language), False
 
     primary = strong[0]
     # Precision gate: if the top concept is only a loose token-overlap match and

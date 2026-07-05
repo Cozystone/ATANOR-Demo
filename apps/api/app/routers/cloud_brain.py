@@ -1767,6 +1767,22 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"promote_tick: {type(exc).__name__}"[:120]
+        # Answer-policy SELF-TUNING every M ticks: the engine measures its own routing
+        # quality on the labelled battery and moves the policy weights toward better —
+        # never worse (the tuner only accepts accuracy improvements). This is the safe
+        # self-correction of the answer policy (the mind fixing its own answer weights).
+        try:
+            _te = int(os.getenv("ATANOR_POLICY_TUNE_EVERY", "120") or 120)
+            if _te > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _te == 0:
+                from packages.base_brain.answer_policy_tuning import tune as _tune_policy
+
+                _tr = _tune_policy(save=True)
+                if _tr.get("saved"):
+                    with _CONT_LOCK:
+                        _CONT["answer_policy"] = {"accuracy": _tr["tuned_accuracy"], "at": _time.time()}
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"policy_tune: {type(exc).__name__}"[:120]
         # Pace to respect the search-API free tier (default 60s; ATANOR_LEARN_INTERVAL_SEC).
         _time.sleep(_learn_interval)
 
