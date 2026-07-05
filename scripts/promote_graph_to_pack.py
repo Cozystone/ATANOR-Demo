@@ -486,6 +486,14 @@ def _promote_impl(dry_run: bool = False) -> dict:
         # a usable definition — abstain rather than answer with a fragment.
         if len(desc.strip()) < 15:
             continue
+        # A URL in the description means a raw scrape leaked ("… available on the APDB
+        # data base and on http://…") — not a clean definition.
+        if re.search(r"https?://|www\.", desc):
+            continue
+        # A thin English predicate ("are gender-specific.", "was here.") — too few words
+        # to be a definition. (Korean is gated by the copula-ending check upstream.)
+        if not _HANGUL.search(desc) and len(desc.split()) < 4:
+            continue
         # If the subject STILL leads after stripping, the strip bailed (remainder was too
         # short) and the answer would double the subject ("counsel은 상담을", "Maoz Israel
         # is in USA") — and such stubs aren't real definitions anyway. Reject.
