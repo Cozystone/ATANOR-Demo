@@ -160,12 +160,28 @@ def strip_leading_subject(name: str, desc: str) -> str:
          and enough predicate remains, so a mid-sentence mention is never cut.
     """
     n = re.escape(name)
-    m = re.match(n + r"\s*(?:은|는|이|가|란|이란|도|을|를|와|과)?\s*", desc)
-    if m and (len(desc) - m.end()) >= 12:
-        return desc[m.end():].strip()
-    # \s* before the particle: tokenization sometimes splits the 조사 off the head
-    # ("대규모 언어 모델 은 …" — space before 은).
-    m2 = re.match(r".{0,25}?" + n + r"\s*(?:은|는|이|가)\s+", desc)
+    out = desc
+    # Loop: strip a LEADING "{name}[ particle]" repeatedly. Ingestion sometimes
+    # DUPLICATES the subject ("기록 기록 은 …" from "기록(記錄)은 …"), so one pass
+    # leaves an orphaned "기록 은"; keep going while the name still leads. Bounded.
+    for _ in range(4):
+        m = re.match(n + r"\s*(?:은|는|이|가|란|이란|도|을|를|와|과)?\s*", out, re.IGNORECASE)
+        if m and m.end() > 0 and (len(out) - m.end()) >= 12:
+            out = out[m.end():].strip()
+        else:
+            break
+    # An orphaned leading particle can remain when the name was doubled with a space
+    # ("기록 은 …" after the name was consumed) — strip a lone leading 은/는/이/가.
+    out = re.sub(r"^(?:은|는|이|가)\s+", "", out).strip()
+    # And a leading comma/colon the English appositive leaves ("Australia, officially
+    # …" -> ", officially …" -> "officially …"), so the engine's "{name} " prefix reads
+    # cleanly ("Australia officially …") instead of "Australia , officially …".
+    out = re.sub(r"^[,:;·]\s*", "", out).strip()
+    # Only accept the stripped form if enough predicate remains; else keep original.
+    if len(out) >= 12 and out != desc:
+        return out
+    # Fallback: name appears a little into the string ("대규모 언어 모델 은 …").
+    m2 = re.match(r".{0,25}?" + n + r"\s*(?:은|는|이|가)\s+", desc, re.IGNORECASE)
     if m2 and (len(desc) - m2.end()) >= 12:
         return desc[m2.end():].strip()
     return desc
@@ -240,33 +256,40 @@ def build_lead_def_by_name(
         m = _LEAD_SUBJ.match(txt)
         if m:
             _offer(_norm(m.group(1)), txt)
-        # (c) head noun of a Korean modified (multi-token) leading subject.
-        # HANGUL HEADS ONLY: "머신러닝 알고리즘은 …" -> 알고리즘 (a real common-noun
-        # head). Latin/numeric last tokens come from multi-word PROPER nouns the
-        # decomposer mis-splits ("Spring Boot" -> boot, "맨헌트 인터내셔널 1993" ->
-        # 1993, "Gemini Enterprise" -> enterprise): the whole name is one rigid
-        # entity, so its last token is NOT a standalone head. Those are left to
-        # path (a), which requires the sentence to start with the concept and so
-        # never maps the wrong tail. (The decomposer's proper-noun mis-split is a
-        # separate upstream issue, not patched here.)
+        # (c) Korean modified (multi-token) leading subject -> the FULL noun phrase is
+        # the concept, NEVER the bare head. Attaching a specific entity's definition to
+        # its generic head fabricates a wrong general definition — the systematic noise
+        # class: "우간다 공화국은 …" must NOT define 공화국, "메탈 블레이드 레코드는 …"
+        # must NOT define 레코드, "모두 플랫폼은 …" must NOT define 플랫폼. Keying by the
+        # whole NP means the description only promotes a concept that IS that full NP
+        # (precise + honest); a generic head with no clean bare-subject definition of
+        # its own simply doesn't promote (paths (a)/(b) still cover true bare-subject
+        # definitions like "세포는 …단위이다"). Genitive-modified heads ("엔비디아의
+        # CUDA") are also kept as the full NP, not split to the tail.
         mk = _LEAD_SUBJ_KO_MULTI.match(txt)
         if mk:
             lead_np = _norm(mk.group(1))
             toks = lead_np.split(" ")
-            if len(toks) >= 2:  # modified only; single-token handled by (b)
-                head = toks[-1]
-                prev = toks[-2]
-                hangul_head = bool(head) and "가" <= head[0] <= "힣"
-                # A Latin/other head is a real head ONLY when the preceding token
-                # is a Korean genitive-marked modifier ("엔비디아의 CUDA" -> CUDA);
-                # a bare space-joined proper noun ("Spring Boot") is not split.
-                genitive_marked = prev.endswith("의")
-                if len(head) >= 2 and (hangul_head or genitive_marked):
-                    _offer(head, txt)
+            if len(toks) >= 2 and len(lead_np) >= 3:  # modified NP; single-token is (b)
+                _offer(lead_np, txt)
     return out
 
 
-def promote(dry_run: bool = False) -> dict:
+def promote(dry_run: bool = False, extra_stores: list[Path] | None = None) -> dict:
+    # Optional per-call overlay (the live daemon passes the store it actually grows),
+    # so learning reaches answers without a manual --extra-store argv. Overlaid rows
+    # pass the SAME quality gate below. Restore on exit so callers stay isolated.
+    global EXTRA_STORES
+    _saved = EXTRA_STORES
+    if extra_stores is not None:
+        EXTRA_STORES = list(extra_stores)
+    try:
+        return _promote_impl(dry_run)
+    finally:
+        EXTRA_STORES = _saved
+
+
+def _promote_impl(dry_run: bool = False) -> dict:
     # curated stays authoritative
     curated = build_general_semantic_pack_v0()
     curated_concepts = curated.get("concepts", [])
@@ -347,12 +370,25 @@ def promote(dry_run: bool = False) -> dict:
         "and", "but", "or", "so", "yet", "nor", "if", "as", "the", "a", "an", "of",
     }
 
+    # Korean PREDICATE names — a verb/adjective infinitive the decomposer mistook for
+    # a concept ("개발하다", "활동하다", "비슷하다"). These are grammar (LAD layer), not
+    # entities a user asks a definition of. The unambiguous verbal/adjectival suffixes
+    # below never terminate a NOUN, so this has zero false positives on real nouns
+    # (바다/포도/유다 stay). Bare monosyllabic stems (묶다/세다) are left to (a)/(b).
+    _KO_PREDICATE_SUFFIX = re.compile(
+        r"(하다|되다|시키다|당하다|스럽다|스레하다|롭다|답다|거리다|이다|대다|해지다|해하다)$"
+    )
+
     def _is_non_entity(nm: str) -> bool:
         low = nm.lower()
         if low in _NON_ENTITY_EN:
             return True
         # single-char / bare-inflection fragments ("s", "In") are decomposition debris
         if len(nm.strip()) <= 1:
+            return True
+        # Korean verb/adjective infinitive (single token, no space) — a predicate, not
+        # a topic. "물 속의 바다" is fine (has space / is a real noun); "개발하다" is not.
+        if " " not in nm and _HANGUL.search(nm) and _KO_PREDICATE_SUFFIX.search(nm):
             return True
         return False
 
@@ -396,9 +432,12 @@ def promote(dry_run: bool = False) -> dict:
             cand.sort(key=lambda r: pred_info.get(str(r.get("relation")), 0.0), reverse=True)
             chosen += cand[:3]
         rels = []
+        _seen_rel: set[tuple[str, str]] = set()
         for r in chosen:
             tgt = id_to_name.get(r.get("target_concept_id")) or r.get("target_concept_id")
-            if tgt:
+            _key = (str(r.get("relation", "is_a")).lower(), str(tgt))
+            if tgt and _key not in _seen_rel and str(tgt).strip().lower() != name.lower():
+                _seen_rel.add(_key)
                 rels.append({
                     "source": cid, "relation": str(r.get("relation", "is_a")).lower(),
                     "target": str(tgt), "confidence": round(float(c.get("confidence", 0.6)), 3),
@@ -447,7 +486,12 @@ def promote(dry_run: bool = False) -> dict:
         "benchmark": benchmark,
     }
     if not dry_run:
-        PACK_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        # ATOMIC write: the live answer path reads PACK_PATH on every call, and the
+        # daemon may re-promote concurrently — a plain write_text could expose a
+        # half-written file (JSON parse error). Write to a temp sibling then os.replace.
+        _tmp = PACK_PATH.with_suffix(PACK_PATH.suffix + ".tmp")
+        _tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        _tmp.replace(PACK_PATH)
         # Build the inverted-index + disk-record store next to the pack so the live
         # answer path serves lookups in O(candidates) with bounded RAM instead of an
         # O(N) scan (get_semantic_context uses it when it matches the loaded pack).

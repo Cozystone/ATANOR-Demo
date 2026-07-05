@@ -1091,6 +1091,9 @@ _CONT: dict[str, Any] = {
     "last_titles": [],
     "last_error": None,
     "backoff_until": 0.0,
+    # answer-pack promotion status (the learning->answers bridge; see _maybe_promote_pack)
+    "promotion": None,
+    "_last_promoted_store_size": 0,
 }
 _CONT_THREAD: _threading.Thread | None = None
 
@@ -1609,6 +1612,58 @@ def _run_plasticity_maintenance() -> dict[str, Any]:
     return stats
 
 
+def _candidate_store_concept_count(store_path: str | None) -> int:
+    """Cheap line count of a candidate store's concepts.jsonl (growth signal)."""
+    if not store_path:
+        return 0
+    try:
+        p = Path(store_path) / "concepts.jsonl"
+        if not p.exists():
+            return 0
+        with p.open("rb") as fh:
+            return sum(1 for _ in fh)
+    except Exception:
+        return 0
+
+
+def _maybe_promote_pack(force: bool = False) -> dict[str, Any] | None:
+    """The learning->answers bridge. The continuous learner grows a candidate store,
+    but general answers read a SEPARATE base pack — so without this, learning never
+    reaches answers (the pack goes stale). Periodically re-promote the pack from the
+    curated clean foundation PLUS the live store the learner actually grows, through
+    the promoter's existing strict quality gates (definitional/aboutness/in-degree).
+
+    Bounded + safe: runs only when the store GREW by a threshold (or force), writes
+    the pack atomically, and never raises into the loop. Worker-thread-local."""
+    try:
+        live_store = _resolve_candidate_store_path()
+        size = _candidate_store_concept_count(live_store)
+        with _CONT_LOCK:
+            last = int(_CONT.get("_last_promoted_store_size") or 0)
+        min_growth = int(os.getenv("ATANOR_PROMOTE_MIN_GROWTH", "40") or 40)
+        if not force and (size - last) < min_growth:
+            return None
+        import importlib
+        promo = importlib.import_module("scripts.promote_graph_to_pack")
+        extra = [Path(live_store)] if live_store else None
+        result = promo.promote(dry_run=False, extra_stores=extra)
+        stamp = {
+            "at": _time.time(),
+            "total": result.get("total"),
+            "promoted_from_cloud": result.get("promoted"),
+            "source_store": Path(live_store).name if live_store else None,
+            "store_concepts": size,
+        }
+        with _CONT_LOCK:
+            _CONT["promotion"] = stamp
+            _CONT["_last_promoted_store_size"] = size
+        return stamp
+    except Exception as exc:  # pragma: no cover - never kill the loop
+        with _CONT_LOCK:
+            _CONT["last_error"] = f"promote: {type(exc).__name__}: {exc}"[:160]
+        return None
+
+
 def _continuous_worker() -> None:
     hosts = ("en.wikipedia.org", "ko.wikipedia.org")
     hi = 0
@@ -1701,6 +1756,17 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"plasticity: {type(exc).__name__}"[:120]
+        # Answer-pack promotion every N ticks: re-promote the base pack from the live
+        # candidate store so NEW learning actually reaches general answers (otherwise
+        # the pack goes stale and learning never improves answer quality). Gated on
+        # real store growth inside _maybe_promote_pack; bounded; never kills the loop.
+        try:
+            _pe = int(os.getenv("ATANOR_PROMOTE_EVERY", "40") or 40)
+            if _pe > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _pe == 0:
+                _maybe_promote_pack()
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"promote_tick: {type(exc).__name__}"[:120]
         # Pace to respect the search-API free tier (default 60s; ATANOR_LEARN_INTERVAL_SEC).
         _time.sleep(_learn_interval)
 
@@ -1767,7 +1833,18 @@ def cloud_brain_continuous_metrics() -> dict[str, Any]:
         "last_error": snap["last_error"],
         "mock_growth": False,
         "source": "wikipedia_random_public_extract",
+        # the learning->answers bridge: when the base pack was last rebuilt from the
+        # live store, and how many concepts now reach general answers.
+        "answer_pack_promotion": snap.get("promotion"),
     }
+
+
+@router.post("/learning/promote-pack")
+def cloud_brain_promote_pack() -> dict[str, Any]:
+    """Manually rebuild the base answer pack from the live candidate store NOW
+    (bypasses the growth threshold). Same strict quality gates as the auto path."""
+    stamp = _maybe_promote_pack(force=True)
+    return {"promoted": bool(stamp), "promotion": stamp}
 
 
 @router.get("/surface-graph/status")
