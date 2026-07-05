@@ -29,6 +29,9 @@ _RELATION_CUES: dict[str, tuple[str, ...]] = {
     "country": ("나라", "국가", "어느 나라", "country"),
     "author": ("저자", "author", "쓴", "지은이"),
     "capital_of": ("어디의 수도", "수도인"),
+    "located_in": ("어디에 있", "어느 나라에", "위치", "located"),
+    "defined_as": ("뭐", "무엇", "뜻", "정의", "란 뭐", "이란", "설명", "define", "meaning", "what is"),
+    "is_a": ("뭐", "무엇", "종류", "일종", "무슨", "kind of", "type of"),
 }
 
 
@@ -76,6 +79,19 @@ def _subject_candidates(query: str) -> list[str]:
     return sorted(cands, key=lambda t: -len(t))[:6]
 
 
+# predicate -> Korean surface template. Keeps derived edges (capital_of, located_in) reading
+# naturally instead of the generic "{s}의 {pred}는 {o}" frame. {s}/{o} are the stored labels.
+_KO_TEMPLATE: dict[str, str] = {
+    "capital": "{s}의 수도는 {o}입니다.",
+    "capital_of": "{s_topic} {o}의 수도입니다.",
+    "located_in": "{s_topic} {o}에 위치합니다.",
+    "country": "{s}의 나라는 {o}입니다.",
+    "author": "{s}의 저자는 {o}입니다.",
+    "defined_as": "{s_topic} {o}입니다.",
+    "is_a": "{s_topic} {o}의 일종입니다.",
+}
+
+
 def _ko_topic(label: str) -> str:
     """Attach the correct 은/는 topic particle by final-consonant (받침)."""
     chars = [c for c in label if "가" <= c <= "힣"]
@@ -108,10 +124,14 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         if not chosen:
             continue
         s, p, o = chosen[0]
-        pred_ko = next((cues[0] for name, cues in _RELATION_CUES.items() if name == p), p)
         if language == "ko":
-            _topic = _ko_topic(pred_ko)
-            answer = f"{s}의 {_topic} {o}입니다. (출처: 큐레이션 지식그래프)"
+            template = _KO_TEMPLATE.get(p)
+            if template:
+                body = template.format(s=s, o=o, s_topic=_ko_topic(s))
+            else:  # unknown predicate: generic frame with correct topic particle
+                pred_ko = next((cues[0] for name, cues in _RELATION_CUES.items() if name == p), p)
+                body = f"{s}의 {_ko_topic(pred_ko)} {o}입니다."
+            answer = f"{body} (출처: 큐레이션 지식그래프)"
         else:
             answer = f"The {p.replace('_', ' ')} of {s} is {o}. (source: curated knowledge graph)"
         return {
