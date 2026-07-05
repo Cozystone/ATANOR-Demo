@@ -67,12 +67,13 @@ def test_parenthetical_between_subject_and_particle_is_stripped():
 
 
 def test_disambiguation_header_stripped():
-    # "일론 머스크: 일론 리브 머스크는 …" — the "제목:" wiki header leaks in front of
-    # the real sentence; stripping it makes 머스크 the real leading subject.
+    # "일론 머스크: 일론 리브 머스크는 …" — the "제목:" wiki header leaks in front of the
+    # real sentence; stripping it makes the real leading NP visible. Under full-NP the
+    # subject is the whole name "일론 리브 머스크" (not the bare head 머스크).
     out = _run(["일론 머스크: 일론 리브 머스크는 남아프리카 공화국 출신 미국의 기업인이다."])
-    assert "머스크" in out
-    assert out["머스크"].startswith("일론 리브 머스크는")
-    assert ":" not in out["머스크"]
+    assert "일론 리브 머스크" in out
+    assert out["일론 리브 머스크"].startswith("일론 리브 머스크는")
+    assert ":" not in out["일론 리브 머스크"]
 
 
 def test_colon_definition_not_mangled():
@@ -118,26 +119,29 @@ def test_definitional_korean_sentences_kept():
     assert {"세포", "호르몬", "에너지", "화산"} <= set(out)
 
 
-def test_modified_leading_subject_maps_to_head_noun():
-    # THE BUG: modifier "머신러닝" in front of the head noun must not block a
-    # genuine DEFINITION of the head. (Sentence is definitional: "…방법이다".)
+def test_modified_leading_subject_maps_to_full_np_not_head():
+    # NEW CONTRACT (path-c full-NP): a modified leading NP promotes as the WHOLE phrase,
+    # never the bare head — attaching "머신러닝 알고리즘은 …" to the generic head 알고리즘
+    # would fabricate a wrong general definition (the 우간다 공화국 → 공화국 noise class).
     out = _run(
         ["머신러닝 알고리즘은 데이터로부터 규칙과 패턴을 스스로 학습하는 방법이다."]
     )
-    assert "알고리즘" in out
-    assert out["알고리즘"].startswith("머신러닝 알고리즘은")
+    assert "머신러닝 알고리즘" in out
+    assert "알고리즘" not in out               # generic head is NOT hijacked
+    assert out["머신러닝 알고리즘"].startswith("머신러닝 알고리즘은")
 
 
-def test_modified_subject_maps_and_keeps_shortest():
+def test_modified_subject_maps_full_np_and_keeps_shortest():
     out = _run(
         [
             "컴퓨터 바이러스는 스스로를 복제하여 다른 프로그램을 감염시키는 악성 코드이다.",
             "이 오래되고 특수한 기종에서 발동되는 컴퓨터 바이러스는 지금까지 하나도 없다.",
         ]
     )
-    assert "바이러스" in out
+    assert "컴퓨터 바이러스" in out
+    assert "바이러스" not in out               # generic head is NOT hijacked
     # shortest (cleanest) definitional sentence wins
-    assert out["바이러스"].startswith("컴퓨터 바이러스는 스스로를")
+    assert out["컴퓨터 바이러스"].startswith("컴퓨터 바이러스는 스스로를")
 
 
 def test_midsentence_mention_is_not_a_definition():
@@ -154,24 +158,24 @@ def test_substring_collision_rejected():
     assert out.get("아이드로겐", "").startswith("아이드로겐은")
 
 
-def test_fronted_adverbial_maps_only_the_true_subject_head():
-    # A fronted adverbial ("세포에 대하여") precedes the true subject ("생물학은").
-    # Only the subject head 생물학 (last token of the leading NP) maps; the
-    # adverbial noun 세포 must NOT be treated as the subject.
+def test_fronted_adverbial_does_not_map_the_adverbial_noun():
+    # PRECISION (the point of the full-NP change): a fronted adverbial noun ("세포") must
+    # NEVER be handed this definition — that was the confident-wrong class. The leading
+    # NP is captured whole ("세포에 대하여 생물학"); the adverbial noun alone never is.
     text_by_hash = {"h0": "세포에 대하여 생물학은 생명 현상을 연구하는 자연과학의 한 분야이다."}
-    out = build_lead_def_by_name(text_by_hash, {})
-    assert "생물학" in out
-    assert "세포" not in out
+    out = build_lead_def_by_name(text_by_hash, {"h0": {"생물학"}})
+    assert "세포" not in out                        # adverbial noun is never the definition
+    assert "세포에 대하여 생물학" in out              # the whole leading NP is what maps
 
 
 def test_korean_genitive_modifier_is_not_the_subject():
-    # "엔비디아의 CUDA는 …" is about CUDA, not 엔비디아. The genitive 의 right after
-    # 엔비디아 (a Hangul non-subject particle) blocks it; CUDA is the real head.
+    # "엔비디아의 CUDA는 …" is about CUDA, not 엔비디아. Precision (full-NP): the genitive
+    # modifier 엔비디아 never becomes the subject; the whole NP "엔비디아의 cuda" maps.
     text_by_hash = {"h0": "엔비디아의 CUDA는 병렬 컴퓨팅 플랫폼이자 프로그래밍 모델이다."}
     topics = {"h0": {"엔비디아", "cuda"}}
     out = build_lead_def_by_name(text_by_hash, topics)
-    assert "엔비디아" not in out  # genitive modifier, not the subject
-    assert "cuda" in out          # the actual leading subject head
+    assert "엔비디아" not in out                     # genitive modifier, never the subject
+    assert "엔비디아의 cuda" in out                   # the whole leading NP
 
 
 def test_english_definitions_are_preserved():
@@ -206,10 +210,12 @@ def test_proper_noun_numeric_tail_not_split():
     assert "1993" not in out
 
 
-def test_hangul_head_still_extracted():
-    # The Hangul-only restriction must NOT drop the genuine common-noun case.
+def test_modified_common_noun_promotes_as_full_np():
+    # The genuine common-noun definition is kept — but as the WHOLE NP (컴퓨터 바이러스),
+    # so the generic head 바이러스 is not given a specific entity's definition.
     out = _run(["컴퓨터 바이러스는 스스로를 복제하는 악성 코드이다."])
-    assert "바이러스" in out
+    assert "컴퓨터 바이러스" in out
+    assert "바이러스" not in out
 
 
 def test_korean_prefix_word_collision_rejected():

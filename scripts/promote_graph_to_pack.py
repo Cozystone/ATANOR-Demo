@@ -167,19 +167,22 @@ def strip_leading_subject(name: str, desc: str) -> str:
     # Longer particles FIRST in the alternation: "이란" must beat "이" (else "화석이란"
     # strips only "화석이" and leaves an orphan "란"). Same for "으로"/"으" etc.
     _PARTS = r"(?:이란|이라|으로|은|는|란|이|가|도|을|를|와|과|의)"
+    stripped_name = False
     for _ in range(4):
         m = re.match(n + r"\s*" + _PARTS + r"?\s*", out, re.IGNORECASE)
         if m and m.end() > 0 and (len(out) - m.end()) >= 12:
             out = out[m.end():].strip()
+            stripped_name = True
         else:
             break
-    # An orphaned leading particle can remain when the name was doubled with a space
-    # ("기록 은 …" after the name was consumed) — strip a lone leading particle.
-    out = re.sub(r"^(?:이란|이라|란|은|는|이|가|을|를)\s+", "", out).strip()
-    # And a leading comma/colon the English appositive leaves ("Australia, officially
-    # …" -> ", officially …" -> "officially …"), so the engine's "{name} " prefix reads
-    # cleanly ("Australia officially …") instead of "Australia , officially …".
-    out = re.sub(r"^[,:;·]\s*", "", out).strip()
+    # Orphan/appositive cleanup runs ONLY after the NAME actually led and was stripped —
+    # otherwise it would wrongly bite a demonstrative "이 문서는 …" (이 = 'this', not a
+    # particle) whose 미사일 mention sits mid-sentence.
+    if stripped_name:
+        # an orphaned leading particle from a doubled subject ("기록 은 …") + a leading
+        # comma/colon an English appositive leaves ("Australia, officially …").
+        out = re.sub(r"^(?:이란|이라|란|은|는|이|가|을|를)\s+", "", out).strip()
+        out = re.sub(r"^[,:;·]\s*", "", out).strip()
     # Only accept the stripped form if enough predicate remains; else keep original.
     if len(out) >= 12 and out != desc:
         return out
@@ -190,8 +193,42 @@ def strip_leading_subject(name: str, desc: str) -> str:
     return desc
 
 
+# Foreign-term parenthetical aliases in a definition ("인공지능(영어: artificial
+# intelligence, 약칭 AI)은 …") — GROUNDED bilingual bridges, extracted from the source, so
+# retrieval matches a concept by its Korean OR foreign name without a hardcoded dictionary.
+_LANG_PREFIX = re.compile(
+    r"^\s*(?:영어|한국어|본명(?:\s*영어)?|약칭|로마자|프랑스어|포르투갈어|독일어|스페인어|중국어|일본어|"
+    r"라틴어|이탈리아어|러시아어|아랍어|힌디어)\s*[:：]?\s*"
+)
+_DATE_ISH = re.compile(r"\d{3,}|년|월|일|~|경\b")
+
+
+def _extract_aliases(raw: str, name: str) -> list[str]:
+    """Clean foreign/native aliases from the FIRST parenthetical near the sentence start.
+    Filters dates, pure-Hanja, and language markers; keeps English runs and distinct
+    Korean names. Grounded (from the source), bounded (≤3)."""
+    m = re.search(r"\(([^()]{2,90})\)", str(raw or "")[:130])
+    if not m:
+        return []
+    out: list[str] = []
+    for frag in re.split(r"[,;·/]", m.group(1)):
+        f = _LANG_PREFIX.sub("", frag).strip()
+        f = re.sub(r"^(?:또는|및|그리고|또한|약칭|줄여서|또)\s+", "", f).strip()  # drop leading conjunctions
+        if not f or _DATE_ISH.search(f):
+            continue
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 .&\-]{1,40}", f):
+            alias = f.strip()
+        elif re.fullmatch(r"[가-힣][가-힣 ]{1,20}", f) and f != name:
+            alias = f
+        else:
+            continue
+        if alias.lower() != str(name).lower() and alias.lower() not in {x.lower() for x in out}:
+            out.append(alias)
+    return out[:3]
+
+
 def build_lead_def_by_name(
-    text_by_hash: dict[str, str], topics_by_hash: dict[str, set]
+    text_by_hash: dict[str, str], topics_by_hash: dict[str, set], alias_out: dict[str, list[str]] | None = None
 ) -> dict[str, str]:
     """name -> a definitional sentence where the name is the LEADING subject.
 
@@ -220,13 +257,17 @@ def build_lead_def_by_name(
     cannot drop the English/clean-Korean matches (a)/(b) already produce.
     """
     out: dict[str, str] = {}
+    # raw (pre-strip) sentence per key, so we can mine its parenthetical for aliases.
+    raw_by_key: dict[str, str] = {}
 
-    def _offer(key: str, txt: str) -> None:
+    def _offer(key: str, txt: str, raw: str = "") -> None:
         if not key or not _is_definitional(txt):
             return
         cur = out.get(key)
         if cur is None or len(txt) < len(cur):
             out[key] = txt
+            if raw:
+                raw_by_key[key] = raw
 
     def _subject_boundary_ok(tn: str, topic: str) -> bool:
         # The sentence starts with `topic`; is `topic` the SUBJECT? Look at the
@@ -254,11 +295,11 @@ def build_lead_def_by_name(
         # (a) case_frame topic that the sentence leads with, as a real subject.
         for topic in topics_by_hash.get(h, set()):
             if topic and tn.startswith(topic) and _subject_boundary_ok(tn, topic):
-                _offer(topic, txt)
+                _offer(topic, txt, raw)
         # (b) single-token leading subject.
         m = _LEAD_SUBJ.match(txt)
         if m:
-            _offer(_norm(m.group(1)), txt)
+            _offer(_norm(m.group(1)), txt, raw)
         # (c) Korean modified (multi-token) leading subject -> the FULL noun phrase is
         # the concept, NEVER the bare head. Attaching a specific entity's definition to
         # its generic head fabricates a wrong general definition — the systematic noise
@@ -274,7 +315,13 @@ def build_lead_def_by_name(
             lead_np = _norm(mk.group(1))
             toks = lead_np.split(" ")
             if len(toks) >= 2 and len(lead_np) >= 3:  # modified NP; single-token is (b)
-                _offer(lead_np, txt)
+                _offer(lead_np, txt, raw)
+    # mine parenthetical aliases from the raw sentence chosen for each key.
+    if alias_out is not None:
+        for key, raw in raw_by_key.items():
+            al = _extract_aliases(raw, key)
+            if al:
+                alias_out[key] = al
     return out
 
 
@@ -342,7 +389,8 @@ def _promote_impl(dry_run: bool = False) -> dict:
             in_degree[t] = in_degree.get(t, 0) + 1
     pred_info = predicate_informativeness(all_rels)
 
-    lead_def_by_name = build_lead_def_by_name(text_by_hash, topics_by_hash)
+    aliases_by_name: dict[str, list[str]] = {}
+    lead_def_by_name = build_lead_def_by_name(text_by_hash, topics_by_hash, aliases_by_name)
 
     # Time-deixis / discourse words are closed-class grammar (LAD layer), not knowledge
     # entities — but casual sentences ("오늘은 …해볼게요") make them look like topics, so
@@ -536,7 +584,10 @@ def _promote_impl(dry_run: bool = False) -> dict:
         promoted.append({
             "concept_id": cid,
             "canonical_name": name,
-            "aliases": [],
+            # GROUNDED bilingual aliases mined from the definition's parenthetical
+            # ("인공지능(영어: artificial intelligence)…" -> alias "artificial intelligence"),
+            # so retrieval matches this concept by its Korean OR foreign name.
+            "aliases": aliases_by_name.get(_norm(name), []),
             "labels": {c.get("language", "ko"): name},
             "short_description": desc,
             "relations": rels,
