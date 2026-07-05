@@ -168,6 +168,19 @@ class ContinuousSelf:
                         self.state.attention_bid = {}
                 except Exception:
                     pass
+            # On a slower cadence the mind may propose a CODE improvement about itself
+            # (gated code self-modification: additive-only, whitelisted, sandbox-parsed,
+            # operator-approved → STAGED, never auto-applied to the live tree). Also stages
+            # any already-approved code patch (to a staging dir; a human hand-applies).
+            if self.state.ticks % 180 == 0:
+                try:
+                    from .code_self_modification import propose_code_improvement, stage_approved
+
+                    stage_approved(self.selfmod_ledger.parent / "code_selfmod_ledger.jsonl",
+                                   self.state_path.parent / "staged_code_patches")
+                    propose_code_improvement(self.state, self.selfmod_ledger.parent / "code_selfmod_ledger.jsonl")
+                except Exception:
+                    pass
             try:
                 save_state(self.state, self.state_path)
             except Exception:

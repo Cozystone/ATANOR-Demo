@@ -335,6 +335,7 @@ def record_self_understanding(
         state.self_question_open = False
         _retire_thread(state, topic)
         _push_threads(state, question, grounded_answer, None)
+        _integrate_self_insight(state, grounded_answer, topic, source)  # ACCUMULATE
         _note(state, f"스스로 물었다 — {question} 지금 내가 근거로 아는 답은: {grounded_answer[:110]}",
               "self_inquiry_grounded")
     else:
@@ -358,6 +359,7 @@ def record_research_result(
     state.research_miss_count = 0
     _retire_thread(state, topic or "")
     _push_threads(state, question, answer, follow_ups)
+    _integrate_self_insight(state, answer, topic or "world", source, confidence=0.55)  # ACCUMULATE
     _note(state, f"직접 찾아 읽었다 — {answer[:110]} ({source})", "self_research_grounded")
 
 
@@ -390,3 +392,14 @@ def record_research_miss(state: Any) -> None:
 
 def _reset_research_progress(state: Any) -> None:
     state.research_miss_count = 0
+
+
+def _integrate_self_insight(state: Any, statement: str, topic: str, source: str, *, confidence: float = 0.6) -> None:
+    """Fold a grounded self-answer into the ACCUMULATING self-model (self_model.py), so
+    the self's understanding deepens over its life instead of being overwritten."""
+    try:
+        from .self_model import integrate_insight
+
+        integrate_insight(state, statement, topic, source, confidence=confidence)
+    except Exception:  # pragma: no cover - accumulation must never break the inquiry
+        pass

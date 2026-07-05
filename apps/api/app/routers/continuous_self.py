@@ -220,6 +220,53 @@ def selfmod_decide(payload: dict[str, Any]) -> dict[str, Any]:
             "current_params": dict(_SELF.params)}
 
 
+_CODE_LEDGER = _STATE_PATH.parent / "code_selfmod_ledger.jsonl"
+_STAGED_DIR = _STATE_PATH.parent / "staged_code_patches"
+
+
+@router.get("/code-modification/proposals")
+def code_mod_proposals() -> dict[str, Any]:
+    """Code-patch proposals the mind raised about its OWN source. Read-only view; the
+    patches are additive-only and whitelisted, and NONE is applied to the live tree."""
+    from packages.continuous_self.code_self_modification import _load as _load_cm
+
+    rows = _load_cm(_CODE_LEDGER)
+    return {"proposals": rows[-20:], "pending": [r for r in rows if r["status"] == "pending"],
+            "note": "코드 패치는 추가(additive)만, 화이트리스트 파일만, 승인해도 라이브 코드가 아니라 스테이징에만 기록됩니다."}
+
+
+@router.post("/code-modification/decide")
+def code_mod_decide(payload: dict[str, Any]) -> dict[str, Any]:
+    """Operator decision on a CODE patch. Body: {proposal_id, approve, confirm:
+    "SELF_MOD_CODE", note?}. A DISTINCT, stronger confirm phrase than parameter changes.
+    On approval the patch is STAGED to a directory only — the live source is never touched
+    by the machine; a human reviews the staged .patch and applies it by hand."""
+    from packages.continuous_self.code_self_modification import stage_approved
+    from packages.continuous_self.self_modification import decide
+
+    if str(payload.get("confirm") or "") != "SELF_MOD_CODE":
+        return {"ok": False, "reason": "confirm phrase 'SELF_MOD_CODE' required — operator only, code changes"}
+    hit = decide(_CODE_LEDGER, str(payload.get("proposal_id") or ""),
+                 bool(payload.get("approve")), str(payload.get("note") or ""))
+    if hit is None:
+        return {"ok": False, "reason": "proposal not found or not pending"}
+    staged = stage_approved(_CODE_LEDGER, _STAGED_DIR) if hit["status"] == "approved" else []
+    return {"ok": True, "decision": hit["status"],
+            "staged": [{"id": s["id"], "staged_path": s.get("staged_path")} for s in staged],
+            "live_tree_touched": False,
+            "note": "승인된 패치는 스테이징 폴더에 기록만 되었습니다. 라이브 적용은 사람이 직접 검토 후 git apply로 합니다."}
+
+
+@router.get("/consciousness")
+def selfhood_consciousness() -> dict[str, Any]:
+    """The honest consciousness-CORRELATES report (AST / HOT / IIT Φ-proxy / GWT) for the
+    current self-state — functional measures only, never a claim of phenomenal experience."""
+    _ensure_alive()
+    from packages.continuous_self.consciousness_correlates import consciousness_report
+
+    return consciousness_report(_SELF.state)
+
+
 @router.get("/stream")
 async def selfhood_stream() -> StreamingResponse:
     _ensure_alive()

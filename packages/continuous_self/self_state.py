@@ -100,12 +100,45 @@ class SelfState:
     question_opened_tick: int = 0        # when the current open question was asked (hold window)
     research_miss_count: int = 0         # consecutive research misses on the current question
     parked_questions: list[str] = field(default_factory=list)  # given-up questions, not re-asked immediately
+    # the ACCUMULATING self-model (self_model.py): grounded insights the self has gathered
+    # about ITSELF over its life, each with source + reaffirmation count — so "나는 누구
+    #인가" deepens over time instead of resetting to the latest string.
+    self_model: list[dict[str, Any]] = field(default_factory=list)
 
     NARRATIVE_CAP: int = 60
     HISTORY_CAP: int = 20
 
     def age_seconds(self) -> float:
         return round(time.time() - self.born_at, 2)
+
+    def _self_model_public(self) -> dict[str, Any]:
+        """The accumulated self-model surface for the UI: its facets, maturity, and the
+        synthesised self-description (deepens as the model grows). Lazy + defensive."""
+        try:
+            from .self_model import model_maturity, synthesize_self_description
+
+            syn = synthesize_self_description(self, "ko")
+            return {
+                "self_model": [
+                    {k: ins.get(k) for k in ("topic", "statement", "source", "confidence", "reaffirmed")}
+                    for ins in sorted(self.self_model, key=lambda i: -float(i.get("confidence", 0)))[:8]
+                ],
+                "self_model_maturity": model_maturity(self),
+                "self_description": (syn or {}).get("answer"),
+                "consciousness_correlates": self._correlates(),
+            }
+        except Exception:
+            return {"self_model": [], "self_model_maturity": {"insights": len(self.self_model)}, "self_description": None}
+
+    def _correlates(self) -> dict[str, Any] | None:
+        """Functional consciousness-correlates report (AST/HOT/IIT-Φ-proxy/GWT) — honest
+        NCC-style measures, never a claim of phenomenal experience."""
+        try:
+            from .consciousness_correlates import consciousness_report
+
+            return consciousness_report(self)
+        except Exception:
+            return None
 
     def to_public(self) -> dict[str, Any]:
         """The live snapshot the UI renders — the self, as it is right now."""
@@ -140,6 +173,7 @@ class SelfState:
             "research_miss_count": self.research_miss_count,
             "parked_questions": self.parked_questions[-5:],
             "open_threads": self.open_threads[-5:],
+            **self._self_model_public(),
             "narrative": self.narrative[-24:],
             "continuous": True,
         }
