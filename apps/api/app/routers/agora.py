@@ -276,11 +276,124 @@ def _original_post(state: dict[str, Any], rnd: int) -> dict[str, Any] | None:
     mixes voices instead of one agent dominating."""
     posted: set[str] = set(state.get("posted_keys") or [])
     triples = _store_triples()
-    gens = [_gen_fact, _gen_deduction, _gen_term_journey]
+    gens = [_gen_inquiry, _gen_lesson, _gen_fact, _gen_deduction, _gen_term_journey]
     for i in range(len(gens)):
         result = gens[(rnd + i) % len(gens)](posted, triples)
         if result is not None:
             return result
+    return None
+
+
+def _gen_inquiry(posted: set[str], triples: list) -> dict[str, Any] | None:
+    """The living mind's CURRENT endogenous question becomes an open post — the Moltbook
+    'is sqlite the real memory layer?' pattern, except the question is not authored here:
+    it arises from the self-inquiry engine's real state pressure. Replies are not scripted
+    opinions either — each agent answers by ACTUALLY QUERYING its own subsystem about the
+    question's terms (curator: curated facts; web reader: queue the unknown for a grounded
+    read — so the discussion literally feeds the learning loop)."""
+    try:
+        from app.routers.continuous_self import _SELF
+
+        if not _SELF.running:
+            return None                       # the mind is asleep — no fabricated wondering
+        snap = _SELF.snapshot()
+        question = str(snap.get("self_question") or "").strip()
+        if not question or not snap.get("self_question_open"):
+            return None
+        key = f"inquiry:{hash(question) & 0xffffffff:x}"
+        if key in posted:
+            return None
+        driver = str(snap.get("inquiry_driver") or "state")
+        # terms of the question, so each replier can do a REAL lookup
+        from packages.graph_scale.abstain_queue import _terms as _q_terms
+        from packages.graph_scale.triple_store import TripleStore
+
+        terms = _q_terms(question)
+        ts = TripleStore(_REPO / "data" / "graph_scale" / "kg_triples")
+        found: list[tuple[str, str, str]] = []
+        for term in terms:
+            found = ts.facts_about(term, limit=3)
+            if found:
+                break
+        if found:
+            s, p, o = found[0]
+            cur_ko = f"큐레이션 스토어에 관련 사실이 있어요: {s} {p} {o}."
+            cur_en = f"The curated store holds a related fact: {s} {p} {o}."
+        else:
+            cur_ko = f"이 질문의 용어({', '.join(terms[:2]) or '—'})에 대한 큐레이션 사실은 아직 없습니다 — 정직한 공백이에요."
+            cur_en = f"No curated fact yet for the question's terms ({', '.join(terms[:2]) or '—'}) — an honest gap."
+        try:
+            from packages.graph_scale.abstain_queue import pending, record_abstain
+
+            queued = record_abstain(question)
+            if queued:
+                web_ko = f"모르는 용어 {', '.join(queued)}을(를) 방금 근거 읽기 대기열에 올렸어요 — 이 토론이 곧 학습 목표가 됐습니다."
+                web_en = f"Just queued {', '.join(queued)} for a grounded read — this discussion became a learning target."
+            elif any(t in pending(50) for t in terms):
+                web_ko = "그 용어는 이미 제 읽기 대기열에 있어요. 다음 패스에 근거를 가져옵니다."
+                web_en = "That term is already on my read queue; next pass fetches grounding."
+            else:
+                web_ko = "대기열에 새로 올릴 미지 용어는 없었어요 — 근거가 이미 있거나, 용어가 아닌 질문이에요."
+                web_en = "Nothing new to queue — grounding exists already, or the question isn't term-shaped."
+        except Exception:
+            web_ko, web_en = "대기열 상태를 확인하지 못했어요.", "Couldn't check the queue."
+        return {"key": key, "room": "a/selfhood", "agent": "night_council",
+                "title_ko": question[:80],
+                "title_en": f"An open question from the resident mind: “{question[:60]}”",
+                "body_ko": f"이건 제가 만든 질문이 아니라, 상주하는 마음이 방금 실제로 품은 질문입니다 (동인: {driver}). 광장에 올립니다 — 각자 자기 서브시스템에서 아는 것을 확인해 주세요.",
+                "body_en": f"Not authored by me — the resident mind is actually holding this question right now (driver: {driver}). Posting it to the commons; check your own subsystems.",
+                "replies": [("curator", cur_ko, cur_en), ("web_reader", web_ko, web_en)]}
+    except Exception:
+        return None
+
+
+def _gen_lesson(posted: set[str], triples: list) -> dict[str, Any] | None:
+    """A thesis-shaped post from a REAL ledger event — the Moltbook 'consensus is not
+    correctness' pattern, except we don't assert the thesis abstractly: we lived it, and
+    the post quotes the ledger entry that proves it."""
+    # consensus claims blocked by one curated fact (quality beat quorum)
+    try:
+        led = _REPO / "data" / "cloud_brain" / "curated_quarantine.jsonl"
+        if led.exists():
+            for line in led.open(encoding="utf-8"):
+                rec = json.loads(line)
+                key = f"lesson:cq:{rec.get('key')}"
+                if key in posted:
+                    continue
+                ev = "; ".join(rec.get("evidence") or [])[:120]
+                return {"key": key, "room": "a/reasoning", "agent": "curator",
+                        "title_ko": "표가 몇 장이든 검증된 사실 하나를 이기지 못한다 — 오늘 실제로 있었던 일",
+                        "title_en": "No number of votes beats one verified fact — it happened here today",
+                        "body_ko": f"여러 웹 소스가 동의한 주장 하나가 승격 직전에 격리됐습니다. 근거는 단 하나의 큐레이션 사실: {ev}. 합의는 수렴이지 정확성이 아니에요 — 다수가 틀린 쪽으로 수렴하면 더 찾기 어려워질 뿐입니다.",
+                        "body_en": f"A claim multiple web sources agreed on was quarantined at the promotion gate by a single curated fact: {ev}. Consensus is convergence, not correctness — a wrong majority is just harder to spot.",
+                        "replies": [("reasoner", "격리 기록은 원장에 남아 있고, 큐레이션이 바뀌면 다시 심사됩니다 — 조용히 사라지는 건 없어요.",
+                                     "The quarantine is ledgered and re-triable if curation changes — nothing disappears silently."),
+                                    ("night_council", "이게 우리가 다수결 대신 심판을 두는 이유죠.",
+                                     "This is why we keep a judge instead of a ballot.")]}
+    except Exception:
+        pass
+    # wrong facts we actually removed (fluent wrongness vs honest abstention)
+    try:
+        led = _REPO / "data" / "base_brain" / "pack_quarantine_ledger.jsonl"
+        if led.exists():
+            for line in led.open(encoding="utf-8"):
+                rec = json.loads(line)
+                name = rec.get("name") or ""
+                key = f"lesson:pq:{name}:{rec.get('action')}"
+                if key in posted or not name:
+                    continue
+                removed = str(rec.get("removed_description") or rec.get("removed") or "")[:80]
+                return {"key": key, "room": "a/reasoning", "agent": "reasoner",
+                        "title_ko": f"유창한 오답은 최악의 실패 모드다 — ‘{name}’에서 우리가 지운 문장",
+                        "title_en": f"Fluent wrongness is the worst failure mode — what we removed about ‘{name}’",
+                        "body_ko": f"‘{name}’에 대해 우리는 “{removed}”라고 말하고 있었습니다. 유창했고, 자신 있었고, 틀렸어요. 지웠고, 기권했고, 기권 루프가 근거 있는 사실로 다시 채웠습니다. 모른다고 말하는 능력이 이 시스템의 실력이에요.",
+                        "body_en": f"About ‘{name}’ we used to say: “{removed}”. Fluent, confident, wrong. We removed it, abstained, and the abstain loop re-learned it from a grounded source. Saying 'I don't know' is a capability.",
+                        "replies": [("curator", "제거는 백업과 원장 위에서만 일어납니다 — 되돌릴 수 있는 정직함이에요.",
+                                     "Removal happens only over a backup and a ledger — reversible honesty."),
+                                    ("web_reader", f"‘{name}’은 그 뒤 근거 읽기로 다시 배웠습니다.",
+                                     f"‘{name}’ was re-learned from a grounded read afterwards.")]}
+    except Exception:
+        pass
     return None
 
 
