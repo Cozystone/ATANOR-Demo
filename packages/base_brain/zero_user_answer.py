@@ -660,6 +660,32 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
         if compared:
             return compared, True
 
+    # GROUNDED SYNTHESIS (fusion path): open-ended / advice / multi-aspect / speculative
+    # questions ("좋은 리더가 되려면?", "기후변화의 원인과 대책", "AI의 미래는?") can't be
+    # answered by a single definition, and a bare abstain feels empty when the graph DOES
+    # hold relevant facts. Weave the RELEVANT grounded clauses (verbatim bones) with a
+    # generated discourse surface (flesh) into a composed answer — no fabrication, since
+    # only connectives are generated. Gated: needs a synthesis-shaped query AND >= 2
+    # strongly-matched concepts, else fall through to the single-concept / abstain path.
+    if re.search(r"어떻게\s*(해야|되|돼|하면|나뉘|쓰|이뤄)|되려면|방법|방안|대책|원인과|장단점|"
+                 r"전반|종합|미래|앞으로|전망|의의|중요성|역할|쓰임|why|how\s+(to|do|does|can)|"
+                 r"future|pros?\s+and\s+cons|role\s+of",
+                 query, re.IGNORECASE):
+        rich = [item for item in strong if float(item.get("match_score") or 0.0) >= 2.0
+                and str(item.get("short_description") or KO_DESCRIPTIONS.get(str(item.get("concept_id")), "")).strip()]
+        if len(rich) >= 2:
+            try:
+                from .grounded_generation import synthesize
+
+                facts = [{"name": _label(it, language),
+                          "description": _description_sentence(it, language, audience_level).lstrip()}
+                         for it in rich[:5]]
+                syn = synthesize(query, facts, language)
+                if syn and syn.get("answer"):
+                    return syn["answer"], True
+            except Exception:  # pragma: no cover - synthesis must never break the answer path
+                pass
+
     primary = strong[0]
     # Precision gate: if the top concept is only a loose token-overlap match and
     # the query never actually names it, we are likely about to describe the
