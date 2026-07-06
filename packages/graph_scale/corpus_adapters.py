@@ -208,10 +208,15 @@ def iter_oscar_sentences(path: str | Path) -> Iterator[str]:
                     yield sent
 
 
-def iter_wiktionary_definitions(path: str | Path) -> Iterator[tuple[str, str, str]]:
-    """A simple Wiktionary extract as JSONL {"word": ..., "definition": ...} (the shape most
-    Wiktionary dump-parsers emit). Turns each into a (word, defined_as, gloss-head) triple,
-    where the gloss head is the first noun phrase of the definition — 사전 + 예문 structure."""
+def iter_wiktionary_definitions(path: str | Path,
+                                langs: tuple[str, ...] = ("ko", "en")) -> Iterator[tuple[str, str, str]]:
+    """Wiktionary extracts as JSONL. Two shapes are accepted:
+      - simple      {"word": ..., "definition": ...}
+      - wiktextract {"word": ..., "lang_code": "ko", "senses": [{"glosses": [...]}]}
+        (the kaikki.org dump format; a Korean-edition dump defines MANY languages'
+        words in Korean, so lang_code keeps the store on-language)
+    Each becomes a (word, defined_as, gloss-head) triple, where the gloss head is the
+    first noun phrase of the definition — 사전 + 예문 structure."""
     with open_text(path) as fh:
         for line in fh:
             line = line.strip()
@@ -223,6 +228,15 @@ def iter_wiktionary_definitions(path: str | Path) -> Iterator[tuple[str, str, st
                 continue
             word = (rec.get("word") or rec.get("title") or "").strip()
             gloss = (rec.get("definition") or rec.get("gloss") or "").strip()
+            if not gloss:  # wiktextract shape: first non-empty gloss of any sense
+                lang = rec.get("lang_code")
+                if lang is not None and lang not in langs:
+                    continue
+                for sense in rec.get("senses") or []:
+                    glosses = sense.get("glosses") or []
+                    if glosses and str(glosses[0]).strip():
+                        gloss = str(glosses[0]).strip()
+                        break
             if not word or not gloss:
                 continue
             head = re.split(r"[,.;(]|이다|입니다|를 말한다|을 말한다", gloss, maxsplit=1)[0].strip()
