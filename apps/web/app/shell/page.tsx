@@ -222,8 +222,8 @@ export default function ShellPage() {
       // were triggering the mic on every word; measured on the OS build)
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      // omni-prompt summon: Ctrl+Space or '/' — the Cmd+Space instinct
-      if ((e.ctrlKey && e.code === "Space") || e.key === "/") {
+      // omni-prompt summon: '/' (Ctrl+Space belongs to the Korean IME toggle)
+      if (e.key === "/") {
         e.preventDefault();
         composerRef.current?.focus();
         return;
@@ -301,11 +301,11 @@ export default function ShellPage() {
         <div className="atanor-os-shell-field" aria-hidden data-mode={manual ? "manual" : shellState}>
           <PureField
             budget={Math.round(6500 * density)}
-            energy={manual ? 0.02
-              : shellState === "thinking" ? 0.85
-              : shellState === "listening" ? 0.65
-              : shellState === "speaking" ? 0.5
-              : 0.12}
+            mode={manual ? "manual"
+              : shellState === "thinking" ? "thinking"
+              : shellState === "listening" ? "listening"
+              : shellState === "speaking" ? "speaking"
+              : "idle"}
           />
         </div>
       ) : null}
@@ -385,7 +385,7 @@ export default function ShellPage() {
         <form className="atanor-os-shell-composer" onClick={(e) => e.stopPropagation()}
           onSubmit={(e) => { e.preventDefault(); const q = draft.trim(); if (q) { setDraft(""); void ask(q); } }}>
           <input ref={composerRef} value={draft} onChange={(e) => setDraft(e.target.value)}
-                 placeholder="무엇이든 — 질문하거나, 명령하세요 (Ctrl+Space)"
+                 placeholder="무엇이든 — 질문하거나, 명령하세요 ( / )"
                  aria-label="ATANOR에게 말하기" />
         </form>
 

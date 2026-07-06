@@ -21,6 +21,14 @@ user_pref("browser.sessionstore.max_resumed_crashes", 0);
 user_pref("datareporting.policy.dataSubmissionEnabled", false);
 user_pref("full-screen-api.ignore-widgets", true);
 PREFS
-export MOZ_ENABLE_WAYLAND=1
+# KOREAN INPUT: fcitx5+hangul rides XWayland/XIM — cage's Wayland text-input
+# support is not guaranteed, XIM is boring-reliable. firefox therefore runs as
+# an XWayland client here (MOZ_ENABLE_WAYLAND unset on purpose).
+# NOTE: Ctrl+Space belongs to 한/영 toggle; the omni-prompt answers to '/'.
+export GTK_IM_MODULE=fcitx
+export QT_IM_MODULE=fcitx
+export XMODIFIERS=@im=fcitx
+command -v fcitx5 >/dev/null 2>&1 && fcitx5 -d >/dev/null 2>&1 &
+sleep 1
 exec firefox-esr --kiosk --new-instance --profile /tmp/ffsurface \
   "http://127.0.0.1:3000/shell?wallpaper=1"

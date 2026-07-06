@@ -3,23 +3,26 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-/* PureField — the SPLATRA cognitive plane under the owner's four absolute rules:
-   1. NO lines, ever. There is no THREE.Line anywhere in this file.
-   2. Points ONLY: one THREE.Points, one PointsMaterial. No boxes, no geometry.
-   3. Gaussian grains: each dot is a soft self-luminous photon (radial-blur
-      sprite), never a hard pixel.
-   4. Fluid drift: layered trigonometric displacement — deep-sea plankton /
-      nebula motion. No grids, no scaffolds, no shapes.
-   Everything animates through refs — React re-renders (typing, state) can
-   NEVER reset rotation or positions. Energy nudges drift speed only. */
+/* PureField v2 — the cognitive plane, orbiting the orb (owner's v1.2 code spec).
+   The four absolute rules hold: Points ONLY (no THREE.Line in this file),
+   gaussian self-luminous grains, no grids/scaffolds/painted shapes. And now:
+   the particles LIVE AROUND THE ORB (radial band, not screen-wide dust) and
+   their MOTION IS THE STATE — each mode is a different physics:
+     idle       slow orbital drift, loose breathing
+     listening  concentric ripples running through the swarm
+     thinking   spiral condensation — angular speed up, radius pulls in
+     speaking   outward pulses riding the voice
+     manual     near-still plane
+   Everything animates through refs; renders can never reset the motion. */
+
+export type PureFieldMode = "idle" | "listening" | "thinking" | "speaking" | "manual";
 
 type PureFieldProps = {
   budget?: number;
-  energy?: number; // 0 calm nebula … 1 charged attention (drift speed only)
+  mode?: PureFieldMode;
 };
 
 function gaussian(): number {
-  // Box–Muller: soft cloud distribution, dense core and thin halo
   let u = 0;
   let v = 0;
   while (u === 0) u = Math.random();
@@ -34,7 +37,7 @@ function grainTexture(): THREE.Texture {
   const g = c.getContext("2d")!;
   const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   grad.addColorStop(0, "rgba(255,255,255,1)");
-  grad.addColorStop(0.35, "rgba(255,255,255,0.55)");
+  grad.addColorStop(0.3, "rgba(255,255,255,0.6)");
   grad.addColorStop(1, "rgba(255,255,255,0)");
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
@@ -44,18 +47,18 @@ function grainTexture(): THREE.Texture {
 }
 
 const PALETTE = [
-  new THREE.Color("#1fd4e8"),
-  new THREE.Color("#7f7fe8"),
-  new THREE.Color("#b06ae0"),
-  new THREE.Color("#cdd6e2"),
+  new THREE.Color("#22e0f5"),
+  new THREE.Color("#8f7bff"),
+  new THREE.Color("#c86df0"),
+  new THREE.Color("#e8f0ff"),
 ];
 
-export default function PureField({ budget = 5200, energy = 0.15 }: PureFieldProps) {
+export default function PureField({ budget = 5200, mode = "idle" }: PureFieldProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const energyRef = useRef(energy);
+  const modeRef = useRef<PureFieldMode>(mode);
   useEffect(() => {
-    energyRef.current = energy;
-  }, [energy]);
+    modeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -70,23 +73,24 @@ export default function PureField({ budget = 5200, energy = 0.15 }: PureFieldPro
     host.appendChild(renderer.domElement);
 
     const n = Math.max(900, budget);
-    const base = new Float32Array(n * 3);
+    // spherical home coordinates AROUND the orb: dense band near it, thin halo
+    const radius = new Float32Array(n);
+    const theta = new Float32Array(n);
+    const phi = new Float32Array(n);
+    const phase = new Float32Array(n);
     const pos = new Float32Array(n * 3);
     const col = new Float32Array(n * 3);
-    const phase = new Float32Array(n);
     for (let i = 0; i < n; i += 1) {
-      // wide flat-ish nebula: broad in x, softer in y, shallow in z
-      base[i * 3] = gaussian() * 5.2;
-      base[i * 3 + 1] = gaussian() * 3.0;
-      base[i * 3 + 2] = gaussian() * 2.2;
-      const c = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      const dim = 0.35 + Math.random() * 0.5;
-      col[i * 3] = c.r * dim;
-      col[i * 3 + 1] = c.g * dim;
-      col[i * 3 + 2] = c.b * dim;
+      radius[i] = 1.6 + Math.abs(gaussian()) * 1.7; // band: hugs the orb, fades out
+      theta[i] = Math.random() * Math.PI * 2;
+      phi[i] = Math.acos(2 * Math.random() - 1);
       phase[i] = Math.random() * Math.PI * 2;
+      const c = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+      const glow = 0.55 + Math.random() * 0.45; // photons, not dust
+      col[i * 3] = c.r * glow;
+      col[i * 3 + 1] = c.g * glow;
+      col[i * 3 + 2] = c.b * glow;
     }
-    pos.set(base);
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
@@ -96,8 +100,8 @@ export default function PureField({ budget = 5200, energy = 0.15 }: PureFieldPro
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       transparent: true,
-      opacity: 0.75,
-      size: 0.09,
+      opacity: 0.95,
+      size: 0.13,
       sizeAttenuation: true,
       vertexColors: true,
     });
@@ -107,7 +111,9 @@ export default function PureField({ budget = 5200, energy = 0.15 }: PureFieldPro
     const clock = new THREE.Clock();
     let raf = 0;
     let last = 0;
-    const STEP = 1 / 30; // soft motion needs no more; halves CPU on soft-GL
+    let spin = 0; // accumulated orbit angle — continuous across mode changes
+    let lastT = 0;
+    const STEP = 1 / 30;
 
     function resize() {
       const r = host!.getBoundingClientRect();
@@ -120,22 +126,46 @@ export default function PureField({ budget = 5200, energy = 0.15 }: PureFieldPro
 
     function frame() {
       const t = clock.getElapsedTime();
+      const dt = Math.min(0.1, t - lastT);
+      lastT = t;
+      const m = modeRef.current;
+      // angular velocity is the mode's tempo — integrated, so transitions GLIDE
+      const w =
+        m === "thinking" ? 0.34 : m === "listening" ? 0.14 : m === "speaking" ? 0.18 : m === "manual" ? 0.004 : 0.05;
+      spin += w * dt;
+
       if (t - last >= STEP) {
         last = t;
-        const e = 0.35 + energyRef.current * 1.1;
         const attr = geo.getAttribute("position") as THREE.BufferAttribute;
         for (let i = 0; i < n; i += 1) {
-          const bx = base[i * 3];
-          const by = base[i * 3 + 1];
-          const bz = base[i * 3 + 2];
           const p = phase[i];
-          // two layered incommensurate waves — drift, never a grid
-          attr.array[i * 3] = bx + Math.sin(t * 0.11 * e + p + by * 0.35) * 0.55 + Math.sin(t * 0.041 + p * 1.7) * 0.3;
-          attr.array[i * 3 + 1] = by + Math.cos(t * 0.09 * e + p * 1.3 + bx * 0.22) * 0.42 + Math.cos(t * 0.033 + p) * 0.25;
-          attr.array[i * 3 + 2] = bz + Math.sin(t * 0.07 * e + p * 0.6 + bx * 0.1) * 0.3;
+          let r = radius[i];
+          const th = theta[i] + spin * (0.65 + 0.35 * Math.sin(p)); // shear, not lockstep
+          const ph = phi[i] + Math.sin(t * 0.05 + p) * 0.06;
+
+          if (m === "thinking") {
+            // spiral condensation: the swarm pulls toward the core and churns
+            r *= 0.78 + 0.1 * Math.sin(t * 0.9 + p);
+          } else if (m === "listening") {
+            // concentric ripple travelling outward through the band
+            r += Math.sin(t * 3.2 - radius[i] * 2.4 + p * 0.2) * 0.22;
+          } else if (m === "speaking") {
+            // voice pulses pushing outward
+            r += Math.max(0, Math.sin(t * 2.2 - radius[i] * 1.1)) * 0.34;
+          } else if (m === "manual") {
+            r = radius[i];
+          } else {
+            // idle: loose breathing drift
+            r += Math.sin(t * 0.35 + p) * 0.12;
+          }
+
+          const sr = Math.sin(ph) * r;
+          attr.array[i * 3] = Math.cos(th) * sr + Math.sin(t * 0.07 + p * 1.7) * 0.08;
+          attr.array[i * 3 + 1] = Math.cos(ph) * r * 0.82 + Math.cos(t * 0.06 + p) * 0.08;
+          attr.array[i * 3 + 2] = Math.sin(th) * sr * 0.6;
         }
         attr.needsUpdate = true;
-        points.rotation.y = t * 0.008; // one slow, never-resetting breath
+        mat.opacity = m === "manual" ? 0.35 : 0.95;
       }
       renderer.render(scene, camera);
       raf = window.requestAnimationFrame(frame);

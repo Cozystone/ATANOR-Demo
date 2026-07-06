@@ -124,6 +124,11 @@ def _ko_topic(label: str) -> str:
 def _wanted_predicates(query: str) -> set[str]:
     q = query.lower()
     want = {pred for pred, cues in _RELATION_CUES.items() if any(c in q for c in cues)}
+    # the bare definitional ENDING ('에스프레소란?', 'X라는 건?') is a cue the
+    # substring list can't express — without it the precision gate would block
+    # legitimate definition questions along with the chatter it exists to block
+    if re.search(r"[가-힣a-z0-9)\"'](?:이?란|이라는 ?건?)\s*\??\s*$", q):
+        want |= {"defined_as", "is_a"}
     return want
 
 
@@ -149,6 +154,13 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     if store is None or len(store) == 0:
         return None
     want = _wanted_predicates(query)
+    # ROLLBACK (owner-measured regression): with no explicit relation cue the
+    # bridge pasted ANY stored fact about any noun in the sentence — every chat
+    # message got a wikipedia-flavored definition. The bridge is a PRECISION
+    # tool: it speaks only when the question explicitly asks for a definition
+    # or a relation (이란/뭐/수도/저자/…), never on conversation.
+    if not want:
+        return None
     # P3 multi-hop chain reasoning: '결국/궁극적으로 무엇' questions climb the stored
     # transitive hierarchy via energy-descent (termination + no-cycle guaranteed) and
     # verbalize the actual chain. Tried before single-fact lookup because it answers a
