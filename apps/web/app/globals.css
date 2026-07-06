@@ -10948,3 +10948,20 @@ p {
 .atanor-omni-core { fill: #00f0ff; transition: filter 0.3s ease; }
 .atanor-os-shell-icon:hover .atanor-omni-mark { color: #e2e8f0; }
 .atanor-os-shell-icon:hover .atanor-omni-core { filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.9)); }
+
+/* phone pairing chip under the desktop icons */
+.atanor-os-shell-pairing {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  margin-top: 10px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: rgba(12, 14, 20, 0.35);
+  backdrop-filter: blur(12px);
+  font-size: 10px;
+  color: rgba(223, 228, 234, 0.6);
+  width: 92px;
+}
+.atanor-os-shell-pairing strong { font-size: 14px; letter-spacing: 0.18em; color: #00f0ff; }
+.atanor-os-shell-pairing em { font-style: normal; font-size: 8.5px; opacity: 0.55; }

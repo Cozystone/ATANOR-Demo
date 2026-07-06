@@ -245,6 +245,31 @@ export default function ShellPage() {
   // headless boxes) still gets the full AI desktop
   const [draft, setDraft] = useState("");
 
+  // PHONE LINK: any phone becomes this machine's microphone via the pairing
+  // code — auto-enabled once the engine is up (relay is OUR cloud VM only)
+  const [linkInfo, setLinkInfo] = useState<{ code?: string; last_text?: string; last_answer?: string; last_at?: string } | null>(null);
+  const lastLinkAtRef = useRef("");
+  useEffect(() => {
+    if (engineUp !== true || !wallpaper) return;
+    let stop = false;
+    fetch("/api/phone-link/enable", { method: "POST" }).catch(() => {});
+    const iv = setInterval(async () => {
+      try {
+        const s = await fetch("/api/phone-link/status", { signal: AbortSignal.timeout(4000) }).then((r) => r.json());
+        if (stop) return;
+        setLinkInfo(s);
+        // a fresh phone utterance surfaces on the desktop like a spoken one
+        if (s?.last_at && s.last_at !== lastLinkAtRef.current && s.last_text) {
+          lastLinkAtRef.current = s.last_at;
+          setQuestion(s.last_text);
+          if (s.last_answer) { setAnswer(s.last_answer); speak(s.last_answer); }
+        }
+      } catch { /* engine poller covers liveness */ }
+    }, 4000);
+    return () => { stop = true; clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineUp, wallpaper]);
+
   // MANUAL mode (패닉룸): the field flattens to a quiet plane and the AI's
   // autonomy drops to 관찰(OBSERVE) — "never intervenes first" as a REAL gate,
   // not a promise. Leaving manual restores the previous tier.
@@ -317,6 +342,14 @@ export default function ShellPage() {
             </svg>
             <span>ATANOR</span>
           </button>
+          {/* phone pairing — the phone IS the microphone */}
+          {linkInfo?.code ? (
+            <div className="atanor-os-shell-pairing" title="폰에서 atanor-liard.vercel.app/link 를 열고 이 코드를 입력하세요">
+              <span>폰 마이크</span>
+              <strong>{linkInfo.code}</strong>
+              <em>atanor-liard.vercel.app/link</em>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

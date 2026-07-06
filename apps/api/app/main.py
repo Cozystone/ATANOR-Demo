@@ -65,6 +65,8 @@ from app.routers.contribution import router as contribution_router
 from app.routers.voice import router as voice_router
 from app.routers.os_action import router as os_action_router
 from app.routers.perception import router as perception_router
+from app.routers.phone_link import router as phone_link_router
+from app.routers.link_relay import router as link_relay_router
 from app.routers.construction_bank import router as construction_bank_router
 from app.routers.cortex import router as cortex_router
 from app.routers.datagate import router as datagate_router
@@ -209,6 +211,8 @@ app.include_router(cloud_brain_router)
 app.include_router(voice_router)
 app.include_router(os_action_router)
 app.include_router(perception_router)
+app.include_router(phone_link_router)
+app.include_router(link_relay_router)
 app.include_router(contribution_router)
 app.include_router(construction_bank_router)
 app.include_router(cortex_router)
