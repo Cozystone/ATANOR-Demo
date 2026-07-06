@@ -221,5 +221,8 @@ EOF
   umount -l "$MNT/boot/efi" "$MNT"
   losetup -d "$LOOP"
   echo "PHASE-IMAGE-OK -> $IMG"
-  echo "boot test: qemu-system-x86_64 -enable-kvm -m 4096 -smp 4 -drive file=$IMG,format=raw,if=virtio -bios /usr/share/ovmf/OVMF.fd"
+  # -cpu host is REQUIRED in QEMU: the default qemu64 model predates x86-64-v2 and
+# numpy (built for the v2 baseline) refuses to import -> engine crash-loop that
+# surfaced as a misleading 'cannot import name router' (real hardware unaffected).
+echo "boot test: qemu-system-x86_64 -enable-kvm -cpu host -m 4096 -smp 4 -drive file=$IMG,format=raw,if=virtio -bios /usr/share/ovmf/OVMF.fd"
 fi
