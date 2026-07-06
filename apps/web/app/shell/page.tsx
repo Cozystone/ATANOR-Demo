@@ -13,6 +13,9 @@ import { useEffect, useRef, useState } from "react";
 type ShellState = "idle" | "listening" | "thinking" | "speaking" | "offline";
 
 export default function ShellPage() {
+  // overlay mode (?overlay=1): transparent background so the orb floats over the real
+  // desktop as an always-on-top layer (the GNOME extension pins the window).
+  const overlay = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("overlay") === "1";
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stateRef = useRef<ShellState>("idle");
   const [shellState, setShellState] = useState<ShellState>("idle");
@@ -228,7 +231,7 @@ export default function ShellPage() {
 
   return (
     <main onClick={() => void toggleTalk()}
-      style={{ position: "fixed", inset: 0, background: "#000", color: "#fff",
+      style={{ position: "fixed", inset: 0, background: overlay ? "transparent" : "#000", color: "#fff",
                display: "grid", gridTemplateRows: "1fr auto", cursor: "pointer",
                fontFamily: '"Helvetica Neue", Helvetica, Arial, "Pretendard Variable", sans-serif' }}>
       <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />

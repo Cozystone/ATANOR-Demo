@@ -108,7 +108,7 @@ elif [ "$DESKTOP" -eq 1 ]; then
 Type=Application
 Name=ATANOR
 Comment=Your resident intelligence — voice orb (local-only)
-Exec=sh -c 'until curl -sf http://127.0.0.1:3000/ >/dev/null; do sleep 1; done; U=http://127.0.0.1:3000/shell; curl -sf "$U" >/dev/null || U=http://127.0.0.1:3000/; exec chromium-browser --app="$U" --window-size=560,560 2>/dev/null || exec chromium --app="$U" --window-size=560,560'
+Exec=sh -c 'until curl -sf http://127.0.0.1:3000/ >/dev/null; do sleep 1; done; U=http://127.0.0.1:3000/shell?overlay=1; curl -sf http://127.0.0.1:3000/shell >/dev/null || U=http://127.0.0.1:3000/; exec chromium-browser --app="$U" --window-size=560,560 2>/dev/null || exec chromium --app="$U" --window-size=560,560'
 X-GNOME-Autostart-enabled=true
 EOF
   cat > /usr/share/applications/atanor.desktop <<'EOF'
@@ -197,6 +197,16 @@ EOF
   dconf update || true
   # 4) identity strings
   command -v hostnamectl >/dev/null 2>&1 && hostnamectl set-hostname --pretty "ATANOR" || true
+  # ATANOR orb overlay: install + enable the GNOME extension that pins the orb window
+  EXT_UUID=atanor-orb@atanor.ai
+  install -d /usr/share/gnome-shell/extensions/$EXT_UUID
+  cp "$HERE/gnome-extension/$EXT_UUID/"* /usr/share/gnome-shell/extensions/$EXT_UUID/ 2>/dev/null || true
+  cat >> /etc/dconf/db/local.d/01-atanor <<'EOF'
+
+[org/gnome/shell]
+enabled-extensions=['dash-to-panel@jderose9.github.com', 'ubuntu-appindicators@ubuntu.com', 'atanor-orb@atanor.ai']
+EOF
+  dconf update || true
   systemctl set-default graphical.target
 else
   echo "[6/6] no kiosk requested — open http://localhost:3000"
