@@ -164,7 +164,7 @@ export default function PureField({ budget = 5200, mode = "idle", scale = 1 }: P
           r = Math.max(2.35 * scale, r); // the gap is inviolable — nothing enters the orb's space
           const sr = Math.sin(ph) * r;
           attr.array[i * 3] = Math.cos(th) * sr + Math.sin(t * 0.07 + p * 1.7) * 0.08;
-          attr.array[i * 3 + 1] = Math.cos(ph) * r * 0.82 + Math.cos(t * 0.06 + p) * 0.08;
+          attr.array[i * 3 + 1] = Math.cos(ph) * r * 0.78 + Math.cos(t * 0.06 + p) * 0.08;
           attr.array[i * 3 + 2] = Math.sin(th) * sr * 0.6;
         }
         attr.needsUpdate = true;

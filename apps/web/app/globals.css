@@ -10726,7 +10726,17 @@ p {
 }
 .atanor-os-shell[data-overlay="1"] { background: transparent; }
 
-.atanor-os-shell-orb { display: grid; place-items: center; align-self: center; }
+/* the orb sits at the EXACT viewport center — the same origin the field's
+   camera uses, so the ring wraps it concentrically at every window size */
+.atanor-os-shell-orb {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 1;
+}
+.atanor-os-shell-orb .hologram-voice-orb { pointer-events: auto; }
 /* scale the shared orb up for the OS face; its own ring/gradient stays as designed */
 .atanor-os-shell .hologram-voice-orb {
   /* owner's red-circle spec: ~27% of the viewport's short side, centered,
