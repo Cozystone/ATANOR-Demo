@@ -47,16 +47,18 @@ if [ -n "$WID" ]; then
   #    reliable path — firefox's --name/--class flags are unreliable on X11, and
   #    openbox ignores a post-map _NET_WM_WINDOW_TYPE change. Retry: firefox can
   #    re-assert its own decor hints while the page loads.
-  n=0
-  while [ $n -lt 6 ]; do
-    xprop -id "$WID" -f _MOTIF_WM_HINTS 32c \
-      -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0"
-    n=$((n+1)); sleep 1
-  done
-  # 2) push it to the background layer, every workspace, out of the taskbar
-  wmctrl -i -r "$WID" -b add,below,sticky,skip_taskbar,skip_pager 2>/dev/null || true
-  # 3) fill the screen (below the panel, which owns its strut)
-  xdotool windowmove "$WID" 0 0
-  xdotool windowsize "$WID" 100% 100%
+  # KEEPER loop, not a burst: on 1080p software-GL the page loads slowly and
+  # firefox re-asserts its decor hints after a finite burst ends (measured —
+  # the titlebar returned). Re-apply every 20s for the surface's lifetime.
+  (
+    while kill -0 "$B" 2>/dev/null; do
+      xprop -id "$WID" -f _MOTIF_WM_HINTS 32c \
+        -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0" 2>/dev/null
+      wmctrl -i -r "$WID" -b add,below,sticky,skip_taskbar,skip_pager 2>/dev/null
+      xdotool windowmove "$WID" 0 0 2>/dev/null
+      xdotool windowsize "$WID" 100% 100% 2>/dev/null
+      sleep 20
+    done
+  ) &
 fi
 wait $B
