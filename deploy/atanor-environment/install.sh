@@ -51,6 +51,9 @@ if [ "$DESKTOP" -eq 1 ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal chromium
   # Windows-like layout: one bottom taskbar (Dash-to-Panel) instead of top bar + dock
   DEBIAN_FRONTEND=noninteractive apt-get install -y gnome-shell-extension-dash-to-panel || true
+  # OS Action Lane actuators: real desktop control (input/windows/audio/screenshot)
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ydotool wmctrl gnome-screenshot || true
+  systemctl enable --now ydotool || systemctl enable --now ydotoold 2>/dev/null || true
 fi
 
 echo "[2/6] atanor system user + directories"

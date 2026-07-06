@@ -20,8 +20,35 @@ export default function ShellPage() {
   const [answer, setAnswer] = useState("");
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  type Pending = { token: string; text: string; kind?: string };
+  const [pending, setPendingState] = useState<Pending | null>(null);
+  const pendingRef = useRef<Pending | null>(null);
+  const setPending = (p: Pending | null) => { pendingRef.current = p; setPendingState(p); };
+  const [tier, setTier] = useState<number>(1);
+  const TIER_NAMES = ["관찰", "승인", "가드", "자율"];
 
   const setState = (s: ShellState) => { stateRef.current = s; setShellState(s); };
+
+  useEffect(() => {
+    fetch("/api/os-action/status").then((r) => r.json()).then((s) => { if (typeof s?.tier === "number") setTier(s.tier); }).catch(() => {});
+  }, []);
+
+  const changeTier = async (t: number) => {
+    setTier(t);
+    await fetch("/api/os-action/tier", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tier: t }) }).catch(() => {});
+  };
+
+  const approveNow = async () => {
+    if (!pendingRef.current) return;
+    const r = await fetch("/api/os-action/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: pendingRef.current.token }) }).then((x) => x.json()).catch(() => null);
+    setPending(null);
+    if (r) { setAnswer(`${r.detail || "실행했습니다."} ${r.stdout ? "— " + String(r.stdout).slice(0, 160) : ""}`.trim()); speak(r.detail || "실행했습니다."); }
+  };
+  const rejectNow = async () => {
+    if (!pendingRef.current) return;
+    await fetch("/api/os-action/reject", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: pendingRef.current.token }) }).catch(() => {});
+    setPending(null); setAnswer("취소했습니다.");
+  };
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -106,10 +133,41 @@ export default function ShellPage() {
     } catch { setState("idle"); }
   };
 
+  const runOsResult = (r: any) => {
+    if (r?.outcome === 0 && r?.executed) {              // EXECUTE — done
+      const msg = `${r.detail || "실행했습니다."} ${r.stdout ? "— " + String(r.stdout).slice(0, 160) : ""}`.trim();
+      setAnswer(msg); setPending(null); speak(r.detail || "실행했습니다.");
+    } else if (r?.approval_token) {                      // NEEDS_APPROVAL — hold
+      setPending({ token: r.approval_token, text: r.detail || "이 작업을 실행할까요?", kind: r.action?.kind });
+      setAnswer(r.detail || "승인이 필요한 작업입니다."); speak(r.detail || "승인이 필요합니다. 실행할까요?");
+      setState("idle");
+    } else {                                             // BLOCKED
+      setAnswer(r?.detail || "실행할 수 없습니다."); setPending(null); setState("idle");
+    }
+  };
+
   const ask = async (q: string) => {
     setQuestion(q);
     setAnswer("");
     setState("thinking");
+    // voice approval: while an action is held, '응/네/그래/실행/yes' approves, '아니/취소/no' rejects.
+    if (pendingRef.current) {
+      if (/^(응|네|그래|좋아|실행|해줘|yes|ok|okay|approve)/i.test(q.trim())) {
+        const r = await fetch("/api/os-action/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: pendingRef.current.token }) }).then(x => x.json()).catch(() => null);
+        setPending(null); if (r) runOsResult({ ...r, approval_token: undefined }); else setState("idle");
+        return;
+      }
+      if (/^(아니|아뇨|취소|하지마|no|cancel|stop)/i.test(q.trim())) {
+        await fetch("/api/os-action/reject", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: pendingRef.current.token }) }).catch(() => {});
+        setPending(null); setAnswer("취소했습니다."); speak("취소했습니다."); setState("idle");
+        return;
+      }
+    }
+    // OS command first — the orb drives the desktop; a plain question falls through.
+    try {
+      const os = await fetch("/api/os-action/propose", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: q }) }).then(x => x.json()).catch(() => null);
+      if (os && os.is_os_action) { runOsResult(os); return; }
+    } catch { /* fall through to knowledge answer */ }
     try {
       const res = await fetch("/api/chat/atanor", {
         method: "POST",
@@ -174,15 +232,51 @@ export default function ShellPage() {
                display: "grid", gridTemplateRows: "1fr auto", cursor: "pointer",
                fontFamily: '"Helvetica Neue", Helvetica, Arial, "Pretendard Variable", sans-serif' }}>
       <canvas ref={canvasRef} style={{ width: "100%", height: "100%" }} />
+
+      {/* trust tier — the ONE dial for autonomy (관찰 → 승인 → 가드 → 자율) */}
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: "absolute", top: 18, right: 18, display: "flex", gap: 6,
+                 padding: 5, borderRadius: 999, border: "1px solid rgba(255,255,255,.14)",
+                 background: "rgba(255,255,255,.04)" }}>
+        {TIER_NAMES.map((name, i) => (
+          <button key={i} onClick={() => void changeTier(i)}
+            title={["관찰: 실행 안 함", "승인: 매 작업 확인", "가드: 되돌릴 수 있는 건 자동, 위험한 건 확인", "자율: 위험도 실행(전체 시스템만 재확인)"][i]}
+            style={{ padding: "5px 12px", borderRadius: 999, border: "none", cursor: "pointer",
+                     fontSize: 12, fontWeight: 700,
+                     background: tier === i ? (i >= 3 ? "#ff5a3c" : "#ff8a00") : "transparent",
+                     color: tier === i ? "#000" : "rgba(255,255,255,.55)" }}>
+            {name}
+          </button>
+        ))}
+      </div>
+
       <div style={{ position: "absolute", left: 0, right: 0, bottom: "8vh", textAlign: "center",
-                    padding: "0 24px", pointerEvents: "none" }}>
+                    padding: "0 24px", pointerEvents: pending ? "auto" : "none" }}>
         <div style={{ fontSize: 14, letterSpacing: ".08em", opacity: 0.55 }} data-state={shellState}>
           {statusLine[shellState]}
         </div>
         {question ? <div style={{ marginTop: 14, fontSize: 16, opacity: 0.75 }}>“{question}”</div> : null}
         {answer ? <div style={{ margin: "10px auto 0", maxWidth: 720, fontSize: 18, lineHeight: 1.5 }}>{answer}</div> : null}
+
+        {/* held action — approve by click OR by saying '응' */}
+        {pending ? (
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ margin: "18px auto 0", maxWidth: 520, padding: "16px 20px", borderRadius: 16,
+                     border: "1px solid rgba(255,138,0,.4)", background: "rgba(255,138,0,.08)" }}>
+            <div style={{ fontSize: 15, marginBottom: 12 }}>{pending.text}</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button onClick={() => void approveNow()}
+                style={{ padding: "9px 22px", borderRadius: 10, border: "none", cursor: "pointer",
+                         background: "#ff8a00", color: "#000", fontWeight: 700 }}>실행 (또는 "응")</button>
+              <button onClick={() => void rejectNow()}
+                style={{ padding: "9px 22px", borderRadius: 10, cursor: "pointer",
+                         border: "1px solid rgba(255,255,255,.25)", background: "transparent", color: "#fff" }}>취소</button>
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ marginTop: 26, fontSize: 11, letterSpacing: ".06em", opacity: 0.3 }}>
-          모든 음성과 답변은 이 기기 안에서 처리됩니다 · 근거가 없으면 정직하게 기권합니다 · v0는 행동 권한이 없습니다 (질문/답변 전용)
+          모든 처리는 이 기기 안에서 · 근거 없으면 정직하게 기권 · 모든 조작은 감사 기록에 남고 즉시 정지 가능
         </div>
       </div>
     </main>
