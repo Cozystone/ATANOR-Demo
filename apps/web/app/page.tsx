@@ -403,6 +403,53 @@ function defaultTargetNodesForVolume(volume: LearningVolume) {
   return volume === "max" || volume === "infinite" ? maxTargetNodes : learningVolumePresets[volume].targetNodes ?? 10_000;
 }
 
+function VoiceMicButton({ onText, disabled, language }: { onText: (t: string) => void; disabled?: boolean; language: string }) {
+  // Voice input v0 — mic → LOCAL Whisper (/api/voice/transcribe). The browser's own
+  // SpeechRecognition is deliberately not used: Chrome routes it through Google's
+  // cloud, and the contract here is that audio never leaves the device.
+  const [micState, setMicState] = useState<"idle" | "rec" | "busy" | "off">("idle");
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const toggle = async () => {
+    if (micState === "rec") { recRef.current?.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setMicState("busy");
+        try {
+          const fd = new FormData();
+          fd.append("file", new Blob(chunksRef.current, { type: "audio/webm" }), "mic.webm");
+          const res = await fetch("/api/voice/transcribe", { method: "POST", body: fd });
+          const body = await res.json().catch(() => ({}));
+          if (res.ok && body.text) onText(String(body.text));
+          setMicState(res.ok ? "idle" : "off");
+        } catch { setMicState("off"); }
+      };
+      recRef.current = rec;
+      rec.start();
+      setMicState("rec");
+    } catch { setMicState("off"); }
+  };
+  const title = micState === "off"
+    ? (language === "ko" ? "로컬 음성 엔진 사용 불가" : "Local STT unavailable")
+    : micState === "rec"
+      ? (language === "ko" ? "녹음 중지 후 전사" : "Stop & transcribe")
+      : (language === "ko" ? "음성 입력 — 로컬 Whisper, 기기 밖으로 나가지 않음" : "Voice input — local Whisper, never leaves this device");
+  return (
+    <button type="button" onClick={toggle} disabled={disabled || micState === "busy"} title={title}
+      aria-label={title} data-mic-state={micState}
+      style={{ minWidth: 40, borderRadius: 10, border: "1px solid rgba(255,255,255,.18)",
+               background: micState === "rec" ? "rgba(255,80,60,.18)" : "transparent",
+               color: micState === "off" ? "rgba(255,255,255,.3)" : "inherit", cursor: "pointer" }}>
+      {micState === "rec" ? "■" : micState === "busy" ? "…" : "🎙"}
+    </button>
+  );
+}
+
 function buildLiveGrowth(base: Rag3DGraph, pulseCount: number, maxTotalNodes = Number.POSITIVE_INFINITY): Rag3DGraph {
   const liveNodes: Rag3DNode[] = [];
   const liveEdges: Rag3DEdge[] = [];
@@ -6886,6 +6933,8 @@ function FullApp() {
                   placeholder={copy.placeholder}
                   aria-label={copy.placeholder}
                 />
+                <VoiceMicButton language={language} disabled={isGeneratingAnswer}
+                  onText={(t) => setChatInput((prev) => (prev ? prev + " " : "") + t)} />
                 <button disabled={isGeneratingAnswer} onClick={sendChat}>
                   {isGeneratingAnswer ? copy.generating : copy.send}
                 </button>
@@ -7751,6 +7800,8 @@ function FullApp() {
                     placeholder={copy.placeholder}
                     aria-label={copy.placeholder}
                   />
+                  <VoiceMicButton language={language} disabled={isGeneratingAnswer}
+                    onText={(t) => setChatInput((prev) => (prev ? prev + " " : "") + t)} />
                   <button disabled={isGeneratingAnswer} onClick={sendChat}>
                     {isGeneratingAnswer ? copy.generating : copy.send}
                   </button>
