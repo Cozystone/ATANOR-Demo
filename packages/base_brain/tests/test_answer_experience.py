@@ -40,6 +40,56 @@ def test_dedupe_newest_label_wins(tmp_path, monkeypatch):
     assert len(ex) == 1 and ex[0][1] == {"engage"}
 
 
+def test_web_rescue_anchored_corrects_engage_routing(tmp_path, monkeypatch):
+    _tmp_ledger(tmp_path, monkeypatch)
+    q = "미토콘드리아가 뭐야?"
+    ax.record_decision(q, extract_features(q, {"named_match": 0.1}), "engage")
+    # the web rescue served a subject-anchored cited answer → the query WAS answerable
+    assert ax.label_web_rescue_outcome(q, anchored=True)
+    ex = ax.training_examples()
+    assert len(ex) == 1 and ex[0][1] == {"define", "synthesize"}
+
+
+def test_web_rescue_empty_corrects_confident_seek(tmp_path, monkeypatch):
+    _tmp_ledger(tmp_path, monkeypatch)
+    q = "그 그거 있잖아 그게 뭐더라"
+    ax.record_decision(q, extract_features(q, {"named_match": 0.7}), "define")
+    # neither the local graph nor the web gate anchored anything → confident seek was wrong
+    assert ax.label_web_rescue_outcome(q, anchored=False)
+    assert ax.training_examples()[0][1] == {"engage", "abstain"}
+
+
+def test_web_rescue_reinforces_correct_seek(tmp_path, monkeypatch):
+    _tmp_ledger(tmp_path, monkeypatch)
+    q = "광합성이란?"
+    ax.record_decision(q, extract_features(q, {"named_match": 0.9, "has_definition": True}), "define")
+    assert ax.label_web_rescue_outcome(q, anchored=True)
+    assert ax.training_examples()[0][1] == {"define"}
+
+
+def test_web_rescue_without_decision_is_honest_false(tmp_path, monkeypatch):
+    _tmp_ledger(tmp_path, monkeypatch)
+    assert ax.label_web_rescue_outcome("기록 없는 질문", anchored=True) is False
+    assert ax.training_examples() == []
+
+
+def test_reingest_matches_decision_by_term_containment(tmp_path, monkeypatch):
+    _tmp_ledger(tmp_path, monkeypatch)
+    q = "성남시가 어디에 있는 도시야?"
+    ax.record_decision(q, extract_features(q, {"named_match": 0.0}), "abstain")
+    # the feeder only has the queued term + (possibly truncated) query
+    assert ax.label_reingest_success("성남시", "")
+    assert ax.training_examples()[0][1] == {"define", "synthesize"}
+
+
+def test_reingest_matches_truncated_queue_query_as_prefix(tmp_path, monkeypatch):
+    _tmp_ledger(tmp_path, monkeypatch)
+    q = "a" * 60 + " 장관급 회담이 뭔지 아주 자세히 알려줘 " + "b" * 60
+    ax.record_decision(q, extract_features(q, {"named_match": 0.0}), "engage")
+    assert ax.label_reingest_success("장관급", q[:120])  # abstain queue stores query[:120]
+    assert ax.training_examples()[0][1] == {"define", "synthesize"}
+
+
 def test_experience_steers_margin_and_battery_floor_holds(tmp_path, monkeypatch):
     _tmp_ledger(tmp_path, monkeypatch)
     # a lived mistake the battery does not contain

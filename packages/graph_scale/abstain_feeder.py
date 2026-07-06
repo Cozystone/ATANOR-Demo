@@ -40,11 +40,12 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
     """Process up to `limit` pending terms. Returns counters; never raises (each term's
     failure is recorded on the queue and skipped)."""
     counters = {"terms": 0, "ingested": 0, "quarantined": 0, "no_definition": 0, "failed": 0}
-    terms = abstain_queue.pending(limit)
-    if not terms:
+    records = abstain_queue.pending_records(limit)
+    if not records:
         return counters
     store = TripleStore(STORE_ROOT)
-    for term in terms:
+    for rec in records:
+        term = str(rec.get("term") or "")
         counters["terms"] += 1
         try:
             extract = _wiki_summary(term)
@@ -71,4 +72,13 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
         abstain_queue.mark(term, "ingested", f"{r['added']} facts")
         for s, p, o in verdicts["promotable"]:
             log(f"  {term}: + {s} | {p} | {o}")
+        if r["added"]:
+            # measured outcome for the routing policy: the query this term came from was
+            # definitional after all (a judge-passed definition now exists in the store).
+            try:
+                from packages.base_brain.answer_experience import label_reingest_success
+
+                label_reingest_success(term, str(rec.get("query") or ""))
+            except Exception:
+                pass
     return counters

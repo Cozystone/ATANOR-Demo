@@ -91,6 +91,12 @@ def pending(limit: int = 50) -> list[str]:
     return [t for t, rec in _load().items() if rec.get("status") == "pending"][:limit]
 
 
+def pending_records(limit: int = 50) -> list[dict[str, Any]]:
+    """Pending entries WITH their originating query — the feeder needs the query to
+    label the routing decision once the term is successfully grounded."""
+    return [rec for rec in _load().values() if rec.get("status") == "pending"][:limit]
+
+
 def mark(term: str, status: str, note: str = "") -> None:
     _append({"term": term, "status": status, "note": note,
              "ts": time.strftime("%Y-%m-%dT%H:%M:%S")})

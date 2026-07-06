@@ -3973,6 +3973,20 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         if not ans or _answer_is_abstention(ans):
             _emit_stage("web_grounding")  # real: local answer was thin, hitting the web
             rescue = await _web_grounded_rescue(web_query, language)
+            # Experience ledger: the rescue OUTCOME is measured evidence about the routing
+            # decision (anchored answer → query was answerable; gate-rejected empty → a
+            # confident seek was wrong). Network failure carries no evidence — skip.
+            try:
+                from packages.base_brain.answer_experience import label_web_rescue_outcome
+
+                if rescue and not rescue.get("web_unreachable"):
+                    label_web_rescue_outcome(web_query, anchored=True) or \
+                        label_web_rescue_outcome(question, anchored=True)
+                elif rescue is None:
+                    label_web_rescue_outcome(web_query, anchored=False) or \
+                        label_web_rescue_outcome(question, anchored=False)
+            except Exception:
+                pass
             if rescue:
                 result["answer"] = rescue["answer"]
                 result["reasoning_certificate"] = rescue["reasoning_certificate"]
