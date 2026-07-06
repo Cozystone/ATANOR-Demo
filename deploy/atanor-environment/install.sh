@@ -25,7 +25,14 @@ KIOSK=0
 echo "[1/6] packages"
 apt-get update -y
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  git python3 python3-venv python3-pip nodejs npm curl
+  git python3 python3-venv python3-pip curl ca-certificates
+# Node >= 20 is required by the web shell (Next 16); stock Ubuntu apt ships 18.
+# NodeSource puts node+npm at /usr/bin, which is exactly what the systemd units expect.
+NODE_MAJOR="$(node -e 'process.stdout.write(process.versions.node.split(".")[0])' 2>/dev/null || echo 0)"
+if [ "${NODE_MAJOR:-0}" -lt 20 ] || [ ! -x /usr/bin/node ]; then
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+fi
 if [ "$KIOSK" -eq 1 ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y cage chromium-browser || \
   DEBIAN_FRONTEND=noninteractive apt-get install -y cage chromium
