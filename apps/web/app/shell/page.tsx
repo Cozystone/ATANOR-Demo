@@ -169,11 +169,20 @@ export default function ShellPage() {
       recRef.current = rec;
       rec.start();
       setState("listening");
-    } catch { setState("offline"); }
+    } catch {
+      // no microphone (VMs, headless) is not an engine failure — say so and
+      // point at the composer instead of scaring with an offline banner
+      setAnswer("마이크를 찾을 수 없습니다 — 아래 입력줄로 말을 걸어주세요.");
+      setState("idle");
+    }
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Space = push-to-talk — but NEVER while typing (the composer's spaces
+      // were triggering the mic on every word; measured on the OS build)
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       if (e.code === "Space") { e.preventDefault(); void toggleTalk(); }
     };
     addEventListener("keydown", onKey);
