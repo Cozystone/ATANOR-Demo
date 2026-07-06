@@ -53,3 +53,79 @@ def test_relationship_question_gated_on_cue_and_depth():
     assert len(r["reasoning_certificate"]["steps"]) == 2
     # no cue -> not this path's job
     assert answer_relationship("참새란?", fa, ["참새"]) is None
+
+
+# --------------------------------------------------- generalized shapes (A1/A2/A3)
+
+def test_verify_yes_with_multi_hop_path():
+    fa = _store([("참새", "is_a", "새"), ("새", "is_a", "동물"), ("동물", "is_a", "생물")])
+    r = answer_relationship("참새는 생물인가?", fa, ["참새", "생물"])
+    assert r is not None
+    assert r["answer"].startswith("네 — ")
+    assert "따라서 참새는 생물의 일종입니다" in r["answer"]
+    assert r["reasoning_certificate"]["question_kind"] == "verify"
+    assert len(r["reasoning_certificate"]["steps"]) == 3
+
+
+def test_verify_no_path_stays_silent():
+    fa = _store([("참새", "is_a", "새")])
+    # no stored path 참새→돌 — the honest move is silence (other paths/abstain handle it)
+    assert answer_relationship("참새는 돌인가?", fa, ["참새", "돌"]) is None
+
+
+def test_verify_ignores_question_words():
+    fa = _store([("참새", "is_a", "새"), ("새", "is_a", "동물")])
+    # 'X는 무엇인가?' is a definition question, not a verify — must not fire here
+    assert answer_relationship("참새는 무엇인가?", fa, ["참새"]) is None
+
+
+def test_property_inheritance_down_the_ladder():
+    fa = _store([("참새", "is_a", "새"), ("새", "capable_of", "날다")])
+    r = answer_relationship("참새는 날 수 있어?", fa, ["참새"])
+    assert r is not None
+    assert r["answer"].startswith("네 — ")
+    assert "'날다'" in r["answer"]
+    assert "따라서 참새도" in r["answer"]
+    assert r["reasoning_certificate"]["question_kind"] == "property_inheritance"
+    assert r["reasoning_certificate"]["composition"] == "capable_of"
+
+
+def test_property_direct_needs_no_inference():
+    fa = _store([("새", "capable_of", "날다")])
+    r = answer_relationship("새는 날 수 있나?", fa, ["새"])
+    assert r is not None and r["reasoning_certificate"]["question_kind"] == "property_direct"
+
+
+def test_property_unknown_stays_silent():
+    fa = _store([("참새", "is_a", "새")])
+    assert answer_relationship("참새는 수영할 수 있어?", fa, ["참새"]) is None
+
+
+def test_relation_path_between_two_concepts():
+    fa = _store([("서울", "located_in", "한국"), ("한국", "located_in", "아시아")])
+    r = answer_relationship("서울과 아시아의 관계는?", fa, ["서울", "아시아"])
+    assert r is not None
+    assert "서울은 한국에 있고" in r["answer"]
+    assert "따라서 서울은 아시아에 있습니다" in r["answer"]
+    assert r["reasoning_certificate"]["question_kind"] == "relation_path"
+
+
+def test_unsound_composition_prunes_no_conclusion():
+    # part_of after has_property is NOT in the algebra — the walk must prune,
+    # never compose an unsound conclusion
+    fa = _store([("A", "has_property", "B"), ("B", "part_of", "C")])
+    assert answer_relationship("A와 C의 관계는?", fa, ["A", "C"]) is None
+
+
+def test_mixed_taxonomy_mereology_composes_soundly():
+    fa = _store([("참새", "is_a", "새"), ("새", "part_of", "생태계")])
+    r = answer_relationship("참새와 생태계의 관계는?", fa, ["참새", "생태계"])
+    assert r is not None
+    assert "따라서 참새는 생태계의 일부입니다" in r["answer"]
+    assert r["reasoning_certificate"]["composition"] == "part_of"
+
+
+def test_chatter_never_triggers_chain_shapes():
+    from packages.graph_scale.chain_reasoner import has_chain_intent
+    for chatter in ("안녕하세요", "고마워", "오늘 기분 어때", "참새란?", "그거 좋네"):
+        assert has_chain_intent(chatter) is False, chatter

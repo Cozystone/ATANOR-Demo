@@ -1,23 +1,26 @@
 # -*- coding: utf-8 -*-
-"""Multi-hop chain reasoning (roadmap P3) — energy-descent settling over transitive
+"""Multi-hop chain reasoning (roadmap P3, generalized) — composition algebra over
 stored edges.
 
-A relationship question ('참새는 결국 무엇인가?', 'A는 B인가?') is NOT answered by one
-triple; it needs a CHAIN: is_a(참새,새) ∧ is_a(새,동물) ⟹ is_a(참새,동물). This module
-walks the chain with packages.energy_descent — energy = -depth, so 'downhill' means
-climbing toward the most general ancestor, and the discrete Lyapunov property guarantees:
-  * NO cycles (a strictly decreasing energy over a finite visited set) — the reasoner
-    cannot loop even on a store that (wrongly) contains is_a(A,B) ∧ is_a(B,A);
-  * termination WITHOUT an arbitrary hop cap;
-  * settling at the best-grounded reachable conclusion, and surfacing a local minimum
-    (no downhill edge) as an honest stop.
+One triple rarely answers a relationship question; a CHAIN does. This module now
+answers FOUR question shapes, all grounded in stored edges only:
 
-Grounded: every hop is a STORED transitive edge (is_a/part_of/located_in/subclass_of).
-The answer verbalizes the actual chain — no invented links. Hallucination-safe: the
-output is a fixed frame over verbatim chain labels.
+  ultimate   '참새는 결국 무엇인가?'   — climb the transitive ladder to the settled top
+  verify     '참새는 동물인가?'        — find a stored path 참새→…→동물, answer 네 + chain
+  property   '참새는 날 수 있어?'      — property INHERITANCE: is_a ladder ∧ capable_of
+  relation   '참새와 생물의 관계는?'    — path discovery between two named concepts
+
+The composition table _COMPOSE is ALGEBRA (structural logic: what a chain of
+predicates entails), never knowledge — the facts themselves always come from the
+graph, per the hard rule. Soundness over reach: a pair absent from the table
+prunes the walk; the composed conclusion is only spoken when the algebra licenses
+it. Every clause verbalizes a stored edge verbatim — hallucination-safe by
+construction, and cycles/termination stay guaranteed (visited-set BFS, bounded
+depth/nodes; the 'ultimate' shape keeps its Lyapunov energy-descent walk).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -25,6 +28,50 @@ from .inference import RELATION_ALGEBRA
 
 # the transitive relations a chain may follow (each is transitive in RELATION_ALGEBRA)
 _CHAIN_PREDS = tuple(p for p, a in RELATION_ALGEBRA.items() if a.get("transitive"))
+
+# --- composition algebra: (relation-so-far, next-edge-predicate) -> composed relation.
+# Structural entailments only (kind-level mereology/taxonomy/location + inheritance).
+_COMPOSE: dict[tuple[str, str], str] = {
+    ("is_a", "is_a"): "is_a",
+    ("subclass_of", "subclass_of"): "subclass_of",
+    ("is_a", "subclass_of"): "is_a",
+    ("subclass_of", "is_a"): "subclass_of",
+    ("part_of", "part_of"): "part_of",
+    ("located_in", "located_in"): "located_in",
+    ("subregion_of", "subregion_of"): "subregion_of",
+    ("is_a", "part_of"): "part_of",          # every kind-member is part of what its kind is part of
+    ("is_a", "located_in"): "located_in",
+    ("part_of", "located_in"): "located_in",
+    ("located_in", "part_of"): "located_in",
+    ("located_in", "subregion_of"): "located_in",
+    ("subregion_of", "located_in"): "located_in",
+    # inheritance down the taxonomy: kinds pass properties/abilities/parts/uses to members
+    ("is_a", "has_property"): "has_property",
+    ("is_a", "capable_of"): "capable_of",
+    ("is_a", "has_part"): "has_part",
+    ("is_a", "used_for"): "used_for",
+    ("subclass_of", "has_property"): "has_property",
+    ("subclass_of", "capable_of"): "capable_of",
+    ("subclass_of", "has_part"): "has_part",
+    ("subclass_of", "used_for"): "used_for",
+}
+_ALGEBRA_PREDS = {p for pair in _COMPOSE for p in pair} | set(_CHAIN_PREDS)
+
+# properties a taxonomy ladder may inherit (terminal edges — they never compose further)
+_INHERITABLE = ("capable_of", "has_property", "has_part", "used_for")
+
+# per-predicate Korean clause forms: (mid-sentence, final). All grounded labels verbatim.
+_PRED_CLAUSE: dict[str, tuple[str, str]] = {
+    "is_a": ("{s}{neun} {o}의 일종이고", "{s}{neun} {o}의 일종입니다"),
+    "subclass_of": ("{s}{neun} {o}의 일종이고", "{s}{neun} {o}의 일종입니다"),
+    "part_of": ("{s}{neun} {o}의 일부이고", "{s}{neun} {o}의 일부입니다"),
+    "located_in": ("{s}{neun} {o}에 있고", "{s}{neun} {o}에 있습니다"),
+    "subregion_of": ("{s}{neun} {o}의 하위 지역이고", "{s}{neun} {o}의 하위 지역입니다"),
+    "capable_of": ("{s}{neun} '{o}'{i_ga} 가능하고", "{s}{neun} '{o}'{i_ga} 가능합니다"),
+    "has_property": ("{s}{neun} '{o}' 속성을 가지고", "{s}{neun} '{o}' 속성을 가집니다"),
+    "has_part": ("{s}에는 {o}{i_ga} 있고", "{s}에는 {o}{i_ga} 있습니다"),
+    "used_for": ("{s}{neun} {o}에 쓰이고", "{s}{neun} {o}에 쓰입니다"),
+}
 
 
 @dataclass
@@ -60,6 +107,44 @@ def _josa_i(w: str) -> str:
 def _josa_neun(w: str) -> str:
     from packages.lad_morphology import topic
     return topic(w)[len(w):]
+
+
+def _clause(edge: tuple[str, str, str], final: bool) -> str:
+    s, p, o = edge
+    mid, fin = _PRED_CLAUSE.get(p, ("{s}{neun} {o}(관계: " + p + ")이고",
+                                    "{s}{neun} {o}(관계: " + p + ")입니다"))
+    tpl = fin if final else mid
+    return tpl.format(s=s, o=o, neun=_josa_neun(s), i_ga=_josa_i(o))
+
+
+def _conclusion_ko(start: str, edge_obj: str, rel: str) -> str:
+    neun = _josa_neun(start)
+    if rel in ("is_a", "subclass_of"):
+        return f"따라서 {start}{neun} {edge_obj}의 일종입니다"
+    if rel == "part_of":
+        return f"따라서 {start}{neun} {edge_obj}의 일부입니다"
+    if rel in ("located_in", "subregion_of"):
+        return f"따라서 {start}{neun} {edge_obj}에 있습니다"
+    if rel == "capable_of":
+        return f"따라서 {start}도 '{edge_obj}'{_josa_i(edge_obj)} 가능합니다"
+    if rel == "has_property":
+        return f"따라서 {start}도 '{edge_obj}' 속성을 가집니다"
+    if rel == "has_part":
+        return f"따라서 {start}에도 {edge_obj}{_josa_i(edge_obj)} 있습니다"
+    if rel == "used_for":
+        return f"따라서 {start}도 {edge_obj}에 쓰입니다"
+    return ""
+
+
+def _verbalize_path(chain: list[tuple[str, str, str]], composed: str | None,
+                    start: str, prefix: str = "") -> str:
+    clauses = [_clause(e, final=(i == len(chain) - 1)) for i, e in enumerate(chain)]
+    body = prefix + ", ".join(clauses)
+    if composed and len(chain) >= 2:
+        concl = _conclusion_ko(start, chain[-1][2], composed)
+        if concl:
+            body += f". {concl}"
+    return body + ". (출처: 큐레이션 지식그래프 · 다단계 추론)"
 
 
 def reason_chain(start: str, facts_about: Callable[[str], list[tuple[str, str, str]]],
@@ -103,30 +188,234 @@ def reason_chain(start: str, facts_about: Callable[[str], list[tuple[str, str, s
                        chain=chain, local_minimum=result.local_minimum)
 
 
+def find_path(start: str, target: str,
+              facts_about: Callable[[str], list[tuple[str, str, str]]],
+              max_depth: int = 4, max_nodes: int = 2048
+              ) -> tuple[list[tuple[str, str, str]], str | None] | None:
+    """BFS from start toward target over algebra predicates, tracking the COMPOSED
+    relation. A hop whose composition is undefined prunes (soundness over reach).
+    Returns (chain, composed_relation) or None. Visited-set => no cycles; bounded."""
+    from collections import deque
+
+    if start == target:
+        return None
+    queue: deque[tuple[str, str | None, tuple[tuple[str, str, str], ...]]] = deque()
+    queue.append((start, None, ()))
+    seen = {start}
+    while queue:
+        node, rel, chain = queue.popleft()
+        if len(chain) >= max_depth or len(seen) >= max_nodes:
+            continue
+        try:
+            edges = sorted(facts_about(node))
+        except Exception:
+            continue
+        for (s, p, o) in edges:
+            if p not in _ALGEBRA_PREDS or o == node:
+                continue
+            nrel = p if rel is None else _COMPOSE.get((rel, p))
+            if nrel is None:
+                continue
+            nchain = chain + ((s, p, o),)
+            if o == target:
+                return list(nchain), nrel
+            if o not in seen:
+                seen.add(o)
+                queue.append((o, nrel, nchain))
+    return None
+
+
+def _taxonomy_ladder(start: str,
+                     facts_about: Callable[[str], list[tuple[str, str, str]]],
+                     max_depth: int = 4, max_nodes: int = 512
+                     ) -> dict[str, list[tuple[str, str, str]]]:
+    """Every ancestor reachable from `start` over is_a/subclass_of, with the exact
+    stored chain that reaches it. Bounded BFS, visited-set (no cycles)."""
+    ladder: dict[str, list[tuple[str, str, str]]] = {}
+    seen = {start}
+    frontier: list[tuple[str, tuple[tuple[str, str, str], ...]]] = [(start, ())]
+    while frontier:
+        node, chain = frontier.pop(0)
+        if len(chain) >= max_depth or len(seen) >= max_nodes:
+            continue
+        try:
+            edges = sorted(facts_about(node))
+        except Exception:
+            continue
+        for (s, p, o) in edges:
+            if p in ("is_a", "subclass_of") and o != node and o not in seen:
+                seen.add(o)
+                nchain = chain + ((s, p, o),)
+                ladder[o] = list(nchain)
+                frontier.append((o, nchain))
+    return ladder
+
+
+def common_ancestor(a: str, b: str,
+                    facts_about: Callable[[str], list[tuple[str, str, str]]],
+                    max_depth: int = 4
+                    ) -> tuple[str, list[tuple[str, str, str]], list[tuple[str, str, str]]] | None:
+    """Nearest shared taxonomy ancestor of a and b with both supporting chains —
+    the grounded 'what they have in common'. None when the ladders never meet."""
+    la = _taxonomy_ladder(a, facts_about, max_depth)
+    lb = _taxonomy_ladder(b, facts_about, max_depth)
+    best: tuple[int, str] | None = None
+    for node, chain_a in la.items():
+        if node in lb:
+            score = len(chain_a) + len(lb[node])
+            if best is None or score < best[0]:
+                best = (score, node)
+    if best is None:
+        return None
+    node = best[1]
+    return node, la[node], lb[node]
+
+
+def inherited_facts(start: str,
+                    facts_about: Callable[[str], list[tuple[str, str, str]]],
+                    preds: tuple[str, ...] = _INHERITABLE,
+                    max_depth: int = 3, max_nodes: int = 512
+                    ) -> list[tuple[list[tuple[str, str, str]], tuple[str, str, str]]]:
+    """Properties/abilities/parts the taxonomy ladder passes down to `start`:
+    walk is_a/subclass_of upward (bounded), collect `preds` edges at every level.
+    Returns [(supporting taxonomy chain, property edge)], nearest level first."""
+    results: list[tuple[list[tuple[str, str, str]], tuple[str, str, str]]] = []
+    seen = {start}
+    frontier: list[tuple[str, tuple[tuple[str, str, str], ...]]] = [(start, ())]
+    while frontier:
+        node, chain = frontier.pop(0)
+        try:
+            edges = sorted(facts_about(node))
+        except Exception:
+            continue
+        for (s, p, o) in edges:
+            if p in preds:
+                results.append((list(chain), (s, p, o)))
+            elif p in ("is_a", "subclass_of") and o not in seen and len(chain) < max_depth:
+                seen.add(o)
+                frontier.append((o, chain + ((s, p, o),)))
+        if len(seen) >= max_nodes:
+            break
+    return results
+
+
+# ---------------------------------------------------------------- question intents
+
+_Q_WORDS = {"무엇", "뭐", "뭘", "누구", "어디", "언제", "왜", "어떤", "무슨", "몇", "어느"}
+_ULTIMATE_RE = re.compile(r"결국|궁극적으로|근본적으로|본질적으로|따지고 보면")
+_VERIFY_RE = re.compile(
+    r"^(.+?)[은는]\s*(.+?)\s*(?:인가요?|일까요?|입니까|이니|맞나요?|맞아요?|맞습니까)\s*\??$")
+_BELONG_RE = re.compile(r"^(.+?)[은는이가]\s*(.+?)에\s*속하(?:나요?|는가|니|는지)\s*\??$")
+_ABILITY_RE = re.compile(r"^(.+?)[은는이가]\s*(.+?)\s*수\s*있(?:어요?|나요?|을까요?|습니까|는가|니)\s*\??$")
+_RELATION_RE = re.compile(r"^(.+?)[와과]\s*(.+?)[은는의]?\s*(?:관계|사이)")
+
+
+def _strip_josa(term: str) -> str:
+    return re.sub(r"[은는이가을를도의]$", "", term.strip())
+
+
+def has_chain_intent(query: str) -> bool:
+    """True when the query has one of the chain-reasoner's own explicit shapes —
+    these act as their own relation cues, so the bridge may consult this path
+    even when _wanted_predicates is empty. Regex-gated: conversation never leaks in."""
+    q = query.strip()
+    if _ULTIMATE_RE.search(q):
+        return True
+    m = _VERIFY_RE.match(q)
+    if m and _strip_josa(m.group(2)) not in _Q_WORDS and not any(w in m.group(2) for w in _Q_WORDS):
+        return True
+    return bool(_BELONG_RE.match(q) or _ABILITY_RE.match(q) or _RELATION_RE.match(q))
+
+
+def _certificate(start: str, chain: list[tuple[str, str, str]], question_kind: str,
+                 composed: str | None, confidence: float) -> dict[str, Any]:
+    return {
+        "derivation_kind": "multi_hop_chain",
+        "question_kind": question_kind,
+        "anchor_concept": {"label": start},
+        "steps": [{"type": "triple", "fact": f"{s} {p} {o}"} for s, p, o in chain],
+        "evidence_concepts": [start] + [o for _s, _p, o in chain],
+        "composition": composed,
+        "confidence": confidence,
+        "confidence_basis": "composition_algebra_over_stored_edges",
+        "guarantees": {"external_llm": False, "fabricated_facts": False,
+                       "inferred": True, "termination": "bounded_bfs_visited_set"},
+    }
+
+
+def _payload(answer: str, start: str, chain: list[tuple[str, str, str]],
+             question_kind: str, composed: str | None, confidence: float) -> dict[str, Any]:
+    return {
+        "answer": answer,
+        "reasoning_certificate": _certificate(start, chain, question_kind, composed, confidence),
+        "confidence": confidence,
+        "answer_kind": "multi_hop_chain",
+    }
+
+
 def answer_relationship(query: str, facts_about: Callable[[str], list[tuple[str, str, str]]],
                         subjects: list[str]) -> dict[str, Any] | None:
-    """Answer a chain/relationship question when the query asks for what something
-    ultimately is ('결국/궁극적으로/근본적으로 무엇') and a >=2-hop chain exists."""
-    import re
+    """Answer a chain question in one of the four shapes. Every shape is regex-gated
+    (its own cue) and every clause is a stored edge — no shape ever fires on chatter."""
+    q = query.strip()
 
-    if not re.search(r"결국|궁극적으로|근본적으로|본질적으로|따지고 보면", query):
+    # ultimate: '결국/궁극적으로 무엇' — the settled top of the transitive ladder
+    if _ULTIMATE_RE.search(q):
+        for subj in subjects:
+            r = reason_chain(subj, facts_about, "is_a")
+            if r and len(r.chain) >= 2:
+                return _payload(r.to_answer_ko(), r.start, r.chain,
+                                "ultimate_ancestor", r.predicate, 0.86)
         return None
-    for subj in subjects:
-        r = reason_chain(subj, facts_about, "is_a")
-        if r and len(r.chain) >= 2:
-            return {
-                "answer": r.to_answer_ko(),
-                "reasoning_certificate": {
-                    "derivation_kind": "multi_hop_chain",
-                    "anchor_concept": {"label": r.start},
-                    "steps": [{"type": "triple", "fact": f"{s} {p} {o}"} for s, p, o in r.chain],
-                    "evidence_concepts": [r.start] + [o for _s, _p, o in r.chain],
-                    "confidence": 0.86,
-                    "confidence_basis": "energy_descent_settled_over_stored_transitive_edges",
-                    "guarantees": {"external_llm": False, "fabricated_facts": False,
-                                   "inferred": True, "termination": "lyapunov_guaranteed"},
-                },
-                "confidence": 0.86,
-                "answer_kind": "multi_hop_chain",
-            }
+
+    # verify: 'A는 B인가?' / 'A는 B에 속하나?' — path from A to B or honest silence
+    m = _VERIFY_RE.match(q) or _BELONG_RE.match(q)
+    if m:
+        target = _strip_josa(m.group(2))
+        if target and target not in _Q_WORDS and not any(w in target for w in _Q_WORDS):
+            starts = [_strip_josa(m.group(1))] + [s for s in subjects if s != target]
+            for start in dict.fromkeys(s for s in starts if s and s != target):
+                found = find_path(start, target, facts_about)
+                if found:
+                    chain, composed = found
+                    ans = _verbalize_path(chain, composed, start, prefix="네 — ")
+                    return _payload(ans, start, chain, "verify", composed, 0.84)
+        return None
+
+    # property inheritance: 'A는 P할 수 있어?' — the taxonomy ladder passes it down.
+    # An open '뭘 할 수 있어?' names no property — that's the purpose composer's shape.
+    m = _ABILITY_RE.match(q)
+    if m and not any(w in m.group(2) for w in _Q_WORDS):
+        stem = _strip_josa(m.group(2))
+        stem = stem.split()[-1] if stem else stem
+        if stem:
+            starts = [_strip_josa(m.group(1))] + list(subjects)
+            for start in dict.fromkeys(s for s in starts if s):
+                cands = [(chain, edge) for chain, edge in
+                         inherited_facts(start, facts_about, ("capable_of", "has_property"))
+                         if stem in edge[2] or edge[2] in stem]
+                if cands:
+                    chain, edge = min(cands, key=lambda ce: len(ce[0]))
+                    full = chain + [edge]
+                    composed = edge[1]  # inherited via is_a ladder => same predicate
+                    prefix = "네 — " if chain else "네 — "
+                    ans = _verbalize_path(full, composed if chain else None, start, prefix=prefix)
+                    if not chain:  # directly stored, no inference needed
+                        return _payload(ans, start, full, "property_direct", None, 0.9)
+                    return _payload(ans, start, full, "property_inheritance", composed, 0.84)
+        return None
+
+    # relation path: 'A와 B의 관계는?' — discover a stored path either direction
+    m = _RELATION_RE.match(q)
+    if m:
+        a, b = _strip_josa(m.group(1)), _strip_josa(m.group(2))
+        if a and b and a != b:
+            for start, end in ((a, b), (b, a)):
+                found = find_path(start, end, facts_about)
+                if found:
+                    chain, composed = found
+                    ans = _verbalize_path(chain, composed, start)
+                    return _payload(ans, start, chain, "relation_path", composed, 0.84)
+        return None
+
     return None

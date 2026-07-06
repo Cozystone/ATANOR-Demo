@@ -37,6 +37,7 @@ _RELATION_CUES: dict[str, tuple[str, ...]] = {
     "defined_as": ("뭐", "무엇", "뜻", "정의", "란 뭐", "이란", "설명", "define", "meaning", "what is"),
     "is_a": ("뭐", "무엇", "종류", "일종", "무슨", "뜻", "정의", "이란", "설명",
              "kind of", "type of", "define", "meaning", "what is"),
+    "used_for": ("용도", "어디에 쓰", "무엇에 쓰", "뭐에 쓰", "어디에 사용", "used for"),
 }
 
 
@@ -111,6 +112,7 @@ _KO_TEMPLATE: dict[str, str] = {
     "author": "{s}의 저자는 {o}입니다.",
     "defined_as": "{s_topic} {o}입니다.",
     "is_a": "{s_topic} {o}의 일종입니다.",
+    "used_for": "{s_topic} {o}에 쓰입니다.",
 }
 
 
@@ -138,6 +140,63 @@ def _wanted_predicates(query: str) -> set[str]:
 _REALTIME_MARKERS = ("지금", "현재", "오늘", "내일", "실시간", "최신", "요즘", "몇 시", "몇시",
                      "날씨", "주가", "시세", "가격", "얼마", "now", "today", "current", "latest")
 
+# open-composition shapes (개방형 B1/B2) — regex-gated like the chain shapes:
+# the question form itself is the cue, so these never fire on conversation.
+_COMPARE_RE = re.compile(r"^(.+?)[와과]\s*(.+?)[은는의]?\s*(?:차이|다른 ?점|비교)")
+_PURPOSE_RE = re.compile(r"^(.+?)(?:[은는이가의]|[으로로])?\s*(?:용도|어디에 쓰|무엇에 쓰|뭐에 쓰|어디에 사용|뭘 할 수 있)")
+
+
+def _ko_grounded(subject: str, facts: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """Same language-appropriate grounding rule as the single-fact path: a Korean
+    subject is never 'defined' by a bare foreign gloss (커피는 coffee입니다 reads
+    as a wrong answer). Entity-valued relations stay."""
+    if not re.search(r"[가-힣]", subject):
+        return facts
+    return [(s, p, o) for (s, p, o) in facts
+            if re.search(r"[가-힣]", o) or p not in ("defined_as", "is_a")]
+
+
+def _try_open_composition(query: str, store: Any) -> dict[str, Any] | None:
+    """B1 contrast ('A와 B의 차이는?') and B2 purpose ('X는 어디에 써?') — multi-fact
+    grounded composition. Every clause is a stored (or taxonomy-inherited, and then
+    SAID to be inherited) fact; the composer's vocabulary is closed."""
+    from packages.graph_scale.chain_reasoner import _strip_josa, common_ancestor, inherited_facts
+    from packages.grounded_composer.composer import compose_comparison, compose_purpose
+
+    q = query.strip()
+    m = _COMPARE_RE.match(q)
+    if m:
+        a, b = _strip_josa(m.group(1)), _strip_josa(m.group(2))
+        if a and b and a != b:
+            fa = _ko_grounded(a, store.facts_about(a, limit=12))
+            fb = _ko_grounded(b, store.facts_about(b, limit=12))
+            if fa and fb:
+                common = common_ancestor(a, b, store.facts_about)
+                comp = compose_comparison(a, b, fa, fb, common)
+                if comp is not None:
+                    cert = comp.certificate()
+                    cert["schema"] = "contrast"
+                    return {"answer": comp.answer, "reasoning_certificate": cert,
+                            "confidence": 0.85, "answer_kind": "grounded_composition"}
+        return None
+    m = _PURPOSE_RE.match(q)
+    if m:
+        lead = _strip_josa(m.group(1))
+        for cand in dict.fromkeys([lead] + _subject_candidates(query)):
+            if not cand:
+                continue
+            facts = _ko_grounded(cand, store.facts_about(cand, limit=16))
+            if not facts:
+                continue
+            inh = inherited_facts(cand, store.facts_about)
+            comp = compose_purpose(cand, facts, inh)
+            if comp is not None:
+                cert = comp.certificate()
+                cert["schema"] = "purpose"
+                return {"answer": comp.answer, "reasoning_certificate": cert,
+                        "confidence": 0.85, "answer_kind": "grounded_composition"}
+    return None
+
 
 def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | None:
     """Look up a stored fact that answers the query. Returns {answer, reasoning_certificate,
@@ -153,6 +212,28 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     store = _store()
     if store is None or len(store) == 0:
         return None
+    # P3 multi-hop chain reasoning, generalized: 결국/인가/속하나/수 있어/관계 questions
+    # walk stored edges under the composition algebra (termination + no-cycle guaranteed)
+    # and verbalize the actual chain. Runs BEFORE the want-gate because each chain shape
+    # is regex-gated inside answer_relationship — the shape IS the relation cue, so this
+    # cannot reintroduce the paste-on-chatter regression the gate exists to block.
+    if language == "ko":
+        try:
+            from .chain_reasoner import answer_relationship, has_chain_intent
+
+            if has_chain_intent(query):
+                chained = answer_relationship(query, store.facts_about, _subject_candidates(query))
+                if chained is not None:
+                    return chained
+        except Exception:
+            pass
+        # 개방형 composition (contrast/purpose) — its own regex gates, same precision rule
+        try:
+            composed = _try_open_composition(query, store)
+            if composed is not None:
+                return composed
+        except Exception:
+            pass
     want = _wanted_predicates(query)
     # ROLLBACK (owner-measured regression): with no explicit relation cue the
     # bridge pasted ANY stored fact about any noun in the sentence — every chat
@@ -161,19 +242,6 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     # or a relation (이란/뭐/수도/저자/…), never on conversation.
     if not want:
         return None
-    # P3 multi-hop chain reasoning: '결국/궁극적으로 무엇' questions climb the stored
-    # transitive hierarchy via energy-descent (termination + no-cycle guaranteed) and
-    # verbalize the actual chain. Tried before single-fact lookup because it answers a
-    # DIFFERENT question shape (the derived transitive fact, not a stored one).
-    if language == "ko":
-        try:
-            from .chain_reasoner import answer_relationship
-
-            chained = answer_relationship(query, store.facts_about, _subject_candidates(query))
-            if chained is not None:
-                return chained
-        except Exception:
-            pass
     for subj in _subject_candidates(query):
         facts = store.facts_about(subj, limit=12)
         if language == "ko" and re.search(r"[가-힣]", subj):

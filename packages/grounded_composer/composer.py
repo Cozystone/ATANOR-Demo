@@ -24,6 +24,8 @@ from typing import Any
 _PRED_ORDER = ("defined_as", "is_a", "capital", "capital_of", "located_in", "country", "author")
 # closed connective whitelist (the ONLY non-template, non-fact tokens allowed)
 _CONNECTIVES = ("또한", "그리고", "한편")
+# contrast/commonality connectives for the comparison schema — same closed-vocabulary rule
+_CONTRAST_CONNECTIVES = ("반면", "둘 다")
 # subject-dropped continuation frames: Korean elaboration reads naturally without
 # repeating the topic ("커피는 …입니다. 또한 …의 일종입니다.")
 _KO_CONT: dict[str, str] = {
@@ -142,4 +144,130 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
     if len(sentences) < 2:
         return None
     answer = " ".join(sentences) + source
+    return ComposedAnswer(answer=answer, facts_used=used, connectives_used=connectives)
+
+
+def _pick_lead(facts: list[tuple[str, str, str]],
+               avoid: tuple[str, str, str] | None = None) -> tuple[str, str, str] | None:
+    """Highest-priority identifying fact for a subject, preferring one that DIFFERS
+    from `avoid` (so a contrast never contrasts a thing with itself)."""
+    by_pred: dict[str, tuple[str, str, str]] = {}
+    for s, p, o in facts:
+        if p not in ("alias", "sense") and p not in by_pred:
+            by_pred[p] = (s, p, o)
+    ordered = [by_pred[p] for p in _PRED_ORDER if p in by_pred]
+    ordered += [f for p, f in by_pred.items() if p not in _PRED_ORDER]
+    for f in ordered:
+        if avoid is None or (f[1], f[2]) != (avoid[1], avoid[2]):
+            return f
+    return ordered[0] if ordered else None
+
+
+def compose_comparison(a: str, b: str,
+                       facts_a: list[tuple[str, str, str]],
+                       facts_b: list[tuple[str, str, str]],
+                       common: tuple[str, list[tuple[str, str, str]],
+                                     list[tuple[str, str, str]]] | None = None,
+                       language: str = "ko") -> ComposedAnswer | None:
+    """Contrast schema (개방형 B1): identify A, contrast B (반면), then the grounded
+    commonality (둘 다 <shared ancestor>) when the taxonomy ladders meet. Same GCG
+    closure: every content span is a verbatim stored label."""
+    if language != "ko":
+        return None  # EN parity is a separate lane; never improvise frames
+    fa0 = _pick_lead(facts_a)
+    fb0 = _pick_lead(facts_b, avoid=fa0)
+    if fa0 is None or fb0 is None:
+        return None
+    lead_a = _KO_LEAD.get(fa0[1])
+    lead_b = _KO_LEAD.get(fb0[1])
+    if lead_a is None or lead_b is None:
+        return None
+
+    sentences = [
+        lead_a.format(s=a, o=fa0[2], s_topic=a + _ko_topic_particle(a)) + ".",
+        "반면 " + lead_b.format(s=b, o=fb0[2], s_topic=b + _ko_topic_particle(b)) + ".",
+    ]
+    used = [fa0, fb0]
+    connectives = ["반면"]
+    if common is not None:
+        anc, chain_a, chain_b = common
+        sentences.append(f"둘 다 {anc}의 일종이라는 공통점이 있습니다.")
+        connectives.append("둘 다")
+        used.extend(chain_a)
+        used.extend(chain_b)
+    answer = " ".join(sentences) + " (출처: 큐레이션 지식그래프)"
+    composed = ComposedAnswer(answer=answer, facts_used=used, connectives_used=connectives)
+    return composed
+
+
+# purpose/ability schema (개방형 B2): what a thing is FOR and what it CAN do —
+# direct used_for/capable_of/has_part facts plus the ones the taxonomy ladder
+# passes down (inherited via packages.graph_scale.chain_reasoner.inherited_facts).
+_KO_PURPOSE_LEAD: dict[str, str] = {
+    "used_for": "{s_topic} {o}에 쓰입니다",
+    "capable_of": "{s_topic} '{o}'{i_ga} 가능합니다",
+    "has_part": "{s}에는 {o}{i_ga} 있습니다",
+}
+_KO_PURPOSE_CONT: dict[str, str] = {
+    "used_for": "{o}에도 쓰입니다",
+    "capable_of": "'{o}'{i_ga} 가능합니다",
+    "has_part": "{o}{i_ga} 있습니다",
+}
+
+
+def _ko_subject_particle(label: str) -> str:
+    from packages.lad_morphology import subject
+
+    return subject(label)[len(label):]
+
+
+def compose_purpose(subject: str,
+                    direct: list[tuple[str, str, str]],
+                    inherited: list[tuple[list[tuple[str, str, str]], tuple[str, str, str]]] = (),
+                    language: str = "ko", max_facts: int = 4) -> ComposedAnswer | None:
+    """Purpose paragraph over stored used_for/capable_of/has_part facts. Direct facts
+    lead; inherited ones follow WITH their taxonomy source named (X의 일종으로서) so
+    the inference is visible, never smuggled."""
+    if language != "ko":
+        return None
+    own = [(s, p, o) for s, p, o in direct if p in _KO_PURPOSE_LEAD]
+    seen_po = {(p, o) for _s, p, o in own}
+    inh = [(chain, edge) for chain, edge in inherited
+           if chain and edge[1] in _KO_PURPOSE_LEAD and (edge[1], edge[2]) not in seen_po]
+    if not own and not inh:
+        return None
+
+    sentences: list[str] = []
+    connectives: list[str] = []
+    used: list[tuple[str, str, str]] = []
+    for s, p, o in own[:max_facts]:
+        frame = _KO_PURPOSE_LEAD[p] if not sentences else _KO_PURPOSE_CONT[p]
+        prefix = "" if not sentences else "또한 "
+        if prefix:
+            connectives.append("또한")
+        sentences.append(prefix + frame.format(
+            s=subject, o=o, s_topic=subject + _ko_topic_particle(subject),
+            i_ga=_ko_subject_particle(o)) + ".")
+        used.append((s, p, o))
+    for chain, (s, p, o) in inh[: max(0, max_facts - len(sentences))]:
+        kind = chain[-1][2]  # the ancestor the property actually comes from
+        frame = _KO_PURPOSE_CONT[p]
+        prefix = "" if not sentences else "또한 "
+        if prefix:
+            connectives.append("또한")
+        sentences.append(
+            prefix + f"{kind}의 일종으로서 " + frame.format(
+                s=subject, o=o, s_topic=subject + _ko_topic_particle(subject),
+                i_ga=_ko_subject_particle(o)) + ".")
+        used.extend(chain)
+        used.append((s, p, o))
+    if not sentences:
+        return None
+    # a lone continuation frame has no subject — re-lead it
+    if len(used) >= 1 and not own and sentences:
+        first_chain, first_edge = inh[0]
+        s0, p0, o0 = first_edge
+        sentences[0] = f"{subject + _ko_topic_particle(subject)} {first_chain[-1][2]}의 일종으로서 " + \
+            _KO_PURPOSE_CONT[p0].format(o=o0, i_ga=_ko_subject_particle(o0)) + "."
+    answer = " ".join(sentences) + " (출처: 큐레이션 지식그래프)"
     return ComposedAnswer(answer=answer, facts_used=used, connectives_used=connectives)
