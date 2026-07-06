@@ -141,6 +141,10 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     ql = query.lower()
     if any(m in ql for m in _REALTIME_MARKERS):
         return None  # real-time intent — the honest realtime abstain must stand
+    # imperative shape = a COMMAND, not a definition question. Without this,
+    # 'open atanor app' got a dictionary answer for the word 'open' (measured).
+    if re.match(r"^\s*(open|launch|start|run|execute|close|kill)", ql):
+        return None
     store = _store()
     if store is None or len(store) == 0:
         return None

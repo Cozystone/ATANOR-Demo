@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import HologramVoiceOrb, { HologramVoiceOrbState } from "../HologramVoiceOrb";
-import SplatraImaginationField from "../SplatraImaginationField";
+import PureField from "../PureField";
 
 // The VM (and any GPU-less machine) renders WebGL through SwiftShader/llvmpipe;
 // full particle budgets would crawl. Detect it once and scale down honestly.
@@ -292,29 +292,20 @@ export default function ShellPage() {
     <main className="atanor-os-shell" data-overlay={overlay ? "1" : "0"} data-wallpaper={wallpaper ? "1" : "0"}
       style={{ background: overlay ? "transparent" : undefined }}>
 
-      {/* wallpaper mode: the SPLATRA imagination field IS the desktop plane.
-          Mode morphing is driven by REAL pipeline state (never staged):
-          idle = calm nebula drift · listening = high-energy attention ·
-          thinking/answering = core condensation · manual = flattened quiet.
-          interactive: the field reacts to the pointer (existing physics). */}
+      {/* wallpaper mode: the PURE cognitive plane — points only, gaussian
+          grains, fluid drift (the four absolute rules; no lines, no scaffolds,
+          no painted shapes ANYWHERE in that component). energy is a primitive
+          driven by REAL state, and all motion lives in refs — typing can
+          never reset the field. */}
       {wallpaper ? (
         <div className="atanor-os-shell-field" aria-hidden data-mode={manual ? "manual" : shellState}>
-          <SplatraImaginationField
-            mode="product"
-            state={manual ? "resting" : orbState}
-            interactive={!manual}
-            particleBudget={Math.round(9000 * density)}
-            controlOverride={
-              manual
-                ? { resting: true, arousal: 0.05, speaking_energy: 0, layout_field_quieting: 1 }
-                : shellState === "thinking"
-                  ? { arousal: 0.9, curiosity: 0.85, speaking_energy: 0.2 }
-                  : shellState === "listening"
-                    ? { arousal: 0.7, speaking_energy: 0.6 }
-                    : shellState === "speaking"
-                      ? { arousal: 0.55, speaking_energy: 0.9 }
-                      : { resting: true, arousal: 0.15, curiosity: 0.35 }
-            }
+          <PureField
+            budget={Math.round(6500 * density)}
+            energy={manual ? 0.02
+              : shellState === "thinking" ? 0.85
+              : shellState === "listening" ? 0.65
+              : shellState === "speaking" ? 0.5
+              : 0.12}
           />
         </div>
       ) : null}

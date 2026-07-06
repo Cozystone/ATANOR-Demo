@@ -37,6 +37,9 @@ _APP_ALIASES = {
     "설정": "gnome-control-center", "settings": "gnome-control-center",
     "계산기": "gnome-calculator", "메모": "gedit", "텍스트": "gedit",
     "대시보드": "atanor-dashboard", "dashboard": "atanor-dashboard",
+    # the machine's own name is a launch target ('open atanor app' fell through
+    # to the knowledge engine, which defined the WORD open — measured)
+    "atanor": "atanor-dashboard", "아타노르": "atanor-dashboard",
 }
 
 
