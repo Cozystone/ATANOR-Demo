@@ -5359,14 +5359,15 @@ function FullApp() {
         { label: language === "ko" ? "Materialized" : "Materialized", value: Number(surfaceGraphMeta.materialized_surface_nodes ?? 0).toLocaleString() },
         { label: language === "ko" ? "Linked concepts" : "Linked concepts", value: Number(surfaceGraphMeta.distinct_concepts_linked ?? 0).toLocaleString() },
       ]
-      // Verified projection is fixed (it only grows on promotion); the live
-      // cumulative learning lands in the candidate store. Show verified + live
-      // candidates so the count actually climbs as the brain learns.
+      // Logical Sphere count semantics: verified only grows on promotion; live
+      // cumulative learning lands in the candidate store. Both are shown, but
+      // SEPARATED ("A + B") — candidate learning must never be presented as one
+      // production graph size (docs/ATANOR_logical_sphere_semantics.md).
       : [
-        { label: language === "ko" ? "Logical nodes" : "Logical nodes", value: Number((Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount) || 0) + (Number(cloudCandidateStatus?.candidate_concepts ?? 0) || 0)).toLocaleString() },
-        { label: language === "ko" ? "Stored relations" : "Stored relations", value: Number((Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount) || 0) + (Number(cloudCandidateStatus?.candidate_relations ?? 0) || 0)).toLocaleString() },
+        { label: language === "ko" ? "노드 (검증+후보)" : "Nodes (verified+cand.)", value: `${Number(Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount) || 0).toLocaleString()} + ${Number(Number(cloudCandidateStatus?.candidate_concepts ?? 0) || 0).toLocaleString()}` },
+        { label: language === "ko" ? "관계 (검증+후보)" : "Relations (verified+cand.)", value: `${Number(Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount) || 0).toLocaleString()} + ${Number(Number(cloudCandidateStatus?.candidate_relations ?? 0) || 0).toLocaleString()}` },
         { label: language === "ko" ? "Materialized" : "Materialized", value: Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
-        { label: language === "ko" ? "Rendered edges" : "Rendered edges", value: Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
+        { label: language === "ko" ? "렌더 샘플 엣지" : "Rendered sample edges", value: Number(graphVizRendered.edge_count ?? displayMemoryEdgeCount).toLocaleString() },
       ])
     : [
       { label: copy.nodes, value: graphHeaderNodeText },
