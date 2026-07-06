@@ -598,7 +598,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                     </li>
                   ))}
                 </ul>
-                <div className="atanor-caps-foot">{ko ? "로컬 우선 · 출처를 갖춘 답변 · 추측 없음" : "Local-first · grounded · never guesses"}</div>
+                <div className="atanor-caps-foot">{ko ? "근거가 있는 답, 정직한 보류." : "Grounded answers. Honest silence."}</div>
               </div>
             </>
           ) : null}
@@ -640,7 +640,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
             </div>
           </form>
         </div>
-        <div className="atanor-demochat-foot">{ko ? "로컬 엔진 · 외부 LLM 없음 · 모든 질문에 근거 기반 답변, 추측 없음" : "Local engine · no external LLM · grounded answers to everything, no guessing"}</div>
+        <div className="atanor-demochat-foot">{ko ? "당신의 기기 안에서, 근거로만 답합니다. 모르면 모른다고 말합니다." : "Runs on your machine. Answers from evidence — and says so when it doesn't know."}</div>
       </div>
     </section>
   );
