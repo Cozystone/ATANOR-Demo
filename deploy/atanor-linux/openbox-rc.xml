@@ -12,7 +12,12 @@
   <theme>
     <name>ATANOR</name>
     <titleLayout>NLIMC</titleLayout>
-    <keepBorder>yes</keepBorder>
+    <!-- keepBorder=no: HONOR the client's MOTIF 'no decorations' hint. yes made
+         openbox keep the titlebar despite the wallpaper's correctly-set MOTIF —
+         the true root cause of the persistent titlebar (the strip WAS working;
+         openbox was overriding it). Normal windows keep their border because
+         they never request no-decor. -->
+    <keepBorder>no</keepBorder>
     <animateIconify>yes</animateIconify>
     <font place="ActiveWindow"><name>Noto Sans CJK KR</name><size>10</size><weight>Bold</weight></font>
     <font place="InactiveWindow"><name>Noto Sans CJK KR</name><size>10</size></font>
