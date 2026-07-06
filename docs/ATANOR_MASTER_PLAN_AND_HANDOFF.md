@@ -10,13 +10,17 @@
 
 ## 1부 — 현 상태 스냅샷 (2026-07-07, 전부 검증된 사실만)
 
-### 언어/추론 엔진 (No-LLM 그래프 네이티브)
-- **봉인 홀드아웃 75% · 응답 정확도 100% · 환각 0** (eval_holdout.py, seal 978f5bb5d2e67710)
-- honesty 배터리: 커버리지 67%, 조작 0 (eval_honesty.py — Windows에선 PYTHONIOENCODING=utf-8 필수)
-- 스토어: int-columnar TripleStore 51만 트리플 (정의문 head-noun 백본 +2.1만 is_a 포함)
-- 멀티홉: 합성대수 4질문형(결국/인가/수있어/관계) LIVE — chain_reasoner.py
-- 개방형 컴포저: 대조(반면/둘다)+용도 스키마, 어휘 폐쇄(환각 구조 불가) — grounded_composer
-- 추론 경로 우선순위: 체인/컴포지션(regex 게이트) → want-게이트 단일사실 → 웹(Tavily) → 정직 기권
+### 언어/추론 엔진 (No-LLM 그래프 네이티브) — 2026-07-07 스프린트 갱신
+- **봉인 홀드아웃 77% (역대 최고) · 오류 0 · seal intact** (eval_holdout.py, seal 978f5bb5d2e67710)
+- **고난도 적대 배터리(eval_hard_battery.py): 환각 0 · 응답 정확도 100%** (함정/거짓전제/실시간/잡담누수)
+- honesty 배터리: 환각 0 · 정확도 100% · 커버리지 67% (Windows에선 PYTHONIOENCODING=utf-8 필수)
+- 스토어: **5,904,011 트리플** (ConceptNet ko/en +35만 stated, bounded 폐포 +500만 derived,
+  kaikki ko-edition +4만 한국어 정의, 백본 is_a 2.2만) — data/graph_scale/kg_triples (git 제외, 파일 동기화로 배포)
+- **술어-인지 검색 필수**: TripleStore.facts_about(preds=) — 수백만 행에선 술어-무차별 스캔이 깨짐(실측)
+- 멀티홉: 합성대수 4질문형 + 교차언어 글로스 홉(단일 글로스만 — 다의어 게이트) + 분류-전용 verify 레인
+- 남은 기권 클래스(정직): ①한자어 일반명사(근본/심층/국한/차체/…) = 우리말샘 키 필요(ko wiktionary에 없음 — 실측),
+  ②초니치 고유명(harrisi/Lusatia/APTC/…) = Wikidata/DBpedia 벌크가 다음 소스
+- /opt/kgdata에 kaikki-en.jsonl.gz(2GB) 다운로드 완료 — 미인제스트(한계효용 분석 후 보류)
 
 ### OS (ATANOR Linux)
 - v7.1 이미지 LIVE: 콜드부트만으로 웹+순수서피스(cage)+한글IME+백본브레인 전부 동작
