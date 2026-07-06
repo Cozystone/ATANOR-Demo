@@ -1,6 +1,15 @@
 # ATANOR MiroFish Deliberation Lab
 
-Status: proof-only deterministic local simulator.
+Status: real multi-step deliberation loop (deliberation_loop.py) grounded in the
+consensus-evidence ledger; the single-pass simulator (simulator.py) remains as the
+fallback when no ledger is reachable and marks itself loop_used=false.
+
+The loop is structural, not staged: role findings come from live reads of the
+evidence ledger (voices, curated quarantine, promoted keys); a blocking objection in
+round N triggers a from-disk resolution probe in round N+1 that resolves it with the
+observed data cited in the transcript or leaves it standing; the loop stops at a
+fixed point or the round cap. Contradictions resolve only by verifying isolation
+(no quarantined key ever promoted); privacy and router blocks are human-only.
 
 MiroFish Deliberation Lab models a small review chamber with fixed local roles:
 skeptic, builder, domain expert, privacy guard, router, synthesis chair, and
