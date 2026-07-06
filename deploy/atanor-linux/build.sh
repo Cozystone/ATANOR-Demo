@@ -258,7 +258,10 @@ if [ "$PHASE" = image ] || [ "$PHASE" = all ]; then
   mkdir -p "$MNT/boot/efi"
   mount "${LOOP}p1" "$MNT/boot/efi"
   echo "  rsync rootfs -> image"
-  rsync -aHAX --numeric-ids "$ROOTFS/" "$MNT/" --exclude proc --exclude sys --exclude dev
+  # anchored excludes: a bare 'dev' pattern matches at EVERY depth and silently
+  # deleted node_modules/next/dist/dev from the image — web died on boot while
+  # the chroot build worked (v6/v7 root cause, found by diffing those two facts)
+  rsync -aHAX --numeric-ids "$ROOTFS/" "$MNT/" --exclude /proc --exclude /sys --exclude /dev
   mkdir -p "$MNT/proc" "$MNT/sys" "$MNT/dev"
   ROOT_UUID=$(blkid -s UUID -o value "${LOOP}p2")
   cat > "$MNT/etc/fstab" <<EOF
