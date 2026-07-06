@@ -1,0 +1,42 @@
+#cloud-config
+# ATANOR Environment — Ubuntu Server autoinstall seed.
+# Burned into the remastered ISO (nocloud); the installer provisions a standard Ubuntu,
+# then first boot runs install.sh from the public repo. Honest defaults: no telemetry
+# added, no auto-updates beyond Ubuntu's own security defaults, user owns the machine.
+autoinstall:
+  version: 1
+  locale: ko_KR.UTF-8
+  keyboard:
+    layout: kr
+  identity:
+    hostname: atanor
+    username: atanor-admin
+    # 'atanor' — the user is forced to change it on first login (expire below).
+    password: "$6$atanorsalt$1kA0KYy5MCeMkjNGHKM3iJw1EWOOOSk4hltJj0IsN2ci1yrPRTFOCwoFhAJVXHUsC6IZVIWLXCPQZuqFyOtLQ0"
+  ssh:
+    install-server: false
+  storage:
+    layout:
+      name: lvm
+  packages:
+    - git
+    - curl
+  late-commands:
+    # force password change on first login (the burned-in password is public knowledge)
+    - curtin in-target -- passwd --expire atanor-admin
+    # first-boot provisioner: clone the public repo and run the Stage-1 installer
+    - |
+      cat > /target/etc/systemd/system/atanor-firstboot.service <<'EOF'
+      [Unit]
+      Description=ATANOR Environment first-boot provisioner
+      After=network-online.target
+      Wants=network-online.target
+      ConditionPathExists=!/var/lib/atanor/.provisioned
+      [Service]
+      Type=oneshot
+      ExecStart=/bin/bash -c 'git clone --depth 1 -b demo https://github.com/Cozystone/ATANOR-Demo.git /tmp/atanor-src && bash /tmp/atanor-src/deploy/atanor-environment/install.sh --kiosk && mkdir -p /var/lib/atanor && touch /var/lib/atanor/.provisioned'
+      RemainAfterExit=yes
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+    - curtin in-target -- systemctl enable atanor-firstboot.service

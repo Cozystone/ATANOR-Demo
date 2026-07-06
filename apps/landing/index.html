@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ATANOR — 당신의 기기 안에서, 근거로만 답하는 기계</title>
+<meta name="description" content="외부 LLM 없이, 당신의 컴퓨터 안에서 근거로만 답하고 모르면 모른다고 말하는 지식 기계. 오픈소스." />
+<style>
+  :root {
+    --bg: #050506; --card: rgba(14,16,20,.82); --line: rgba(255,255,255,.09);
+    --ink: #f8fafc; --body: #9aa3b6; --emph: #cdd6e8; --meta: rgba(226,232,240,.62);
+    --accent: #ff8a00;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: Helvetica, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.6;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; text-decoration: none; }
+
+  header { display: flex; align-items: center; padding: 28px 0; gap: 28px; }
+  .mark { font-weight: 900; letter-spacing: .14em; font-size: 15px; }
+  .mark small { display: block; color: var(--meta); font-weight: 700; font-size: 10px; letter-spacing: .08em; }
+  nav { margin-left: auto; display: flex; gap: 26px; }
+  nav a { color: var(--meta); font-size: 13px; letter-spacing: .02em; }
+  nav a:hover { color: var(--emph); }
+
+  .hero { padding: 110px 0 90px; max-width: 780px; }
+  .hero .kicker { color: var(--accent); font-size: 12px; letter-spacing: .18em; font-weight: 700; }
+  .hero h1 {
+    margin: 22px 0 26px; font-size: clamp(34px, 5.4vw, 58px);
+    line-height: 1.22; font-weight: 800; letter-spacing: -0.015em;
+  }
+  .hero p { color: var(--body); font-size: 17px; max-width: 620px; }
+  .cta { margin-top: 44px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--line); border-radius: 999px; padding: 12px 24px;
+    font-size: 14px; font-weight: 600; color: var(--emph); transition: border-color .2s;
+  }
+  .btn:hover { border-color: rgba(255,138,0,.5); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #131313; }
+  .btn.primary:hover { filter: brightness(1.06); }
+
+  section { padding: 84px 0; border-top: 1px solid rgba(255,255,255,.05); }
+  h2 { font-size: 13px; letter-spacing: .16em; color: var(--meta); font-weight: 700; margin-bottom: 40px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+  .card h3 { font-size: 17px; margin-bottom: 12px; font-weight: 700; }
+  .card p { color: var(--body); font-size: 14px; }
+  .card .tag { display: inline-block; margin-bottom: 14px; font-size: 10.5px; letter-spacing: .1em;
+    color: var(--accent); font-weight: 700; }
+
+  .dl .card { display: flex; flex-direction: column; }
+  .dl .card .foot { margin-top: auto; padding-top: 22px; }
+  code {
+    display: block; background: rgba(255,255,255,.05); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 14px; font-size: 12px; color: var(--emph);
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    overflow-x: auto; white-space: nowrap;
+  }
+  .soon { color: var(--meta); font-size: 12px; }
+
+  .honest { max-width: 720px; }
+  .honest blockquote {
+    border-left: 2px solid var(--accent); padding-left: 22px;
+    font-size: 20px; line-height: 1.6; color: var(--emph); font-weight: 500;
+  }
+  .honest .note { margin-top: 22px; color: var(--body); font-size: 14px; }
+
+  footer { padding: 56px 0 72px; border-top: 1px solid rgba(255,255,255,.05); }
+  footer .wrap { display: flex; gap: 24px; flex-wrap: wrap; align-items: baseline; }
+  footer p { color: var(--meta); font-size: 12.5px; }
+  footer a { color: var(--body); font-size: 12.5px; }
+  footer a:hover { color: var(--emph); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="mark">ATANOR<small>KNOWLEDGE MACHINE</small></div>
+    <nav>
+      <a href="#philosophy">철학</a>
+      <a href="#download">다운로드</a>
+      <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div class="kicker">LOCAL · GROUNDED · OPEN</div>
+    <h1>당신의 기기 안에서,<br/>근거로만 답하는 기계.</h1>
+    <p>ATANOR는 외부 LLM 없이 동작하는 지식 기계입니다. 모든 답은 검증된 근거에서
+    나오고, 근거가 없으면 모른다고 말합니다. 당신의 데이터는 당신의 컴퓨터를
+    떠나지 않습니다.</p>
+    <div class="cta">
+      <a class="btn primary" href="#download">다운로드</a>
+      <a class="btn" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">소스 보기</a>
+    </div>
+  </div>
+</div>
+
+<section id="philosophy">
+  <div class="wrap">
+    <h2>세 가지 약속</h2>
+    <div class="grid">
+      <div class="card">
+        <span class="tag">HONEST</span>
+        <h3>모르면 모른다고 말합니다</h3>
+        <p>유창하게 말하는 오답이 최악의 실패라고 믿습니다. 모든 답변에는 출처가
+        붙고, 근거가 부족하면 정직하게 보류합니다. 그 보류는 곧 학습 목표가 되어
+        기계가 스스로 채워 나갑니다.</p>
+      </div>
+      <div class="card">
+        <span class="tag">LOCAL</span>
+        <h3>당신의 컴퓨터가 곧 두뇌입니다</h3>
+        <p>외부 LLM API를 호출하지 않습니다. 지식 그래프, 추론, 학습 루프 전부가
+        당신의 기기 안에서 돕니다. 개인 데이터는 단 한 바이트도 밖으로 나가지
+        않습니다.</p>
+      </div>
+      <div class="card">
+        <span class="tag">OPEN</span>
+        <h3>구조를 숨기지 않습니다</h3>
+        <p>답이 어떻게 만들어졌는지 추론 인증서로 보여주고, 잘못을 지운 기록까지
+        원장으로 남깁니다. 코드는 공개되어 있고, 리눅스처럼 설치할 수 있는 형태를
+        지향합니다.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download" class="dl">
+  <div class="wrap">
+    <h2>다운로드</h2>
+    <div class="grid">
+      <div class="card">
+        <span class="tag">SOURCE</span>
+        <h3>오픈소스 저장소</h3>
+        <p>엔진·웹·학습 루프 전체. 그대로 읽고, 고치고, 실행할 수 있습니다.</p>
+        <div class="foot">
+          <a class="btn" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">github.com/Cozystone/ATANOR-Demo</a>
+        </div>
+      </div>
+      <div class="card">
+        <span class="tag">LINUX</span>
+        <h3>ATANOR Environment</h3>
+        <p>스톡 우분투(22.04/24.04)를 한 줄로 ATANOR 머신으로 바꿉니다. 부팅부터
+        상주하는 systemd 서비스로 설치됩니다.</p>
+        <div class="foot">
+          <code>curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/demo/deploy/atanor-environment/install.sh | sudo bash</code>
+        </div>
+      </div>
+      <div class="card">
+        <span class="tag">ISO</span>
+        <h3>설치 이미지</h3>
+        <p>USB로 부팅하면 곧 ATANOR인 설치 ISO. 원본 우분투 서버 이미지를
+        리마스터하는 도구가 저장소에 포함되어 있습니다.</p>
+        <div class="foot">
+          <p class="soon">직접 빌드: <a href="https://github.com/Cozystone/ATANOR-Demo/tree/demo/deploy/atanor-environment" rel="noopener" style="color:var(--emph)">deploy/atanor-environment/make_iso.sh</a><br/>공식 이미지 배포는 준비 중입니다 — 준비되기 전에 있다고 말하지 않습니다.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="honest">
+  <div class="wrap">
+    <h2>정직 고지</h2>
+    <div class="honest">
+      <blockquote>우리는 환각이 없다고 주장하지 않습니다.<br/>
+      다만 모든 답이 어디서 왔는지 보여주고,<br/>
+      틀린 것을 지운 기록까지 남깁니다.</blockquote>
+      <p class="note">ATANOR는 연구 중인 시스템입니다. 커버리지에는 한계가 있고, 그 한계를
+      숫자로 공개합니다. 화려한 시연보다 검증 가능한 답 하나를 선택합니다.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>© 2026 ATANOR</p>
+    <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub</a>
+    <a href="https://github.com/Cozystone/ATANOR.git" rel="noopener">Core</a>
+    <p style="margin-left:auto">외부 LLM 없음 · 로컬 우선 · 오픈소스</p>
+  </div>
+</footer>
+
+</body>
+</html>
