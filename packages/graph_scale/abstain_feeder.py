@@ -22,13 +22,33 @@ _UA = ("ATANOR-KG/1.0 (https://github.com/Cozystone/ATANOR; blueyjkim@gmail.com)
 
 
 def _rest_summary(host: str, term: str) -> str:
+    return _summary2(host, term)[0]
+
+
+def _summary2(host: str, term: str) -> tuple[str, bool]:
+    """(extract, is_disambiguation) — a disambiguation page is a SENSE INDEX, not
+    an empty result; the caller can expand it."""
     url = f"https://{host}/api/rest_v1/page/summary/{urllib.parse.quote(term)}"
     req = urllib.request.Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=20) as r:
         data = json.loads(r.read().decode("utf-8"))
     if data.get("type") == "disambiguation":
-        return ""
-    return (data.get("extract") or "").strip()
+        return "", True
+    return (data.get("extract") or "").strip(), False
+
+
+def _disambig_links(host: str, term: str, limit: int = 8) -> list[str]:
+    """Article links of a disambiguation page (ns=0) — the senses the page asserts."""
+    url = (f"https://{host}/w/api.php?action=query&prop=links&titles="
+           f"{urllib.parse.quote(term)}&format=json&pllimit={limit}&plnamespace=0")
+    req = urllib.request.Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        pages = list((data.get("query") or {}).get("pages", {}).values())
+        return [l["title"] for l in (pages[0].get("links") or [])][:limit] if pages else []
+    except Exception:
+        return []
 
 
 def _term_lang(term: str) -> str:
@@ -84,11 +104,13 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
         lang = _term_lang(term)
         sentences: list[str] = []
         candidates: list[tuple[str, str, str]] = []
+        saw_disambig = False
         for host in (f"{lang}.wikipedia.org", f"{lang}.wiktionary.org"):
             try:
-                extract = _rest_summary(host, term)
+                extract, is_dab = _summary2(host, term)
             except Exception:
                 continue
+            saw_disambig = saw_disambig or is_dab
             if not extract:
                 continue
             sentences = _definition_sentences(term, extract)
@@ -99,6 +121,16 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
             tl = term.lower()
             candidates = [c for c in candidates
                           if tl in c[0].lower() or c[0].lower() in tl]
+            if not candidates and not sentences:
+                # REDIRECT sense: the term never appears because the summary IS the
+                # redirect target's page (기획 -> 계획). The first sentence defining a
+                # different subject + the redirect's own assertion of equivalence give
+                # two verbatim facts: the target's definition and (term, alias, target).
+                first = re.split(r"(?<=다\.)\s+|(?<=[.?!])\s+", extract)[0].strip()
+                trip = extract_definition_triple(first)
+                if trip and trip[0].lower() != tl:
+                    candidates = [trip, (term, "alias", trip[0])]
+                    log(f"  {term}: redirect sense -> {trip[0]}")
             if candidates:
                 break
         # acronym alias: when the SOURCE SENTENCE itself asserts both names —
@@ -110,6 +142,27 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
                         and re.search(r"\(\s*" + re.escape(term) + r"\s*[),]", s)
                         and (term, pred, obj) not in candidates):
                     candidates.append((term, pred, obj))
+        if not candidates and saw_disambig:
+            # SENSE EXPANSION: the disambiguation page asserts these senses. Ingest each
+            # sense's own definition under the SENSE title, plus (term, alias, sense) —
+            # both verbatim from the source, judge-gated like everything else.
+            for title in _disambig_links(f"{lang}.wikipedia.org", term)[:4]:
+                try:
+                    s_extract, s_dab = _summary2(f"{lang}.wikipedia.org", title)
+                except Exception:
+                    continue
+                if s_dab or not s_extract:
+                    continue
+                for sent in _definition_sentences(title, s_extract):
+                    trip = extract_definition_triple(sent)
+                    if trip and (title.lower() in trip[0].lower() or trip[0].lower() in title.lower()):
+                        candidates.append(trip)
+                        alias = (term, "alias", trip[0])
+                        if alias not in candidates:
+                            candidates.append(alias)
+                        break
+            if candidates:
+                log(f"  {term}: disambiguation expanded to {sorted({c[0] for c in candidates if c[1] != 'alias'})}")
         if not candidates:
             abstain_queue.mark(term, "no_definition")
             counters["no_definition"] += 1

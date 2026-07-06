@@ -123,25 +123,44 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         if not facts:
             continue
         # prefer a fact whose predicate matches the query's relation intent
-        chosen = [(s, p, o) for (s, p, o) in facts if (not want or p in want)]
+        chosen = [(s, p, o) for (s, p, o) in facts if (not want or p in want) and p != "alias"]
+        hop_from = None
+        if not chosen:
+            # ONE visible alias hop: the disambiguation page asserted (subj, alias, sense);
+            # answer with the sense's facts, rendered as '기획(=계획)…' — the hop is shown,
+            # never silent, and both facts ride in the certificate.
+            for tgt in [o for (_s, p, o) in facts if p == "alias"][:3]:
+                tfacts = store.facts_about(tgt, limit=12)
+                tchosen = [(s2, p2, o2) for (s2, p2, o2) in tfacts
+                           if (not want or p2 in want) and p2 != "alias"]
+                if tchosen:
+                    chosen = tchosen
+                    hop_from = subj
+                    break
         if not chosen:
             continue
         s, p, o = chosen[0]
+        display_s = f"{hop_from}(={s})" if hop_from else s
         if language == "ko":
             template = _KO_TEMPLATE.get(p)
+            # particle follows the REAL subject's final syllable even when the display
+            # label carries the alias hop ('기획(=계획)' still gets 계획's 은/는).
+            particle = _ko_topic(s)[len(s):]
             if template:
-                body = template.format(s=s, o=o, s_topic=_ko_topic(s))
+                body = template.format(s=display_s, o=o, s_topic=display_s + particle)
             else:  # unknown predicate: generic frame with correct topic particle
                 pred_ko = next((cues[0] for name, cues in _RELATION_CUES.items() if name == p), p)
-                body = f"{s}의 {_ko_topic(pred_ko)} {o}입니다."
+                body = f"{display_s}의 {_ko_topic(pred_ko)} {o}입니다."
             answer = f"{body} (출처: 큐레이션 지식그래프)"
         else:
-            answer = f"The {p.replace('_', ' ')} of {s} is {o}. (source: curated knowledge graph)"
+            answer = f"The {p.replace('_', ' ')} of {display_s} is {o}. (source: curated knowledge graph)"
         return {
             "answer": answer,
             "reasoning_certificate": {
                 "derivation_kind": "structured_triple_lookup",
-                "anchor_concept": {"label": s}, "steps": [{"type": "triple", "fact": f"{s} {p} {o}"}],
+                "anchor_concept": {"label": s},
+                "steps": ([{"type": "alias", "fact": f"{hop_from} alias {s}"}] if hop_from else [])
+                         + [{"type": "triple", "fact": f"{s} {p} {o}"}],
                 "evidence_concepts": [s, o], "confidence": 0.9,
                 "confidence_basis": "curated_structured_triple_verbatim",
                 "guarantees": {"external_llm": False, "fabricated_facts": False, "inferred": False},
