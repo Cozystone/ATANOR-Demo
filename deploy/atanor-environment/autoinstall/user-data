@@ -14,7 +14,9 @@ autoinstall:
     # 'atanor' — forced password change on first login (chage in the firstboot service;
     # it CANNOT be a late-command: the identity user is created by cloud-init on first
     # boot, so at install time it does not exist and passwd --expire fails the install).
-    password: "$6$atanorsalt$1kA0KYy5MCeMkjNGHKM3iJw1EWOOOSk4hltJj0IsN2ci1yrPRTFOCwoFhAJVXHUsC6IZVIWLXCPQZuqFyOtLQ0"
+    # hash VERIFIED against python crypt: this IS 'atanor' (the previous hash was not —
+    # boot-test caught that installers could never log in; never ship an unverified hash).
+    password: "$6$atanorsalt$dNFYm79cMTtnJTVsOaM0AFHDkKUO7SUGUOplh7raz6lsZLovKbkDDwvIMaOSrNiRd87tmBjl679Or15xdQisK."
   ssh:
     install-server: false
   storage:

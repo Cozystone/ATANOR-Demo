@@ -55,6 +55,14 @@ echo "[4/6] python venv + node build"
 sudo -u atanor python3 -m venv "$APP_DIR/.venv"
 sudo -u atanor "$APP_DIR/.venv/bin/pip" install --upgrade pip -q
 sudo -u atanor "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/deploy/requirements-cloud.txt"
+# Import-path contract: the engine imports both `packages.x` (repo root on path) AND
+# single-name packages (`guard`, `knowledge_bakery`, ...) exactly like the dev starter
+# (PYTHONPATH = root + every packages/* dir). Encode it as a venv .pth so systemd units
+# need no fragile environment list. Boot-test lesson: missing this crash-looped the
+# engine with `ModuleNotFoundError: guard.checker` while web ran fine.
+SITE_DIR="$(sudo -u atanor "$APP_DIR/.venv/bin/python" -c 'import site; print(site.getsitepackages()[0])')"
+{ echo "$APP_DIR"; echo "$APP_DIR/apps/api"; for d in "$APP_DIR"/packages/*/; do echo "${d%/}"; done; } \
+  | sudo -u atanor tee "$SITE_DIR/atanor-paths.pth" >/dev/null
 ( cd "$APP_DIR/apps/web" && sudo -u atanor npm install --no-audit --no-fund && sudo -u atanor npm run build )
 
 echo "[5/6] systemd services"
