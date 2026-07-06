@@ -3,179 +3,180 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ATANOR — 온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI</title>
-<meta name="description" content="외부 LLM 없이, 당신의 컴퓨터 안에서 근거로만 답하는 지식 기계. 지식은 온톨로지 그래프에 살고, 추론은 파동 간섭으로 접히며, 두뇌는 P2P로 이어집니다." />
+<title>ATANOR — Own your Intelligence.</title>
+<meta name="description" content="온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI. 당신의 기기 안에서, 근거로만 답합니다." />
 <link rel="icon" href="assets/favicon.ico" />
-<meta property="og:title" content="ATANOR" />
+<meta property="og:title" content="ATANOR — Own your Intelligence." />
 <meta property="og:description" content="당신의 기기 안에서, 근거로만 답하는 기계." />
 <meta property="og:image" content="assets/atanor-logo-square.png" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
   :root {
-    --bg: #060607; --bg2: #0a0b0d;
-    --card: rgba(17,19,24,.66); --card-solid: #101217;
-    --line: rgba(255,255,255,.08); --line-strong: rgba(255,255,255,.14);
-    --ink: #f5f7fb; --body: #9aa3b6; --emph: #cfd8ea; --meta: rgba(210,220,240,.55);
-    --accent: #ff8a00; --accent-soft: rgba(255,138,0,.12);
+    --black: #0a0a0a; --white: #ffffff; --paper: #f6f6f4;
+    --ink: #101010; --gray: #6f6f6f; --gray-l: #9b9b9b;
+    --line-d: rgba(255,255,255,.12); --line-l: rgba(0,0,0,.12);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
-    background: var(--bg); color: var(--ink);
-    font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo",
-      "Malgun Gothic", Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased; line-height: 1.65; overflow-x: hidden;
+    background: var(--black); color: var(--white);
+    font-family: "Helvetica Neue", Helvetica, Arial, "Pretendard Variable", Pretendard,
+      "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.6; overflow-x: hidden;
   }
   a { color: inherit; text-decoration: none; }
   img { display: block; }
-  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 28px; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
 
-  /* ---------- nav ---------- */
-  .nav {
-    position: fixed; inset: 0 0 auto 0; z-index: 50;
-    backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2);
-    background: rgba(6,6,7,.55); border-bottom: 1px solid transparent;
-    transition: border-color .3s, background .3s;
-  }
-  .nav.scrolled { border-color: var(--line); background: rgba(6,6,7,.78); }
-  .nav .wrap { display: flex; align-items: center; height: 68px; gap: 40px; }
-  .nav .logo img { height: 20px; width: auto; }
-  .nav .links { display: flex; gap: 34px; margin-left: auto; align-items: center; }
-  .nav .links a { color: var(--meta); font-size: 14px; font-weight: 500; letter-spacing: .01em; transition: color .2s; }
-  .nav .links a:hover { color: var(--ink); }
-  .nav .cta {
-    border: 1px solid var(--line-strong); border-radius: 999px; padding: 9px 20px;
-    font-size: 13.5px; font-weight: 600; color: var(--emph); transition: all .25s;
-  }
-  .nav .cta:hover { border-color: var(--accent); color: var(--accent); }
+  /* ================= nav ================= */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 60; transition: background .35s, box-shadow .35s; }
+  .nav .wrap { display: flex; align-items: center; height: 72px; gap: 40px; }
+  .nav .logo img { height: 20px; transition: filter .35s; }
+  .nav .links { display: flex; gap: 36px; margin-left: auto; align-items: center; }
+  .nav .links a { font-size: 13.5px; font-weight: 600; letter-spacing: .04em; opacity: .65; transition: opacity .2s; }
+  .nav .links a:hover { opacity: 1; }
+  .nav .cta { border: 1.5px solid currentColor; border-radius: 999px; padding: 9px 22px; opacity: 1 !important; }
+  .nav.light { background: rgba(255,255,255,.86); backdrop-filter: blur(16px); color: var(--ink);
+    box-shadow: 0 1px 0 var(--line-l); }
+  .nav.light .logo img { filter: invert(1); }
+  .nav.dark-bg { background: rgba(10,10,10,.72); backdrop-filter: blur(16px); box-shadow: 0 1px 0 var(--line-d); }
 
-  /* ---------- hero ---------- */
-  .hero { position: relative; min-height: 100svh; display: flex; align-items: center; }
+  /* ================= hero ================= */
+  .hero { position: relative; min-height: 100svh; display: grid; place-items: center; text-align: center; }
   #field { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .hero .veil {
-    position: absolute; inset: 0;
-    background:
-      radial-gradient(1100px 520px at 22% 30%, rgba(255,138,0,.07), transparent 60%),
-      linear-gradient(180deg, rgba(6,6,7,.25) 0%, rgba(6,6,7,.0) 35%, rgba(6,6,7,.85) 88%, var(--bg) 100%);
-    pointer-events: none;
+  .hero .veil { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(900px 480px at 50% 42%, rgba(255,255,255,.05), transparent 65%),
+                linear-gradient(180deg, rgba(10,10,10,.4), rgba(10,10,10,0) 30%, rgba(10,10,10,.9) 92%); }
+  .hero .inner { position: relative; z-index: 2; padding: 100px 24px 60px; width: 100%; }
+  .hero .biglogo { width: min(640px, 78vw); margin: 0 auto 42px; }
+  .hero .slogan {
+    font-size: clamp(30px, 4.6vw, 60px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.12;
   }
-  .hero .wrap { position: relative; z-index: 2; padding-top: 68px; }
-  .hero .kicker {
-    display: inline-flex; align-items: center; gap: 10px;
-    color: var(--accent); font-size: 12.5px; letter-spacing: .22em; font-weight: 700;
-  }
-  .hero .kicker::before { content: ""; width: 26px; height: 1px; background: var(--accent); }
-  .hero h1 {
-    margin: 30px 0 30px; max-width: 880px;
-    font-size: clamp(42px, 6.6vw, 84px); line-height: 1.14;
-    font-weight: 800; letter-spacing: -0.03em;
-  }
-  .hero h1 em { font-style: normal; color: var(--accent); }
-  .hero p.lead { color: var(--body); font-size: clamp(15px, 1.6vw, 18.5px); max-width: 640px; font-weight: 400; }
-  .hero .cta-row { margin-top: 52px; display: flex; gap: 16px; flex-wrap: wrap; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 10px;
-    border-radius: 999px; padding: 15px 32px; font-size: 15px; font-weight: 700;
-    border: 1px solid var(--line-strong); color: var(--emph);
-    transition: all .25s cubic-bezier(.2,.6,.2,1);
-  }
-  .btn:hover { transform: translateY(-2px); border-color: var(--accent); color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #131313; }
-  .btn.primary:hover { color: #131313; box-shadow: 0 14px 42px rgba(255,138,0,.28); }
-  .hero .scroll-cue {
-    position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
-    color: var(--meta); font-size: 11px; letter-spacing: .3em; z-index: 2;
-    animation: cue 2.6s ease-in-out infinite;
-  }
-  @keyframes cue { 0%,100% { opacity: .35; transform: translate(-50%,0) } 50% { opacity: .9; transform: translate(-50%,7px) } }
+  .hero .slogan .dot { color: transparent; -webkit-text-stroke: 1.5px #fff; }
+  .hero .sub { margin: 26px auto 0; max-width: 560px; color: rgba(255,255,255,.55);
+    font-size: clamp(14px, 1.5vw, 17px); font-weight: 400; }
+  .hero .cta-row { margin-top: 48px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px;
+    padding: 15px 34px; font-size: 15px; font-weight: 700; letter-spacing: .01em;
+    transition: transform .25s cubic-bezier(.2,.6,.2,1), background .25s, color .25s; }
+  .btn:hover { transform: translateY(-2px); }
+  .btn.solid { background: #fff; color: #0a0a0a; }
+  .btn.solid:hover { background: #e8e8e8; }
+  .btn.ghost { border: 1.5px solid rgba(255,255,255,.35); color: #fff; }
+  .btn.ghost:hover { border-color: #fff; }
+  .scroll-cue { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
+    z-index: 2; color: rgba(255,255,255,.4); font-size: 10.5px; letter-spacing: .34em;
+    animation: cue 2.6s ease-in-out infinite; }
+  @keyframes cue { 0%,100% { opacity:.3; transform: translate(-50%,0) } 50% { opacity:.85; transform: translate(-50%,8px) } }
 
-  /* ---------- identity band ---------- */
-  .identity { padding: 130px 0 120px; background: var(--bg); }
-  .identity .wrap { max-width: 920px; }
-  .identity .small { color: var(--meta); font-size: 12.5px; letter-spacing: .22em; font-weight: 700; margin-bottom: 34px; }
-  .identity h2 {
-    font-size: clamp(26px, 3.6vw, 44px); line-height: 1.42; font-weight: 700; letter-spacing: -0.02em;
-  }
-  .identity h2 span { color: var(--body); font-weight: 500; }
+  /* ================= shared section chrome ================= */
+  section { position: relative; padding: 130px 0; }
+  section.white { background: var(--white); color: var(--ink); }
+  section.paper { background: var(--paper); color: var(--ink); }
+  section.black { background: var(--black); color: var(--white); }
+  .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 12px;
+    letter-spacing: .26em; font-weight: 700; opacity: .5; margin-bottom: 26px; }
+  .eyebrow::before { content: ""; width: 30px; height: 1.5px; background: currentColor; }
+  h2.title { font-size: clamp(30px, 4vw, 52px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+  .title + .lead { margin-top: 22px; max-width: 620px; font-size: 16.5px; }
+  .white .lead, .paper .lead { color: var(--gray); }
+  .black .lead { color: rgba(255,255,255,.55); }
 
-  /* ---------- sections ---------- */
-  section.block { padding: 110px 0; border-top: 1px solid rgba(255,255,255,.05); }
-  .sec-head { display: flex; align-items: baseline; gap: 22px; margin-bottom: 56px; flex-wrap: wrap; }
-  .sec-head .no { color: var(--accent); font-size: 13px; font-weight: 800; letter-spacing: .1em; }
-  .sec-head h2 { font-size: clamp(26px, 3vw, 38px); font-weight: 800; letter-spacing: -0.02em; }
-  .sec-head p { color: var(--meta); font-size: 14.5px; margin-left: auto; max-width: 380px; }
+  /* ================= measured (white) ================= */
+  .stats { margin-top: 72px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    border-top: 1.5px solid var(--ink); }
+  .stat { padding: 34px 26px 38px; border-bottom: 1px solid var(--line-l); }
+  .stat + .stat { border-left: 1px solid var(--line-l); }
+  .stat .num { font-size: clamp(44px, 4.6vw, 64px); font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+  .stat .num small { font-size: .38em; font-weight: 700; letter-spacing: 0; margin-left: 4px; }
+  .stat .lbl { margin-top: 12px; font-size: 14px; font-weight: 700; }
+  .stat .why { margin-top: 6px; font-size: 12.5px; color: var(--gray); }
+  .vs { margin-top: 74px; }
+  .vs table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .vs th, .vs td { text-align: left; padding: 16px 14px; border-bottom: 1px solid var(--line-l); }
+  .vs th { font-size: 11.5px; letter-spacing: .18em; color: var(--gray); font-weight: 700; }
+  .vs td:first-child { color: var(--gray); width: 34%; }
+  .vs td.us { font-weight: 700; }
+  .vs td.them { color: var(--gray); }
+  .vs .yes { color: var(--ink); } .vs .them .yes { color: var(--gray); }
+  .foot-note { margin-top: 26px; font-size: 12px; color: var(--gray-l); max-width: 700px; }
+  .foot-note a { border-bottom: 1px solid var(--line-l); color: var(--gray); }
 
-  .grid3 { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-  .card {
-    position: relative; background: var(--card); border: 1px solid var(--line);
-    border-radius: 20px; padding: 38px 34px; overflow: hidden;
-    backdrop-filter: blur(8px); transition: transform .35s cubic-bezier(.2,.6,.2,1), border-color .35s;
-  }
-  .card::before {
-    content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    opacity: 0; transition: opacity .35s;
-  }
-  .card:hover { transform: translateY(-6px); border-color: var(--line-strong); }
-  .card:hover::before { opacity: .9; }
-  .card .icon {
-    width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center;
-    background: var(--accent-soft); color: var(--accent); margin-bottom: 26px;
-  }
-  .card .icon svg { width: 22px; height: 22px; }
-  .card .tag { font-size: 11px; letter-spacing: .2em; color: var(--accent); font-weight: 800; }
-  .card h3 { font-size: 20px; font-weight: 700; margin: 12px 0 14px; letter-spacing: -0.01em; }
-  .card p { color: var(--body); font-size: 14.5px; }
+  /* ================= architecture (black) ================= */
+  .arch { margin-top: 80px; }
+  .arch svg { width: 100%; height: auto; display: block; }
+  .arch text { font-family: inherit; }
+  .arch .box { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.28); stroke-width: 1.2; rx: 14; }
+  .arch .box.core { stroke: #fff; stroke-width: 1.6; }
+  .arch .t1 { fill: #fff; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+  .arch .t2 { fill: rgba(255,255,255,.45); font-size: 10.5px; letter-spacing: .14em; font-weight: 600; }
+  .arch .flow { stroke: rgba(255,255,255,.5); stroke-width: 1.4; fill: none;
+    stroke-dasharray: 600; stroke-dashoffset: 600; }
+  .arch.in .flow { animation: draw 1.6s cubic-bezier(.4,0,.2,1) forwards; }
+  .arch.in .flow.d2 { animation-delay: .5s; } .arch.in .flow.d3 { animation-delay: 1s; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .arch .pulse { fill: #fff; }
+  .arch.in .pulse { animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: .25 } 50% { opacity: 1 } }
+  .arch-notes { margin-top: 44px; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .arch-notes div { border-top: 1px solid var(--line-d); padding-top: 18px; }
+  .arch-notes b { display: block; font-size: 14.5px; margin-bottom: 7px; }
+  .arch-notes p { font-size: 13px; color: rgba(255,255,255,.5); }
 
-  /* download */
-  .dl .card { display: flex; flex-direction: column; min-height: 320px; }
-  .dl .foot { margin-top: auto; padding-top: 28px; }
-  .codebox {
-    position: relative; background: #0b0d11; border: 1px solid var(--line);
-    border-radius: 12px; padding: 14px 46px 14px 16px;
-    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-    font-size: 12px; color: var(--emph); overflow-x: auto; white-space: nowrap;
-  }
-  .codebox button {
-    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-    background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 8px;
-    color: var(--meta); font-size: 11px; padding: 5px 10px; cursor: pointer; transition: all .2s;
-  }
-  .codebox button:hover { color: var(--accent); border-color: var(--accent); }
-  .dl .link { font-size: 14px; font-weight: 600; color: var(--emph); display: inline-flex; gap: 8px; align-items: center; }
-  .dl .link:hover { color: var(--accent); }
-  .dl .soon { color: var(--meta); font-size: 13px; line-height: 1.7; }
-  .dl .soon a { color: var(--emph); border-bottom: 1px solid var(--line-strong); }
+  /* ================= download (white) ================= */
+  .dl-grid { margin-top: 70px; display: grid; gap: 0; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    border: 1.5px solid var(--ink); }
+  .dl-card { padding: 44px 38px 40px; display: flex; flex-direction: column; min-height: 330px;
+    transition: background .3s; }
+  .dl-card + .dl-card { border-left: 1.5px solid var(--ink); }
+  .dl-card:hover { background: var(--paper); }
+  .dl-card .no { font-size: 12px; font-weight: 800; letter-spacing: .2em; color: var(--gray-l); }
+  .dl-card h3 { margin: 16px 0 12px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .dl-card p { font-size: 14px; color: var(--gray); }
+  .dl-card .foot { margin-top: auto; padding-top: 26px; }
+  .dl-card .go { font-weight: 700; font-size: 14.5px; display: inline-flex; gap: 8px; align-items: center; }
+  .dl-card .go::after { content: "→"; transition: transform .25s; }
+  .dl-card:hover .go::after { transform: translateX(5px); }
+  .codebox { position: relative; background: var(--black); color: #eaeaea; border-radius: 10px;
+    padding: 13px 44px 13px 15px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+    overflow-x: auto; white-space: nowrap; }
+  .codebox button { position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+    background: rgba(255,255,255,.1); border: 0; border-radius: 7px; color: #cfcfcf;
+    font-size: 11px; padding: 5px 10px; cursor: pointer; }
+  .codebox button:hover { background: rgba(255,255,255,.22); }
+  .dl-card .soon { font-size: 12.5px; color: var(--gray-l); line-height: 1.7; }
+  .dl-card .soon a { border-bottom: 1px solid var(--line-l); color: var(--gray); }
 
-  /* honest */
-  .honest { background: var(--bg2); }
-  .honest blockquote {
-    max-width: 860px; font-size: clamp(22px, 3vw, 34px); line-height: 1.55;
-    font-weight: 600; letter-spacing: -0.015em; color: var(--emph);
-  }
-  .honest blockquote strong { color: var(--accent); font-weight: 700; }
-  .honest .note { margin-top: 30px; color: var(--body); font-size: 15px; max-width: 640px; }
+  /* ================= honest (black) ================= */
+  .honest blockquote { max-width: 880px; font-size: clamp(24px, 3.4vw, 40px); line-height: 1.5;
+    font-weight: 700; letter-spacing: -0.02em; }
+  .honest blockquote span { color: rgba(255,255,255,.4); }
+  .honest .note { margin-top: 30px; color: rgba(255,255,255,.45); font-size: 15px; max-width: 620px; }
 
-  /* footer */
-  footer { border-top: 1px solid rgba(255,255,255,.05); padding: 72px 0 56px; background: var(--bg); }
-  .f-grid { display: grid; grid-template-columns: 1.4fr repeat(2, minmax(150px, .7fr)); gap: 40px; }
-  .f-brand img { height: 18px; margin-bottom: 18px; }
-  .f-brand p { color: var(--meta); font-size: 13px; max-width: 300px; }
-  footer h4 { font-size: 11.5px; letter-spacing: .18em; color: var(--meta); font-weight: 700; margin-bottom: 18px; }
+  /* ================= footer ================= */
+  footer { background: var(--black); color: #fff; border-top: 1px solid var(--line-d); padding: 80px 0 60px; }
+  .f-grid { display: grid; grid-template-columns: 1.5fr repeat(2, minmax(150px, .7fr)); gap: 44px; }
+  .f-brand img { height: 22px; margin-bottom: 20px; }
+  .f-brand p { color: rgba(255,255,255,.4); font-size: 13px; max-width: 300px; }
+  footer h4 { font-size: 11px; letter-spacing: .22em; color: rgba(255,255,255,.35); font-weight: 700; margin-bottom: 18px; }
   footer li { list-style: none; margin-bottom: 11px; }
-  footer li a { color: var(--body); font-size: 13.5px; transition: color .2s; }
-  footer li a:hover { color: var(--ink); }
-  .f-bottom { margin-top: 56px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,.05);
-    display: flex; gap: 20px; flex-wrap: wrap; color: var(--meta); font-size: 12px; }
+  footer li a { color: rgba(255,255,255,.6); font-size: 13.5px; }
+  footer li a:hover { color: #fff; }
+  .f-bottom { margin-top: 60px; padding-top: 26px; border-top: 1px solid var(--line-d);
+    display: flex; gap: 20px; flex-wrap: wrap; color: rgba(255,255,255,.35); font-size: 12px; }
   .f-bottom span:last-child { margin-left: auto; }
-  @media (max-width: 760px) { .f-grid { grid-template-columns: 1fr; } .nav .links a:not(.cta) { display: none; } }
+  @media (max-width: 760px) { .f-grid { grid-template-columns: 1fr; }
+    .nav .links a:not(.cta) { display: none; }
+    .dl-card + .dl-card { border-left: 0; border-top: 1.5px solid var(--ink); } }
 
   /* reveal */
-  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s ease, transform .8s cubic-bezier(.2,.6,.2,1); }
+  .reveal { opacity: 0; transform: translateY(30px);
+    transition: opacity .9s ease, transform .9s cubic-bezier(.2,.6,.2,1); }
   .reveal.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
     .reveal { opacity: 1; transform: none; transition: none; }
-    .hero .scroll-cue { animation: none; }
+    .scroll-cue { animation: none; }
+    .arch .flow { stroke-dashoffset: 0 !important; animation: none !important; }
   }
 </style>
 </head>
@@ -183,10 +184,10 @@
 
 <nav class="nav" id="nav">
   <div class="wrap">
-    <a class="logo" href="#"><img src="assets/atanor-logo-white-cropped.png" alt="ATANOR" /></a>
+    <a class="logo" href="#top"><img src="assets/atanor-logo-white-cropped.png" alt="ATANOR" /></a>
     <div class="links">
-      <a href="#identity">정체성</a>
-      <a href="#promise">약속</a>
+      <a href="#measured">실측</a>
+      <a href="#structure">구조</a>
       <a href="#download">다운로드</a>
       <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub</a>
       <a class="cta" href="#download">시작하기</a>
@@ -194,121 +195,151 @@
   </div>
 </nav>
 
-<header class="hero">
+<header class="hero" id="top">
   <canvas id="field" aria-hidden="true"></canvas>
   <div class="veil"></div>
-  <div class="wrap">
-    <span class="kicker">ONTOLOGY · DECENTRALIZED · NEUROMORPHIC</span>
-    <h1>당신의 기기 안에서,<br/><em>근거</em>로만 답하는 기계.</h1>
-    <p class="lead">ATANOR는 온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI입니다.
-    외부 LLM 없이 — 지식은 온톨로지 그래프에 살고, 추론은 파동 간섭으로 접히며,
-    두뇌는 P2P로 이어집니다.</p>
+  <div class="inner">
+    <img class="biglogo" src="assets/atanor-logo-white-cropped.png" alt="ATANOR" />
+    <div class="slogan">Own your Intelligence<span class="dot">.</span></div>
+    <p class="sub">온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.<br/>
+    당신의 기기 안에서, 근거로만 답합니다.</p>
     <div class="cta-row">
-      <a class="btn primary" href="#download">다운로드</a>
-      <a class="btn" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">소스 보기</a>
+      <a class="btn solid" href="#download">다운로드</a>
+      <a class="btn ghost" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">소스 보기</a>
     </div>
   </div>
   <span class="scroll-cue">SCROLL</span>
 </header>
 
-<section class="identity" id="identity">
-  <div class="wrap reveal">
-    <div class="small">WHAT ATANOR IS</div>
-    <h2>모든 답은 검증된 근거에서 나옵니다.<br/>
-    <span>근거가 없으면, 모른다고 말합니다. 그 공백은 기계가 스스로 채워 나갈
-    학습 목표가 됩니다. 당신의 데이터는 당신의 컴퓨터를 떠나지 않습니다.</span></h2>
-  </div>
-</section>
-
-<section class="block" id="promise">
+<section class="white" id="measured" data-nav="light">
   <div class="wrap">
-    <div class="sec-head reveal">
-      <span class="no">01</span>
-      <h2>세 가지 약속</h2>
-      <p>따뜻한 말투가 아니라, 거짓말하지 않는 구조가 우리의 인간다움입니다.</p>
+    <div class="reveal">
+      <span class="eyebrow">MEASURED, NOT CLAIMED</span>
+      <h2 class="title">대형 LLM이 구조적으로<br/>따라올 수 없는 수치.</h2>
+      <p class="lead">일반 지식의 폭은 대형 모델이 넓습니다 — 그건 그들의 차원입니다.
+      아래는 우리의 차원입니다: 구조가 다르기 때문에 나오는, 실측된 숫자들.</p>
     </div>
-    <div class="grid3">
-      <div class="card reveal">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 4v5c0 4.4-3 8.4-7 9-4-.6-7-4.6-7-9V7l7-4z"/><path d="M9 12l2 2 4-4"/></svg></div>
-        <span class="tag">HONEST</span>
-        <h3>모르면 모른다고 말합니다</h3>
-        <p>유창한 오답이 최악의 실패라고 믿습니다. 모든 답변에는 출처가 붙고, 근거가
-        부족하면 정직하게 보류합니다. 그 보류는 곧 학습 목표가 되어 기계가 스스로
-        채워 나갑니다.</p>
-      </div>
-      <div class="card reveal" style="transition-delay:.08s">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 20v-3h6v3M12 8v4M10 10h4"/></svg></div>
-        <span class="tag">LOCAL</span>
-        <h3>당신의 컴퓨터가 곧 두뇌입니다</h3>
-        <p>외부 LLM API를 호출하지 않습니다. 온톨로지 그래프, 파동 간섭 추론, 학습
-        루프 전부가 당신의 기기 안에서 돕니다. 개인 데이터는 단 한 바이트도 밖으로
-        나가지 않습니다.</p>
-      </div>
-      <div class="card reveal" style="transition-delay:.16s">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8 7l8 4M8 17l8-4M6 8.5v7M18 8.5v7"/></svg></div>
-        <span class="tag">OPEN · P2P</span>
-        <h3>구조를 숨기지 않습니다</h3>
-        <p>답이 만들어진 경로를 추론 인증서로 보여주고, 잘못을 지운 기록까지 원장으로
-        남깁니다. 코드는 공개되어 있고, 두뇌는 Brain Link P2P로 서로 이어집니다.</p>
-      </div>
+    <div class="stats">
+      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>건</small></div>
+        <div class="lbl">조작(fabrication)된 답변</div>
+        <div class="why">모든 답은 검증된 원문 인용 — 지어낸 문장이 구조적으로 불가능</div></div>
+      <div class="stat reveal"><div class="num" data-count="100"><span>0</span><small>%</small></div>
+        <div class="lbl">추론 인증서 부착률</div>
+        <div class="why">모든 답에 어떻게 만들어졌는지의 기록이 붙습니다</div></div>
+      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>byte</small></div>
+        <div class="lbl">외부로 전송되는 개인 데이터</div>
+        <div class="why">추론·학습 전 과정이 당신의 기기 안</div></div>
+      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>원</small></div>
+        <div class="lbl">추론 API 비용</div>
+        <div class="why">GPU도, 클라우드 구독도 필요 없습니다 — RAM 1GB 서버에서도 구동</div></div>
+    </div>
+    <div class="vs reveal">
+      <table>
+        <tr><th></th><th>ATANOR</th><th>대형 LLM (클라우드)</th></tr>
+        <tr><td>모르는 것을 대하는 방식</td><td class="us">"모른다"고 말하고, 학습 목표로 전환</td><td class="them">그럴듯한 문장 생성 (환각)</td></tr>
+        <tr><td>답의 근거</td><td class="us">원문 인용 + 추론 인증서</td><td class="them">확률적 토큰 — 근거 추적 불가</td></tr>
+        <tr><td>데이터 위치</td><td class="us">당신의 기기</td><td class="them">사업자의 서버</td></tr>
+        <tr><td>잘못을 지운 기록</td><td class="us">공개 원장으로 보존</td><td class="them">비공개</td></tr>
+        <tr><td>구동 환경</td><td class="us">CPU · RAM 1GB부터</td><td class="them">데이터센터 GPU</td></tr>
+      </table>
+      <p class="foot-note">수치는 자체 골드 배터리와 라이브 계측 기준이며, 측정 스크립트와 이력은
+      <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">저장소에 공개</a>되어 있습니다.
+      일반 상식 커버리지는 대형 모델이 앞서며, 우리는 그 한계도 숫자로 공개합니다.</p>
     </div>
   </div>
 </section>
 
-<section class="block dl" id="download">
+<section class="black" id="structure">
   <div class="wrap">
-    <div class="sec-head reveal">
-      <span class="no">02</span>
-      <h2>다운로드</h2>
-      <p>리눅스처럼 — 읽고, 고치고, 설치할 수 있습니다.</p>
+    <div class="reveal">
+      <span class="eyebrow">ARCHITECTURE</span>
+      <h2 class="title">지어내지 못하는 구조.</h2>
+      <p class="lead">언어모델의 확률이 아니라, 세 개의 실체가 답을 만듭니다.
+      각 단계는 검증 가능하고, 어떤 단계도 문장을 지어내지 않습니다.</p>
     </div>
-    <div class="grid3">
-      <div class="card reveal">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 5l-5 7 5 7M16 5l5 7-5 7"/></svg></div>
-        <span class="tag">SOURCE</span>
+    <div class="arch reveal" id="arch">
+      <svg viewBox="0 0 1140 360" role="img" aria-label="ATANOR 구조도">
+        <rect class="box" x="20"  y="120" width="280" height="120" rx="14"/>
+        <text class="t2" x="44" y="156">KNOWLEDGE</text>
+        <text class="t1" x="44" y="184">온톨로지 그래프</text>
+        <text class="t2" x="44" y="212">검증된 사실 · 출처 · 격리 원장</text>
+
+        <rect class="box core" x="430" y="100" width="280" height="160" rx="14"/>
+        <text class="t2" x="454" y="140">REASONING</text>
+        <text class="t1" x="454" y="168">파동 간섭 폴딩</text>
+        <text class="t2" x="454" y="196">뉴로모픽 · 위상 홀로그래픽</text>
+        <text class="t2" x="454" y="222">PHFE CORE</text>
+
+        <rect class="box" x="840" y="120" width="280" height="120" rx="14"/>
+        <text class="t2" x="864" y="156">ANSWER</text>
+        <text class="t1" x="864" y="184">근거 인용 답변</text>
+        <text class="t2" x="864" y="212">추론 인증서 · 정직한 보류</text>
+
+        <path class="flow"    d="M300 180 C 360 180, 370 180, 430 180"/>
+        <path class="flow d2" d="M710 180 C 770 180, 780 180, 840 180"/>
+        <path class="flow d3" d="M570 100 C 570 60, 300 40, 160 40 C 100 40, 60 70, 60 120"/>
+        <text class="t2" x="330" y="30">기권 → 학습 루프 (모르는 것이 학습 목표가 됩니다)</text>
+
+        <circle class="pulse" cx="300" cy="180" r="4"/>
+        <circle class="pulse" cx="710" cy="180" r="4" style="animation-delay:.7s"/>
+        <circle class="pulse" cx="60"  cy="120" r="4" style="animation-delay:1.3s"/>
+
+        <path class="flow d3" d="M570 260 C 570 300, 570 310, 570 330"/>
+        <text class="t2" x="596" y="316">BRAIN LINK — P2P로 이어지는 두뇌들</text>
+        <circle class="pulse" cx="570" cy="330" r="4" style="animation-delay:1.8s"/>
+      </svg>
+    </div>
+    <div class="arch-notes">
+      <div class="reveal"><b>지식은 그래프에 삽니다</b><p>모든 사실은 출처와 함께 온톨로지 그래프에 저장됩니다.
+        코드에 지식을 심지 않습니다 — 그래서 지우고, 고치고, 감사할 수 있습니다.</p></div>
+      <div class="reveal" style="transition-delay:.08s"><b>추론은 파동으로 접힙니다</b><p>질문은 개념들의 파동 간섭장으로
+        접히고, 보강간섭의 마루가 추론의 축이 됩니다. 실측으로 검증되는 뉴로모픽 코어입니다.</p></div>
+      <div class="reveal" style="transition-delay:.16s"><b>두뇌는 서로 이어집니다</b><p>Brain Link P2P로 각자의 기기에
+        사는 두뇌들이 연결됩니다. 중앙 서버가 아니라, 소유된 지능들의 연합입니다.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="white dl" id="download" data-nav="light">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">GET ATANOR</span>
+      <h2 class="title">리눅스처럼 —<br/>읽고, 고치고, 설치하세요.</h2>
+    </div>
+    <div class="dl-grid reveal">
+      <div class="dl-card">
+        <span class="no">01 · SOURCE</span>
         <h3>오픈소스 저장소</h3>
-        <p>엔진·웹·학습 루프 전체가 공개되어 있습니다. 그대로 읽고, 고치고, 실행할
-        수 있습니다.</p>
-        <div class="foot">
-          <a class="link" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">github.com/Cozystone/ATANOR-Demo →</a>
-        </div>
+        <p>엔진·웹·학습 루프 전체가 공개되어 있습니다. 그대로 읽고, 고치고, 실행할 수 있습니다.</p>
+        <div class="foot"><a class="go" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub에서 보기</a></div>
       </div>
-      <div class="card reveal" style="transition-delay:.08s">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
-        <span class="tag">LINUX</span>
+      <div class="dl-card">
+        <span class="no">02 · LINUX</span>
         <h3>ATANOR Environment</h3>
-        <p>스톡 우분투(22.04/24.04)를 한 줄로 ATANOR 머신으로. 부팅부터 상주하는
-        systemd 서비스로 설치됩니다.</p>
+        <p>스톡 우분투를 한 줄로 ATANOR 머신으로. 부팅부터 상주하는 systemd 서비스로 설치됩니다.</p>
         <div class="foot">
           <div class="codebox"><span id="cmd">curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/demo/deploy/atanor-environment/install.sh | sudo bash</span><button onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(()=>{this.textContent='복사됨';setTimeout(()=>this.textContent='복사',1400)})">복사</button></div>
         </div>
       </div>
-      <div class="card reveal" style="transition-delay:.16s">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.4"/></svg></div>
-        <span class="tag">ISO</span>
+      <div class="dl-card">
+        <span class="no">03 · ISO</span>
         <h3>설치 이미지</h3>
-        <p>USB로 부팅하면 곧 ATANOR인 설치 ISO. 리마스터 도구가 저장소에 포함되어
-        있어 직접 빌드할 수 있습니다.</p>
-        <div class="foot">
-          <p class="soon">직접 빌드 → <a href="https://github.com/Cozystone/ATANOR-Demo/tree/demo/deploy/atanor-environment" rel="noopener">make_iso.sh</a><br/>
-          공식 이미지 배포는 준비 중입니다.<br/>준비되기 전에 있다고 말하지 않습니다.</p>
-        </div>
+        <p>USB로 부팅하면 곧 ATANOR인 설치 ISO. 리마스터 도구가 저장소에 포함되어 있습니다.</p>
+        <div class="foot"><p class="soon">직접 빌드 → <a href="https://github.com/Cozystone/ATANOR-Demo/tree/demo/deploy/atanor-environment" rel="noopener">make_iso.sh</a><br/>
+        공식 이미지 배포는 준비 중입니다. 준비되기 전에 있다고 말하지 않습니다.</p></div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="block honest">
+<section class="black honest">
   <div class="wrap reveal">
-    <div class="sec-head">
-      <span class="no">03</span>
-      <h2>정직 고지</h2>
-    </div>
+    <span class="eyebrow">HONESTY</span>
     <blockquote>우리는 환각이 없다고 주장하지 않습니다.<br/>
-    다만 <strong>모든 답이 어디서 왔는지</strong> 보여주고,<br/>
-    틀린 것을 지운 기록까지 남깁니다.</blockquote>
-    <p class="note">ATANOR는 연구 중인 시스템입니다. 커버리지에는 한계가 있고, 그 한계를
-    숫자로 공개합니다. 화려한 시연보다 검증 가능한 답 하나를 선택합니다.</p>
+    <span>다만 모든 답이 어디서 왔는지 보여주고,<br/>
+    틀린 것을 지운 기록까지 남깁니다.</span></blockquote>
+    <p class="note">ATANOR는 연구 중인 시스템입니다. 커버리지에는 한계가 있고, 그 한계를 숫자로
+    공개합니다. 화려한 시연보다 검증 가능한 답 하나를 선택합니다.</p>
   </div>
 </section>
 
@@ -317,7 +348,7 @@
     <div class="f-grid">
       <div class="f-brand">
         <img src="assets/atanor-logo-white-cropped.png" alt="ATANOR" />
-        <p>온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.<br/>당신의 기기 안에서, 근거로만.</p>
+        <p>Own your Intelligence.<br/>온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.</p>
       </div>
       <div>
         <h4>PROJECT</h4>
@@ -331,7 +362,8 @@
         <h4>PRINCIPLES</h4>
         <ul>
           <li><a href="https://github.com/Cozystone/ATANOR-Demo/blob/demo/docs/DESIGN_PHILOSOPHY.md" rel="noopener">디자인 철학</a></li>
-          <li><a href="#promise">세 가지 약속</a></li>
+          <li><a href="#measured">실측 수치</a></li>
+          <li><a href="#structure">구조</a></li>
         </ul>
       </div>
     </div>
@@ -343,69 +375,71 @@
 </footer>
 
 <script>
-// ---- wave-interference field: our reasoning core as the hero visual. Slow, dignified,
-// amber-on-black; honours prefers-reduced-motion; pauses when the tab is hidden. ----
+// ---- hero wave-interference field (black & white edition) ----
 (() => {
-  const cv = document.getElementById("field");
-  const ctx = cv.getContext("2d");
+  const cv = document.getElementById("field"), ctx = cv.getContext("2d");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let w, h, dpr;
-  const SRC = [];
+  let w, h, dpr; const SRC = [];
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
     w = cv.clientWidth; h = cv.clientHeight;
-    cv.width = w * dpr; cv.height = h * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     SRC.length = 0;
-    const n = w < 700 ? 4 : 6;
-    for (let i = 0; i < n; i++) {
-      SRC.push({ x: (0.12 + 0.76 * Math.random()) * w, y: (0.1 + 0.7 * Math.random()) * h,
-                 f: 0.010 + Math.random() * 0.012, p: Math.random() * Math.PI * 2 });
-    }
+    for (let i = 0, n = w < 700 ? 4 : 6; i < n; i++)
+      SRC.push({ x: (0.1 + 0.8 * Math.random()) * w, y: (0.1 + 0.8 * Math.random()) * h,
+                 f: 0.010 + Math.random() * 0.011, p: Math.random() * 6.283 });
   }
   resize(); addEventListener("resize", resize);
-  const CELL = 26;
-  let t = 0, raf;
+  const CELL = 25; let t = 0, raf;
   function frame() {
     ctx.clearRect(0, 0, w, h);
-    for (let gy = CELL / 2; gy < h; gy += CELL) {
-      for (let gx = CELL / 2; gx < w; gx += CELL) {
-        let a = 0;
-        for (const s of SRC) {
-          const d = Math.hypot(gx - s.x, gy - s.y);
-          a += Math.sin(d * s.f - t + s.p);
-        }
-        a /= SRC.length;                       // -1..1 interference amplitude
-        const v = Math.max(0, a);              // constructive crests only
-        if (v < 0.28) continue;
-        const r = 0.6 + v * 1.7;
-        ctx.beginPath();
-        ctx.arc(gx, gy, r, 0, 6.2832);
-        ctx.fillStyle = v > 0.72
-          ? `rgba(255,138,0,${(v - 0.5) * 0.5})`
-          : `rgba(150,165,195,${v * 0.16})`;
-        ctx.fill();
-      }
+    for (let gy = CELL / 2; gy < h; gy += CELL) for (let gx = CELL / 2; gx < w; gx += CELL) {
+      let a = 0;
+      for (const s of SRC) a += Math.sin(Math.hypot(gx - s.x, gy - s.y) * s.f - t + s.p);
+      a /= SRC.length;
+      const v = Math.max(0, a);
+      if (v < 0.3) continue;
+      ctx.beginPath();
+      ctx.arc(gx, gy, 0.5 + v * 1.6, 0, 6.2832);
+      ctx.fillStyle = `rgba(255,255,255,${v * v * 0.34})`;
+      ctx.fill();
     }
-    t += 0.016;
-    raf = requestAnimationFrame(frame);
+    t += 0.015; raf = requestAnimationFrame(frame);
   }
   if (reduced) { t = 8; frame(); cancelAnimationFrame(raf); }
-  else {
-    frame();
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) cancelAnimationFrame(raf); else frame();
-    });
-  }
+  else { frame(); document.addEventListener("visibilitychange", () =>
+    document.hidden ? cancelAnimationFrame(raf) : frame()); }
 })();
-// nav scroll state
+
+// ---- nav: transparent on hero, white over light sections, dark glass over dark ----
 const nav = document.getElementById("nav");
-addEventListener("scroll", () => nav.classList.toggle("scrolled", scrollY > 24), { passive: true });
-// reveal on scroll
-const io = new IntersectionObserver((es) => es.forEach(e => {
-  if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
-}), { threshold: 0.15 });
-document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+const lightSections = [...document.querySelectorAll('[data-nav="light"]')];
+function navState() {
+  const y = scrollY + 36;
+  const overLight = lightSections.some(s => y >= s.offsetTop && y < s.offsetTop + s.offsetHeight);
+  nav.classList.toggle("light", overLight);
+  nav.classList.toggle("dark-bg", !overLight && scrollY > 40);
+}
+addEventListener("scroll", navState, { passive: true }); navState();
+
+// ---- reveal + count-up + architecture draw ----
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add("in"); io.unobserve(e.target);
+  e.target.querySelectorAll?.(".num[data-count]").forEach(runCount);
+  if (e.target.matches?.(".num[data-count]")) runCount(e.target);
+}), { threshold: 0.2 });
+document.querySelectorAll(".reveal, #arch").forEach(el => io.observe(el));
+function runCount(el) {
+  const target = +el.dataset.count, span = el.querySelector("span");
+  if (!span || el.dataset.done) return; el.dataset.done = 1;
+  const t0 = performance.now(), dur = 1100;
+  (function tick(now) {
+    const p = Math.min(1, (now - t0) / dur), ease = 1 - Math.pow(1 - p, 3);
+    span.textContent = Math.round(target * ease).toLocaleString();
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
 </script>
 </body>
 </html>
