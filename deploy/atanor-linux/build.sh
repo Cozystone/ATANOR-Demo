@@ -167,10 +167,13 @@ EOF
   # DISPLAY/XAUTHORITY: the engine (a system service) launches apps INTO the
   # user's X session — without these the action lane executes into the void
   # (desktop-icon e2e caught it: audit said EXECUTE, no window appeared)
+  # ProtectHome=read-only (not yes): the unit's hardening hid .Xauthority and
+  # every launched app died silently while the audit said EXECUTE — measured.
   printf '[Service]
 Environment=ATANOR_TRUST_TIER=2
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/atanor/.Xauthority
+ProtectHome=read-only
 ' > "$ROOTFS/etc/systemd/system/atanor-engine.service.d/trust-tier.conf"
   # systemd session on tty1 needs the X wrapper to allow it
   printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > "$ROOTFS/etc/X11/Xwrapper.config"
