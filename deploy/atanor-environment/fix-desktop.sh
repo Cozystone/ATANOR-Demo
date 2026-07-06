@@ -52,6 +52,11 @@ mkdir -p /etc/systemd/user
 install -m 0644 "$HERE/atanor-perception.service" /etc/systemd/user/atanor-perception.service
 command -v xdotool >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y xdotool
 
+# living wallpaper launcher (autostart Exec points here; retypes the surface
+# to the DESKTOP layer so SPLATRA runs as the wallpaper itself)
+install -m 0755 "$HERE/orb-wallpaper.sh" /usr/local/bin/atanor-orb-wallpaper
+command -v xprop >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y x11-utils
+
 echo "--- diagnostics ---"
 ls /usr/share/gnome-shell/extensions/
 command -v chromium chromium-browser firefox 2>/dev/null || true

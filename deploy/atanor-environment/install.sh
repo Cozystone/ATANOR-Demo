@@ -110,7 +110,7 @@ elif [ "$DESKTOP" -eq 1 ]; then
 Type=Application
 Name=ATANOR
 Comment=Your resident intelligence — voice orb (local-only)
-Exec=sh -c 'until curl -sf http://127.0.0.1:3000/ >/dev/null; do sleep 1; done; U=http://127.0.0.1:3000/shell?overlay=1; curl -sf http://127.0.0.1:3000/shell >/dev/null || U=http://127.0.0.1:3000/; exec chromium-browser --app="$U" --window-size=560,560 2>/dev/null || exec chromium --app="$U" --window-size=560,560'
+Exec=/usr/local/bin/atanor-orb-wallpaper
 X-GNOME-Autostart-enabled=true
 EOF
   cat > /usr/share/applications/atanor.desktop <<'EOF'

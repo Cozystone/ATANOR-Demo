@@ -2,6 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import HologramVoiceOrb, { HologramVoiceOrbState } from "../HologramVoiceOrb";
+import SplatraImaginationField from "../SplatraImaginationField";
+
+// The VM (and any GPU-less machine) renders WebGL through SwiftShader/llvmpipe;
+// full particle budgets would crawl. Detect it once and scale down honestly.
+function autoDensity(): number {
+  try {
+    const c = document.createElement("canvas");
+    const gl = c.getContext("webgl");
+    const ext = gl?.getExtension("WEBGL_debug_renderer_info");
+    const r = ext && gl ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";
+    if (/swiftshader|llvmpipe|software/i.test(r)) return 0.22;
+  } catch { /* default below */ }
+  return 1;
+}
 
 /* ATANOR OS particle shell — the machine boots into this face.
    The orb is the SAME HologramVoiceOrb the main program uses (43k-point
@@ -16,7 +30,19 @@ type ShellState = "idle" | "listening" | "thinking" | "speaking" | "offline";
 export default function ShellPage() {
   // overlay mode (?overlay=1): transparent background so the orb floats over the
   // real desktop as an always-on-top layer (the GNOME extension pins the window).
-  const overlay = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("overlay") === "1";
+  // wallpaper mode (?wallpaper=1): this surface BECOMES the desktop background —
+  // orb-wallpaper.sh retypes the window to _NET_WM_WINDOW_TYPE_DESKTOP, so the
+  // SPLATRA field runs as the wallpaper layer with every app window above it.
+  const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const overlay = params?.get("overlay") === "1";
+  const wallpaper = params?.get("wallpaper") === "1";
+  const [density, setDensity] = useState(1);
+  useEffect(() => {
+    setDensity(autoDensity());
+    // distinct title so the desktop-layer script and the GNOME extension can
+    // tell the wallpaper surface from a normal ATANOR app window
+    if (wallpaper) document.title = "ATANOR WALLPAPER";
+  }, [wallpaper]);
   const stateRef = useRef<ShellState>("idle");
   const [shellState, setShellState] = useState<ShellState>("idle");
   const [question, setQuestion] = useState("");
@@ -164,12 +190,25 @@ export default function ShellPage() {
   };
 
   return (
-    <main className="atanor-os-shell" data-overlay={overlay ? "1" : "0"}
+    <main className="atanor-os-shell" data-overlay={overlay ? "1" : "0"} data-wallpaper={wallpaper ? "1" : "0"}
       style={{ background: overlay ? "transparent" : undefined }}>
+
+      {/* wallpaper mode: the SPLATRA imagination field fills the desktop layer */}
+      {wallpaper ? (
+        <div className="atanor-os-shell-field" aria-hidden>
+          <SplatraImaginationField
+            mode="product"
+            state={orbState}
+            interactive={false}
+            particleBudget={Math.round(9000 * density)}
+          />
+        </div>
+      ) : null}
 
       {/* the real orb, front and center */}
       <div className="atanor-os-shell-orb">
-        <HologramVoiceOrb state={orbState} onActivate={() => void toggleTalk()} onCancel={() => void toggleTalk()} />
+        <HologramVoiceOrb state={orbState} density={density}
+          onActivate={() => void toggleTalk()} onCancel={() => void toggleTalk()} />
       </div>
 
       {/* trust tier — the ONE dial for autonomy (관찰 → 승인 → 가드 → 자율) */}

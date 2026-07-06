@@ -10805,3 +10805,17 @@ p {
   background: transparent;
   color: #fff;
 }
+
+/* wallpaper mode: SPLATRA field is the desktop background layer */
+.atanor-os-shell-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.atanor-os-shell-field > * { width: 100%; height: 100%; }
+.atanor-os-shell[data-wallpaper="1"] .atanor-os-shell-orb,
+.atanor-os-shell[data-wallpaper="1"] .atanor-os-shell-tier,
+.atanor-os-shell[data-wallpaper="1"] .atanor-os-shell-readout { position: relative; z-index: 1; }
+.atanor-os-shell[data-wallpaper="1"] .atanor-os-shell-tier { position: absolute; z-index: 2; }

@@ -22,7 +22,10 @@ export default class AtanorOrbExtension extends Extension {
         if (!win) return false;
         const t = (win.get_title() || '').toLowerCase();
         const cls = (win.get_wm_class() || '').toLowerCase();
-        // the orb runs as chromium --app=.../shell?overlay=1, titled 'ATANOR'
+        // the living wallpaper ('ATANOR WALLPAPER', retyped to DESKTOP by
+        // orb-wallpaper.sh) must stay on the background layer — never pin it
+        if (t.includes('wallpaper')) return false;
+        if (win.get_window_type() === Meta.WindowType.DESKTOP) return false;
         return t.includes('atanor') || cls.includes('atanor');
     }
 
