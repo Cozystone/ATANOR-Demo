@@ -28,7 +28,32 @@ from build_holdout_battery import check as seal_check  # noqa: E402
 from build_holdout_battery import check_v2 as seal_check_v2  # noqa: E402
 
 
-def ask(question: str) -> str:
+_LOCAL_CLIENT = None
+
+
+def _local_client():
+    """In-process client running THIS worktree's code — the honest projection of what
+    the live engine will score after its operator-gated restart. Same route, same body."""
+    global _LOCAL_CLIENT
+    if _LOCAL_CLIENT is None:
+        import os
+        os.chdir(REPO / "apps" / "api")
+        sys.path.insert(0, str(REPO / "apps" / "api"))
+        sys.path.insert(0, str(REPO))
+        from fastapi.testclient import TestClient
+        from app.main import app
+        _LOCAL_CLIENT = TestClient(app)
+    return _LOCAL_CLIENT
+
+
+def ask(question: str, local: bool = False) -> str:
+    if local:
+        try:
+            r = _local_client().post("/api/base-brain/answer",
+                                     json={"query": question, "language": "ko"})
+            return str(r.json().get("answer") or "")
+        except Exception as exc:  # noqa: BLE001
+            return f"__ERR__ {exc}"
     data = json.dumps({"query": question, "language": "ko"}).encode("utf-8")
     req = urllib.request.Request(URL, data=data, headers={"Content-Type": "application/json"})
     try:
@@ -38,7 +63,7 @@ def ask(question: str) -> str:
         return f"__ERR__ {exc}"
 
 
-def main(v2: bool = False) -> int:
+def main(v2: bool = False, local: bool = False) -> int:
     if v2:
         battery, label = BATTERY2, "HOLDOUT-v2"
         if seal_check_v2() != 0:
@@ -53,7 +78,7 @@ def main(v2: bool = False) -> int:
     answered = abstained = errors = 0
     hard: list[str] = []
     for row in rows:
-        a = ask(row["question"])
+        a = ask(row["question"], local=local)
         if a.startswith("__ERR__"):
             errors += 1
         elif any(m in a for m in ABSTAIN) or not a.strip():
@@ -77,5 +102,6 @@ def main(v2: bool = False) -> int:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--v2", action="store_true", help="score the fair should-answer battery")
+    ap.add_argument("--local", action="store_true", help="score THIS worktree's code in-process (restart projection)")
     args = ap.parse_args()
-    raise SystemExit(main(v2=args.v2))
+    raise SystemExit(main(v2=args.v2, local=args.local))

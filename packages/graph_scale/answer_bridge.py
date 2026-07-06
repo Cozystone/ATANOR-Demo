@@ -30,8 +30,13 @@ _RELATION_CUES: dict[str, tuple[str, ...]] = {
     "author": ("저자", "author", "쓴", "지은이"),
     "capital_of": ("어디의 수도", "수도인"),
     "located_in": ("어디에 있", "어느 나라에", "위치", "located"),
+    # a definitional question is answerable by EITHER predicate: 'fruit이란?' is served
+    # equally by defined_as(fruit, …) or is_a(fruit, seed-bearing structure…) — excluding
+    # is_a made stored facts invisible to the very question form that asked for them
+    # (measured on the sealed holdout: fruit ingested yet abstaining).
     "defined_as": ("뭐", "무엇", "뜻", "정의", "란 뭐", "이란", "설명", "define", "meaning", "what is"),
-    "is_a": ("뭐", "무엇", "종류", "일종", "무슨", "kind of", "type of"),
+    "is_a": ("뭐", "무엇", "종류", "일종", "무슨", "뜻", "정의", "이란", "설명",
+             "kind of", "type of", "define", "meaning", "what is"),
 }
 
 

@@ -77,12 +77,29 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
             abstain_queue.mark(term, "fetch_failed", str(exc)[:80])
             counters["failed"] += 1
             continue
-        candidates = [t for s in _definition_sentences(term, extract)
-                      if (t := extract_definition_triple(s))]
+        sentences = _definition_sentences(term, extract)
+        candidates = [t for s in sentences if (t := extract_definition_triple(s))]
+        # acronym alias: when the SOURCE SENTENCE itself asserts both names —
+        # 'Automated machine learning (AutoML) is …' — the fact is stored under the
+        # queried name too. Verbatim-grounded: only if '(term)' literally appears.
+        for s in sentences:
+            for subj, pred, obj in list(candidates):
+                if (term.lower() != subj.lower()
+                        and re.search(r"\(\s*" + re.escape(term) + r"\s*[),]", s)
+                        and (term, pred, obj) not in candidates):
+                    candidates.append((term, pred, obj))
         if not candidates:
             abstain_queue.mark(term, "no_definition")
             counters["no_definition"] += 1
             log(f"  {term}: no clean definition (honest gap, stays visible)")
+            # mine tomorrow's frames from today's real rejections (data, not intuition)
+            try:
+                rejects = STORE_ROOT.parent / "extractor_rejects.jsonl"
+                with rejects.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"term": term, "sentences": sentences[:2]},
+                                        ensure_ascii=False) + "\n")
+            except Exception:
+                pass
             continue
         verdicts = filter_candidates(candidates, store)
         counters["quarantined"] += len(verdicts["quarantined"])
