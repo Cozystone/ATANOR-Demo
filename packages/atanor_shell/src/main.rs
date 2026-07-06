@@ -6,6 +6,8 @@
 //! M2 replaces the clear with the SPLATRA particle field (point sprites,
 //! engine-state-driven morphing). No browser anywhere in this future.
 
+use std::sync::Arc;
+
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
@@ -17,13 +19,17 @@ const DEEP_SPACE: wgpu::Color = wgpu::Color { r: 0.0196, g: 0.0275, b: 0.0392, a
 fn main() {
     env_logger::init();
     let event_loop = EventLoop::new().expect("event loop");
-    let window = WindowBuilder::new()
-        .with_title("ATANOR Shell (M0)")
-        .build(&event_loop)
-        .expect("window");
+    // Arc: the surface borrows the window AND the event-loop closure owns it —
+    // shared ownership is the honest shape here (E0505 caught by the first build)
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title("ATANOR Shell (M0)")
+            .build(&event_loop)
+            .expect("window"),
+    );
 
     let instance = wgpu::Instance::default();
-    let surface = instance.create_surface(&window).expect("surface");
+    let surface = instance.create_surface(window.clone()).expect("surface");
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         compatible_surface: Some(&surface),
         ..Default::default()
