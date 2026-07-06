@@ -21,8 +21,8 @@ _UA = ("ATANOR-KG/1.0 (https://github.com/Cozystone/ATANOR; blueyjkim@gmail.com)
        "urllib/3 abstain-queue-feeder")
 
 
-def _wiki_summary(term: str, lang: str = "ko") -> str:
-    url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(term)}"
+def _rest_summary(host: str, term: str) -> str:
+    url = f"https://{host}/api/rest_v1/page/summary/{urllib.parse.quote(term)}"
     req = urllib.request.Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=20) as r:
         data = json.loads(r.read().decode("utf-8"))
@@ -31,9 +31,33 @@ def _wiki_summary(term: str, lang: str = "ko") -> str:
     return (data.get("extract") or "").strip()
 
 
+def _term_lang(term: str) -> str:
+    """Route by script — an English term on ko.wikipedia is a guaranteed 404 (the
+    holdout drain measured 7/20 fetch failures from exactly this)."""
+    return "ko" if any("가" <= ch <= "힣" for ch in term) else "en"
+
+
+def _wiki_summary(term: str, lang: str | None = None) -> str:
+    """Wikipedia first; Wiktionary as the fallback for dictionary-class words
+    (동적, 근본… live there, not in the encyclopedia). Same conservative extractor
+    downstream either way — a source change never loosens the honesty gate."""
+    lang = lang or _term_lang(term)
+    try:
+        extract = _rest_summary(f"{lang}.wikipedia.org", term)
+    except Exception:
+        extract = ""
+    if extract:
+        return extract
+    try:
+        return _rest_summary(f"{lang}.wiktionary.org", term)
+    except Exception:
+        return ""
+
+
 def _definition_sentences(term: str, extract: str) -> list[str]:
     sents = [s.strip() for s in re.split(r"(?<=다\.)\s+|(?<=[.?!])\s+", extract) if s.strip()]
-    return [s for s in sents[:3] if term in s]
+    tl = term.lower()
+    return [s for s in sents[:3] if term in s or tl in s.lower()]
 
 
 def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, int]:
