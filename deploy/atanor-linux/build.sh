@@ -67,7 +67,7 @@ EOF
     iproute2 iputils-ping systemd-resolved systemd-timesyncd \
     ca-certificates curl git sudo locales \
     python3 python3-venv python3-pip \
-    xorg xinit openbox tint2 jgmenu pcmanfm lxterminal firefox-esr \
+    cage xwayland xorg xinit openbox tint2 jgmenu pcmanfm lxterminal firefox-esr \
     libgl1-mesa-dri libegl-mesa0 \
     alsa-utils fonts-noto-cjk fonts-noto-color-emoji adwaita-icon-theme \
     xdotool x11-utils x11-xserver-utils wmctrl openssh-server"
@@ -132,6 +132,7 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/xsession" "$ROOTFS/etc/atanor/xsession"
   install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/tint2rc" "$ROOTFS/etc/atanor/tint2rc"
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/orb-window.sh" "$ROOTFS/usr/local/bin/atanor-orb-window"
+  install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/surface.sh" "$ROOTFS/usr/local/bin/atanor-surface"
   # firefox wallpaper (chromium renderer is broken on this minbase — measured)
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/wallpaper.sh" "$ROOTFS/usr/local/bin/atanor-orb-wallpaper"
   # start-corner launcher entry (tint2 launcher references it)
@@ -181,7 +182,7 @@ ProtectHome=read-only
 # ATANOR Linux: the machine boots into OUR desktop — openbox windows, tint2
 # taskbar, SPLATRA living wallpaper, resident orb. Ctrl+Alt+F2 stays a TTY.
 [Unit]
-Description=ATANOR desktop (own X session)
+Description=ATANOR pure surface (post-window desktop: cage, no WM anywhere)
 After=systemd-user-sessions.service atanor-web.service getty@tty1.service
 Wants=atanor-web.service
 # tty1 belongs to the desktop — without this, getty grabs the console and the
@@ -197,7 +198,7 @@ StandardOutput=journal
 UtmpIdentifier=tty1
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStartPre=/bin/sh -c 'mkdir -p /run/user/1000 && chown atanor:atanor /run/user/1000'
-ExecStart=/usr/bin/startx /etc/atanor/xsession -- :0 vt1 -keeptty -nolisten tcp
+ExecStart=/usr/bin/cage -s -- /usr/local/bin/atanor-surface
 Restart=always
 RestartSec=3
 
