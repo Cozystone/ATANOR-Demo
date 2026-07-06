@@ -67,16 +67,26 @@ EOF
     iproute2 iputils-ping systemd-resolved systemd-timesyncd \
     ca-certificates curl git sudo locales \
     python3 python3-venv python3-pip \
-    cage chromium xwayland \
-    libgl1-mesa-dri libegl-mesa0 mesa-vulkan-drivers \
+    xorg xinit openbox tint2 pcmanfm lxterminal chromium \
+    libgl1-mesa-dri libegl-mesa0 \
     alsa-utils fonts-noto-cjk fonts-noto-color-emoji \
-    xdotool x11-utils wlr-randr"
+    xdotool x11-utils x11-xserver-utils wmctrl"
   echo "== node 20 (web shell) =="
   # pipefail matters: if the nodesource setup fails, plain 'apt install nodejs' would
   # silently install Debian's node 18 (too old for Next 16) — fail loudly instead
   in_chroot "set -o pipefail && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs && node -v | grep -q '^v2[0-9]'"
-  echo "== identity =="
+  echo "== identity: this machine calls itself ATANOR Linux, kernel by Linux =="
   echo atanor > "$ROOTFS/etc/hostname"
+  cat > "$ROOTFS/etc/os-release" <<'EOF'
+PRETTY_NAME="ATANOR Linux 0.1"
+NAME="ATANOR Linux"
+VERSION_ID="0.1"
+VERSION="0.1 (own desktop on a plain Linux kernel; package base: Debian bookworm)"
+ID=atanor
+ID_LIKE=debian
+HOME_URL="https://atanor-liard.vercel.app"
+EOF
+  printf 'ATANOR Linux 0.1  \\n (\\l)\n\n' > "$ROOTFS/etc/issue"
   in_chroot "sed -i 's/^# *ko_KR.UTF-8/ko_KR.UTF-8/; s/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen"
   echo 'LANG=ko_KR.UTF-8' > "$ROOTFS/etc/default/locale"
   in_chroot "id -u atanor >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo,video,render,audio,input atanor"
@@ -102,15 +112,23 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
   # sibling-directory assumptions (that path broke the first image build)
   install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-environment/atanor-engine.service" "$ROOTFS/etc/systemd/system/atanor-engine.service"
   install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-environment/atanor-web.service" "$ROOTFS/etc/systemd/system/atanor-web.service"
-  cat > "$ROOTFS/etc/systemd/system/atanor-shell.service" <<'EOF'
-# ATANOR Linux: the screen belongs to the orb from boot. cage = one fullscreen
-# Wayland surface, GPU-composited, no DE underneath. Ctrl+Alt+F2 stays a TTY.
+  # ---- the ATANOR desktop: our own X session, Windows-like by design ----
+  mkdir -p "$ROOTFS/etc/atanor"
+  install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/xsession" "$ROOTFS/etc/atanor/xsession"
+  install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/tint2rc" "$ROOTFS/etc/atanor/tint2rc"
+  install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/orb-window.sh" "$ROOTFS/usr/local/bin/atanor-orb-window"
+  install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-environment/orb-wallpaper.sh" "$ROOTFS/usr/local/bin/atanor-orb-wallpaper"
+  # systemd session on tty1 needs the X wrapper to allow it
+  printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > "$ROOTFS/etc/X11/Xwrapper.config"
+  cat > "$ROOTFS/etc/systemd/system/atanor-desktop.service" <<'EOF'
+# ATANOR Linux: the machine boots into OUR desktop — openbox windows, tint2
+# taskbar, SPLATRA living wallpaper, resident orb. Ctrl+Alt+F2 stays a TTY.
 [Unit]
-Description=ATANOR shell (cage kiosk)
+Description=ATANOR desktop (own X session)
 After=systemd-user-sessions.service atanor-web.service getty@tty1.service
 Wants=atanor-web.service
-# tty1 belongs to the orb — without this, getty grabs the console and the
-# machine boots to a login prompt instead of the shell (first-boot lesson)
+# tty1 belongs to the desktop — without this, getty grabs the console and the
+# machine boots to a login prompt instead (first-boot lesson)
 Conflicts=getty@tty1.service
 
 [Service]
@@ -122,17 +140,14 @@ StandardOutput=journal
 UtmpIdentifier=tty1
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStartPre=/bin/sh -c 'mkdir -p /run/user/1000 && chown atanor:atanor /run/user/1000'
-ExecStartPre=/bin/sh -c 'until curl -sf http://127.0.0.1:3000/ >/dev/null; do sleep 1; done'
-ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk --ozone-platform=wayland \
-  --no-first-run --disable-session-crashed-bubble \
-  http://127.0.0.1:3000/shell?wallpaper=1
+ExecStart=/usr/bin/startx /etc/atanor/xsession -- :0 vt1 -keeptty -nolisten tcp
 Restart=always
 RestartSec=3
 
 [Install]
 WantedBy=graphical.target
 EOF
-  in_chroot "systemctl enable atanor-engine atanor-web atanor-shell systemd-resolved systemd-timesyncd && systemctl set-default graphical.target"
+  in_chroot "systemctl disable atanor-shell 2>/dev/null; rm -f /etc/systemd/system/atanor-shell.service; systemctl enable atanor-engine atanor-web atanor-desktop systemd-resolved systemd-timesyncd && systemctl set-default graphical.target"
   # DHCP on every wired interface — a USB-booted machine must just get online
   cat > "$ROOTFS/etc/systemd/network/20-wired.network" <<'EOF'
 [Match]
