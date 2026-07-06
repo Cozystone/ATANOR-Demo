@@ -55,3 +55,4 @@ checkpoints/
 data/cleaned/
 data/rejected/
 data/metadata/
+apps/landing/.vercel
