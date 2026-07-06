@@ -71,16 +71,43 @@ class DigitalLifeAdapter:
 
 
 class MiroFishAdapter:
-    def deliberate(self, topic: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    def deliberate(self, topic: str, evidence: list[dict[str, Any]],
+                   ledger_root: str | None = None) -> dict[str, Any]:
         try:
+            # Prefer the REAL multi-step loop grounded in the consensus-evidence
+            # ledger whenever one is reachable; the single-pass simulator remains the
+            # honest fallback and says so (loop_used=false).
+            root = ledger_root or self._default_ledger_root()
+            if root:
+                from packages.mirofish_deliberation.deliberation_loop import run_deliberation_loop
+
+                payload = run_deliberation_loop(topic, ledger_root=root).to_dict()
+                payload["loop_used"] = True
+                payload["ledger_root"] = str(root)
+                return payload
             from packages.mirofish_deliberation.models import DeliberationInput
             from packages.mirofish_deliberation.simulator import run_deliberation
 
             refs = [str(item.get("ref") or item.get("input_id") or item) for item in evidence] or ["selfhood_runtime_input"]
             result = run_deliberation(DeliberationInput(topic=topic, evidence_refs=refs))
-            return result.to_dict()
+            payload = result.to_dict()
+            payload["loop_used"] = False
+            return payload
         except Exception as exc:  # pragma: no cover
             return {"adapter_status": "deferred_import", "reason": str(exc), "requires_manual_approval": True}
+
+    @staticmethod
+    def _default_ledger_root() -> str | None:
+        """The continuous-learning candidate store's consensus ledger, when present."""
+        import os
+        from pathlib import Path
+
+        env = os.environ.get("ATANOR_CANDIDATE_STORE_PATH")
+        if env:
+            candidate = Path(env) / "consensus_ledger"
+            if candidate.is_dir():
+                return str(candidate)
+        return None
 
 
 class PromotionGateAdapter:

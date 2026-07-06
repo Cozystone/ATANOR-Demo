@@ -257,6 +257,31 @@ class ConsensusLedger:
         update_drift(self.root, result.promoted)  # CUSUM surge monitor (may trip freeze)
         return result
 
+    def evidence_for_label(self, label: str) -> dict[str, Any]:
+        """READ-ONLY aggregate evidence view for one subject label — the deliberation
+        loop's probe surface. Counts real ledger state (voices = Sybil-capped consensus
+        unit); never mutates, never promotes."""
+        label_l = (label or "").strip().lower()
+        relations: list[dict[str, Any]] = []
+        for key, slot in self._agg.items():
+            if str(slot.get("source_label") or "").strip().lower() != label_l:
+                continue
+            relations.append({
+                "key": key,
+                "relation": str((slot.get("row") or {}).get("relation") or ""),
+                "target": slot.get("target_label"),
+                "voices": len(slot.get("voices") or slot["sources"]),
+                "evidence": len(slot["sources"]),
+                "promoted": key in self._promoted,
+            })
+        return {
+            "label": label,
+            "distinct_relations": len(relations),
+            "max_voices": max((r["voices"] for r in relations), default=0),
+            "relations": relations,
+            "min_sources_required": self.min_sources,
+        }
+
     def stats(self) -> dict[str, Any]:
         def _n(v: dict[str, Any]) -> int:
             return len(v.get("voices") or v["sources"])
