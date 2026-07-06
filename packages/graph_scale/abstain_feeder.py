@@ -84,22 +84,24 @@ def _wiki_allowed() -> bool:
 
 
 def _tavily_definitions(term: str) -> list[str]:
-    """PRIMARY source lane: real web search (Tavily). Returns candidate
-    definitional sentences from the top results' cleaned content — the same
-    conservative extractor and judge gate run downstream, so a source change
-    never loosens honesty."""
+    """PRIMARY source lane: real web search — the search-API CASCADE (Tavily,
+    then the self-hosted SearXNG metasearch when Tavily is quota-dead; HTTP 432
+    measured live). Returns candidate definitional sentences from the top
+    results' cleaned content — the same conservative extractor and judge gate
+    run downstream, so a source change never loosens honesty."""
     import sys as _sys
     from pathlib import Path as _Path
 
     api_dir = str(_Path(__file__).resolve().parents[2] / "apps" / "api")
     if api_dir not in _sys.path:
         _sys.path.insert(0, api_dir)
-    from app.services.web_search import tavily_search  # noqa: E402
+    from app.services.web_search import searxng_search, tavily_search  # noqa: E402
 
     lang = _term_lang(term)
     q = f"{term}이란 무엇인가" if lang == "ko" else f"what is {term}"
+    rows = tavily_search(q, count=5) or searxng_search(q, count=6)
     sentences: list[str] = []
-    for row in tavily_search(q, count=5):
+    for row in rows:
         text = str(row.get("snippet") or row.get("content") or "")
         for s in re.split(r"(?<=다\.)\s+|(?<=[.?!])\s+", text):
             s = s.strip()
