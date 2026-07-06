@@ -74,6 +74,47 @@ def _wiki_summary(term: str, lang: str | None = None) -> str:
         return ""
 
 
+def _wiktionary_defs(term: str, lang: str) -> list[str]:
+    """Dictionary lane: wiktionary DEFINITIONS are '#' list items inside language
+    sections — invisible to the REST summary, whose lead is empty for most entries
+    (measured: 근본/심층/차체 EXIST on ko.wiktionary yet drained as no-definition).
+    Parses the wikitext, scopes to the 한국어 section when present, strips markup,
+    and returns gloss heads normalized exactly like the dump adapter."""
+    url = (f"https://{lang}.wiktionary.org/w/api.php?action=parse&prop=wikitext"
+           f"&format=json&page={urllib.parse.quote(term)}")
+    req = urllib.request.Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    text = ((data.get("parse") or {}).get("wikitext") or {}).get("*") or ""
+    if not text:
+        return []
+    # STRICT on-language section scoping: a wiktionary page stacks many languages'
+    # sections, and page-wide '#' lines asserted junk ('is defined_as she' came from
+    # another language's pronoun list). No on-language section => nothing to assert.
+    section = {"ko": "한국어", "en": "English"}.get(lang)
+    if section:
+        m = re.search(rf"^==\s*{section}\s*==\s*$(.*?)(?=^==[^=]|\Z)", text, re.M | re.S)
+        if not m:
+            return []
+        text = m.group(1)
+    heads: list[str] = []
+    for line in text.splitlines():
+        dm = re.match(r"^#\s*(?![:*#])(.+)$", line)
+        if not dm:
+            continue
+        gloss = dm.group(1)
+        gloss = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]|]+)\]\]", r"\1", gloss)   # [[a|b]] -> b
+        gloss = re.sub(r"\{\{[^}]*\}\}", "", gloss)                        # drop templates
+        gloss = gloss.replace("'''", "").replace("''", "").strip()
+        head = re.split(r"[,.;(]|이다|입니다|를 말한다|을 말한다", gloss, maxsplit=1)[0].strip()
+        head = re.sub(r"^(?:하나의|일종의|어떤)\s+", "", head)
+        if 2 <= len(head) <= 40 and head != term and head not in heads:
+            heads.append(head)
+        if len(heads) >= 3:
+            break
+    return heads
+
+
 def _definition_sentences(term: str, extract: str) -> list[str]:
     # sentence boundaries must ignore punctuation INSIDE parens: '동적(董赤, ?~…)은'
     # was split at the birth-year '?' and the definition never survived as one sentence.
@@ -142,6 +183,18 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
                         and re.search(r"\(\s*" + re.escape(term) + r"\s*[),]", s)
                         and (term, pred, obj) not in candidates):
                     candidates.append((term, pred, obj))
+        if not candidates:
+            # DICTIONARY lane (wikitext '#' senses) — same judge gate downstream.
+            try:
+                defs = _wiktionary_defs(term, lang)
+            except Exception:
+                defs = []
+            for head in defs:
+                trip = (term, "defined_as", head)
+                if trip not in candidates:
+                    candidates.append(trip)
+            if defs:
+                log(f"  {term}: wiktionary dictionary lane -> {len(defs)} sense(s)")
         if not candidates and saw_disambig:
             # SENSE EXPANSION: the disambiguation page asserts these senses. Ingest each
             # sense's own definition under the SENSE title, plus (term, alias, sense) —

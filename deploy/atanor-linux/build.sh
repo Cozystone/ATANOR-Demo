@@ -107,8 +107,11 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
 # Wayland surface, GPU-composited, no DE underneath. Ctrl+Alt+F2 stays a TTY.
 [Unit]
 Description=ATANOR shell (cage kiosk)
-After=systemd-user-sessions.service atanor-web.service
+After=systemd-user-sessions.service atanor-web.service getty@tty1.service
 Wants=atanor-web.service
+# tty1 belongs to the orb — without this, getty grabs the console and the
+# machine boots to a login prompt instead of the shell (first-boot lesson)
+Conflicts=getty@tty1.service
 
 [Service]
 User=atanor

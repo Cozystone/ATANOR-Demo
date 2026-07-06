@@ -118,11 +118,24 @@ def _conceptnet(path: Path) -> Iterator[tuple[str, str, str]]:
                 continue
             if sp[2] not in ("ko", "en") or op[2] not in ("ko", "en"):  # language filter
                 continue
-            try:  # cols[4] is the edge-metadata JSON; weight 1.0 = default asserted edge
-                if float(json.loads(cols[4]).get("weight", 1.0)) < 1.0:
-                    continue
+            try:  # cols[4] is the edge-metadata JSON; weight 1.0 = one assertion
+                w = float(json.loads(cols[4]).get("weight", 1.0))
             except Exception:
-                pass
+                w = 1.0
+            # per-relation evidence tiers: taxonomic/lexical edges (WordNet/OpenCyc-
+            # backed) are clean at 1.0, but OMCS commonsense edges at 1.0 carry
+            # crowd-parse junk ('is capable_of abbreviated to bbq') — those need
+            # multi-contributor agreement (>= 2.0). Same consensus principle as the
+            # k-source relation gate.
+            if rel in ("capable_of", "used_for", "has_property", "has_a",
+                       "causes", "has_subevent", "motivated_by", "is_a"):
+                # is_a joined the consensus tier: WordNet/OpenCyc-backed taxonomy
+                # carries weight >= 2.0, while single OMCS assertions at 1.0 are the
+                # junk class ('is is_a passive verb'). Measured, not guessed.
+                if w < 2.0:
+                    continue
+            elif w < 1.0:
+                continue
             s, o = sp[3], op[3]
             if s and o:
                 yield s.replace("_", " "), rel, o.replace("_", " ")
