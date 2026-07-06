@@ -98,8 +98,10 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
   in_chroot "chown -R atanor:atanor /opt/atanor && mkdir -p /var/lib/atanor && chown atanor:atanor /var/lib/atanor"
 
   echo "== services: engine + web + shell-on-tty1 (no display manager at all) =="
-  install -m 0644 "$(dirname "$0")/../atanor-environment/atanor-engine.service" "$ROOTFS/etc/systemd/system/atanor-engine.service"
-  install -m 0644 "$(dirname "$0")/../atanor-environment/atanor-web.service" "$ROOTFS/etc/systemd/system/atanor-web.service"
+  # source of truth is the repo ALREADY CLONED INSIDE the chroot — no host-side
+  # sibling-directory assumptions (that path broke the first image build)
+  install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-environment/atanor-engine.service" "$ROOTFS/etc/systemd/system/atanor-engine.service"
+  install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-environment/atanor-web.service" "$ROOTFS/etc/systemd/system/atanor-web.service"
   cat > "$ROOTFS/etc/systemd/system/atanor-shell.service" <<'EOF'
 # ATANOR Linux: the screen belongs to the orb from boot. cage = one fullscreen
 # Wayland surface, GPU-composited, no DE underneath. Ctrl+Alt+F2 stays a TTY.

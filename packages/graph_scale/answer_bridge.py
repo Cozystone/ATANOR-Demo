@@ -127,10 +127,20 @@ def _wanted_predicates(query: str) -> set[str]:
     return want
 
 
+# A static store must NEVER answer a question about the current moment — the word
+# 지금 having a dictionary definition does not make "지금 몇 시야?" answerable from
+# curated triples. Intent-level guard, not a knowledge table.
+_REALTIME_MARKERS = ("지금", "현재", "오늘", "내일", "실시간", "최신", "요즘", "몇 시", "몇시",
+                     "날씨", "주가", "시세", "가격", "얼마", "now", "today", "current", "latest")
+
+
 def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | None:
     """Look up a stored fact that answers the query. Returns {answer, reasoning_certificate,
     confidence} or None when the store can't answer it (empty store, no subject match, or
     the relation intent isn't present)."""
+    ql = query.lower()
+    if any(m in ql for m in _REALTIME_MARKERS):
+        return None  # real-time intent — the honest realtime abstain must stand
     store = _store()
     if store is None or len(store) == 0:
         return None
@@ -150,6 +160,15 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
             pass
     for subj in _subject_candidates(query):
         facts = store.facts_about(subj, limit=12)
+        if language == "ko" and re.search(r"[가-힣]", subj):
+            # language-appropriate grounding: a Korean word must not be "defined"
+            # by a bare foreign gloss ("원래는 originally입니다" reads as a wrong
+            # answer, and the honesty battery rightly flags it). Keep definitional
+            # facts only when the object speaks Korean; relation facts (capital,
+            # located_in, ...) are entity-valued and stay. Nothing left => the
+            # honest move is abstention, and the gap feeds the ingest queue.
+            facts = [(s, p, o) for (s, p, o) in facts
+                     if re.search(r"[가-힣]", o) or p not in ("defined_as", "is_a")]
         if not facts:
             continue
         # prefer a fact whose predicate matches the query's relation intent
