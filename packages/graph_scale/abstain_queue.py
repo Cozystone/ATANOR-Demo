@@ -78,7 +78,11 @@ def record_abstain(query: str) -> list[str]:
         existing = _load()
         added: list[str] = []
         for term in _terms(query):
-            if term not in existing:
+            rec = existing.get(term)
+            # a FAILED term is retryable: the extractor/source router improves over time,
+            # and 'no definition last month' must not become 'never ask again'. Only a
+            # successful ingest (or an in-flight pending) blocks re-queueing.
+            if rec is None or rec.get("status") in ("no_definition", "fetch_failed"):
                 _append({"term": term, "status": "pending", "query": query[:120],
                          "ts": time.strftime("%Y-%m-%dT%H:%M:%S")})
                 added.append(term)

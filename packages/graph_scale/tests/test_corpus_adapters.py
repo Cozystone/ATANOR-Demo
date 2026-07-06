@@ -22,7 +22,8 @@ def test_korean_definition_extracts_is_a():
 
 
 def test_english_definition():
-    assert extract_definition_triple("A dog is a mammal") == ("A dog", "is_a", "mammal")
+    # leading article is consumed now: "dog" is the canonical lookup key, "A dog" never was
+    assert extract_definition_triple("A dog is a mammal") == ("dog", "is_a", "mammal")
 
 
 def test_non_definition_yields_nothing():
@@ -73,3 +74,25 @@ def test_sentence_store_separate_from_facts():
     assert (root / "sentences.jsonl").exists()
     # reopening counts persisted lines
     assert len(SentenceStore(root)) == 2
+
+
+def test_en_field_adverbial_and_process_frame_recall():
+    from packages.graph_scale.corpus_adapters import extract_definition_triple as x
+    assert x("In botany, a fruit is the seed-bearing structure in flowering plants.") == (
+        "fruit", "is_a", "seed-bearing structure in flowering plants")
+    s, p, o = x("Automated machine learning is the process of automating the tasks of applying machine learning to real-world problems.")
+    assert s == "Automated machine learning" and p == "is_a"  # article guard: subject NOT clipped
+
+
+def test_ko_relative_clause_object_and_garikinda_ending():
+    from packages.graph_scale.corpus_adapters import extract_definition_triple as x
+    assert x("성남시(城南市)는 경기도 중앙에 있는 시이다.") == ("성남시", "defined_as", "경기도 중앙에 있는 시")
+    assert x("기획은 어떤 일을 도모하고 그 일의 절차를 구상하는 것을 가리킨다.") == (
+        "기획", "defined_as", "어떤 일을 도모하고 그 일의 절차를 구상하는 것")
+
+
+def test_precision_guards_hold_after_recall_expansion():
+    from packages.graph_scale.corpus_adapters import extract_definition_triple as x
+    assert x("그는 어제 학교에 갔다.") is None            # past tense stays out
+    assert x("He is a teacher.") is None                   # stop-subject stays out
+    assert x("In 1999, the company was a startup, and it grew.") is None  # comma clause stays out
