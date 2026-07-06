@@ -60,6 +60,18 @@ _ALGEBRA_PREDS = {p for pair in _COMPOSE for p in pair} | set(_CHAIN_PREDS)
 # properties a taxonomy ladder may inherit (terminal edges — they never compose further)
 _INHERITABLE = ("capable_of", "has_property", "has_part", "used_for")
 
+
+def _fa(facts_about: Callable[..., list[tuple[str, str, str]]], node: str,
+        preds: tuple[str, ...], limit: int = 64) -> list[tuple[str, str, str]]:
+    """Predicate-aware fetch with plain-callable fallback. At millions of rows a
+    predicate-blind scan returns whatever relation floods the store first
+    (measured at 5.8M: located_in buried is_a) — walkers must name what they walk.
+    Test doubles are plain lambdas; they get the unfiltered call."""
+    try:
+        return facts_about(node, limit=limit, preds=preds)
+    except TypeError:
+        return facts_about(node)
+
 # per-predicate Korean clause forms: (mid-sentence, final). All grounded labels verbatim.
 _PRED_CLAUSE: dict[str, tuple[str, str]] = {
     "is_a": ("{s}{neun} {o}의 일종이고", "{s}{neun} {o}의 일종입니다"),
@@ -170,7 +182,7 @@ def reason_chain(start: str, facts_about: Callable[[str], list[tuple[str, str, s
 
     def neighbors(node: str):
         outs = []
-        for (s, p, o) in facts_about(node):
+        for (s, p, o) in _fa(facts_about, node, (predicate,)):
             if p == predicate and o != node and o not in depth:
                 depth[o] = depth[node] + 1
                 edge_into[o] = (s, p, o)
@@ -207,11 +219,18 @@ def _gloss_hops(node: str, facts_about: Callable[[str], list[tuple[str, str, str
     if not re.search(r"[가-힣]", node):
         return []
     try:
-        edges = facts_about(node)
+        edges = _fa(facts_about, node, ("defined_as", "alias"))
     except Exception:
         return []
-    return [(s, p, o) for (s, p, o) in edges
+    hops = [(s, p, o) for (s, p, o) in edges
             if p in ("defined_as", "alias") and _GLOSS_RE.match(o)]
+    # polysemy gate: 돌 glosses to BOTH 'stone' and 'anniversary' (첫돌) — with
+    # more than one distinct gloss the identity is ambiguous, and hopping picked
+    # the wrong sense (measured: '돌은 동물인가?' -> 네 via anniversary→junk).
+    # One gloss = one identity; anything else stays silent.
+    if len({o.lower() for _s, _p, o in hops}) != 1:
+        return []
+    return hops[:1]
 
 
 def _gloss_targets(target: str,
@@ -222,7 +241,8 @@ def _gloss_targets(target: str,
 
 def find_path(start: str, target: str,
               facts_about: Callable[[str], list[tuple[str, str, str]]],
-              max_depth: int = 4, max_nodes: int = 2048
+              max_depth: int = 5, max_nodes: int = 4096,
+              taxonomy_only: bool = False
               ) -> tuple[list[tuple[str, str, str]], str | None] | None:
     """BFS from start toward target over algebra predicates, tracking the COMPOSED
     relation. A hop whose composition is undefined prunes (soundness over reach).
@@ -248,12 +268,13 @@ def find_path(start: str, target: str,
         node, rel, chain = queue.popleft()
         if len(chain) >= max_depth or len(seen) >= max_nodes:
             continue
+        walk_preds = ("is_a", "subclass_of") if taxonomy_only else tuple(_ALGEBRA_PREDS)
         try:
-            edges = sorted(facts_about(node))
+            edges = sorted(_fa(facts_about, node, walk_preds))
         except Exception:
             continue
         for (s, p, o) in edges:
-            if p not in _ALGEBRA_PREDS or o == node:
+            if p not in walk_preds or o == node:
                 continue
             nrel = p if rel is None else _COMPOSE.get((rel, p))
             if nrel is None:
@@ -281,7 +302,7 @@ def _taxonomy_ladder(start: str,
         if len(chain) >= max_depth or len(seen) >= max_nodes:
             continue
         try:
-            edges = sorted(facts_about(node))
+            edges = sorted(_fa(facts_about, node, ("is_a", "subclass_of")))
         except Exception:
             continue
         for (s, p, o) in edges:
@@ -327,7 +348,7 @@ def inherited_facts(start: str,
     while frontier:
         node, chain = frontier.pop(0)
         try:
-            edges = sorted(facts_about(node))
+            edges = sorted(_fa(facts_about, node, tuple(preds) + ("is_a", "subclass_of")))
         except Exception:
             continue
         for (s, p, o) in edges:
@@ -407,12 +428,16 @@ def answer_relationship(query: str, facts_about: Callable[[str], list[tuple[str,
         for subj in subjects:
             r = reason_chain(subj, facts_about, "is_a")
             if r and len(r.chain) >= 2:
-                return _payload(r.to_answer_ko(), r.start, r.chain,
-                                "ultimate_ancestor", r.predicate, 0.86)
+                chain = r.chain[:3]
+                r2 = ChainResult(start=r.start, conclusion=chain[-1][2],
+                                 predicate=r.predicate, chain=chain,
+                                 local_minimum=r.local_minimum)
+                return _payload(r2.to_answer_ko(), r2.start, chain,
+                                "ultimate_ancestor", r2.predicate, 0.86)
             for gloss_edge in _gloss_hops(subj, facts_about):
                 rg = reason_chain(gloss_edge[2], facts_about, "is_a")
                 if rg and len(rg.chain) >= 2:
-                    full = [gloss_edge] + rg.chain
+                    full = [gloss_edge] + rg.chain[:3]
                     ans = _verbalize_path(full, "is_a", subj)
                     return _payload(ans, subj, full, "ultimate_ancestor", "is_a", 0.84)
         return None
@@ -424,7 +449,7 @@ def answer_relationship(query: str, facts_about: Callable[[str], list[tuple[str,
         if target and target not in _Q_WORDS and not any(w in target for w in _Q_WORDS):
             starts = [_strip_josa(m.group(1))] + [s for s in subjects if s != target]
             for start in dict.fromkeys(s for s in starts if s and s != target):
-                found = find_path(start, target, facts_about)
+                found = find_path(start, target, facts_about, taxonomy_only=True)
                 if found:
                     chain, composed = found
                     ans = _verbalize_path(chain, composed, start, prefix="네 — ",

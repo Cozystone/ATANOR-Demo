@@ -234,8 +234,12 @@ class TripleStore:
             self._tombstones_sig = sig
         return self._tombstones_cache
 
-    def _facts_about_raw(self, subject: str, limit: int = 20) -> list[tuple[str, str, str]]:
-        """All stored (s, p, o) with this subject — a bounded memmap scan, no full load."""
+    def _facts_about_raw(self, subject: str, limit: int = 20,
+                         preds: tuple[str, ...] | None = None) -> list[tuple[str, str, str]]:
+        """All stored (s, p, o) with this subject — a bounded memmap scan, no full load.
+        `preds` filters BY PREDICATE BEFORE the limit: at millions of rows a subject's
+        first N edges are whatever relation floods the store (measured: derived
+        located_in buried is_a for 'dog'), so relation-seeking callers must say so."""
         self.flush()
         sid = self.terms.lookup(subject)
         if sid is None and subject != subject.lower():
@@ -249,13 +253,21 @@ class TripleStore:
         out: list[tuple[str, str, str]] = []
         s, p, o = cols["s"], cols["p"], cols["o"]
         idx = np.nonzero(s == sid)[0] if len(s) else []
+        if preds is not None and len(idx):
+            pids = [self.terms.lookup(x) for x in preds]
+            pids_arr = np.array([x for x in pids if x is not None], dtype=p.dtype)
+            if len(pids_arr) == 0:
+                return []
+            idx = idx[np.isin(p[idx], pids_arr)]
         for i in idx[:limit]:
             out.append((subject, self.terms.term(int(p[i])), self.terms.term(int(o[i]))))
         return out
 
-    def facts_about(self, subject: str, limit: int = 20) -> list[tuple[str, str, str]]:
+    def facts_about(self, subject: str, limit: int = 20,
+                    preds: tuple[str, ...] | None = None) -> list[tuple[str, str, str]]:
         tomb = self._tombstones()
-        return [f for f in self._facts_about_raw(subject, limit=limit) if f not in tomb]
+        return [f for f in self._facts_about_raw(subject, limit=limit, preds=preds)
+                if f not in tomb]
 
     def disk_bytes(self) -> int:
         total = 0
