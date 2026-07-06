@@ -67,7 +67,7 @@ EOF
     iproute2 iputils-ping systemd-resolved systemd-timesyncd \
     ca-certificates curl git sudo locales \
     python3 python3-venv python3-pip \
-    xorg xinit openbox tint2 pcmanfm lxterminal chromium \
+    xorg xinit openbox tint2 pcmanfm lxterminal firefox-esr \
     libgl1-mesa-dri libegl-mesa0 \
     alsa-utils fonts-noto-cjk fonts-noto-color-emoji \
     xdotool x11-utils x11-xserver-utils wmctrl openssh-server"
@@ -132,14 +132,15 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/xsession" "$ROOTFS/etc/atanor/xsession"
   install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/tint2rc" "$ROOTFS/etc/atanor/tint2rc"
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/orb-window.sh" "$ROOTFS/usr/local/bin/atanor-orb-window"
-  install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-environment/orb-wallpaper.sh" "$ROOTFS/usr/local/bin/atanor-orb-wallpaper"
+  # firefox wallpaper (chromium renderer is broken on this minbase — measured)
+  install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/wallpaper.sh" "$ROOTFS/usr/local/bin/atanor-orb-wallpaper"
   # start-corner launcher entry (tint2 launcher references it)
   cat > "$ROOTFS/usr/share/applications/atanor-dashboard.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=ATANOR
 Comment=Dashboard (full panels)
-Exec=chromium --app=http://127.0.0.1:3000
+Exec=firefox-esr --new-instance --profile /tmp/ffdash http://127.0.0.1:3000
 Icon=chromium
 Categories=Utility;
 EOF
