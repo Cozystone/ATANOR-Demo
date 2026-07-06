@@ -191,6 +191,8 @@
 
   /* atlas + dual brain stages */
   .stage { position: relative; margin-top: 70px; }
+  #cloudreal { position: absolute; right: 3%; top: 50%; transform: translateY(-50%);
+    width: min(60vh, 46vw); height: min(60vh, 46vw); pointer-events: none; }
   #globe3d, #dualbrain { width: 100%; height: min(74vh, 660px); display: block; }
   .stage .cap { position: absolute; left: 0; bottom: 8px; font-size: 10.5px; letter-spacing: .2em;
     color: rgba(255,255,255,.32); text-transform: uppercase; }
@@ -496,7 +498,10 @@
       <p class="lead" data-i18n="b_lead">Yours stays yours. The shared one grows toward trillion-node scale — and private data never crosses.</p>
     </div>
     <div class="stage reveal">
-      <canvas id="dualbrain"></canvas>
+      <div style="position:relative">
+        <canvas id="dualbrain"></canvas>
+        <div id="cloudreal" aria-hidden="true"></div>
+      </div>
       <span class="cap" data-i18n="b_cap">Conceptual scale — the trillion-node Cloud Brain is the design target, and we publish real counts in-app</span>
     </div>
   </div>
@@ -736,72 +741,342 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
   });
 })();
 
-/* ================= MIND ORB: the app's breathing particle sphere (Siri-of-ours) ========= */
+/* ================= MIND ORB: the app's HologramVoiceOrb, ported VERBATIM =================
+   Source: apps/web/app/HologramVoiceOrb.tsx — identical geometry builders, palette,
+   material constants, morph timing, drag behaviour. Only the React wrapper is stripped
+   and density is fixed at 0.35 (the app's own density knob) for the landing. */
 (() => {
-  // The Ultimate orb (owner reference): a dark particle SHELL, luminous cyan/violet
-  // ribbons flowing inside, and a bright white core — not the flat orange ball.
-  const cv = document.getElementById("orb"), ctx = cv.getContext("2d");
-  let w, h, dpr; const SHELL = [];
-  const RIBBONS = [
-    { a: 2, b: 3, c: 1, ph: 0.0, hue: "126,224,232" },   // cyan
-    { a: 3, b: 2, c: 2, ph: 1.7, hue: "176,127,232" },   // violet
-    { a: 1, b: 4, c: 3, ph: 3.9, hue: "150,180,236" },   // blue-mix
-  ];
-  function resize() {
-    dpr = Math.min(devicePixelRatio || 1, 2);
-    w = cv.clientWidth; h = cv.clientHeight;
-    cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    SHELL.length = 0;
-    for (let i = 0; i < 2100; i++) {
-      const th = Math.random() * 6.283, ph = Math.acos(2 * Math.random() - 1);
-      SHELL.push({ th, ph, tw: Math.random() * 6.283 });
-    }
+  const host = document.querySelector(".orbwrap");
+  const oldCv = document.getElementById("orb");
+  if (!host || typeof THREE === "undefined") return;
+  if (oldCv) oldCv.remove();
+
+  const RIBBON_PARTICLES = 24000, SHELL_PARTICLES = 14000, AURA_PARTICLES = 5200;
+  const SHAPE_COUNT = 7;
+  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+  const PALETTE = [new THREE.Color("#20f4ff"), new THREE.Color("#3aa8ff"),
+                   new THREE.Color("#bd6dff"), new THREE.Color("#ff4f9d")];
+  const fract = (v) => v - Math.floor(v);
+  const seeded = (i, salt = 0) => fract(Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453123);
+
+  function siriRibbonPoint(shape, t, seed) {
+    const band = Math.floor(seed * 4);
+    const local = fract(seed * 4);
+    const phase = shape * 0.58 + band * 1.72 + local * 0.8;
+    const angle = t * Math.PI * (2.2 + band * 0.18) + phase;
+    const ribbonWidth = (local - 0.5) * (0.26 + Math.sin(angle + shape) * 0.045);
+    const radius = 1.04 + Math.sin(angle * 1.7 + phase) * 0.2 + Math.cos(angle * 0.67 + shape) * 0.05;
+    const squash = 0.48 + band * 0.06;
+    const x = Math.cos(angle + Math.sin(angle * 0.73 + phase) * 0.32) * radius;
+    const z = Math.sin(angle + Math.cos(angle * 0.82 + phase) * 0.22) * radius * squash;
+    const y = Math.sin(angle * 1.05 + phase) * (0.48 - band * 0.035) + ribbonWidth;
+    const point = new THREE.Vector3(x, y, z);
+    point.applyAxisAngle(new THREE.Vector3(0, 0, 1), -0.58 + band * 0.34 + Math.sin(shape * 0.9) * 0.1);
+    point.applyAxisAngle(new THREE.Vector3(1, 0, 0), 0.38 + Math.cos(shape * 0.7) * 0.18);
+    point.multiplyScalar(1.08);
+    return point;
   }
-  resize(); addEventListener("resize", resize);
-  let t = 0, raf;
-  function frame() {
-    ctx.clearRect(0, 0, w, h);
-    const R0 = Math.min(w, h) * 0.36, cx = w / 2, cy = h / 2;
-    const rotY = t * 0.1;
-    // 1) dark speckled shell — tiny dim particles on the sphere surface
-    for (const p of SHELL) {
-      const th = p.th + rotY;
-      const x3 = Math.sin(p.ph) * Math.cos(th), y3 = Math.cos(p.ph), z3 = Math.sin(p.ph) * Math.sin(th);
-      const px = cx + x3 * R0, py = cy + y3 * R0;
-      const depth = (z3 + 1) / 2;
-      const a = (0.05 + depth * 0.16) * (0.75 + 0.25 * Math.sin(t * 1.6 + p.tw));
-      ctx.beginPath(); ctx.arc(px, py, 0.5 + depth * 0.7, 0, 6.2832);
-      ctx.fillStyle = `rgba(205,214,226,${a})`; ctx.fill();
-    }
-    // 2) flowing ribbons inside (lissajous loops, particle trails with a bright head)
-    for (const rb of RIBBONS) {
-      const N = 130, drift = t * 0.55 + rb.ph;
-      for (let i = 0; i < N; i++) {
-        const u = i / N * 6.283 + drift;
-        let x3 = Math.sin(rb.a * u + rb.ph), y3 = Math.sin(rb.b * u), z3 = Math.cos(rb.c * u + rb.ph * 0.5);
-        const thR = rotY * 0.6;
-        const xr = x3 * Math.cos(thR) - z3 * Math.sin(thR), zr = x3 * Math.sin(thR) + z3 * Math.cos(thR);
-        const r = R0 * 0.55;
-        const px = cx + xr * r, py = cy + y3 * r * 0.9;
-        const depth = (zr + 1) / 2;
-        const head = i / N;                       // brighter toward the trail head
-        const a = (0.1 + depth * 0.5) * (0.3 + 0.7 * head * head);
-        ctx.beginPath(); ctx.arc(px, py, 0.8 + depth * 1.6 + head * 1.0, 0, 6.2832);
-        ctx.fillStyle = `rgba(${rb.hue},${a})`; ctx.fill();
+
+  function buildRibbonGeometry(ribbonCount) {
+    const positions = new Float32Array(ribbonCount * 3);
+    const colors = new Float32Array(ribbonCount * 3);
+    const morphs = Array.from({ length: SHAPE_COUNT }, () => new Float32Array(ribbonCount * 3));
+    for (let i = 0; i < ribbonCount; i += 1) {
+      const t = i / ribbonCount;
+      const seed = seeded(i);
+      const band = Math.min(2, Math.floor(seed * 3));
+      const color = PALETTE[band].clone().lerp(PALETTE[band + 1], 0.18 + seeded(i, 4) * 0.32);
+      colors[i * 3] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
+      for (let shape = 0; shape < SHAPE_COUNT; shape += 1) {
+        const point = siriRibbonPoint(shape, t, seed);
+        morphs[shape][i * 3] = point.x;
+        morphs[shape][i * 3 + 1] = point.y;
+        morphs[shape][i * 3 + 2] = point.z;
       }
+      positions[i * 3] = morphs[0][i * 3];
+      positions[i * 3 + 1] = morphs[0][i * 3 + 1];
+      positions[i * 3 + 2] = morphs[0][i * 3 + 2];
     }
-    // 3) bright white core + soft halo
-    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R0 * 0.34);
-    g.addColorStop(0, "rgba(255,255,255,.92)"); g.addColorStop(0.18, "rgba(240,246,255,.5)");
-    g.addColorStop(0.5, "rgba(190,210,240,.10)"); g.addColorStop(1, "rgba(190,210,240,0)");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R0 * 0.34, 0, 6.2832); ctx.fill();
-    t += 0.016;
-    if (!REDUCED) raf = requestAnimationFrame(frame);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return { geometry, morphs };
   }
-  frame();
-  document.addEventListener("visibilitychange", () => {
-    if (!REDUCED) { cancelAnimationFrame(raf); if (!document.hidden) frame(); }
+
+  function buildShellGeometry(count, radius, opacityBias = 0) {
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const rim = new THREE.Color("#5ee7ff");
+    const glass = new THREE.Color("#dcecff");
+    const violet = new THREE.Color("#6557ff");
+    for (let i = 0; i < count; i += 1) {
+      const t = (i + 0.5) / count;
+      const theta = i * GOLDEN_ANGLE;
+      const y = 1 - 2 * t;
+      const ring = Math.sqrt(Math.max(0, 1 - y * y));
+      const wobble = Math.sin(theta * 1.7 + i * 0.003) * 0.01;
+      const r = radius + wobble;
+      const x = Math.cos(theta) * ring * r;
+      const z = Math.sin(theta) * ring * r;
+      positions[i * 3] = x; positions[i * 3 + 1] = y * r; positions[i * 3 + 2] = z;
+      const rimWeight = Math.min(1, Math.pow(Math.abs(x) / r, 2.2) + Math.pow(Math.abs(y) / r, 3) * 0.35 + opacityBias);
+      const color = glass.clone().lerp(rim, rimWeight * 0.65).lerp(violet, Math.max(0, z / r) * 0.22);
+      colors[i * 3] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return geometry;
+  }
+
+  function buildAuraGeometry(auraCount) {
+    const positions = new Float32Array(auraCount * 3);
+    const colors = new Float32Array(auraCount * 3);
+    const cyan = new THREE.Color("#18e8ff");
+    const rose = new THREE.Color("#ff3d85");
+    for (let i = 0; i < auraCount; i += 1) {
+      const u = seeded(i, 2), v = seeded(i, 3);
+      const theta = Math.PI * 2 * u;
+      const phi = Math.acos(2 * v - 1);
+      const r = 1.96 + seeded(i, 8) * 0.5;
+      positions[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
+      positions[i * 3 + 1] = Math.cos(phi) * r;
+      positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
+      const color = cyan.clone().lerp(rose, seeded(i, 5) * 0.35);
+      colors[i * 3] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return geometry;
+  }
+
+  const d = 0.35;
+  const ribbonCount = Math.max(4200, Math.round(RIBBON_PARTICLES * d));
+  const shellCount = Math.max(2600, Math.round(SHELL_PARTICLES * d));
+  const auraCount = Math.max(1100, Math.round(AURA_PARTICLES * d));
+  const coreCount = Math.max(600, Math.round(1800 * d));
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  camera.position.set(0, 0, 7.2);
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x000000, 0);
+  renderer.domElement.style.cssText = "width:100%;height:min(52vh,440px);display:block;cursor:grab";
+  host.appendChild(renderer.domElement);
+
+  const root = new THREE.Group();
+  scene.add(root);
+  const aura = new THREE.Points(buildAuraGeometry(auraCount), new THREE.PointsMaterial({
+    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.11, size: 0.024,
+    sizeAttenuation: true, transparent: true, vertexColors: true }));
+  root.add(aura);
+  const shell = new THREE.Points(buildShellGeometry(shellCount, 1.72, 0.06), new THREE.PointsMaterial({
+    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.24, size: 0.01,
+    sizeAttenuation: true, transparent: true, vertexColors: true }));
+  root.add(shell);
+  const rim = new THREE.Points(buildShellGeometry(Math.floor(shellCount * 0.38), 1.76, 0.15), new THREE.PointsMaterial({
+    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.3, size: 0.014,
+    sizeAttenuation: true, transparent: true, vertexColors: true }));
+  root.add(rim);
+  const built = buildRibbonGeometry(ribbonCount);
+  const ribbonGeometry = built.geometry, morphs = built.morphs;
+  const ribbons = new THREE.Points(ribbonGeometry, new THREE.PointsMaterial({
+    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.92, size: 0.027,
+    sizeAttenuation: true, transparent: true, vertexColors: true }));
+  root.add(ribbons);
+  const core = new THREE.Points(buildShellGeometry(coreCount, 0.16, 0.5), new THREE.PointsMaterial({
+    blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.72, size: 0.042,
+    sizeAttenuation: true, transparent: true, vertexColors: true }));
+  root.add(core);
+
+  const clock = new THREE.Clock();
+  const targetRotation = { x: -0.08, y: 0.22 };
+  const currentRotation = { x: -0.08, y: 0.22 };
+  const pointer = { active: false, x: 0, y: 0 };
+  let activeShape = 0, nextShape = 1, morphStart = 0, lastMorphAt = -1;
+  const MORPH_MIN_INTERVAL = 1 / 33;
+
+  function resize() {
+    const rect = host.getBoundingClientRect();
+    const width = Math.max(320, rect.width || 900);
+    const height = Math.max(320, Math.min(window.innerHeight * 0.52, 440));
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.position.z = width > height ? 6.4 : 7.2;
+    camera.updateProjectionMatrix();
+  }
+
+  function updateRibbonMorph(elapsed) {
+    if (elapsed - morphStart > 4.4) {
+      activeShape = nextShape;
+      nextShape = (nextShape + 1 + Math.floor(elapsed) % (SHAPE_COUNT - 1)) % SHAPE_COUNT;
+      if (nextShape === activeShape) nextShape = (nextShape + 1) % SHAPE_COUNT;
+      morphStart = elapsed;
+    }
+    const morphT = Math.min(1, Math.max(0, (elapsed - morphStart) / 1.85));
+    const ease = morphT * morphT * (3 - 2 * morphT);
+    const positions = ribbonGeometry.getAttribute("position");
+    const from = morphs[activeShape], to = morphs[nextShape];
+    const fluid = Math.sin(elapsed * 1.6) * 0.028;
+    for (let i = 0; i < ribbonCount * 3; i += 3) {
+      const wave = Math.sin(elapsed * 1.35 + i * 0.0009) * fluid;
+      positions.array[i] = from[i] + (to[i] - from[i]) * ease;
+      positions.array[i + 1] = from[i + 1] + (to[i + 1] - from[i + 1]) * ease + wave;
+      positions.array[i + 2] = from[i + 2] + (to[i + 2] - from[i + 2]) * ease;
+    }
+    positions.needsUpdate = true;
+  }
+
+  function renderFrame() {
+    const elapsed = clock.getElapsedTime();
+    if (lastMorphAt < 0 || elapsed - lastMorphAt >= MORPH_MIN_INTERVAL) {
+      updateRibbonMorph(elapsed);
+      lastMorphAt = elapsed;
+    }
+    targetRotation.y += 0.0018;
+    currentRotation.x += (targetRotation.x - currentRotation.x) * 0.055;
+    currentRotation.y += (targetRotation.y - currentRotation.y) * 0.055;
+    root.rotation.x = currentRotation.x + Math.sin(elapsed * 0.23) * 0.025;
+    root.rotation.y = currentRotation.y;
+    root.rotation.z = Math.sin(elapsed * 0.31) * 0.05;
+    const breath = 1 + Math.sin(elapsed * 1.04) * 0.018;
+    root.scale.setScalar(breath);
+    ribbons.rotation.y = elapsed * 0.12;
+    shell.rotation.y = -elapsed * 0.035;
+    rim.rotation.y = elapsed * 0.052;
+    aura.rotation.y = -elapsed * 0.018;
+    core.rotation.y = elapsed * 0.4;
+    renderer.render(scene, camera);
+    if (!REDUCED) requestAnimationFrame(renderFrame);
+  }
+
+  renderer.domElement.addEventListener("pointerdown", (e) => {
+    pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY;
+    renderer.domElement.setPointerCapture(e.pointerId);
   });
+  renderer.domElement.addEventListener("pointermove", (e) => {
+    if (!pointer.active) return;
+    targetRotation.y += (e.clientX - pointer.x) * 0.006;
+    targetRotation.x += (e.clientY - pointer.y) * 0.004;
+    targetRotation.x = Math.max(-0.72, Math.min(0.72, targetRotation.x));
+    pointer.x = e.clientX; pointer.y = e.clientY;
+  });
+  const release = (e) => { pointer.active = false; try { renderer.domElement.releasePointerCapture(e.pointerId); } catch {} };
+  renderer.domElement.addEventListener("pointerup", release);
+  renderer.domElement.addEventListener("pointercancel", release);
+
+  resize();
+  addEventListener("resize", resize);
+  renderFrame();
+})();
+
+/* ============ CLOUD BRAIN: the app's CloudBrainSphereScene, ported VERBATIM ============
+   Source: apps/web/app/CloudBrainSphereScene.tsx — same fibonacci shellPoint, dot
+   texture, material constants (#55708f shell / #ffb43d nodes / #f8fbff edges),
+   rotation 0.0018/frame, camera 42°/3.1. Fed by a REAL captured candidate-graph
+   snapshot (assets/cloud_graph_snapshot.json, 1200 nodes/115 edges from the live
+   store) laid out exactly like the app's candidate fallback path. The live "fresh
+   frontier" layer is omitted here: the landing has no live learning feed, and we
+   do not fake one. */
+(() => {
+  const hostEl = document.getElementById("cloudreal");
+  if (!hostEl || typeof THREE === "undefined") return;
+
+  function shellPoint(index, total, radius) {
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const y = 1 - (index / Math.max(1, total - 1)) * 2;
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = golden * index;
+    return new THREE.Vector3(Math.cos(theta) * r * radius, y * radius, Math.sin(theta) * r * radius);
+  }
+
+  function sceneDotTexture() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.35, "rgba(255,255,255,0.82)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.domElement.style.cssText = "width:100%;height:100%;display:block";
+  hostEl.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  camera.position.set(0, 0, 3.1);
+
+  const shellGeometry = new THREE.BufferGeometry();
+  const shellCount = 1800;
+  const shellPositions = new Float32Array(shellCount * 3);
+  for (let index = 0; index < shellCount; index += 1) {
+    const point = shellPoint(index, shellCount, 1.08);
+    shellPositions[index * 3] = point.x;
+    shellPositions[index * 3 + 1] = point.y;
+    shellPositions[index * 3 + 2] = point.z;
+  }
+  shellGeometry.setAttribute("position", new THREE.BufferAttribute(shellPositions, 3));
+  const shell = new THREE.Points(shellGeometry, new THREE.PointsMaterial({
+    color: new THREE.Color("#55708f"), opacity: 0.18, transparent: true, size: 0.008,
+    blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(shell);
+
+  const nodes = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({
+    color: new THREE.Color("#ffb43d"), map: sceneDotTexture(), alphaTest: 0.01, opacity: 0.95,
+    transparent: true, size: 0.03, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(nodes);
+
+  const edges = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({
+    color: new THREE.Color("#f8fbff"), opacity: 0.2, transparent: true,
+    blending: THREE.AdditiveBlending }));
+  scene.add(edges);
+
+  fetch("assets/cloud_graph_snapshot.json").then((r) => r.json()).then((data) => {
+    const rawNodes = Array.isArray(data.nodes) ? data.nodes : [];
+    const rawEdges = Array.isArray(data.edges) ? data.edges : [];
+    const posMap = new Map();
+    const np = new Float32Array(rawNodes.length * 3);
+    rawNodes.forEach((node, index) => {
+      const p = shellPoint(index, rawNodes.length, 1.0);
+      np[index * 3] = p.x; np[index * 3 + 1] = p.y; np[index * 3 + 2] = p.z;
+      if (node && node.id != null) posMap.set(String(node.id), p);
+    });
+    nodes.geometry.setAttribute("position", new THREE.BufferAttribute(np, 3));
+    const ep = [];
+    for (const edge of rawEdges) {
+      const s = posMap.get(String(edge && edge.source));
+      const t = posMap.get(String(edge && edge.target));
+      if (s && t) ep.push(s.x, s.y, s.z, t.x, t.y, t.z);
+    }
+    edges.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(ep), 3));
+  }).catch(() => {});
+
+  let rotation = 0;
+  function resize() {
+    const rect = hostEl.getBoundingClientRect();
+    const w = Math.max(200, rect.width), h = Math.max(200, rect.height);
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  function animate() {
+    rotation += 0.0018;
+    shell.rotation.y = rotation;
+    nodes.rotation.y = rotation;
+    edges.rotation.y = rotation;
+    renderer.render(scene, camera);
+    if (!REDUCED) requestAnimationFrame(animate);
+  }
+  resize();
+  addEventListener("resize", resize);
+  animate();
 })();
 
 /* ================= ATLAS: the real WebGL Earth (three.js, same textures as the app) ===== */
@@ -998,6 +1273,9 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     }
     localPts.c = { x: LX, y: LY, r: LR };
     cloudPts.c = { x: CXc, y: CYc, r: CR };
+    // the REAL CloudBrainSphereScene (WebGL, ported verbatim) draws the ball itself —
+    // the 2D layer keeps only the local cluster and the link path
+    cloudPts.length = 0; cloudPts.edges = [];
   }
   resize(); addEventListener("resize", resize);
 
