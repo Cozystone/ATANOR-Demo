@@ -99,13 +99,28 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
   echo "== [2/3] ATANOR engine + shell =="
   mount_binds
   in_chroot "[ -d /opt/atanor/.git ] || git clone --branch $BRANCH --depth 1 $REPO_URL /opt/atanor"
-  in_chroot "git -C /opt/atanor pull --ff-only origin $BRANCH || true"
+  # root pulls a repo owned by atanor — git's ownership guard blocks it SILENTLY
+  # under '|| true' (shipped a stale rootfs once). Allow-list + fail loudly.
+  in_chroot "git config --global --add safe.directory /opt/atanor && git -C /opt/atanor pull --ff-only origin $BRANCH"
   in_chroot "python3 -m venv /opt/atanor/.venv && /opt/atanor/.venv/bin/pip install -q --upgrade pip"
   in_chroot "/opt/atanor/.venv/bin/pip install -q -r /opt/atanor/deploy/requirements-cloud.txt"
   # import-path contract (same lesson as the Ubuntu VM: encode as .pth, not env)
   in_chroot 'SITE=$(/opt/atanor/.venv/bin/python -c "import site;print(site.getsitepackages()[0])"); { echo /opt/atanor; echo /opt/atanor/apps/api; for d in /opt/atanor/packages/*/; do echo ${d%/}; done; } > "$SITE/atanor-paths.pth"'
   in_chroot "cd /opt/atanor/apps/web && npm install --no-audit --no-fund && npm run build"
   in_chroot "chown -R atanor:atanor /opt/atanor && mkdir -p /var/lib/atanor && chown atanor:atanor /var/lib/atanor"
+  # ship the BRAIN: the curated triple store is data (untracked in git) — without
+  # this the OS boots with an empty knowledge store. Copy from the build host's
+  # working repo when present (WSL sees the Windows worktree under /mnt/c).
+  HOST_KG=${ATANOR_KG_SOURCE:-"/mnt/c/0.ASKIM ALL-VIN/27., ATANOR DEMO/data/graph_scale/kg_triples"}
+  if [ -d "$HOST_KG" ]; then
+    mkdir -p "$ROOTFS/opt/atanor/data/graph_scale"
+    rm -rf "$ROOTFS/opt/atanor/data/graph_scale/kg_triples"
+    cp -r "$HOST_KG" "$ROOTFS/opt/atanor/data/graph_scale/kg_triples"
+    in_chroot "chown -R atanor:atanor /opt/atanor/data"
+    echo "  brain shipped: $(du -sh "$ROOTFS/opt/atanor/data/graph_scale/kg_triples" | cut -f1) curated triples"
+  else
+    echo "  WARNING: no host kg_triples found — image boots with an empty store"
+  fi
 
   echo "== services: engine + web + shell-on-tty1 (no display manager at all) =="
   # source of truth is the repo ALREADY CLONED INSIDE the chroot — no host-side
