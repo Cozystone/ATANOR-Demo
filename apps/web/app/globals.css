@@ -10711,3 +10711,97 @@ p {
     max-width: calc(100% - 56px);
   }
 }
+
+/* ===== ATANOR OS shell (/shell) — the desktop face. Same orb, same tokens. ===== */
+.atanor-os-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  background: radial-gradient(ellipse at 50% 42%, #101318 0%, #05060a 62%, #000 100%);
+  color: #f4f6f9;
+  font-family: "Pretendard Variable", Pretendard, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+.atanor-os-shell[data-overlay="1"] { background: transparent; }
+
+.atanor-os-shell-orb { display: grid; place-items: center; padding-top: 4vh; }
+/* scale the shared orb up for the OS face; its own ring/gradient stays as designed */
+.atanor-os-shell .hologram-voice-orb {
+  width: min(58vmin, 520px);
+  min-width: 300px;
+  min-height: 300px;
+}
+
+.atanor-os-shell-tier {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 12, 16, 0.55);
+  backdrop-filter: blur(8px);
+}
+.atanor-os-shell-tier button {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.atanor-os-shell-tier button:hover { color: rgba(255, 255, 255, 0.85); }
+.atanor-os-shell-tier button[data-active="true"] { background: #d2521f; color: #fff; }
+.atanor-os-shell-tier button[data-active="true"][data-danger="true"] { background: #ff5a3c; color: #000; }
+
+.atanor-os-shell-readout {
+  width: 100%;
+  padding: 0 24px 7vh;
+  text-align: center;
+}
+.atanor-os-shell-status { font-size: 14px; letter-spacing: 0.08em; opacity: 0.55; }
+.atanor-os-shell-question { margin-top: 14px; font-size: 16px; opacity: 0.75; }
+.atanor-os-shell-answer {
+  margin: 10px auto 0;
+  max-width: 720px;
+  font-size: 18px;
+  line-height: 1.55;
+}
+.atanor-os-shell-honesty { margin-top: 26px; font-size: 11px; letter-spacing: 0.06em; opacity: 0.3; }
+
+.atanor-os-shell-approval {
+  margin: 18px auto 0;
+  max-width: 520px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(210, 82, 31, 0.45);
+  background: rgba(210, 82, 31, 0.09);
+}
+.atanor-os-shell-approval-text { font-size: 15px; margin-bottom: 12px; }
+.atanor-os-shell-approval-actions { display: flex; gap: 10px; justify-content: center; }
+.atanor-os-shell-approve {
+  padding: 9px 22px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  background: #d2521f;
+  color: #fff;
+  font-weight: 700;
+}
+.atanor-os-shell-approve:hover { background: #e0602a; }
+.atanor-os-shell-reject {
+  padding: 9px 22px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #fff;
+}
