@@ -6,12 +6,12 @@
 <title>ATANOR — Own your Intelligence.</title>
 <meta name="description" content="Ontology-based, decentralized, neuromorphic hybrid AI. Intelligence that runs where you are — owned by you." />
 <link rel="icon" href="assets/favicon.ico" />
+<meta name="theme-color" content="#000000" />
 <meta property="og:title" content="ATANOR — Own your Intelligence." />
 <meta property="og:description" content="Knowledge sovereignty, by architecture." />
 <meta property="og:image" content="assets/atanor-logo-square.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
   :root {
@@ -25,13 +25,13 @@
   html { scroll-behavior: smooth; }
   body {
     background: var(--black); color: var(--white);
-    font-family: Inter, "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-family: "Helvetica Neue", Helvetica, Arial, "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     -webkit-font-smoothing: antialiased; line-height: 1.65; overflow-x: hidden;
   }
   a { color: inherit; text-decoration: none; }
   img { display: block; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
-  .display { font-family: "Inter Tight", Inter, "Pretendard Variable", Pretendard, sans-serif; }
+  .display { font-family: inherit; }
 
   /* ============ nav ============ */
   .nav { position: fixed; inset: 0 0 auto 0; z-index: 60; transition: background .3s, box-shadow .3s; }
@@ -85,7 +85,7 @@
   @keyframes cue { 0%,100% { opacity:.3; transform:translate(-50%,0) } 50% { opacity:.85; transform:translate(-50%,8px) } }
 
   /* ============ sections ============ */
-  section { position: relative; padding: 140px 0; }
+  section { position: relative; padding: clamp(84px, 12vw, 140px) 0; scroll-margin-top: 84px; }
   section.white { background: var(--white); color: var(--ink); }
   section.black { background: var(--black); color: var(--white); }
   .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 11px;
@@ -124,12 +124,13 @@
     border-top: 1.5px solid var(--ink); }
   .stat { padding: 34px 24px 40px; border-bottom: 1px solid var(--line-l); }
   .stat + .stat { border-left: 1px solid var(--line-l); }
-  .stat .num { font-family: "Inter Tight", Inter, sans-serif; font-size: clamp(42px, 4.2vw, 62px);
+  .stat .num { font-family: inherit; font-size: clamp(42px, 4.2vw, 62px);
     font-weight: 800; letter-spacing: -0.045em; line-height: 1; }
   .stat .num small { font-size: .36em; font-weight: 700; margin-left: 4px; }
   .stat .lbl { margin-top: 12px; font-size: 13.5px; font-weight: 700; }
   .stat .why { margin-top: 6px; font-size: 12px; color: var(--gray); }
-  .vs { margin-top: 80px; }
+  .vs { margin-top: 80px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .vs table { min-width: 620px; }
   .vs table { width: 100%; border-collapse: collapse; font-size: 14px; }
   .vs th, .vs td { text-align: left; padding: 17px 14px; border-bottom: 1px solid var(--line-l); }
   .vs th { font-size: 10.5px; letter-spacing: .22em; color: var(--gray); font-weight: 700; text-transform: uppercase; }
@@ -144,7 +145,7 @@
   .eff .metrics { padding: 10px 30px; }
   .eff .m { display: flex; align-items: baseline; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--line-d); }
   .eff .m:last-child { border-bottom: 0; }
-  .eff .m b { font-family: "Inter Tight", Inter, sans-serif; font-size: clamp(26px, 2.6vw, 38px);
+  .eff .m b { font-family: inherit; font-size: clamp(26px, 2.6vw, 38px);
     font-weight: 800; letter-spacing: -0.03em; min-width: 175px; }
   .eff .m span { color: rgba(255,255,255,.5); font-size: 13.5px; }
   @media (max-width: 900px) { .eff .row { grid-template-columns: 1fr; } }
@@ -240,6 +241,29 @@
     display: flex; gap: 20px; flex-wrap: wrap; color: rgba(255,255,255,.32); font-size: 11.5px; }
   .f-bottom span:last-child { margin-left: auto; }
   @media (max-width: 760px) { .f-grid { grid-template-columns: 1fr; } .nav .links a:not(.cta) { display: none; } }
+
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 720px) {
+    .wrap { padding: 0 20px; }
+    .nav .wrap { height: 62px; gap: 16px; }
+    .nav .logo img { height: 22px; }
+    .nav .cta { padding: 7px 16px; font-size: 12.5px; }
+    .hero .inner { padding: 96px 18px 56px; }
+    .hero .biglogo { margin-bottom: 34px; }
+    .hero .cta-row { margin-top: 36px; }
+    .btn { padding: 13px 26px; font-size: 13.5px; }
+    .stats { grid-template-columns: 1fr; }
+    .stat + .stat { border-left: 0; }
+    .eff .metrics { padding: 6px 18px; }
+    .eff .m b { min-width: 120px; font-size: 24px; }
+    .prin .side { padding: 32px 26px; }
+    .chatcard { padding: 24px 20px 22px; }
+    #globe3d, #dualbrain { height: 60vh; }
+    #orb { height: 300px; }
+    .stage .cap { position: static; display: block; margin-top: 10px; }
+    footer { padding: 60px 0 44px; }
+  }
 
   .reveal { opacity: 0; transform: translateY(24px); filter: blur(10px);
     transition: opacity .9s ease, transform .9s cubic-bezier(.2,.6,.2,1), filter .9s ease; }
@@ -1035,7 +1059,7 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     }
     travelers = travelers.filter(tr => tr.t <= 1);
     // labels
-    ctx.font = "700 11px Inter, Helvetica, sans-serif"; ctx.textAlign = "center";
+    ctx.font = "700 11px Helvetica, Arial, sans-serif"; ctx.textAlign = "center";
     ctx.fillStyle = "rgba(255,255,255,.75)";
     ctx.fillText("LOCAL BRAIN", localPts.c.x, localPts.c.y + localPts.c.r * 1.18 + 26);
     ctx.fillStyle = "rgba(255,255,255,.45)";
