@@ -223,11 +223,11 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         # (definitional/general intents; vocabulary closed over templates+facts,
         # so composition cannot invent content). Hops and targeted relation
         # questions keep their precise single-fact paths.
-        if hop_from is None and language == "ko" and (not want or (want & {"defined_as", "is_a"})):
+        if hop_from is None and language in ("ko", "en") and (not want or (want & {"defined_as", "is_a"})):
             try:
                 from packages.grounded_composer import compose_from_facts
 
-                composed = compose_from_facts(s, facts)
+                composed = compose_from_facts(s, facts, language=language)
             except Exception:
                 composed = None
             if composed is not None:

@@ -46,6 +46,31 @@ _KO_LEAD: dict[str, str] = {
 }
 
 
+# English realizer — SAME GCG contract (뼈+살): every content span is a verbatim
+# fact string; the only added tokens are these frames and connectives. No article
+# guessing on the object (that would be invented content) — the stored label stands.
+# English can't drop the subject like Korean, so continuations carry their own
+# "It ..." — the connective is prepended separately.
+_EN_CONNECTIVES = ("Additionally,", "Additionally,", "Additionally,")
+_EN_LEAD: dict[str, str] = {
+    "defined_as": "{s} is {o}",
+    "is_a": "{s} is a kind of {o}",
+    "capital": "The capital of {s} is {o}",
+    "capital_of": "{s} is the capital of {o}",
+    "located_in": "{s} is located in {o}",
+    "country": "{s} is in {o}",
+    "author": "{s} was written by {o}",
+}
+_EN_CONT: dict[str, str] = {
+    "defined_as": "it is also {o}",
+    "is_a": "it is a kind of {o}",
+    "located_in": "it is located in {o}",
+    "capital": "its capital is {o}",
+    "country": "it is in {o}",
+    "author": "it was written by {o}",
+}
+
+
 @dataclass
 class ComposedAnswer:
     answer: str
@@ -75,8 +100,12 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
                        language: str = "ko", max_facts: int = 4) -> ComposedAnswer | None:
     """Compose a fluent multi-fact answer. Returns None when fewer than TWO usable
     facts exist — single-fact answers stay on the precise single-template path."""
-    if language != "ko":
-        return None  # v1 is Korean-first; the EN realizer follows the same contract later
+    if language not in ("ko", "en"):
+        return None
+    lead = _KO_LEAD if language == "ko" else _EN_LEAD
+    cont = _KO_CONT if language == "ko" else _EN_CONT
+    conns = _CONNECTIVES if language == "ko" else _EN_CONNECTIVES
+    source = " (출처: 큐레이션 지식그래프)" if language == "ko" else " (source: curated knowledge graph)"
     # one fact per predicate, discourse-ordered, alias/sense excluded (they have their
     # own dedicated answer paths: substitution hop and enumeration).
     by_pred: dict[str, tuple[str, str, str]] = {}
@@ -96,20 +125,21 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
     used: list[tuple[str, str, str]] = []
     for s, p, o in ordered:
         if not sentences:
-            frame = _KO_LEAD.get(p)
+            frame = lead.get(p)
             if frame is None:  # unknown lead predicate: never improvise a frame
                 continue
-            sentences.append(frame.format(s=s, o=o, s_topic=s + _ko_topic_particle(s)) + ".")
+            topic = s + _ko_topic_particle(s) if language == "ko" else s
+            sentences.append(frame.format(s=s, o=o, s_topic=topic) + ".")
             used.append((s, p, o))
         else:
-            frame = _KO_CONT.get(p)
+            frame = cont.get(p)
             if frame is None:  # unknown predicate: keep it out rather than improvise
                 continue
-            conn = _CONNECTIVES[min(len(connectives), len(_CONNECTIVES) - 1)]
+            conn = conns[min(len(connectives), len(conns) - 1)]
             connectives.append(conn)
             sentences.append(f"{conn} {frame.format(o=o)}.")
             used.append((s, p, o))
     if len(sentences) < 2:
         return None
-    answer = " ".join(sentences) + " (출처: 큐레이션 지식그래프)"
+    answer = " ".join(sentences) + source
     return ComposedAnswer(answer=answer, facts_used=used, connectives_used=connectives)
