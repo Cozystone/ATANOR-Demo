@@ -64,7 +64,7 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; rotationX: number; rotationY: number } | null>(null);
   const resetViewRef = useRef<() => void>(() => undefined);
-  const [, setWebglReady] = useState(false);
+  const [webglReady, setWebglReady] = useState(false);
   const focusNode = useMemo(
     () => nodes.find((node) => node.role === "my_node" || node.key === "anon-region-my-node") ?? { ...hub, key: "hub", activity: 1, source: "local", state: "active", role: "seoul_hub" },
     [hub, nodes],
@@ -448,11 +448,15 @@ export default function AtlasGlobe3D({ hub, nodes, language, remoteConnected }: 
 
   return (
     <div className="atanor-atlas-webgl" ref={hostRef} title={language === "ko" ? "마우스로 드래그해 지구를 회전할 수 있습니다." : "Drag to rotate Earth."}>
-      <div className="atanor-atlas-loading" aria-hidden="true">
-        {/* Centered loading bar shown until the WebGL Earth is ready. */}
-        <span className="atanor-atlas-loading-label">{language === "ko" ? "ATANOR ATLAS 불러오는 중…" : "Loading ATANOR ATLAS…"}</span>
-        <span className="atanor-atlas-loading-bar"><i /></span>
-      </div>
+      {/* Loading overlay is REMOVED from the DOM once ready (React state), not just
+          CSS-faded: measured live, the [data-ready] opacity rule never took effect and
+          the '불러오는 중' bar stayed painted over the finished globe indefinitely. */}
+      {!webglReady ? (
+        <div className="atanor-atlas-loading" aria-hidden="true">
+          <span className="atanor-atlas-loading-label">{language === "ko" ? "ATANOR ATLAS 불러오는 중…" : "Loading ATANOR ATLAS…"}</span>
+          <span className="atanor-atlas-loading-bar"><i /></span>
+        </div>
+      ) : null}
       <div className="atanor-atlas-webgl-badge">
         <strong>{language === "ko" ? "실시간 태양 경계" : "Live solar terminator"}</strong>
         <span>{remoteConnected ? "REMOTE CONNECTED" : "PREVIEW"}</span>
