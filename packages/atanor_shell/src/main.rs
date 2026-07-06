@@ -1,92 +1,69 @@
-//! ATANOR Shell — M0 scaffold.
+//! ATANOR Shell — M1: a real compositor.
 //!
-//! Proves the native-render pipeline the whole 2b plan stands on: a window,
-//! a wgpu surface, and a deep-space clear at 60fps. M1 swaps winit for
-//! smithay's DRM/TTY backend and starts compositing real Wayland clients;
-//! M2 replaces the clear with the SPLATRA particle field (point sprites,
-//! engine-state-driven morphing). No browser anywhere in this future.
+//! M0 proved we can put pixels on screen; M1 proves we can BE the screen:
+//! atanor-shell now speaks wayland (compositor/xdg-shell/shm/seat/output),
+//! hosts an actual client, and applies the kiosk policy the post-window
+//! surface needs. Run it, and WAYLAND_DISPLAY points at *us*.
+//!
+//!   atanor-shell                 # hosts weston-terminal as a smoke client
+//!   atanor-shell -c 'wayland-info'  # any command, spawned onto our socket
+//!
+//! M1b: DRM/TTY + libinput backend (boot ATANOR Linux straight into this).
+//! M2: native SPLATRA point-sprite field as the layer-0 background.
 
-use std::sync::Arc;
+mod backend_winit;
+mod handlers;
+mod input;
+mod state;
 
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::EventLoop,
-    window::WindowBuilder,
+use smithay::reexports::{
+    calloop::EventLoop,
+    wayland_server::{Display, DisplayHandle},
 };
+pub use state::AtanorShell;
 
-const DEEP_SPACE: wgpu::Color = wgpu::Color { r: 0.0196, g: 0.0275, b: 0.0392, a: 1.0 };
+pub struct CalloopData {
+    state: AtanorShell,
+    display_handle: DisplayHandle,
+}
 
-fn main() {
-    env_logger::init();
-    let event_loop = EventLoop::new().expect("event loop");
-    // Arc: the surface borrows the window AND the event-loop closure owns it —
-    // shared ownership is the honest shape here (E0505 caught by the first build)
-    let window = Arc::new(
-        WindowBuilder::new()
-            .with_title("ATANOR Shell (M0)")
-            .build(&event_loop)
-            .expect("window"),
-    );
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    } else {
+        tracing_subscriber::fmt().init();
+    }
 
-    let instance = wgpu::Instance::default();
-    let surface = instance.create_surface(window.clone()).expect("surface");
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        compatible_surface: Some(&surface),
-        ..Default::default()
-    }))
-    .expect("adapter");
-    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default(), None))
-        .expect("device");
+    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
 
-    let size = window.inner_size();
-    let mut config = surface
-        .get_default_config(&adapter, size.width.max(1), size.height.max(1))
-        .expect("surface config");
-    surface.configure(&device, &config);
+    let display: Display<AtanorShell> = Display::new()?;
+    let display_handle = display.handle();
+    let state = AtanorShell::new(&mut event_loop, display);
+    let socket_name = state.socket_name.clone();
 
-    log::info!("ATANOR Shell M0 up — adapter: {:?}", adapter.get_info().name);
+    let mut data = CalloopData {
+        state,
+        display_handle,
+    };
 
-    event_loop
-        .run(move |event, elwt| match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => elwt.exit(),
-                WindowEvent::Resized(new_size) => {
-                    config.width = new_size.width.max(1);
-                    config.height = new_size.height.max(1);
-                    surface.configure(&device, &config);
-                }
-                WindowEvent::RedrawRequested => {
-                    let frame = match surface.get_current_texture() {
-                        Ok(f) => f,
-                        Err(_) => {
-                            surface.configure(&device, &config);
-                            return;
-                        }
-                    };
-                    let view = frame.texture.create_view(&Default::default());
-                    let mut encoder = device.create_command_encoder(&Default::default());
-                    {
-                        let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            label: Some("deep-space-clear"),
-                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                view: &view,
-                                resolve_target: None,
-                                ops: wgpu::Operations {
-                                    load: wgpu::LoadOp::Clear(DEEP_SPACE),
-                                    store: wgpu::StoreOp::Store,
-                                },
-                            })],
-                            ..Default::default()
-                        });
-                        // M2: SPLATRA point-sprite pass lands here.
-                    }
-                    queue.submit(Some(encoder.finish()));
-                    frame.present();
-                    window.request_redraw();
-                }
-                _ => {}
-            },
-            _ => {}
-        })
-        .expect("run");
+    backend_winit::init_winit(&mut event_loop, &mut data)?;
+
+    tracing::info!(?socket_name, "ATANOR Shell M1 up — we are the compositor");
+
+    // Children inherit OUR socket, nothing else's.
+    let mut args = std::env::args().skip(1);
+    let command = match (args.next().as_deref(), args.next()) {
+        (Some("-c") | Some("--command"), Some(cmd)) => cmd,
+        _ => "weston-terminal".to_string(),
+    };
+    std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&command)
+        .env("WAYLAND_DISPLAY", &socket_name)
+        .spawn()
+        .ok();
+
+    event_loop.run(None, &mut data, move |_| {})?;
+
+    Ok(())
 }

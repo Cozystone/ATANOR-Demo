@@ -301,7 +301,7 @@ export default function ShellPage() {
         <div className="atanor-os-shell-field" aria-hidden data-mode={manual ? "manual" : shellState}>
           <PureField
             budget={Math.round(6500 * density)}
-            scale={0.72} /* halo: 1.25–1.75x orb radius, measured */
+            scale={1.0} /* halo tracks the orb: gap ≈ orb radius, 1080p-measured */
             mode={manual ? "manual"
               : shellState === "thinking" ? "thinking"
               : shellState === "listening" ? "listening"
