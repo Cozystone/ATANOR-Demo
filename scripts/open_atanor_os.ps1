@@ -14,7 +14,7 @@ pgrep -f qemu-system >/dev/null || {
     -drive file=/opt/atanor-iso/atanor-test.qcow2,format=qcow2,if=virtio \
     -netdev user,id=n0,hostfwd=tcp:127.0.0.1:18502-:8502,hostfwd=tcp:127.0.0.1:13000-:3000 \
     -device virtio-net-pci,netdev=n0 -vga virtio \
-    -display none -vnc 127.0.0.1:5,websocket=5705 \
+    -display none -vnc 127.0.0.1:5,websocket=5705,share=force-shared \
     -serial telnet:127.0.0.1:4441,server,nowait \
     -qmp unix:/tmp/atanor-qmp.sock,server,nowait
 }

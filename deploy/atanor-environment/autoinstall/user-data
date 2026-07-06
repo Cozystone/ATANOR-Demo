@@ -39,7 +39,7 @@ autoinstall:
       ConditionPathExists=!/var/lib/atanor/.provisioned
       [Service]
       Type=oneshot
-      ExecStart=/bin/bash -c 'mkdir -p /var/lib/atanor; chage -d 0 atanor-admin || touch /var/lib/atanor/.expire-failed; git clone --depth 1 -b demo https://github.com/Cozystone/ATANOR-Demo.git /tmp/atanor-src && bash /tmp/atanor-src/deploy/atanor-environment/install.sh --kiosk && touch /var/lib/atanor/.provisioned'
+      ExecStart=/bin/bash -c 'mkdir -p /var/lib/atanor; chage -d 0 atanor-admin || touch /var/lib/atanor/.expire-failed; git clone --depth 1 -b demo https://github.com/Cozystone/ATANOR-Demo.git /tmp/atanor-src && bash /tmp/atanor-src/deploy/atanor-environment/install.sh --desktop && touch /var/lib/atanor/.provisioned'
       RemainAfterExit=yes
       [Install]
       WantedBy=multi-user.target

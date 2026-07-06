@@ -110,6 +110,70 @@ Comment=Dashboard (full panels)
 Exec=sh -c 'exec chromium-browser --app=http://127.0.0.1:3000 2>/dev/null || exec chromium --app=http://127.0.0.1:3000'
 Categories=Utility;
 EOF
+  # ---- ATANOR face, from power-on to desktop (owner: 'boot must look like US') ----
+  # base stays Ubuntu LTS (kernel/driver burden stays theirs); every VISIBLE surface
+  # becomes ATANOR: boot splash, login screen, wallpaper, hostname pretty name.
+  mkdir -p /usr/share/atanor
+  cp "$APP_DIR/apps/landing/assets/atanor-logo-white-cropped.png" /usr/share/atanor/logo.png || true
+  # 1) plymouth boot splash: ATANOR logo centered on black (script theme, minimal)
+  if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+    mkdir -p /usr/share/plymouth/themes/atanor
+    cp /usr/share/atanor/logo.png /usr/share/plymouth/themes/atanor/logo.png
+    cat > /usr/share/plymouth/themes/atanor/atanor.plymouth <<'EOF'
+[Plymouth Theme]
+Name=ATANOR
+Description=ATANOR boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/atanor
+ScriptFile=/usr/share/plymouth/themes/atanor/atanor.script
+EOF
+    cat > /usr/share/plymouth/themes/atanor/atanor.script <<'EOF'
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetX(Window.GetWidth() / 2 - logo.image.GetWidth() / 2);
+logo.sprite.SetY(Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
+EOF
+    plymouth-set-default-theme atanor || true
+    update-initramfs -u || true
+  fi
+  # 2) login screen: ATANOR logo on the GDM greeter
+  mkdir -p /etc/dconf/profile /etc/dconf/db/gdm.d
+  printf 'user-db:user
+system-db:gdm
+file-db:/usr/share/gdm/greeter-dconf-defaults
+' > /etc/dconf/profile/gdm
+  cat > /etc/dconf/db/gdm.d/01-atanor <<'EOF'
+[org/gnome/login-screen]
+logo='/usr/share/atanor/logo.png'
+EOF
+  # 3) desktop defaults: black wallpaper with the centered ATANOR mark, dock favorites
+  mkdir -p /etc/dconf/db/local.d
+  printf 'user-db:user
+system-db:local
+' > /etc/dconf/profile/user
+  cat > /etc/dconf/db/local.d/01-atanor <<'EOF'
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/atanor/logo.png'
+picture-uri-dark='file:///usr/share/atanor/logo.png'
+picture-options='centered'
+primary-color='#000000'
+color-shading-type='solid'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/atanor/logo.png'
+picture-options='centered'
+primary-color='#000000'
+
+[org/gnome/shell]
+favorite-apps=['atanor.desktop', 'chromium_chromium.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']
+EOF
+  dconf update || true
+  # 4) identity strings
+  command -v hostnamectl >/dev/null 2>&1 && hostnamectl set-hostname --pretty "ATANOR" || true
   systemctl set-default graphical.target
 else
   echo "[6/6] no kiosk requested — open http://localhost:3000"
