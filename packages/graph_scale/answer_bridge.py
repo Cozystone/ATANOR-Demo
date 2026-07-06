@@ -80,6 +80,23 @@ def _subject_candidates(query: str) -> list[str]:
             st = _strip_ko_tail(t)
             if len(st) >= 2 and st not in cands:
                 cands.append(st)
+    # OOV terms leave Kiwi unsplit (비저란 stays one token) — add particle-stripped
+    # variants of every candidate so the store lookup sees the bare term too.
+    try:
+        from packages.base_brain.neighborhood import _strip_ko_tail as _skt
+
+        for c in list(cands):
+            st = _skt(c)
+            if st != c and len(st) >= 2 and st not in cands:
+                cands.append(st)
+    except Exception:
+        pass
+    for c in list(cands):  # 이란/란 definitional endings Kiwi keeps glued to OOV nouns
+        for tail in ("이란", "이라는", "라는", "란"):
+            if c.endswith(tail) and len(c) - len(tail) >= 2:
+                st = c[: -len(tail)]
+                if st not in cands:
+                    cands.append(st)
     # proper/longer nouns first (캐나다 before 수도); a subject is usually the entity name
     return sorted(cands, key=lambda t: -len(t))[:6]
 
@@ -123,20 +140,45 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         if not facts:
             continue
         # prefer a fact whose predicate matches the query's relation intent
-        chosen = [(s, p, o) for (s, p, o) in facts if (not want or p in want) and p != "alias"]
+        chosen = [(s, p, o) for (s, p, o) in facts
+                  if (not want or p in want) and p not in ("alias", "sense")]
         hop_from = None
         if not chosen:
-            # ONE visible alias hop: the disambiguation page asserted (subj, alias, sense);
-            # answer with the sense's facts, rendered as '기획(=계획)…' — the hop is shown,
-            # never silent, and both facts ride in the certificate.
-            for tgt in [o for (_s, p, o) in facts if p == "alias"][:3]:
-                tfacts = store.facts_about(tgt, limit=12)
+            # multi-SENSE term (disambiguation asserted may-refer-to): enumerate the
+            # senses dictionary-style — honest, and immune to wrong-referent answers.
+            senses = list(dict.fromkeys(o for (_s, p, o) in facts if p == "sense"))
+            if len(senses) >= 2 and language == "ko":
+                parts = []
+                for sn in senses[:3]:
+                    sdef = [(s2, p2, o2) for (s2, p2, o2) in store.facts_about(sn, limit=6)
+                            if p2 in ("defined_as", "is_a")]
+                    if sdef:
+                        parts.append(f"{sn}({sdef[0][2][:46]})")
+                if len(parts) >= 2:
+                    answer = f"{subj}{_ko_topic(subj)[len(subj):]} 여러 의미로 쓰입니다 — " + ", ".join(parts) + ". (출처: 큐레이션 지식그래프)"
+                    return {
+                        "answer": answer,
+                        "reasoning_certificate": {
+                            "derivation_kind": "multi_sense_enumeration",
+                            "anchor_concept": {"label": subj},
+                            "steps": [{"type": "sense", "fact": f"{subj} sense {sn}"} for sn in senses[:3]],
+                            "evidence_concepts": [subj] + senses[:3], "confidence": 0.85,
+                            "confidence_basis": "curated_structured_triple_verbatim",
+                            "guarantees": {"external_llm": False, "fabricated_facts": False, "inferred": False},
+                        },
+                        "confidence": 0.85,
+                        "answer_kind": "multi_sense_enumeration",
+                    }
+            # ONE visible alias hop — ONLY the redirect signature (exactly one target):
+            # a redirect asserts equivalence; anything weaker must not substitute.
+            alias_targets = [o for (_s, p, o) in facts if p == "alias"]
+            if len(alias_targets) == 1:
+                tfacts = store.facts_about(alias_targets[0], limit=12)
                 tchosen = [(s2, p2, o2) for (s2, p2, o2) in tfacts
-                           if (not want or p2 in want) and p2 != "alias"]
+                           if (not want or p2 in want) and p2 not in ("alias", "sense")]
                 if tchosen:
                     chosen = tchosen
                     hop_from = subj
-                    break
         if not chosen:
             continue
         s, p, o = chosen[0]

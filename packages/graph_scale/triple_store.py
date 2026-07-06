@@ -205,7 +205,36 @@ class TripleStore:
             cols[name] = np.memmap(str(path), dtype="<i4", mode="r", shape=(n,)) if n else np.zeros(0, "<i4")
         return cols
 
-    def facts_about(self, subject: str, limit: int = 20) -> list[tuple[str, str, str]]:
+    def retract(self, subject: str, predicate: str, obj: str, reason: str = "") -> None:
+        """Audit-logged tombstone — the store stays append-only; a retraction is itself
+        an event, never a silent delete. facts_about filters tombstoned triples."""
+        import json as _json
+        import time as _time
+        with (self.root / "retractions.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps({"s": subject, "p": predicate, "o": obj, "reason": reason,
+                                  "ts": _time.strftime("%Y-%m-%dT%H:%M:%S")},
+                                 ensure_ascii=False) + "\n")
+        self._tombstones_sig = None  # force reload
+
+    def _tombstones(self) -> set[tuple[str, str, str]]:
+        import json as _json
+        path = self.root / "retractions.jsonl"
+        if not path.exists():
+            return set()
+        sig = path.stat().st_mtime
+        if getattr(self, "_tombstones_sig", None) != sig:
+            out: set[tuple[str, str, str]] = set()
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    r = _json.loads(line)
+                    out.add((r["s"], r["p"], r["o"]))
+                except Exception:
+                    continue
+            self._tombstones_cache = out
+            self._tombstones_sig = sig
+        return self._tombstones_cache
+
+    def _facts_about_raw(self, subject: str, limit: int = 20) -> list[tuple[str, str, str]]:
         """All stored (s, p, o) with this subject — a bounded memmap scan, no full load."""
         self.flush()
         sid = self.terms.lookup(subject)
@@ -218,6 +247,10 @@ class TripleStore:
         for i in idx[:limit]:
             out.append((subject, self.terms.term(int(p[i])), self.terms.term(int(o[i]))))
         return out
+
+    def facts_about(self, subject: str, limit: int = 20) -> list[tuple[str, str, str]]:
+        tomb = self._tombstones()
+        return [f for f in self._facts_about_raw(subject, limit=limit) if f not in tomb]
 
     def disk_bytes(self) -> int:
         total = 0

@@ -146,7 +146,10 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
             # SENSE EXPANSION: the disambiguation page asserts these senses. Ingest each
             # sense's own definition under the SENSE title, plus (term, alias, sense) —
             # both verbatim from the source, judge-gated like everything else.
-            for title in _disambig_links(f"{lang}.wikipedia.org", term)[:4]:
+            links = [ti for ti in _disambig_links(f"{lang}.wikipedia.org", term)
+                     if term.lower() in ti.lower()]  # a sense of 비저 contains 비저 (마비저);
+                     # unrelated page furniture (작동 -> 부천시) does not, and is dropped.
+            for title in links[:4]:
                 try:
                     s_extract, s_dab = _summary2(f"{lang}.wikipedia.org", title)
                 except Exception:
@@ -157,9 +160,11 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
                     trip = extract_definition_triple(sent)
                     if trip and (title.lower() in trip[0].lower() or trip[0].lower() in title.lower()):
                         candidates.append(trip)
-                        alias = (term, "alias", trip[0])
-                        if alias not in candidates:
-                            candidates.append(alias)
+                        # disambiguation asserts MAY-REFER-TO, not equivalence: store
+                        # `sense` (the bridge ENUMERATES senses, never substitutes).
+                        sense = (term, "sense", trip[0])
+                        if sense not in candidates:
+                            candidates.append(sense)
                         break
             if candidates:
                 log(f"  {term}: disambiguation expanded to {sorted({c[0] for c in candidates if c[1] != 'alias'})}")
