@@ -70,7 +70,7 @@ EOF
     xorg xinit openbox tint2 pcmanfm lxterminal chromium \
     libgl1-mesa-dri libegl-mesa0 \
     alsa-utils fonts-noto-cjk fonts-noto-color-emoji \
-    xdotool x11-utils x11-xserver-utils wmctrl"
+    xdotool x11-utils x11-xserver-utils wmctrl openssh-server"
   echo "== node 20 (web shell) =="
   # pipefail matters: if the nodesource setup fails, plain 'apt install nodejs' would
   # silently install Debian's node 18 (too old for Next 16) — fail loudly instead
@@ -162,7 +162,7 @@ RestartSec=3
 [Install]
 WantedBy=graphical.target
 EOF
-  in_chroot "systemctl disable atanor-shell 2>/dev/null; rm -f /etc/systemd/system/atanor-shell.service; systemctl enable atanor-engine atanor-web atanor-desktop systemd-resolved systemd-timesyncd && systemctl set-default graphical.target"
+  in_chroot "systemctl disable atanor-shell 2>/dev/null; rm -f /etc/systemd/system/atanor-shell.service; systemctl enable ssh atanor-engine atanor-web atanor-desktop systemd-resolved systemd-timesyncd && systemctl set-default graphical.target"
   # DHCP on every wired interface — a USB-booted machine must just get online
   cat > "$ROOTFS/etc/systemd/network/20-wired.network" <<'EOF'
 [Match]
@@ -215,7 +215,7 @@ EOF
 title ATANOR
 linux /vmlinuz
 initrd /initrd.img
-options root=UUID=$ROOT_UUID rw quiet loglevel=3 vt.global_cursor_default=0
+options root=UUID=$ROOT_UUID rw quiet loglevel=3 vt.global_cursor_default=0 console=ttyS0,115200n8 console=tty1
 EOF
   umount -l "$MNT/proc" "$MNT/dev" "$MNT/sys" 2>/dev/null || true
   umount -l "$MNT/boot/efi" "$MNT"
