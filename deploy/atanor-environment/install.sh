@@ -54,6 +54,10 @@ if [ "$DESKTOP" -eq 1 ]; then
   # OS Action Lane actuators: real desktop control (input/windows/audio/screenshot)
   DEBIAN_FRONTEND=noninteractive apt-get install -y ydotool wmctrl gnome-screenshot || true
   systemctl enable --now ydotool || systemctl enable --now ydotoold 2>/dev/null || true
+  # perception stream needs xdotool to read the active window (OPT-IN daemon)
+  DEBIAN_FRONTEND=noninteractive apt-get install -y xdotool || true
+  mkdir -p /etc/systemd/user
+  install -m 0644 "$HERE/atanor-perception.service" /etc/systemd/user/atanor-perception.service
 fi
 
 echo "[2/6] atanor system user + directories"
