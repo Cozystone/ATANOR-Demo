@@ -164,36 +164,9 @@ EOF
   printf 'user-db:user
 system-db:local
 ' > /etc/dconf/profile/user
-  cat > /etc/dconf/db/local.d/01-atanor <<'EOF'
-[org/gnome/desktop/background]
-picture-uri='file:///usr/share/atanor/logo.png'
-picture-uri-dark='file:///usr/share/atanor/logo.png'
-picture-options='centered'
-primary-color='#000000'
-color-shading-type='solid'
-
-[org/gnome/desktop/screensaver]
-picture-uri='file:///usr/share/atanor/logo.png'
-picture-options='centered'
-primary-color='#000000'
-
-[org/gnome/shell]
-favorite-apps=['atanor.desktop', 'chromium_chromium.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']
-enabled-extensions=['dash-to-panel@jderose9.github.com', 'ubuntu-appindicators@ubuntu.com']
-disabled-extensions=['ubuntu-dock@ubuntu.com']
-
-[org/gnome/desktop/interface]
-color-scheme='prefer-dark'
-gtk-theme='Yaru-dark'
-
-[org/gnome/mutter]
-center-new-windows=true
-
-[org/gnome/shell/extensions/dash-to-panel]
-panel-positions='{"0":"BOTTOM"}'
-appicon-margin=4
-show-favorites=true
-EOF
+  # keyfile lives in the repo (single source of truth; see dconf/01-atanor for the
+  # duplicate-group hard rule that once silently broke the whole desktop)
+  install -m 0644 "$HERE/dconf/01-atanor" /etc/dconf/db/local.d/01-atanor
   dconf update || true
   # 4) identity strings
   command -v hostnamectl >/dev/null 2>&1 && hostnamectl set-hostname --pretty "ATANOR" || true
@@ -201,12 +174,11 @@ EOF
   EXT_UUID=atanor-orb@atanor.ai
   install -d /usr/share/gnome-shell/extensions/$EXT_UUID
   cp "$HERE/gnome-extension/$EXT_UUID/"* /usr/share/gnome-shell/extensions/$EXT_UUID/ 2>/dev/null || true
-  cat >> /etc/dconf/db/local.d/01-atanor <<'EOF'
-
-[org/gnome/shell]
-enabled-extensions=['dash-to-panel@jderose9.github.com', 'ubuntu-appindicators@ubuntu.com', 'atanor-orb@atanor.ai']
-EOF
-  dconf update || true
+  # NOTE: the extension is enabled in the single [org/gnome/shell] section above —
+  # dconf keyfiles REJECT duplicate group headers (the whole db fails to compile,
+  # silently killing wallpaper/panel/extensions), so never append a second section.
+  # Fail LOUDLY if the keyfile ever breaks again:
+  dconf compile /tmp/atanor-dconf-test.db /etc/dconf/db/local.d && rm -f /tmp/atanor-dconf-test.db
   systemctl set-default graphical.target
 else
   echo "[6/6] no kiosk requested — open http://localhost:3000"
