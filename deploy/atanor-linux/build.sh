@@ -133,6 +133,16 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
   install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/tint2rc" "$ROOTFS/etc/atanor/tint2rc"
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/orb-window.sh" "$ROOTFS/usr/local/bin/atanor-orb-window"
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-environment/orb-wallpaper.sh" "$ROOTFS/usr/local/bin/atanor-orb-wallpaper"
+  # start-corner launcher entry (tint2 launcher references it)
+  cat > "$ROOTFS/usr/share/applications/atanor-dashboard.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ATANOR
+Comment=Dashboard (full panels)
+Exec=chromium --app=http://127.0.0.1:3000
+Icon=chromium
+Categories=Utility;
+EOF
   # systemd session on tty1 needs the X wrapper to allow it
   printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > "$ROOTFS/etc/X11/Xwrapper.config"
   cat > "$ROOTFS/etc/systemd/system/atanor-desktop.service" <<'EOF'
