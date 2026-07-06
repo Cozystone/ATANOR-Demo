@@ -10742,9 +10742,10 @@ p {
   gap: 4px;
   padding: 5px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(10, 12, 16, 0.55);
-  backdrop-filter: blur(8px);
+  border: none;
+  background: rgba(12, 14, 20, 0.38);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 .atanor-os-shell-tier button {
   padding: 5px 12px;
@@ -10781,9 +10782,11 @@ p {
   margin: 18px auto 0;
   max-width: 520px;
   padding: 16px 20px;
-  border-radius: 16px;
-  border: 1px solid rgba(210, 82, 31, 0.45);
-  background: rgba(210, 82, 31, 0.09);
+  border-radius: 18px;
+  border: none;
+  background: rgba(210, 82, 31, 0.10);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 0 0 1px rgba(210, 82, 31, 0.4), 0 12px 44px rgba(0, 0, 0, 0.4);
 }
 .atanor-os-shell-approval-text { font-size: 15px; margin-bottom: 12px; }
 .atanor-os-shell-approval-actions { display: flex; gap: 10px; justify-content: center; }
@@ -10854,17 +10857,53 @@ p {
 .atanor-os-shell-composer { margin: 18px auto 0; max-width: 560px; }
 .atanor-os-shell-composer input {
   width: 100%;
-  padding: 11px 18px;
+  padding: 12px 20px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(10, 12, 16, 0.66);
+  border: none;
+  background: rgba(14, 17, 24, 0.34);
+  backdrop-filter: blur(16px) saturate(1.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   color: #f4f6f9;
   font-size: 14px;
   outline: none;
   text-align: center;
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
 }
 .atanor-os-shell-composer input::placeholder { color: rgba(223, 228, 234, 0.35); }
 .atanor-os-shell-composer input:focus {
-  border-color: #d2521f;
-  box-shadow: 0 0 0 3px rgba(210, 82, 31, 0.15);
+  box-shadow: 0 10px 40px rgba(210, 82, 31, 0.18), inset 0 0 0 1px rgba(210, 82, 31, 0.55);
+  transform: translateY(-2px);
 }
+
+
+/* manual-mode toggle rides the tier dial, visually apart */
+.atanor-os-shell-manual {
+  margin-left: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+}
+.atanor-os-shell-manual[data-active="true"] { background: #f4f6f9; color: #0b0d12; }
+
+/* omni-prompt: glass, slides up under the orb on load — the Cmd+Space instinct */
+.atanor-os-shell-composer { animation: atanor-composer-rise 0.6s cubic-bezier(0.22, 1.2, 0.36, 1) both; }
+@keyframes atanor-composer-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* icons: glass hover instead of bordered box */
+.atanor-os-shell-icon:hover {
+  background: rgba(210, 82, 31, 0.10);
+  border-color: transparent;
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgba(210, 82, 31, 0.28);
+}
+
+/* manual mode: the plane calms — readable, precise, no theatre */
+.atanor-os-shell-field[data-mode="manual"] { opacity: 0.35; }

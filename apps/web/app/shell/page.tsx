@@ -65,8 +65,27 @@ export default function ShellPage() {
       ? "blocked"
       : shellState;
 
+  // engine liveness is BUILT IN: the engine takes minutes to wake on boot, and
+  // that is a normal state, not a failure. Poll until it answers, auto-recover.
+  const [engineUp, setEngineUp] = useState<boolean | null>(null);
   useEffect(() => {
-    fetch("/api/os-action/status").then((r) => r.json()).then((s) => { if (typeof s?.tier === "number") setTier(s.tier); }).catch(() => {});
+    let stop = false;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/os-action/status", { signal: AbortSignal.timeout(4000) });
+        const ok = r.ok;
+        if (stop) return;
+        setEngineUp(ok);
+        if (ok) {
+          try { const s = await r.json(); if (typeof s?.tier === "number") setTier(s.tier); } catch { /* body optional */ }
+          if (stateRef.current === "offline") setState("idle");
+        }
+      } catch { if (!stop) setEngineUp(false); }
+    };
+    void poll();
+    const iv = setInterval(poll, 5000);
+    return () => { stop = true; clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const changeTier = async (t: number) => {
@@ -142,7 +161,11 @@ export default function ShellPage() {
       const text = String(body?.result?.answer ?? body?.answer ?? "").trim();
       if (text) { setAnswer(text); speak(text); }
       else { setAnswer("…"); setState("idle"); }
-    } catch { setAnswer("엔진에 연결할 수 없습니다."); setState("offline"); }
+    } catch {
+      // a failed call while the engine wakes is expected — the poller recovers us
+      setAnswer("엔진이 깨어나는 중입니다 — 연결되면 바로 응답합니다.");
+      setState("offline");
+    }
   };
 
   const toggleTalk = async () => {
@@ -177,12 +200,19 @@ export default function ShellPage() {
     }
   };
 
+  const composerRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Space = push-to-talk — but NEVER while typing (the composer's spaces
       // were triggering the mic on every word; measured on the OS build)
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      // omni-prompt summon: Ctrl+Space or '/' — the Cmd+Space instinct
+      if ((e.ctrlKey && e.code === "Space") || e.key === "/") {
+        e.preventDefault();
+        composerRef.current?.focus();
+        return;
+      }
       if (e.code === "Space") { e.preventDefault(); void toggleTalk(); }
     };
     addEventListener("keydown", onKey);
@@ -191,29 +221,60 @@ export default function ShellPage() {
   }, []);
 
   const statusLine: Record<ShellState, string> = {
-    idle: "말하거나, 아래에 입력하세요",
+    idle: engineUp === false ? "엔진 기동 중 — 준비되면 자동으로 연결됩니다" : "말하거나, 아래에 입력하세요",
     listening: "듣는 중… (다시 눌러 끝내기)",
     thinking: "그래프에서 근거를 찾는 중…",
     speaking: "답하는 중",
-    offline: "로컬 엔진에 연결할 수 없습니다",
+    offline: "엔진 기동 중 — 준비되면 자동으로 연결됩니다",
   };
 
   // typed commands: same lane as voice — a machine without a microphone (VMs,
   // headless boxes) still gets the full AI desktop
   const [draft, setDraft] = useState("");
 
+  // MANUAL mode (패닉룸): the field flattens to a quiet plane and the AI's
+  // autonomy drops to 관찰(OBSERVE) — "never intervenes first" as a REAL gate,
+  // not a promise. Leaving manual restores the previous tier.
+  const [manual, setManual] = useState(false);
+  const prevTierRef = useRef(1);
+  const toggleManual = async () => {
+    if (!manual) {
+      prevTierRef.current = tier;
+      setManual(true);
+      await changeTier(0);
+    } else {
+      setManual(false);
+      await changeTier(prevTierRef.current);
+    }
+  };
+
   return (
     <main className="atanor-os-shell" data-overlay={overlay ? "1" : "0"} data-wallpaper={wallpaper ? "1" : "0"}
       style={{ background: overlay ? "transparent" : undefined }}>
 
-      {/* wallpaper mode: the SPLATRA imagination field fills the desktop layer */}
+      {/* wallpaper mode: the SPLATRA imagination field IS the desktop plane.
+          Mode morphing is driven by REAL pipeline state (never staged):
+          idle = calm nebula drift · listening = high-energy attention ·
+          thinking/answering = core condensation · manual = flattened quiet.
+          interactive: the field reacts to the pointer (existing physics). */}
       {wallpaper ? (
-        <div className="atanor-os-shell-field" aria-hidden>
+        <div className="atanor-os-shell-field" aria-hidden data-mode={manual ? "manual" : shellState}>
           <SplatraImaginationField
             mode="product"
-            state={orbState}
-            interactive={false}
+            state={manual ? "resting" : orbState}
+            interactive={!manual}
             particleBudget={Math.round(9000 * density)}
+            controlOverride={
+              manual
+                ? { resting: true, arousal: 0.05, speaking_energy: 0, layout_field_quieting: 1 }
+                : shellState === "thinking"
+                  ? { arousal: 0.9, curiosity: 0.85, speaking_energy: 0.2 }
+                  : shellState === "listening"
+                    ? { arousal: 0.7, speaking_energy: 0.6 }
+                    : shellState === "speaking"
+                      ? { arousal: 0.55, speaking_energy: 0.9 }
+                      : { resting: true, arousal: 0.15, curiosity: 0.35 }
+            }
           />
         </div>
       ) : null}
@@ -252,6 +313,10 @@ export default function ShellPage() {
             {name}
           </button>
         ))}
+        <button className="atanor-os-shell-manual" onClick={() => void toggleManual()} data-active={manual}
+          title="수동: 필드가 잠잠해지고 AI는 절대 먼저 개입하지 않습니다(관찰 티어). 창과 마우스는 평소처럼.">
+          수동
+        </button>
       </div>
 
       <div className="atanor-os-shell-readout">
@@ -272,8 +337,8 @@ export default function ShellPage() {
 
         <form className="atanor-os-shell-composer" onClick={(e) => e.stopPropagation()}
           onSubmit={(e) => { e.preventDefault(); const q = draft.trim(); if (q) { setDraft(""); void ask(q); } }}>
-          <input value={draft} onChange={(e) => setDraft(e.target.value)}
-                 placeholder="무엇이든 — 질문하거나, 명령하세요 (예: 터미널 열어줘)"
+          <input ref={composerRef} value={draft} onChange={(e) => setDraft(e.target.value)}
+                 placeholder="무엇이든 — 질문하거나, 명령하세요 (Ctrl+Space)"
                  aria-label="ATANOR에게 말하기" />
         </form>
 
