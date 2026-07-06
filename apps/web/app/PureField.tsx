@@ -82,7 +82,7 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
     const pos = new Float32Array(n * 3);
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i += 1) {
-      radius[i] = 2.5 + Math.abs(gaussian()) * 0.8; // ring band: gap from the orb, inside the frame
+      radius[i] = 2.5 + Math.min(1.1, Math.abs(gaussian()) * 0.8); // ANNULUS 2.5–3.6: gaussian tail clamped, no strays to the screen edges
       theta[i] = Math.random() * Math.PI * 2;
       phi[i] = Math.acos(2 * Math.random() - 1);
       phase[i] = Math.random() * Math.PI * 2;
