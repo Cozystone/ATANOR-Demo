@@ -135,6 +135,19 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     if store is None or len(store) == 0:
         return None
     want = _wanted_predicates(query)
+    # P3 multi-hop chain reasoning: '결국/궁극적으로 무엇' questions climb the stored
+    # transitive hierarchy via energy-descent (termination + no-cycle guaranteed) and
+    # verbalize the actual chain. Tried before single-fact lookup because it answers a
+    # DIFFERENT question shape (the derived transitive fact, not a stored one).
+    if language == "ko":
+        try:
+            from .chain_reasoner import answer_relationship
+
+            chained = answer_relationship(query, store.facts_about, _subject_candidates(query))
+            if chained is not None:
+                return chained
+        except Exception:
+            pass
     for subj in _subject_candidates(query):
         facts = store.facts_about(subj, limit=12)
         if not facts:
