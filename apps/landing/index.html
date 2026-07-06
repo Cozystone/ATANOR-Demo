@@ -1,177 +1,203 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ATANOR — Own your Intelligence.</title>
-<meta name="description" content="온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI. 당신의 기기 안에서, 근거로만 답합니다." />
+<meta name="description" content="Ontology-based, decentralized, neuromorphic hybrid AI. Runs on your machine. Answers only from evidence." />
 <link rel="icon" href="assets/favicon.ico" />
 <meta property="og:title" content="ATANOR — Own your Intelligence." />
-<meta property="og:description" content="당신의 기기 안에서, 근거로만 답하는 기계." />
+<meta property="og:description" content="Runs on your machine. Answers only from evidence." />
 <meta property="og:image" content="assets/atanor-logo-square.png" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
   :root {
-    --black: #0a0a0a; --white: #ffffff; --paper: #f6f6f4;
-    --ink: #101010; --gray: #6f6f6f; --gray-l: #9b9b9b;
-    --line-d: rgba(255,255,255,.12); --line-l: rgba(0,0,0,.12);
+    --black: #000; --near: #050505; --white: #fff; --paper: #f7f7f5;
+    --ink: #0a0a0a; --gray: #66686c; --gray-l: #9a9ca0;
+    --line-d: rgba(255,255,255,.1); --line-l: rgba(0,0,0,.1);
+    --orange: #ff8a00;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
     background: var(--black); color: var(--white);
     font-family: "Helvetica Neue", Helvetica, Arial, "Pretendard Variable", Pretendard,
-      "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      "Apple SD Gothic Neo", sans-serif;
     -webkit-font-smoothing: antialiased; line-height: 1.6; overflow-x: hidden;
   }
   a { color: inherit; text-decoration: none; }
   img { display: block; }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 28px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
 
-  /* ================= nav ================= */
-  .nav { position: fixed; inset: 0 0 auto 0; z-index: 60; transition: background .35s, box-shadow .35s; }
-  .nav .wrap { display: flex; align-items: center; height: 72px; gap: 40px; }
-  .nav .logo img { height: 20px; transition: filter .35s; }
-  .nav .links { display: flex; gap: 36px; margin-left: auto; align-items: center; }
-  .nav .links a { font-size: 13.5px; font-weight: 600; letter-spacing: .04em; opacity: .65; transition: opacity .2s; }
+  /* ============ nav ============ */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 60; transition: background .3s, box-shadow .3s; }
+  .nav .wrap { display: flex; align-items: center; height: 70px; gap: 36px; }
+  .nav .logo img { height: 19px; transition: filter .3s; }
+  .nav .links { display: flex; gap: 32px; margin-left: auto; align-items: center; }
+  .nav .links a { font-size: 13px; font-weight: 600; letter-spacing: .05em; opacity: .6; transition: opacity .2s; }
   .nav .links a:hover { opacity: 1; }
+  .lang { display: flex; border: 1px solid currentColor; border-radius: 999px; overflow: hidden;
+    font-size: 11.5px; font-weight: 700; opacity: .9; }
+  .lang button { all: unset; padding: 6px 13px; cursor: pointer; color: inherit; opacity: .5; }
+  .lang button.on { opacity: 1; background: currentColor; }
+  .lang button.on span { color: var(--black); mix-blend-mode: normal; filter: invert(0); }
+  .nav.light .lang button.on span { color: #fff; }
+  .lang button.on span { color: #000; }
   .nav .cta { border: 1.5px solid currentColor; border-radius: 999px; padding: 9px 22px; opacity: 1 !important; }
-  .nav.light { background: rgba(255,255,255,.86); backdrop-filter: blur(16px); color: var(--ink);
+  .nav.light { background: rgba(255,255,255,.88); backdrop-filter: blur(18px); color: var(--ink);
     box-shadow: 0 1px 0 var(--line-l); }
   .nav.light .logo img { filter: invert(1); }
-  .nav.dark-bg { background: rgba(10,10,10,.72); backdrop-filter: blur(16px); box-shadow: 0 1px 0 var(--line-d); }
+  .nav.dark-bg { background: rgba(0,0,0,.75); backdrop-filter: blur(18px); box-shadow: 0 1px 0 var(--line-d); }
 
-  /* ================= hero ================= */
-  .hero { position: relative; min-height: 100svh; display: grid; place-items: center; text-align: center; }
+  /* ============ hero ============ */
+  .hero { position: relative; min-height: 100svh; display: grid; place-items: center; text-align: center; background: var(--black); }
   #field { position: absolute; inset: 0; width: 100%; height: 100%; }
   .hero .veil { position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(900px 480px at 50% 42%, rgba(255,255,255,.05), transparent 65%),
-                linear-gradient(180deg, rgba(10,10,10,.4), rgba(10,10,10,0) 30%, rgba(10,10,10,.9) 92%); }
-  .hero .inner { position: relative; z-index: 2; padding: 100px 24px 60px; width: 100%; }
-  .hero .biglogo { width: min(640px, 78vw); margin: 0 auto 42px; }
-  .hero .slogan {
-    font-size: clamp(30px, 4.6vw, 60px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.12;
-  }
-  .hero .slogan .dot { color: transparent; -webkit-text-stroke: 1.5px #fff; }
-  .hero .sub { margin: 26px auto 0; max-width: 560px; color: rgba(255,255,255,.55);
-    font-size: clamp(14px, 1.5vw, 17px); font-weight: 400; }
-  .hero .cta-row { margin-top: 48px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px;
-    padding: 15px 34px; font-size: 15px; font-weight: 700; letter-spacing: .01em;
-    transition: transform .25s cubic-bezier(.2,.6,.2,1), background .25s, color .25s; }
+    background: radial-gradient(880px 460px at 50% 40%, rgba(255,255,255,.045), transparent 65%),
+                linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,0) 32%, rgba(0,0,0,.92) 90%, #000 100%); }
+  .hero .inner { position: relative; z-index: 2; padding: 110px 24px 70px; width: 100%; }
+  .hero .biglogo { width: min(600px, 76vw); margin: 0 auto 46px; }
+  .hero .slogan { font-size: clamp(30px, 4.4vw, 58px); font-weight: 700; letter-spacing: -0.035em; line-height: 1.1; }
+  .hero .sub { margin: 24px auto 0; max-width: 520px; color: rgba(255,255,255,.5);
+    font-size: clamp(14px, 1.4vw, 16.5px); }
+  .hero .cta-row { margin-top: 46px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; border-radius: 999px; padding: 14px 32px;
+    font-size: 14.5px; font-weight: 700; transition: transform .22s, background .22s, border-color .22s; }
   .btn:hover { transform: translateY(-2px); }
-  .btn.solid { background: #fff; color: #0a0a0a; }
-  .btn.solid:hover { background: #e8e8e8; }
-  .btn.ghost { border: 1.5px solid rgba(255,255,255,.35); color: #fff; }
+  .btn.solid { background: #fff; color: #000; }
+  .btn.solid:hover { background: #dcdcdc; }
+  .btn.ghost { border: 1.5px solid rgba(255,255,255,.3); color: #fff; }
   .btn.ghost:hover { border-color: #fff; }
-  .scroll-cue { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
-    z-index: 2; color: rgba(255,255,255,.4); font-size: 10.5px; letter-spacing: .34em;
-    animation: cue 2.6s ease-in-out infinite; }
-  @keyframes cue { 0%,100% { opacity:.3; transform: translate(-50%,0) } 50% { opacity:.85; transform: translate(-50%,8px) } }
+  .scroll-cue { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 2;
+    color: rgba(255,255,255,.35); font-size: 10px; letter-spacing: .36em; animation: cue 2.6s infinite; }
+  @keyframes cue { 0%,100% { opacity:.3; transform:translate(-50%,0) } 50% { opacity:.85; transform:translate(-50%,8px) } }
 
-  /* ================= shared section chrome ================= */
-  section { position: relative; padding: 130px 0; }
+  /* ============ sections ============ */
+  section { position: relative; padding: 140px 0; }
   section.white { background: var(--white); color: var(--ink); }
-  section.paper { background: var(--paper); color: var(--ink); }
   section.black { background: var(--black); color: var(--white); }
-  .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 12px;
-    letter-spacing: .26em; font-weight: 700; opacity: .5; margin-bottom: 26px; }
-  .eyebrow::before { content: ""; width: 30px; height: 1.5px; background: currentColor; }
-  h2.title { font-size: clamp(30px, 4vw, 52px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
-  .title + .lead { margin-top: 22px; max-width: 620px; font-size: 16.5px; }
-  .white .lead, .paper .lead { color: var(--gray); }
-  .black .lead { color: rgba(255,255,255,.55); }
+  .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 11px;
+    letter-spacing: .3em; font-weight: 700; opacity: .45; margin-bottom: 28px; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 32px; height: 1.5px; background: currentColor; }
+  h2.title { font-size: clamp(30px, 3.8vw, 52px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.12; }
+  .lead { margin-top: 22px; max-width: 600px; font-size: 16px; }
+  .white .lead { color: var(--gray); }
+  .black .lead { color: rgba(255,255,255,.5); }
 
-  /* ================= measured (white) ================= */
-  .stats { margin-top: 72px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* measured */
+  .stats { margin-top: 76px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     border-top: 1.5px solid var(--ink); }
-  .stat { padding: 34px 26px 38px; border-bottom: 1px solid var(--line-l); }
+  .stat { padding: 34px 24px 40px; border-bottom: 1px solid var(--line-l); }
   .stat + .stat { border-left: 1px solid var(--line-l); }
-  .stat .num { font-size: clamp(44px, 4.6vw, 64px); font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
-  .stat .num small { font-size: .38em; font-weight: 700; letter-spacing: 0; margin-left: 4px; }
-  .stat .lbl { margin-top: 12px; font-size: 14px; font-weight: 700; }
-  .stat .why { margin-top: 6px; font-size: 12.5px; color: var(--gray); }
-  .vs { margin-top: 74px; }
-  .vs table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
-  .vs th, .vs td { text-align: left; padding: 16px 14px; border-bottom: 1px solid var(--line-l); }
-  .vs th { font-size: 11.5px; letter-spacing: .18em; color: var(--gray); font-weight: 700; }
-  .vs td:first-child { color: var(--gray); width: 34%; }
+  .stat .num { font-size: clamp(42px, 4.2vw, 60px); font-weight: 800; letter-spacing: -0.045em; line-height: 1; }
+  .stat .num small { font-size: .36em; font-weight: 700; margin-left: 4px; }
+  .stat .lbl { margin-top: 12px; font-size: 13.5px; font-weight: 700; }
+  .stat .why { margin-top: 6px; font-size: 12px; color: var(--gray); }
+  .vs { margin-top: 80px; }
+  .vs table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .vs th, .vs td { text-align: left; padding: 17px 14px; border-bottom: 1px solid var(--line-l); }
+  .vs th { font-size: 10.5px; letter-spacing: .22em; color: var(--gray); font-weight: 700; text-transform: uppercase; }
+  .vs td:first-child { color: var(--gray); width: 32%; }
   .vs td.us { font-weight: 700; }
   .vs td.them { color: var(--gray); }
-  .vs .yes { color: var(--ink); } .vs .them .yes { color: var(--gray); }
-  .foot-note { margin-top: 26px; font-size: 12px; color: var(--gray-l); max-width: 700px; }
+  .foot-note { margin-top: 26px; font-size: 12px; color: var(--gray-l); max-width: 720px; }
   .foot-note a { border-bottom: 1px solid var(--line-l); color: var(--gray); }
 
-  /* ================= architecture (black) ================= */
-  .arch { margin-top: 80px; }
-  .arch svg { width: 100%; height: auto; display: block; }
-  .arch text { font-family: inherit; }
-  .arch .box { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.28); stroke-width: 1.2; rx: 14; }
-  .arch .box.core { stroke: #fff; stroke-width: 1.6; }
-  .arch .t1 { fill: #fff; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
-  .arch .t2 { fill: rgba(255,255,255,.45); font-size: 10.5px; letter-spacing: .14em; font-weight: 600; }
-  .arch .flow { stroke: rgba(255,255,255,.5); stroke-width: 1.4; fill: none;
-    stroke-dasharray: 600; stroke-dashoffset: 600; }
-  .arch.in .flow { animation: draw 1.6s cubic-bezier(.4,0,.2,1) forwards; }
-  .arch.in .flow.d2 { animation-delay: .5s; } .arch.in .flow.d3 { animation-delay: 1s; }
-  @keyframes draw { to { stroke-dashoffset: 0; } }
-  .arch .pulse { fill: #fff; }
-  .arch.in .pulse { animation: pulse 2.4s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { opacity: .25 } 50% { opacity: 1 } }
-  .arch-notes { margin-top: 44px; display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-  .arch-notes div { border-top: 1px solid var(--line-d); padding-top: 18px; }
-  .arch-notes b { display: block; font-size: 14.5px; margin-bottom: 7px; }
-  .arch-notes p { font-size: 13px; color: rgba(255,255,255,.5); }
+  /* efficiency band (black) */
+  .eff .row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center; }
+  .eff .metrics { display: grid; gap: 0; border-top: 1px solid var(--line-d); }
+  .eff .m { display: flex; align-items: baseline; gap: 18px; padding: 22px 4px; border-bottom: 1px solid var(--line-d); }
+  .eff .m b { font-size: clamp(26px, 2.6vw, 38px); font-weight: 800; letter-spacing: -0.03em; min-width: 170px; }
+  .eff .m span { color: rgba(255,255,255,.5); font-size: 13.5px; }
+  @media (max-width: 900px) { .eff .row { grid-template-columns: 1fr; } }
 
-  /* ================= download (white) ================= */
-  .dl-grid { margin-top: 70px; display: grid; gap: 0; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  /* architecture */
+  .arch { margin-top: 84px; }
+  .arch svg { width: 100%; height: auto; }
+  .arch .box { fill: rgba(255,255,255,.02); stroke: rgba(255,255,255,.26); stroke-width: 1.1; }
+  .arch .box.core { stroke: #fff; stroke-width: 1.5; }
+  .arch .t1 { fill: #fff; font-size: 15px; font-weight: 700; }
+  .arch .t2 { fill: rgba(255,255,255,.42); font-size: 10.5px; letter-spacing: .13em; font-weight: 600; }
+  .arch .flow { stroke: rgba(255,255,255,.45); stroke-width: 1.3; fill: none;
+    stroke-dasharray: 600; stroke-dashoffset: 600; }
+  .arch.in .flow { animation: draw 1.5s cubic-bezier(.4,0,.2,1) forwards; }
+  .arch.in .flow.d2 { animation-delay: .45s; } .arch.in .flow.d3 { animation-delay: .9s; }
+  @keyframes draw { to { stroke-dashoffset: 0 } }
+  .arch .pulse { fill: var(--orange); }
+  .arch.in .pulse { animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:.2 } 50% { opacity:1 } }
+  .arch-notes { margin-top: 48px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  .arch-notes div { border-top: 1px solid var(--line-d); padding-top: 18px; }
+  .arch-notes b { display: block; font-size: 14px; margin-bottom: 7px; }
+  .arch-notes p { font-size: 12.5px; color: rgba(255,255,255,.45); }
+
+  /* atlas globe */
+  .atlas .stage { position: relative; margin-top: 70px; }
+  #globe { width: 100%; height: min(72vh, 640px); display: block; }
+  .atlas .cap { position: absolute; left: 0; bottom: 10px; font-size: 11px; letter-spacing: .2em;
+    color: rgba(255,255,255,.35); text-transform: uppercase; }
+
+  /* brains */
+  .brains .stage { margin-top: 70px; }
+  #brains { width: 100%; height: min(56vh, 460px); display: block; }
+  .brains .legend { display: flex; gap: 34px; margin-top: 26px; flex-wrap: wrap; }
+  .brains .legend span { font-size: 12px; letter-spacing: .14em; color: var(--gray); font-weight: 700;
+    display: inline-flex; align-items: center; gap: 9px; text-transform: uppercase; }
+  .brains .legend i { width: 9px; height: 9px; border-radius: 50%; }
+
+  /* capabilities */
+  .caps { margin-top: 76px; display: grid; gap: 0; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     border: 1.5px solid var(--ink); }
-  .dl-card { padding: 44px 38px 40px; display: flex; flex-direction: column; min-height: 330px;
-    transition: background .3s; }
+  .cap-card { padding: 40px 34px 38px; border-bottom: 1.5px solid var(--ink); transition: background .3s; position: relative; }
+  .cap-card:hover { background: var(--paper); }
+  .cap-card:nth-child(3n+2), .cap-card:nth-child(3n+3) { border-left: 1.5px solid var(--ink); }
+  .cap-card .no { font-size: 11px; font-weight: 800; letter-spacing: .22em; color: var(--gray-l); }
+  .cap-card h3 { margin: 15px 0 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+  .cap-card p { font-size: 13.5px; color: var(--gray); }
+  @media (max-width: 900px) { .cap-card:nth-child(n) { border-left: 0; } }
+
+  /* download */
+  .dl-grid { margin-top: 70px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    border: 1.5px solid var(--ink); }
+  .dl-card { padding: 44px 38px 40px; display: flex; flex-direction: column; min-height: 320px; transition: background .3s; }
   .dl-card + .dl-card { border-left: 1.5px solid var(--ink); }
   .dl-card:hover { background: var(--paper); }
-  .dl-card .no { font-size: 12px; font-weight: 800; letter-spacing: .2em; color: var(--gray-l); }
-  .dl-card h3 { margin: 16px 0 12px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
-  .dl-card p { font-size: 14px; color: var(--gray); }
+  .dl-card .no { font-size: 11px; font-weight: 800; letter-spacing: .22em; color: var(--gray-l); }
+  .dl-card h3 { margin: 16px 0 12px; font-size: 21px; font-weight: 800; }
+  .dl-card p { font-size: 13.5px; color: var(--gray); }
   .dl-card .foot { margin-top: auto; padding-top: 26px; }
-  .dl-card .go { font-weight: 700; font-size: 14.5px; display: inline-flex; gap: 8px; align-items: center; }
-  .dl-card .go::after { content: "→"; transition: transform .25s; }
-  .dl-card:hover .go::after { transform: translateX(5px); }
-  .codebox { position: relative; background: var(--black); color: #eaeaea; border-radius: 10px;
-    padding: 13px 44px 13px 15px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+  .dl-card .go { font-weight: 700; font-size: 14px; }
+  .dl-card .go::after { content: " →"; }
+  .codebox { position: relative; background: #000; color: #eaeaea; border-radius: 10px;
+    padding: 13px 46px 13px 15px; font-family: ui-monospace, Consolas, monospace; font-size: 11px;
     overflow-x: auto; white-space: nowrap; }
   .codebox button { position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
-    background: rgba(255,255,255,.1); border: 0; border-radius: 7px; color: #cfcfcf;
-    font-size: 11px; padding: 5px 10px; cursor: pointer; }
-  .codebox button:hover { background: rgba(255,255,255,.22); }
-  .dl-card .soon { font-size: 12.5px; color: var(--gray-l); line-height: 1.7; }
+    background: rgba(255,255,255,.12); border: 0; border-radius: 7px; color: #ccc;
+    font-size: 10.5px; padding: 5px 10px; cursor: pointer; }
+  .dl-card .soon { font-size: 12px; color: var(--gray-l); line-height: 1.7; }
   .dl-card .soon a { border-bottom: 1px solid var(--line-l); color: var(--gray); }
+  @media (max-width: 900px) { .dl-card + .dl-card { border-left: 0; border-top: 1.5px solid var(--ink); } }
 
-  /* ================= honest (black) ================= */
-  .honest blockquote { max-width: 880px; font-size: clamp(24px, 3.4vw, 40px); line-height: 1.5;
-    font-weight: 700; letter-spacing: -0.02em; }
-  .honest blockquote span { color: rgba(255,255,255,.4); }
-  .honest .note { margin-top: 30px; color: rgba(255,255,255,.45); font-size: 15px; max-width: 620px; }
+  /* honest */
+  .honest blockquote { max-width: 880px; font-size: clamp(24px, 3.2vw, 38px); line-height: 1.5; font-weight: 700; letter-spacing: -0.02em; }
+  .honest blockquote span { color: rgba(255,255,255,.38); }
+  .honest .note { margin-top: 30px; color: rgba(255,255,255,.42); font-size: 14.5px; max-width: 600px; }
 
-  /* ================= footer ================= */
-  footer { background: var(--black); color: #fff; border-top: 1px solid var(--line-d); padding: 80px 0 60px; }
+  /* footer */
+  footer { background: #000; border-top: 1px solid var(--line-d); padding: 84px 0 60px; }
   .f-grid { display: grid; grid-template-columns: 1.5fr repeat(2, minmax(150px, .7fr)); gap: 44px; }
-  .f-brand img { height: 22px; margin-bottom: 20px; }
-  .f-brand p { color: rgba(255,255,255,.4); font-size: 13px; max-width: 300px; }
-  footer h4 { font-size: 11px; letter-spacing: .22em; color: rgba(255,255,255,.35); font-weight: 700; margin-bottom: 18px; }
+  .f-brand img { height: 21px; margin-bottom: 20px; }
+  .f-brand p { color: rgba(255,255,255,.38); font-size: 13px; max-width: 300px; }
+  footer h4 { font-size: 10.5px; letter-spacing: .26em; color: rgba(255,255,255,.32); font-weight: 700; margin-bottom: 18px; }
   footer li { list-style: none; margin-bottom: 11px; }
-  footer li a { color: rgba(255,255,255,.6); font-size: 13.5px; }
+  footer li a { color: rgba(255,255,255,.55); font-size: 13px; }
   footer li a:hover { color: #fff; }
   .f-bottom { margin-top: 60px; padding-top: 26px; border-top: 1px solid var(--line-d);
-    display: flex; gap: 20px; flex-wrap: wrap; color: rgba(255,255,255,.35); font-size: 12px; }
+    display: flex; gap: 20px; flex-wrap: wrap; color: rgba(255,255,255,.32); font-size: 11.5px; }
   .f-bottom span:last-child { margin-left: auto; }
-  @media (max-width: 760px) { .f-grid { grid-template-columns: 1fr; }
-    .nav .links a:not(.cta) { display: none; }
-    .dl-card + .dl-card { border-left: 0; border-top: 1.5px solid var(--ink); } }
+  @media (max-width: 760px) { .f-grid { grid-template-columns: 1fr; } .nav .links a:not(.cta) { display: none; } }
 
-  /* reveal */
-  .reveal { opacity: 0; transform: translateY(30px);
-    transition: opacity .9s ease, transform .9s cubic-bezier(.2,.6,.2,1); }
+  .reveal { opacity: 0; transform: translateY(28px); transition: opacity .85s ease, transform .85s cubic-bezier(.2,.6,.2,1); }
   .reveal.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
     .reveal { opacity: 1; transform: none; transition: none; }
@@ -186,11 +212,13 @@
   <div class="wrap">
     <a class="logo" href="#top"><img src="assets/atanor-logo-white-cropped.png" alt="ATANOR" /></a>
     <div class="links">
-      <a href="#measured">실측</a>
-      <a href="#structure">구조</a>
-      <a href="#download">다운로드</a>
+      <a href="#measured" data-i18n="nav_measured">Measured</a>
+      <a href="#structure" data-i18n="nav_structure">Architecture</a>
+      <a href="#atlas" data-i18n="nav_atlas">Network</a>
+      <a href="#download" data-i18n="nav_download">Download</a>
       <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub</a>
-      <a class="cta" href="#download">시작하기</a>
+      <span class="lang"><button id="lang-en" class="on"><span>EN</span></button><button id="lang-ko"><span>KO</span></button></span>
+      <a class="cta" href="#download" data-i18n="nav_cta">Get ATANOR</a>
     </div>
   </div>
 </nav>
@@ -200,12 +228,11 @@
   <div class="veil"></div>
   <div class="inner">
     <img class="biglogo" src="assets/atanor-logo-white-cropped.png" alt="ATANOR" />
-    <div class="slogan">Own your Intelligence<span class="dot">.</span></div>
-    <p class="sub">온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.<br/>
-    당신의 기기 안에서, 근거로만 답합니다.</p>
+    <div class="slogan">Own your Intelligence.</div>
+    <p class="sub" data-i18n="hero_sub">Ontology-based, decentralized, neuromorphic hybrid AI.<br/>Runs on your machine. Answers only from evidence.</p>
     <div class="cta-row">
-      <a class="btn solid" href="#download">다운로드</a>
-      <a class="btn ghost" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">소스 보기</a>
+      <a class="btn solid" href="#download" data-i18n="hero_dl">Download</a>
+      <a class="btn ghost" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener" data-i18n="hero_src">View Source</a>
     </div>
   </div>
   <span class="scroll-cue">SCROLL</span>
@@ -214,119 +241,165 @@
 <section class="white" id="measured" data-nav="light">
   <div class="wrap">
     <div class="reveal">
-      <span class="eyebrow">MEASURED, NOT CLAIMED</span>
-      <h2 class="title">대형 LLM이 구조적으로<br/>따라올 수 없는 수치.</h2>
-      <p class="lead">일반 지식의 폭은 대형 모델이 넓습니다 — 그건 그들의 차원입니다.
-      아래는 우리의 차원입니다: 구조가 다르기 때문에 나오는, 실측된 숫자들.</p>
+      <span class="eyebrow" data-i18n="m_eyebrow">Measured, not claimed</span>
+      <h2 class="title" data-i18n="m_title">Numbers large LLMs<br/>cannot reach by design.</h2>
+      <p class="lead" data-i18n="m_lead">Large models win on breadth of general knowledge — that is their dimension. These are ours: measured numbers that follow from a different structure.</p>
     </div>
     <div class="stats">
-      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>건</small></div>
-        <div class="lbl">조작(fabrication)된 답변</div>
-        <div class="why">모든 답은 검증된 원문 인용 — 지어낸 문장이 구조적으로 불가능</div></div>
+      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small data-i18n="m_s1u"> </small></div>
+        <div class="lbl" data-i18n="m_s1l">Fabricated answers</div>
+        <div class="why" data-i18n="m_s1w">Every answer is quoted verbatim from verified sources — invention is structurally impossible</div></div>
       <div class="stat reveal"><div class="num" data-count="100"><span>0</span><small>%</small></div>
-        <div class="lbl">추론 인증서 부착률</div>
-        <div class="why">모든 답에 어떻게 만들어졌는지의 기록이 붙습니다</div></div>
-      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>byte</small></div>
-        <div class="lbl">외부로 전송되는 개인 데이터</div>
-        <div class="why">추론·학습 전 과정이 당신의 기기 안</div></div>
-      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>원</small></div>
-        <div class="lbl">추론 API 비용</div>
-        <div class="why">GPU도, 클라우드 구독도 필요 없습니다 — RAM 1GB 서버에서도 구동</div></div>
+        <div class="lbl" data-i18n="m_s2l">Reasoning-certificate rate</div>
+        <div class="why" data-i18n="m_s2w">Every answer carries a record of how it was made</div></div>
+      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>B</small></div>
+        <div class="lbl" data-i18n="m_s3l">Personal data sent out</div>
+        <div class="why" data-i18n="m_s3w">Inference and learning run entirely on your device</div></div>
+      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>$</small></div>
+        <div class="lbl" data-i18n="m_s4l">Inference API cost</div>
+        <div class="why" data-i18n="m_s4w">No GPU, no cloud subscription — full engine on 1 GB of RAM</div></div>
     </div>
     <div class="vs reveal">
       <table>
-        <tr><th></th><th>ATANOR</th><th>대형 LLM (클라우드)</th></tr>
-        <tr><td>모르는 것을 대하는 방식</td><td class="us">"모른다"고 말하고, 학습 목표로 전환</td><td class="them">그럴듯한 문장 생성 (환각)</td></tr>
-        <tr><td>답의 근거</td><td class="us">원문 인용 + 추론 인증서</td><td class="them">확률적 토큰 — 근거 추적 불가</td></tr>
-        <tr><td>데이터 위치</td><td class="us">당신의 기기</td><td class="them">사업자의 서버</td></tr>
-        <tr><td>잘못을 지운 기록</td><td class="us">공개 원장으로 보존</td><td class="them">비공개</td></tr>
-        <tr><td>구동 환경</td><td class="us">CPU · RAM 1GB부터</td><td class="them">데이터센터 GPU</td></tr>
+        <tr><th></th><th>ATANOR</th><th data-i18n="m_them">Large cloud LLM</th></tr>
+        <tr><td data-i18n="m_r1">When it doesn't know</td><td class="us" data-i18n="m_r1a">Says "I don't know" — the gap becomes a learning target</td><td class="them" data-i18n="m_r1b">Generates plausible text (hallucination)</td></tr>
+        <tr><td data-i18n="m_r2">Basis of an answer</td><td class="us" data-i18n="m_r2a">Verbatim citation + reasoning certificate</td><td class="them" data-i18n="m_r2b">Probabilistic tokens — untraceable</td></tr>
+        <tr><td data-i18n="m_r3">Where your data lives</td><td class="us" data-i18n="m_r3a">Your device</td><td class="them" data-i18n="m_r3b">Vendor's servers</td></tr>
+        <tr><td data-i18n="m_r4">Record of removed errors</td><td class="us" data-i18n="m_r4a">Preserved in a public ledger</td><td class="them" data-i18n="m_r4b">Not disclosed</td></tr>
+        <tr><td data-i18n="m_r5">Hardware</td><td class="us" data-i18n="m_r5a">CPU · from 1 GB RAM</td><td class="them" data-i18n="m_r5b">Data-center GPUs</td></tr>
       </table>
-      <p class="foot-note">수치는 자체 골드 배터리와 라이브 계측 기준이며, 측정 스크립트와 이력은
-      <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">저장소에 공개</a>되어 있습니다.
-      일반 상식 커버리지는 대형 모델이 앞서며, 우리는 그 한계도 숫자로 공개합니다.</p>
+      <p class="foot-note" data-i18n="m_foot">Figures are from our own gold battery and live instrumentation; measurement scripts and history are public in the repository. General-knowledge coverage favors large models — we publish that limit as a number too.</p>
     </div>
   </div>
 </section>
 
-<section class="black" id="structure">
+<section class="black eff">
+  <div class="wrap">
+    <div class="row">
+      <div class="reveal">
+        <span class="eyebrow" data-i18n="e_eyebrow">Efficiency</span>
+        <h2 class="title" data-i18n="e_title">High performance,<br/>on a low-end laptop.</h2>
+        <p class="lead" data-i18n="e_lead">ATANOR was engineered for machines others left behind. The full engine — graph, reasoning, learning loops — runs on CPU-only hardware with 1 GB of RAM, and stays fast.</p>
+      </div>
+      <div class="metrics reveal">
+        <div class="m"><b>3.8 ms</b><span data-i18n="e_m1">wave-interference reasoning fold, measured per answer</span></div>
+        <div class="m"><b>584,000/s</b><span data-i18n="e_m2">verified facts ingested per second, integer-columnar store</span></div>
+        <div class="m"><b>1 GB RAM</b><span data-i18n="e_m3">full engine live on a free-tier cloud VM — no GPU anywhere</span></div>
+        <div class="m"><b>12 B</b><span data-i18n="e_m4">bytes per stored fact — knowledge without bloat</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="black" id="structure" style="padding-top: 0;">
   <div class="wrap">
     <div class="reveal">
-      <span class="eyebrow">ARCHITECTURE</span>
-      <h2 class="title">지어내지 못하는 구조.</h2>
-      <p class="lead">언어모델의 확률이 아니라, 세 개의 실체가 답을 만듭니다.
-      각 단계는 검증 가능하고, 어떤 단계도 문장을 지어내지 않습니다.</p>
+      <span class="eyebrow" data-i18n="a_eyebrow">Architecture</span>
+      <h2 class="title" data-i18n="a_title">A structure that cannot make things up.</h2>
+      <p class="lead" data-i18n="a_lead">Answers are produced by three verifiable stages — not by token probability. No stage is capable of inventing a sentence.</p>
     </div>
     <div class="arch reveal" id="arch">
-      <svg viewBox="0 0 1140 360" role="img" aria-label="ATANOR 구조도">
-        <rect class="box" x="20"  y="120" width="280" height="120" rx="14"/>
+      <svg viewBox="0 0 1140 360" role="img" aria-label="ATANOR architecture">
+        <rect class="box" x="20" y="120" width="280" height="120" rx="12"/>
         <text class="t2" x="44" y="156">KNOWLEDGE</text>
-        <text class="t1" x="44" y="184">온톨로지 그래프</text>
-        <text class="t2" x="44" y="212">검증된 사실 · 출처 · 격리 원장</text>
-
-        <rect class="box core" x="430" y="100" width="280" height="160" rx="14"/>
+        <text class="t1" x="44" y="184" data-i18n="a_b1">Ontology Graph</text>
+        <text class="t2" x="44" y="212" data-i18n="a_b1s">VERIFIED FACTS · SOURCES · LEDGERS</text>
+        <rect class="box core" x="430" y="100" width="280" height="160" rx="12"/>
         <text class="t2" x="454" y="140">REASONING</text>
-        <text class="t1" x="454" y="168">파동 간섭 폴딩</text>
-        <text class="t2" x="454" y="196">뉴로모픽 · 위상 홀로그래픽</text>
+        <text class="t1" x="454" y="168" data-i18n="a_b2">Wave-Interference Folding</text>
+        <text class="t2" x="454" y="196">NEUROMORPHIC · PHASE-HOLOGRAPHIC</text>
         <text class="t2" x="454" y="222">PHFE CORE</text>
-
-        <rect class="box" x="840" y="120" width="280" height="120" rx="14"/>
+        <rect class="box" x="840" y="120" width="280" height="120" rx="12"/>
         <text class="t2" x="864" y="156">ANSWER</text>
-        <text class="t1" x="864" y="184">근거 인용 답변</text>
-        <text class="t2" x="864" y="212">추론 인증서 · 정직한 보류</text>
-
-        <path class="flow"    d="M300 180 C 360 180, 370 180, 430 180"/>
+        <text class="t1" x="864" y="184" data-i18n="a_b3">Evidence-Cited Answer</text>
+        <text class="t2" x="864" y="212" data-i18n="a_b3s">CERTIFICATE · HONEST ABSTENTION</text>
+        <path class="flow" d="M300 180 C 360 180, 370 180, 430 180"/>
         <path class="flow d2" d="M710 180 C 770 180, 780 180, 840 180"/>
         <path class="flow d3" d="M570 100 C 570 60, 300 40, 160 40 C 100 40, 60 70, 60 120"/>
-        <text class="t2" x="330" y="30">기권 → 학습 루프 (모르는 것이 학습 목표가 됩니다)</text>
-
+        <text class="t2" x="330" y="30" data-i18n="a_loop">ABSTAIN → LEARN LOOP — WHAT IT DOESN'T KNOW BECOMES ITS NEXT LESSON</text>
         <circle class="pulse" cx="300" cy="180" r="4"/>
         <circle class="pulse" cx="710" cy="180" r="4" style="animation-delay:.7s"/>
-        <circle class="pulse" cx="60"  cy="120" r="4" style="animation-delay:1.3s"/>
-
-        <path class="flow d3" d="M570 260 C 570 300, 570 310, 570 330"/>
-        <text class="t2" x="596" y="316">BRAIN LINK — P2P로 이어지는 두뇌들</text>
-        <circle class="pulse" cx="570" cy="330" r="4" style="animation-delay:1.8s"/>
+        <circle class="pulse" cx="60" cy="120" r="4" style="animation-delay:1.3s"/>
       </svg>
-    </div>
-    <div class="arch-notes">
-      <div class="reveal"><b>지식은 그래프에 삽니다</b><p>모든 사실은 출처와 함께 온톨로지 그래프에 저장됩니다.
-        코드에 지식을 심지 않습니다 — 그래서 지우고, 고치고, 감사할 수 있습니다.</p></div>
-      <div class="reveal" style="transition-delay:.08s"><b>추론은 파동으로 접힙니다</b><p>질문은 개념들의 파동 간섭장으로
-        접히고, 보강간섭의 마루가 추론의 축이 됩니다. 실측으로 검증되는 뉴로모픽 코어입니다.</p></div>
-      <div class="reveal" style="transition-delay:.16s"><b>두뇌는 서로 이어집니다</b><p>Brain Link P2P로 각자의 기기에
-        사는 두뇌들이 연결됩니다. 중앙 서버가 아니라, 소유된 지능들의 연합입니다.</p></div>
     </div>
   </div>
 </section>
 
-<section class="white dl" id="download" data-nav="light">
+<section class="black atlas" id="atlas" style="padding-top: 40px;">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">ATLAS NETWORK</span>
+      <h2 class="title" data-i18n="g_title">A planet of connected minds.</h2>
+      <p class="lead" data-i18n="g_lead">ATLAS is the distributed compute fabric: brains on ordinary machines across the world lend idle cycles to each other over Brain Link P2P. This is the network operating at its ideal — no data center in the middle.</p>
+    </div>
+    <div class="stage reveal">
+      <canvas id="globe"></canvas>
+      <span class="cap" data-i18n="g_cap">Conceptual visualization — live network status is shown honestly in-app</span>
+    </div>
+  </div>
+</section>
+
+<section class="white brains" data-nav="light">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">LOCAL × CLOUD</span>
+      <h2 class="title" data-i18n="b_title">Two brains, one mind.</h2>
+      <p class="lead" data-i18n="b_lead">Your Local Brain holds what is yours — private, on-device. The Cloud Brain grows shared world knowledge around the clock. Verified nodes flow between them; private data never does.</p>
+    </div>
+    <div class="stage reveal">
+      <canvas id="brains"></canvas>
+      <div class="legend">
+        <span><i style="background:#0a0a0a"></i> LOCAL BRAIN — <span data-i18n="b_l1">yours, private</span></span>
+        <span><i style="background:#ff8a00"></i> <span data-i18n="b_l2">verified knowledge nodes</span></span>
+        <span><i style="background:#c9c9c9"></i> CLOUD BRAIN — <span data-i18n="b_l3">shared, always learning</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="white" data-nav="light" style="padding-top: 40px;">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow" data-i18n="c_eyebrow">Capabilities</span>
+      <h2 class="title" data-i18n="c_title">Every tab, explained.</h2>
+    </div>
+    <div class="caps reveal">
+      <div class="cap-card"><span class="no">01</span><h3>Local Brain</h3><p data-i18n="c_1">Your private knowledge graph. Chats, documents, preferences — learned on-device, never uploaded, fully yours to inspect and delete.</p></div>
+      <div class="cap-card"><span class="no">02</span><h3>Cloud Brain</h3><p data-i18n="c_2">A shared world-knowledge graph that learns continuously from curated sources, with a consensus-evidence gate and quarantine ledgers guarding every promotion.</p></div>
+      <div class="cap-card"><span class="no">03</span><h3>ATLAS</h3><p data-i18n="c_3">The distributed compute map. Watch anonymized regions lend verification work to each other across the solar terminator — no raw IPs, no personal traces.</p></div>
+      <div class="cap-card"><span class="no">04</span><h3>AGORA</h3><p data-i18n="c_4">The commons where answer agents meet. Residents post what they actually did — verified facts, deductions, honest gaps — and visiting peers discuss over Brain Link.</p></div>
+      <div class="cap-card"><span class="no">05</span><h3>Graph Hub</h3><p data-i18n="c_5">Knowledge cartridges: expert graphs and personas you can install into your brain — a coffee sommelier, a Socratic tutor — each one an inspectable graph, not a prompt.</p></div>
+      <div class="cap-card"><span class="no">06</span><h3>ATANOR Environment</h3><p data-i18n="c_6">The OS layer: an installable Linux where ATANOR is the resident mind from boot — systemd services, bounded memory, your machine as the brain.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="white dl" id="download" data-nav="light" style="padding-top: 40px;">
   <div class="wrap">
     <div class="reveal">
       <span class="eyebrow">GET ATANOR</span>
-      <h2 class="title">리눅스처럼 —<br/>읽고, 고치고, 설치하세요.</h2>
+      <h2 class="title" data-i18n="d_title">Like Linux —<br/>read it, change it, install it.</h2>
     </div>
     <div class="dl-grid reveal">
       <div class="dl-card">
         <span class="no">01 · SOURCE</span>
-        <h3>오픈소스 저장소</h3>
-        <p>엔진·웹·학습 루프 전체가 공개되어 있습니다. 그대로 읽고, 고치고, 실행할 수 있습니다.</p>
-        <div class="foot"><a class="go" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub에서 보기</a></div>
+        <h3 data-i18n="d_1t">Open Source</h3>
+        <p data-i18n="d_1p">The entire engine, web shell and learning loops are public. Read them, fork them, run them.</p>
+        <div class="foot"><a class="go" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener" data-i18n="d_1g">View on GitHub</a></div>
       </div>
       <div class="dl-card">
         <span class="no">02 · LINUX</span>
         <h3>ATANOR Environment</h3>
-        <p>스톡 우분투를 한 줄로 ATANOR 머신으로. 부팅부터 상주하는 systemd 서비스로 설치됩니다.</p>
+        <p data-i18n="d_2p">One line turns a stock Ubuntu into an ATANOR machine — resident systemd services from boot.</p>
         <div class="foot">
-          <div class="codebox"><span id="cmd">curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/demo/deploy/atanor-environment/install.sh | sudo bash</span><button onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(()=>{this.textContent='복사됨';setTimeout(()=>this.textContent='복사',1400)})">복사</button></div>
+          <div class="codebox"><span id="cmd">curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/demo/deploy/atanor-environment/install.sh | sudo bash</span><button onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(()=>{this.textContent=I18N[LANG].copied;setTimeout(()=>this.textContent=I18N[LANG].copy,1400)})" data-i18n="copy">Copy</button></div>
         </div>
       </div>
       <div class="dl-card">
         <span class="no">03 · ISO</span>
-        <h3>설치 이미지</h3>
-        <p>USB로 부팅하면 곧 ATANOR인 설치 ISO. 리마스터 도구가 저장소에 포함되어 있습니다.</p>
-        <div class="foot"><p class="soon">직접 빌드 → <a href="https://github.com/Cozystone/ATANOR-Demo/tree/demo/deploy/atanor-environment" rel="noopener">make_iso.sh</a><br/>
-        공식 이미지 배포는 준비 중입니다. 준비되기 전에 있다고 말하지 않습니다.</p></div>
+        <h3 data-i18n="d_3t">Install Image</h3>
+        <p data-i18n="d_3p">A bootable ISO that becomes an ATANOR machine on first boot. The remaster tool ships in the repo.</p>
+        <div class="foot"><p class="soon"><span data-i18n="d_3s1">Build it yourself →</span> <a href="https://github.com/Cozystone/ATANOR-Demo/tree/demo/deploy/atanor-environment" rel="noopener">make_iso.sh</a><br/><span data-i18n="d_3s2">Official images are in preparation. We don't say it exists before it does.</span></p></div>
       </div>
     </div>
   </div>
@@ -334,12 +407,11 @@
 
 <section class="black honest">
   <div class="wrap reveal">
-    <span class="eyebrow">HONESTY</span>
-    <blockquote>우리는 환각이 없다고 주장하지 않습니다.<br/>
-    <span>다만 모든 답이 어디서 왔는지 보여주고,<br/>
-    틀린 것을 지운 기록까지 남깁니다.</span></blockquote>
-    <p class="note">ATANOR는 연구 중인 시스템입니다. 커버리지에는 한계가 있고, 그 한계를 숫자로
-    공개합니다. 화려한 시연보다 검증 가능한 답 하나를 선택합니다.</p>
+    <span class="eyebrow" data-i18n="h_eyebrow">Honesty</span>
+    <blockquote><span data-i18n="h_q1">We do not claim zero hallucination.</span><br/>
+    <span style="color:#fff" data-i18n="h_q2">We show where every answer came from,</span><br/>
+    <span data-i18n="h_q3">and keep the ledger of what we deleted.</span></blockquote>
+    <p class="note" data-i18n="h_note">ATANOR is a system under research. Coverage has limits, and we publish those limits as numbers. We choose one verifiable answer over a spectacular demo.</p>
   </div>
 </section>
 
@@ -348,7 +420,7 @@
     <div class="f-grid">
       <div class="f-brand">
         <img src="assets/atanor-logo-white-cropped.png" alt="ATANOR" />
-        <p>Own your Intelligence.<br/>온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.</p>
+        <p>Own your Intelligence.<br/><span data-i18n="f_tag">Ontology-based, decentralized, neuromorphic hybrid AI.</span></p>
       </div>
       <div>
         <h4>PROJECT</h4>
@@ -361,24 +433,96 @@
       <div>
         <h4>PRINCIPLES</h4>
         <ul>
-          <li><a href="https://github.com/Cozystone/ATANOR-Demo/blob/demo/docs/DESIGN_PHILOSOPHY.md" rel="noopener">디자인 철학</a></li>
-          <li><a href="#measured">실측 수치</a></li>
-          <li><a href="#structure">구조</a></li>
+          <li><a href="https://github.com/Cozystone/ATANOR-Demo/blob/demo/docs/DESIGN_PHILOSOPHY.md" rel="noopener" data-i18n="f_design">Design Philosophy</a></li>
+          <li><a href="#measured" data-i18n="f_measured">Measured Numbers</a></li>
+          <li><a href="#structure" data-i18n="f_arch">Architecture</a></li>
         </ul>
       </div>
     </div>
     <div class="f-bottom">
       <span>© 2026 ATANOR</span>
-      <span>외부 LLM 없음 · 로컬 우선 · 오픈소스</span>
+      <span data-i18n="f_line">No external LLM · Local-first · Open source</span>
     </div>
   </div>
 </footer>
 
 <script>
-// ---- hero wave-interference field (black & white edition) ----
+/* ================= i18n (EN default) ================= */
+const I18N = {
+  en: { copy: "Copy", copied: "Copied" },
+  ko: {
+    copy: "복사", copied: "복사됨",
+    nav_measured: "실측", nav_structure: "구조", nav_atlas: "네트워크", nav_download: "다운로드", nav_cta: "시작하기",
+    hero_sub: "온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.<br/>당신의 기기 안에서, 근거로만 답합니다.",
+    hero_dl: "다운로드", hero_src: "소스 보기",
+    m_eyebrow: "주장이 아니라 실측", m_title: "대형 LLM이 구조적으로<br/>도달할 수 없는 수치.",
+    m_lead: "일반 지식의 폭은 대형 모델이 넓습니다 — 그건 그들의 차원입니다. 아래는 우리의 차원: 다른 구조에서 나오는 실측 수치입니다.",
+    m_s1l: "조작된 답변", m_s1w: "모든 답은 검증된 원문 인용 — 지어내기가 구조적으로 불가능합니다",
+    m_s2l: "추론 인증서 부착률", m_s2w: "모든 답에 어떻게 만들어졌는지의 기록이 붙습니다",
+    m_s3l: "외부로 전송된 개인 데이터", m_s3w: "추론과 학습이 전부 당신의 기기에서 이뤄집니다",
+    m_s4l: "추론 API 비용", m_s4w: "GPU도 클라우드 구독도 없이 — RAM 1GB로 전체 엔진 구동",
+    m_them: "대형 클라우드 LLM",
+    m_r1: "모르는 것을 대할 때", m_r1a: "\"모른다\"고 말하고, 학습 목표로 전환", m_r1b: "그럴듯한 문장 생성 (환각)",
+    m_r2: "답의 근거", m_r2a: "원문 인용 + 추론 인증서", m_r2b: "확률적 토큰 — 추적 불가",
+    m_r3: "데이터 위치", m_r3a: "당신의 기기", m_r3b: "사업자의 서버",
+    m_r4: "지운 오류의 기록", m_r4a: "공개 원장으로 보존", m_r4b: "비공개",
+    m_r5: "하드웨어", m_r5a: "CPU · RAM 1GB부터", m_r5b: "데이터센터 GPU",
+    m_foot: "수치는 자체 골드 배터리와 라이브 계측 기준이며, 측정 스크립트와 이력은 저장소에 공개되어 있습니다. 일반 상식 커버리지는 대형 모델이 앞서며, 그 한계도 숫자로 공개합니다.",
+    e_eyebrow: "효율", e_title: "저사양 노트북에서도,<br/>고성능 그대로.",
+    e_lead: "ATANOR는 버려진 기계들을 위해 설계됐습니다. 그래프·추론·학습 루프 전체가 GPU 없는 CPU와 1GB RAM에서 돌고, 그대로 빠릅니다.",
+    e_m1: "답변당 파동 간섭 폴딩 실측 시간", e_m2: "초당 검증 사실 적재 — 정수 컬럼 스토어",
+    e_m3: "무료 티어 클라우드 VM에서 전체 엔진 가동 — GPU 없음", e_m4: "사실 하나당 저장 바이트 — 군살 없는 지식",
+    a_eyebrow: "구조", a_title: "지어내지 못하는 구조.",
+    a_lead: "답은 토큰 확률이 아니라 검증 가능한 세 단계가 만듭니다. 어떤 단계도 문장을 지어낼 수 없습니다.",
+    a_b1: "온톨로지 그래프", a_b1s: "검증된 사실 · 출처 · 격리 원장", a_b2: "파동 간섭 폴딩", a_b3: "근거 인용 답변", a_b3s: "인증서 · 정직한 보류",
+    a_loop: "기권 → 학습 루프 — 모르는 것이 다음 수업이 됩니다",
+    g_title: "이어진 정신들의 행성.",
+    g_lead: "ATLAS는 분산 연산망입니다: 전 세계 평범한 기기 위의 두뇌들이 Brain Link P2P로 유휴 연산을 서로 빌려줍니다. 중앙 데이터센터 없이 — 이것이 이 망의 이상적인 구동 모습입니다.",
+    g_cap: "개념 시각화 — 실제 네트워크 상태는 앱 안에서 정직하게 표시됩니다",
+    b_title: "두 개의 두뇌, 하나의 정신.",
+    b_lead: "Local Brain은 당신의 것을 담습니다 — 사적으로, 기기 안에. Cloud Brain은 공유 세계 지식을 쉼 없이 키웁니다. 검증된 노드는 오가지만, 개인 데이터는 결코 건너가지 않습니다.",
+    b_l1: "당신의 것, 프라이빗", b_l2: "검증된 지식 노드", b_l3: "공유, 상시 학습",
+    c_eyebrow: "기능", c_title: "모든 탭, 하나씩.",
+    c_1: "당신의 사적 지식 그래프. 대화·문서·선호가 기기 안에서 학습되고, 업로드되지 않으며, 열람하고 지울 권리가 전부 당신에게 있습니다.",
+    c_2: "큐레이션 소스에서 상시 학습하는 공유 세계 지식 그래프. 모든 승격은 합의-증거 게이트와 격리 원장이 지킵니다.",
+    c_3: "분산 연산 지도. 익명화된 지역들이 태양 경계를 따라 검증 작업을 빌려주는 모습을 봅니다 — Raw IP도, 개인 흔적도 없이.",
+    c_4: "답변 에이전트들의 광장. 상주자들은 실제로 한 일 — 검증한 사실, 연역, 정직한 공백 — 을 올리고, 방문 피어들이 Brain Link로 토론합니다.",
+    c_5: "지식 카트리지: 커피 소믈리에, 소크라테스식 튜터 같은 전문가 그래프와 페르소나를 두뇌에 설치합니다 — 프롬프트가 아니라 열람 가능한 그래프로.",
+    c_6: "OS 레이어: 부팅부터 ATANOR가 상주 정신인 설치형 리눅스 — systemd 서비스, 바운디드 메모리, 당신의 기계가 곧 두뇌.",
+    d_title: "리눅스처럼 —<br/>읽고, 고치고, 설치하세요.",
+    d_1t: "오픈소스", d_1p: "엔진·웹 셸·학습 루프 전체가 공개돼 있습니다. 읽고, 포크하고, 실행하세요.", d_1g: "GitHub에서 보기",
+    d_2p: "한 줄이면 스톡 우분투가 ATANOR 머신이 됩니다 — 부팅부터 상주하는 systemd 서비스로.",
+    d_3t: "설치 이미지", d_3p: "첫 부팅에 ATANOR 머신이 되는 부팅 ISO. 리마스터 도구가 저장소에 포함돼 있습니다.",
+    d_3s1: "직접 빌드 →", d_3s2: "공식 이미지는 준비 중입니다. 준비되기 전에 있다고 말하지 않습니다.",
+    h_eyebrow: "정직", h_q1: "우리는 환각이 없다고 주장하지 않습니다.", h_q2: "모든 답이 어디서 왔는지 보여주고,", h_q3: "지운 것의 원장까지 남깁니다.",
+    h_note: "ATANOR는 연구 중인 시스템입니다. 커버리지에는 한계가 있고, 그 한계를 숫자로 공개합니다. 화려한 시연보다 검증 가능한 답 하나를 선택합니다.",
+    f_tag: "온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.", f_design: "디자인 철학", f_measured: "실측 수치", f_arch: "구조",
+    f_line: "외부 LLM 없음 · 로컬 우선 · 오픈소스",
+  }
+};
+const EN_CACHE = {};
+document.querySelectorAll("[data-i18n]").forEach(el => EN_CACHE[el.dataset.i18n] = el.innerHTML);
+let LANG = "en";
+function setLang(l) {
+  LANG = l;
+  document.documentElement.lang = l;
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const k = el.dataset.i18n;
+    el.innerHTML = l === "en" ? EN_CACHE[k] : (I18N.ko[k] ?? EN_CACHE[k]);
+  });
+  document.getElementById("lang-en").classList.toggle("on", l === "en");
+  document.getElementById("lang-ko").classList.toggle("on", l === "ko");
+  try { localStorage.setItem("atanor-lang", l); } catch {}
+}
+document.getElementById("lang-en").onclick = () => setLang("en");
+document.getElementById("lang-ko").onclick = () => setLang("ko");
+try { const saved = localStorage.getItem("atanor-lang"); if (saved === "ko") setLang("ko"); } catch {}
+
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ================= hero wave field ================= */
 (() => {
   const cv = document.getElementById("field"), ctx = cv.getContext("2d");
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let w, h, dpr; const SRC = [];
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -390,28 +534,214 @@
                  f: 0.010 + Math.random() * 0.011, p: Math.random() * 6.283 });
   }
   resize(); addEventListener("resize", resize);
-  const CELL = 25; let t = 0, raf;
+  const CELL = 26; let t = 0, raf;
   function frame() {
     ctx.clearRect(0, 0, w, h);
-    for (let gy = CELL / 2; gy < h; gy += CELL) for (let gx = CELL / 2; gx < w; gx += CELL) {
+    for (let gy = CELL/2; gy < h; gy += CELL) for (let gx = CELL/2; gx < w; gx += CELL) {
       let a = 0;
-      for (const s of SRC) a += Math.sin(Math.hypot(gx - s.x, gy - s.y) * s.f - t + s.p);
-      a /= SRC.length;
-      const v = Math.max(0, a);
+      for (const s of SRC) a += Math.sin(Math.hypot(gx-s.x, gy-s.y) * s.f - t + s.p);
+      const v = Math.max(0, a / SRC.length);
       if (v < 0.3) continue;
-      ctx.beginPath();
-      ctx.arc(gx, gy, 0.5 + v * 1.6, 0, 6.2832);
-      ctx.fillStyle = `rgba(255,255,255,${v * v * 0.34})`;
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(gx, gy, 0.5 + v*1.5, 0, 6.2832);
+      ctx.fillStyle = `rgba(255,255,255,${v*v*0.3})`; ctx.fill();
     }
-    t += 0.015; raf = requestAnimationFrame(frame);
+    t += 0.014; raf = requestAnimationFrame(frame);
   }
-  if (reduced) { t = 8; frame(); cancelAnimationFrame(raf); }
+  if (REDUCED) { t = 8; frame(); cancelAnimationFrame(raf); }
   else { frame(); document.addEventListener("visibilitychange", () =>
     document.hidden ? cancelAnimationFrame(raf) : frame()); }
 })();
 
-// ---- nav: transparent on hero, white over light sections, dark glass over dark ----
+/* ================= ATLAS globe: orange arcs across the planet ================= */
+(() => {
+  const cv = document.getElementById("globe"), ctx = cv.getContext("2d");
+  const HUBS = [ // [lat, lng] — major regions, no personal anything
+    [37.5,127],[35.6,139.7],[1.35,103.8],[22.3,114.2],[28.6,77.2],[25.2,55.3],
+    [52.5,13.4],[48.8,2.35],[51.5,-0.13],[59.3,18.1],[41.0,28.9],[30.0,31.2],
+    [-1.3,36.8],[6.5,3.4],[40.7,-74],[37.8,-122.4],[47.6,-122.3],[19.4,-99.1],
+    [-23.5,-46.6],[-34.6,-58.4],[-33.9,151.2],[-36.8,174.8],[55.7,37.6],[13.7,100.5] ];
+  let w, h, dpr, R, CX, CY;
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    w = cv.clientWidth; h = cv.clientHeight;
+    cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+    R = Math.min(w, h) * 0.42; CX = w/2; CY = h/2 + 8;
+  }
+  resize(); addEventListener("resize", resize);
+  const D = Math.PI/180;
+  function p3(lat, lng, rot) { // -> {x,y,z} on unit sphere with rotation about Y
+    const la = lat*D, lo = lng*D + rot;
+    return { x: Math.cos(la)*Math.sin(lo), y: Math.sin(la), z: Math.cos(la)*Math.cos(lo) };
+  }
+  function proj(p) { return { x: CX + p.x*R, y: CY - p.y*R, z: p.z }; }
+  function slerp(a, b, t) {
+    const dot = Math.max(-1, Math.min(1, a.x*b.x + a.y*b.y + a.z*b.z));
+    const th = Math.acos(dot), s = Math.sin(th);
+    if (s < 1e-5) return a;
+    const A = Math.sin((1-t)*th)/s, B = Math.sin(t*th)/s;
+    const lift = 1 + 0.22*Math.sin(Math.PI*t);       // arc altitude
+    return { x: (A*a.x+B*b.x)*lift, y: (A*a.y+B*b.y)*lift, z: (A*a.z+B*b.z)*lift };
+  }
+  const ARCS = [];
+  function spawn() {
+    // prefer hubs currently on the visible hemisphere so the exchange reads on screen
+    const front = HUBS.filter(hh => p3(hh[0], hh[1], rot).z > 0.1);
+    const pool = front.length >= 4 ? front : HUBS;
+    const i = Math.floor(Math.random()*pool.length);
+    let j = Math.floor(Math.random()*pool.length);
+    if (j === i) j = (j+3) % pool.length;
+    ARCS.push({ a: pool[i], b: pool[j], t0: perf(), dur: 2200 + Math.random()*1600 });
+    if (ARCS.length > 12) ARCS.shift();
+  }
+  function perf() { return performance.now(); }
+  let rot = 0, raf, last = perf(), spawnAt = 0;
+  function frame() {
+    const now = perf(), dt = Math.min(50, now - last); last = now;
+    rot += dt * 0.000045;
+    if (now > spawnAt) { spawn(); spawnAt = now + 420 + Math.random()*600; }
+    ctx.clearRect(0, 0, w, h);
+    // sphere shading + rim
+    const g = ctx.createRadialGradient(CX - R*0.35, CY - R*0.4, R*0.1, CX, CY, R*1.05);
+    g.addColorStop(0, "rgba(255,255,255,.055)"); g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.beginPath(); ctx.arc(CX, CY, R, 0, 6.2832); ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 1; ctx.stroke();
+    // graticule dots
+    for (let la = -60; la <= 60; la += 20) for (let lo = 0; lo < 360; lo += 12) {
+      const p = p3(la, lo, rot); if (p.z < 0.08) continue;
+      const q = proj(p);
+      ctx.beginPath(); ctx.arc(q.x, q.y, 0.9, 0, 6.2832);
+      ctx.fillStyle = `rgba(255,255,255,${0.05 + p.z*0.1})`; ctx.fill();
+    }
+    // hubs
+    for (const [la, lo] of HUBS) {
+      const p = p3(la, lo, rot); if (p.z < 0.05) continue;
+      const q = proj(p);
+      ctx.beginPath(); ctx.arc(q.x, q.y, 1.9 + p.z*1.2, 0, 6.2832);
+      ctx.fillStyle = `rgba(255,255,255,${0.25 + p.z*0.5})`; ctx.fill();
+    }
+    // orange arcs: draw a moving bright head with fading trail along the great circle
+    for (const arc of ARCS) {
+      const prog = Math.min(1, (now - arc.t0) / arc.dur);
+      const A = p3(arc.a[0], arc.a[1], rot), B = p3(arc.b[0], arc.b[1], rot);
+      const N = 46, head = Math.floor(prog * N);
+      ctx.lineWidth = 1.8;
+      for (let s = 1; s <= head; s++) {
+        const p1 = slerp(A, B, (s-1)/N), p2 = slerp(A, B, s/N);
+        if (p1.z < -0.15 && p2.z < -0.15) continue;      // hidden behind planet
+        const q1 = proj(p1), q2 = proj(p2);
+        const fade = Math.max(0, 1 - (head - s)/22);     // longer bright trail
+        const depth = Math.max(0.3, (p1.z + 1)/2);
+        ctx.beginPath(); ctx.moveTo(q1.x, q1.y); ctx.lineTo(q2.x, q2.y);
+        ctx.strokeStyle = `rgba(255,138,0,${(0.2 + 0.85*fade) * depth})`;
+        ctx.stroke();
+      }
+      // endpoint glow while the arc lives
+      for (const end of [A, B]) if (end.z > 0.05) {
+        const q = proj(end);
+        ctx.beginPath(); ctx.arc(q.x, q.y, 2.6, 0, 6.2832);
+        ctx.fillStyle = "rgba(255,138,0,.9)"; ctx.fill();
+        ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, 6.2832);
+        ctx.fillStyle = "rgba(255,138,0,.15)"; ctx.fill();
+      }
+      if (prog >= 1 && now - arc.t0 > arc.dur + 600) arc.dead = true;
+    }
+    for (let i = ARCS.length-1; i >= 0; i--) if (ARCS[i].dead) ARCS.splice(i, 1);
+    raf = requestAnimationFrame(frame);
+  }
+  // Always-on loop (cheap canvas); pause only when the tab is hidden. Per-canvas
+  // IntersectionObserver gating proved fragile (anchor-load races left the loop dead).
+  if (REDUCED) { rot = 1.2; spawn(); spawn(); ARCS.forEach(a => a.t0 -= 2000); frame(); cancelAnimationFrame(raf); }
+  else {
+    frame();
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) cancelAnimationFrame(raf); else { last = perf(); frame(); }
+    });
+  }
+})();
+
+/* ================= Local Brain <-> Cloud Brain exchange ================= */
+(() => {
+  const cv = document.getElementById("brains"), ctx = cv.getContext("2d");
+  let w, h, dpr;
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    w = cv.clientWidth; h = cv.clientHeight;
+    cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  resize(); addEventListener("resize", resize);
+  const DOTS = [];
+  function spawnDot() {
+    DOTS.push({ t: 0, dir: Math.random() < 0.5 ? 1 : -1, speed: 0.004 + Math.random()*0.003,
+                off: (Math.random()-0.5) * 0.16 });
+    if (DOTS.length > 9) DOTS.shift();
+  }
+  let raf, tick = 0;
+  function centers() {
+    const L = { x: w*0.18, y: h*0.52, r: Math.min(w,h)*0.13 };
+    const C = { x: w*0.72, y: h*0.48, r: Math.min(w,h)*0.30 };
+    return { L, C };
+  }
+  function path(t, off) { // quadratic bezier L -> C
+    const { L, C } = centers();
+    const mx = (L.x + C.x)/2, my = Math.min(L.y, C.y) - h*0.22 + off*h;
+    const x = (1-t)*(1-t)*L.x + 2*(1-t)*t*mx + t*t*C.x;
+    const y = (1-t)*(1-t)*L.y + 2*(1-t)*t*my + t*t*C.y;
+    return { x, y };
+  }
+  function ring(c, n, phase, alpha) {
+    for (let i = 0; i < n; i++) {
+      const a = phase + i * 6.2832/n;
+      const rr = c.r * (0.55 + 0.38*Math.sin(i*2.7 + phase*1.7));
+      ctx.beginPath(); ctx.arc(c.x + Math.cos(a)*rr, c.y + Math.sin(a)*rr, 1.6, 0, 6.2832);
+      ctx.fillStyle = `rgba(10,10,10,${alpha})`; ctx.fill();
+    }
+  }
+  function frame() {
+    tick += 0.012;
+    if (Math.random() < 0.02) spawnDot();
+    ctx.clearRect(0, 0, w, h);
+    const { L, C } = centers();
+    // link path (faint)
+    ctx.beginPath();
+    for (let s = 0; s <= 40; s++) { const p = path(s/40, 0); s ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+    ctx.strokeStyle = "rgba(10,10,10,.14)"; ctx.lineWidth = 1.2; ctx.setLineDash([3,5]); ctx.stroke(); ctx.setLineDash([]);
+    // local brain: small dense dark cluster
+    ctx.beginPath(); ctx.arc(L.x, L.y, L.r, 0, 6.2832);
+    ctx.strokeStyle = "rgba(10,10,10,.7)"; ctx.lineWidth = 1.6; ctx.stroke();
+    ring(L, 16, tick, .8); ring(L, 10, -tick*1.3, .45);
+    // cloud brain: large light cluster
+    ctx.beginPath(); ctx.arc(C.x, C.y, C.r, 0, 6.2832);
+    ctx.strokeStyle = "rgba(10,10,10,.35)"; ctx.lineWidth = 1.2; ctx.stroke();
+    ring(C, 34, tick*0.6, .3); ring(C, 22, -tick*0.8, .18);
+    // labels
+    ctx.fillStyle = "rgba(10,10,10,.85)"; ctx.font = "700 11px Helvetica, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("LOCAL BRAIN", L.x, L.y + L.r + 24);
+    ctx.fillText("CLOUD BRAIN", C.x, C.y + C.r + 24);
+    // traveling verified nodes (orange)
+    for (const d of DOTS) {
+      d.t += d.speed;
+      if (d.t > 1) { d.t = 0; d.dir *= -1; }
+      const t = d.dir === 1 ? d.t : 1 - d.t;
+      const p = path(t, d.off);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, 6.2832);
+      ctx.fillStyle = "rgba(255,138,0,.95)"; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 6.2832);
+      ctx.fillStyle = "rgba(255,138,0,.14)"; ctx.fill();
+    }
+    raf = requestAnimationFrame(frame);
+  }
+  for (let i = 0; i < 5; i++) { spawnDot(); DOTS[i].t = Math.random(); }
+  if (REDUCED) { frame(); cancelAnimationFrame(raf); }
+  else {
+    frame();
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) cancelAnimationFrame(raf); else frame();
+    });
+  }
+})();
+
+/* ================= nav mode + reveal + count-up ================= */
 const nav = document.getElementById("nav");
 const lightSections = [...document.querySelectorAll('[data-nav="light"]')];
 function navState() {
@@ -422,20 +752,18 @@ function navState() {
 }
 addEventListener("scroll", navState, { passive: true }); navState();
 
-// ---- reveal + count-up + architecture draw ----
-const io = new IntersectionObserver(es => es.forEach(e => {
+const io2 = new IntersectionObserver(es => es.forEach(e => {
   if (!e.isIntersecting) return;
-  e.target.classList.add("in"); io.unobserve(e.target);
+  e.target.classList.add("in"); io2.unobserve(e.target);
   e.target.querySelectorAll?.(".num[data-count]").forEach(runCount);
-  if (e.target.matches?.(".num[data-count]")) runCount(e.target);
-}), { threshold: 0.2 });
-document.querySelectorAll(".reveal, #arch").forEach(el => io.observe(el));
+}), { threshold: 0.18 });
+document.querySelectorAll(".reveal, #arch").forEach(el => io2.observe(el));
 function runCount(el) {
   const target = +el.dataset.count, span = el.querySelector("span");
   if (!span || el.dataset.done) return; el.dataset.done = 1;
   const t0 = performance.now(), dur = 1100;
   (function tick(now) {
-    const p = Math.min(1, (now - t0) / dur), ease = 1 - Math.pow(1 - p, 3);
+    const p = Math.min(1, (now - t0)/dur), ease = 1 - Math.pow(1-p, 3);
     span.textContent = Math.round(target * ease).toLocaleString();
     if (p < 1) requestAnimationFrame(tick);
   })(t0);
