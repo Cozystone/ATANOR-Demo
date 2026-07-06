@@ -35,6 +35,10 @@ mount_binds() {
   mountpoint -q "$ROOTFS/sys" || mount -t sysfs sys "$ROOTFS/sys"
   mountpoint -q "$ROOTFS/dev" || mount --bind /dev "$ROOTFS/dev"
   mountpoint -q "$ROOTFS/dev/pts" || mount --bind /dev/pts "$ROOTFS/dev/pts"
+  # the chroot resolves names with ITS OWN /etc/hosts + resolv.conf — inherit the
+  # host's (incl. any DNS-outage /etc/hosts pinning) or apt dies while the host works
+  cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf" 2>/dev/null || true
+  cp /etc/hosts "$ROOTFS/etc/hosts" 2>/dev/null || true
 }
 umount_binds() {
   for m in dev/pts dev sys proc; do umount -l "$ROOTFS/$m" 2>/dev/null || true; done
@@ -68,7 +72,9 @@ EOF
     alsa-utils fonts-noto-cjk fonts-noto-color-emoji \
     xdotool x11-utils wlr-randr"
   echo "== node 20 (web shell) =="
-  in_chroot "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs"
+  # pipefail matters: if the nodesource setup fails, plain 'apt install nodejs' would
+  # silently install Debian's node 18 (too old for Next 16) — fail loudly instead
+  in_chroot "set -o pipefail && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs && node -v | grep -q '^v2[0-9]'"
   echo "== identity =="
   echo atanor > "$ROOTFS/etc/hostname"
   in_chroot "sed -i 's/^# *ko_KR.UTF-8/ko_KR.UTF-8/; s/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen"
