@@ -90,6 +90,8 @@ export default function ShellPage() {
 
   const changeTier = async (t: number) => {
     setTier(t);
+    // picking a tier by hand exits manual mode — two active pills at once was a lie
+    if (t !== 0) setManual(false);
     await fetch("/api/os-action/tier", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tier: t }) }).catch(() => {});
   };
 
