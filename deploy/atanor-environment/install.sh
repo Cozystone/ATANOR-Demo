@@ -49,6 +49,8 @@ if [ "$DESKTOP" -eq 1 ]; then
   # top as a resident window, it does not replace the desktop.
   DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal chromium-browser || \
   DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal chromium
+  # Windows-like layout: one bottom taskbar (Dash-to-Panel) instead of top bar + dock
+  DEBIAN_FRONTEND=noninteractive apt-get install -y gnome-shell-extension-dash-to-panel || true
 fi
 
 echo "[2/6] atanor system user + directories"
@@ -170,6 +172,20 @@ primary-color='#000000'
 
 [org/gnome/shell]
 favorite-apps=['atanor.desktop', 'chromium_chromium.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop']
+enabled-extensions=['dash-to-panel@jderose9.github.com', 'ubuntu-appindicators@ubuntu.com']
+disabled-extensions=['ubuntu-dock@ubuntu.com']
+
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+gtk-theme='Yaru-dark'
+
+[org/gnome/mutter]
+center-new-windows=true
+
+[org/gnome/shell/extensions/dash-to-panel]
+panel-positions='{"0":"BOTTOM"}'
+appicon-margin=4
+show-favorites=true
 EOF
   dconf update || true
   # 4) identity strings
