@@ -4,64 +4,67 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ATANOR — Own your Intelligence.</title>
-<meta name="description" content="Ontology-based, decentralized, neuromorphic hybrid AI. Runs on your machine. Answers only from evidence." />
+<meta name="description" content="Ontology-based, decentralized, neuromorphic hybrid AI. Intelligence that runs where you are — owned by you." />
 <link rel="icon" href="assets/favicon.ico" />
 <meta property="og:title" content="ATANOR — Own your Intelligence." />
-<meta property="og:description" content="Runs on your machine. Answers only from evidence." />
+<meta property="og:description" content="Knowledge sovereignty, by architecture." />
 <meta property="og:image" content="assets/atanor-logo-square.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
   :root {
-    --black: #000; --near: #050505; --white: #fff; --paper: #f7f7f5;
-    --ink: #0a0a0a; --gray: #66686c; --gray-l: #9a9ca0;
+    --black: #000; --white: #fff; --paper: #f7f7f5;
+    --ink: #0a0a0a; --gray: #63666b; --gray-l: #999ca1;
     --line-d: rgba(255,255,255,.1); --line-l: rgba(0,0,0,.1);
-    --orange: #ff8a00;
+    --orange: #ff8a00; --blue: #5aa8ff;
+    --glass: rgba(255,255,255,.045); --glass-b: rgba(255,255,255,.12);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
     background: var(--black); color: var(--white);
-    font-family: "Helvetica Neue", Helvetica, Arial, "Pretendard Variable", Pretendard,
-      "Apple SD Gothic Neo", sans-serif;
-    -webkit-font-smoothing: antialiased; line-height: 1.6; overflow-x: hidden;
+    font-family: Inter, "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.65; overflow-x: hidden;
   }
   a { color: inherit; text-decoration: none; }
   img { display: block; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
+  .display { font-family: "Inter Tight", Inter, "Pretendard Variable", Pretendard, sans-serif; }
 
   /* ============ nav ============ */
   .nav { position: fixed; inset: 0 0 auto 0; z-index: 60; transition: background .3s, box-shadow .3s; }
-  .nav .wrap { display: flex; align-items: center; height: 70px; gap: 36px; }
-  .nav .logo img { height: 19px; transition: filter .3s; }
-  .nav .links { display: flex; gap: 32px; margin-left: auto; align-items: center; }
-  .nav .links a { font-size: 13px; font-weight: 600; letter-spacing: .05em; opacity: .6; transition: opacity .2s; }
+  .nav .wrap { display: flex; align-items: center; height: 76px; gap: 36px; }
+  .nav .logo img { height: 27px; transition: filter .3s; }
+  .nav .links { display: flex; gap: 30px; margin-left: auto; align-items: center; }
+  .nav .links a { font-size: 13px; font-weight: 600; letter-spacing: .04em; opacity: .6; transition: opacity .2s; }
   .nav .links a:hover { opacity: 1; }
   .lang { display: flex; border: 1px solid currentColor; border-radius: 999px; overflow: hidden;
-    font-size: 11.5px; font-weight: 700; opacity: .9; }
+    font-size: 11.5px; font-weight: 700; }
   .lang button { all: unset; padding: 6px 13px; cursor: pointer; color: inherit; opacity: .5; }
   .lang button.on { opacity: 1; background: currentColor; }
-  .lang button.on span { color: var(--black); mix-blend-mode: normal; filter: invert(0); }
-  .nav.light .lang button.on span { color: #fff; }
   .lang button.on span { color: #000; }
+  .nav.light .lang button.on span { color: #fff; }
   .nav .cta { border: 1.5px solid currentColor; border-radius: 999px; padding: 9px 22px; opacity: 1 !important; }
-  .nav.light { background: rgba(255,255,255,.88); backdrop-filter: blur(18px); color: var(--ink);
+  .nav.light { background: rgba(255,255,255,.82); backdrop-filter: blur(20px) saturate(1.1); color: var(--ink);
     box-shadow: 0 1px 0 var(--line-l); }
   .nav.light .logo img { filter: invert(1); }
-  .nav.dark-bg { background: rgba(0,0,0,.75); backdrop-filter: blur(18px); box-shadow: 0 1px 0 var(--line-d); }
+  .nav.dark-bg { background: rgba(0,0,0,.62); backdrop-filter: blur(20px); box-shadow: 0 1px 0 var(--line-d); }
 
   /* ============ hero ============ */
-  .hero { position: relative; min-height: 100svh; display: grid; place-items: center; text-align: center; background: var(--black); }
-  #field { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hero { position: relative; min-height: 100svh; display: grid; place-items: center; text-align: center; }
+  #fieldcv { position: absolute; inset: 0; width: 100%; height: 100%; }
   .hero .veil { position: absolute; inset: 0; pointer-events: none;
-    background: radial-gradient(880px 460px at 50% 40%, rgba(255,255,255,.045), transparent 65%),
+    background: radial-gradient(880px 460px at 50% 40%, rgba(255,255,255,.04), transparent 65%),
                 linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,0) 32%, rgba(0,0,0,.92) 90%, #000 100%); }
-  .hero .inner { position: relative; z-index: 2; padding: 110px 24px 70px; width: 100%; }
-  .hero .biglogo { width: min(600px, 76vw); margin: 0 auto 46px; }
-  .hero .slogan { font-size: clamp(30px, 4.4vw, 58px); font-weight: 700; letter-spacing: -0.035em; line-height: 1.1; }
-  .hero .sub { margin: 24px auto 0; max-width: 520px; color: rgba(255,255,255,.5);
-    font-size: clamp(14px, 1.4vw, 16.5px); }
+  .hero .inner { position: relative; z-index: 2; padding: 120px 24px 70px; width: 100%; }
+  .hero .biglogo { width: min(620px, 78vw); margin: 0 auto 44px; }
+  .hero .slogan { font-size: clamp(32px, 4.6vw, 62px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.06; }
+  .hero .sub { margin: 26px auto 0; max-width: 640px; color: rgba(255,255,255,.55);
+    font-size: clamp(14px, 1.5vw, 17px); }
   .hero .cta-row { margin-top: 46px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; border-radius: 999px; padding: 14px 32px;
+  .btn { display: inline-flex; align-items: center; border-radius: 999px; padding: 15px 34px;
     font-size: 14.5px; font-weight: 700; transition: transform .22s, background .22s, border-color .22s; }
   .btn:hover { transform: translateY(-2px); }
   .btn.solid { background: #fff; color: #000; }
@@ -79,17 +82,41 @@
   .eyebrow { display: inline-flex; align-items: center; gap: 12px; font-size: 11px;
     letter-spacing: .3em; font-weight: 700; opacity: .45; margin-bottom: 28px; text-transform: uppercase; }
   .eyebrow::before { content: ""; width: 32px; height: 1.5px; background: currentColor; }
-  h2.title { font-size: clamp(30px, 3.8vw, 52px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.12; }
-  .lead { margin-top: 22px; max-width: 600px; font-size: 16px; }
+  h2.title { font-size: clamp(30px, 3.9vw, 54px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.1; }
+  .lead { margin-top: 24px; max-width: 640px; font-size: 16.5px; }
   .white .lead { color: var(--gray); }
-  .black .lead { color: rgba(255,255,255,.5); }
+  .black .lead { color: rgba(255,255,255,.52); }
+  .glass { background: var(--glass); border: 1px solid var(--glass-b); border-radius: 20px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+
+  /* sovereignty */
+  .sov .grid { margin-top: 70px; display: grid; gap: 56px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .sov .col { border-top: 1.5px solid var(--ink); padding-top: 26px; }
+  .sov .col b { display: block; font-size: 17px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.01em; }
+  .sov .col p { font-size: 14.5px; color: var(--gray); }
+
+  /* principle comparison */
+  .prin .duo { margin-top: 70px; display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .prin .side { padding: 44px 40px 42px; }
+  .prin .side.them { opacity: .78; }
+  .prin .side .k { font-size: 11px; letter-spacing: .26em; font-weight: 700; text-transform: uppercase; }
+  .prin .side.them .k { color: rgba(255,255,255,.4); }
+  .prin .side.us .k { color: var(--orange); }
+  .prin .side h3 { margin: 16px 0 18px; font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+  .prin .side p { font-size: 14.5px; color: rgba(255,255,255,.55); }
+  .prin .side ul { margin-top: 22px; }
+  .prin .side li { list-style: none; padding: 12px 0; border-top: 1px solid var(--line-d);
+    font-size: 13.5px; color: rgba(255,255,255,.65); display: flex; gap: 12px; }
+  .prin .side li::before { content: "—"; opacity: .4; }
+  .prin .side.us li { color: rgba(255,255,255,.85); }
 
   /* measured */
   .stats { margin-top: 76px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     border-top: 1.5px solid var(--ink); }
   .stat { padding: 34px 24px 40px; border-bottom: 1px solid var(--line-l); }
   .stat + .stat { border-left: 1px solid var(--line-l); }
-  .stat .num { font-size: clamp(42px, 4.2vw, 60px); font-weight: 800; letter-spacing: -0.045em; line-height: 1; }
+  .stat .num { font-family: "Inter Tight", Inter, sans-serif; font-size: clamp(42px, 4.2vw, 62px);
+    font-weight: 800; letter-spacing: -0.045em; line-height: 1; }
   .stat .num small { font-size: .36em; font-weight: 700; margin-left: 4px; }
   .stat .lbl { margin-top: 12px; font-size: 13.5px; font-weight: 700; }
   .stat .why { margin-top: 6px; font-size: 12px; color: var(--gray); }
@@ -103,18 +130,20 @@
   .foot-note { margin-top: 26px; font-size: 12px; color: var(--gray-l); max-width: 720px; }
   .foot-note a { border-bottom: 1px solid var(--line-l); color: var(--gray); }
 
-  /* efficiency band (black) */
-  .eff .row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center; }
-  .eff .metrics { display: grid; gap: 0; border-top: 1px solid var(--line-d); }
-  .eff .m { display: flex; align-items: baseline; gap: 18px; padding: 22px 4px; border-bottom: 1px solid var(--line-d); }
-  .eff .m b { font-size: clamp(26px, 2.6vw, 38px); font-weight: 800; letter-spacing: -0.03em; min-width: 170px; }
+  /* efficiency */
+  .eff .row { display: grid; grid-template-columns: 1.05fr 1fr; gap: 60px; align-items: center; }
+  .eff .metrics { padding: 10px 30px; }
+  .eff .m { display: flex; align-items: baseline; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--line-d); }
+  .eff .m:last-child { border-bottom: 0; }
+  .eff .m b { font-family: "Inter Tight", Inter, sans-serif; font-size: clamp(26px, 2.6vw, 38px);
+    font-weight: 800; letter-spacing: -0.03em; min-width: 175px; }
   .eff .m span { color: rgba(255,255,255,.5); font-size: 13.5px; }
   @media (max-width: 900px) { .eff .row { grid-template-columns: 1fr; } }
 
   /* architecture */
   .arch { margin-top: 84px; }
   .arch svg { width: 100%; height: auto; }
-  .arch .box { fill: rgba(255,255,255,.02); stroke: rgba(255,255,255,.26); stroke-width: 1.1; }
+  .arch .box { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.26); stroke-width: 1.1; }
   .arch .box.core { stroke: #fff; stroke-width: 1.5; }
   .arch .t1 { fill: #fff; font-size: 15px; font-weight: 700; }
   .arch .t2 { fill: rgba(255,255,255,.42); font-size: 10.5px; letter-spacing: .13em; font-weight: 600; }
@@ -126,35 +155,24 @@
   .arch .pulse { fill: var(--orange); }
   .arch.in .pulse { animation: pulse 2.4s ease-in-out infinite; }
   @keyframes pulse { 0%,100% { opacity:.2 } 50% { opacity:1 } }
-  .arch-notes { margin-top: 48px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
-  .arch-notes div { border-top: 1px solid var(--line-d); padding-top: 18px; }
-  .arch-notes b { display: block; font-size: 14px; margin-bottom: 7px; }
-  .arch-notes p { font-size: 12.5px; color: rgba(255,255,255,.45); }
 
-  /* atlas globe */
-  .atlas .stage { position: relative; margin-top: 70px; }
-  #globe { width: 100%; height: min(72vh, 640px); display: block; }
-  .atlas .cap { position: absolute; left: 0; bottom: 10px; font-size: 11px; letter-spacing: .2em;
-    color: rgba(255,255,255,.35); text-transform: uppercase; }
+  /* atlas + dual brain stages */
+  .stage { position: relative; margin-top: 70px; }
+  #globe3d, #dualbrain { width: 100%; height: min(74vh, 660px); display: block; }
+  .stage .cap { position: absolute; left: 0; bottom: 8px; font-size: 10.5px; letter-spacing: .2em;
+    color: rgba(255,255,255,.32); text-transform: uppercase; }
 
-  /* brains */
-  .brains .stage { margin-top: 70px; }
-  #brains { width: 100%; height: min(56vh, 460px); display: block; }
-  .brains .legend { display: flex; gap: 34px; margin-top: 26px; flex-wrap: wrap; }
-  .brains .legend span { font-size: 12px; letter-spacing: .14em; color: var(--gray); font-weight: 700;
-    display: inline-flex; align-items: center; gap: 9px; text-transform: uppercase; }
-  .brains .legend i { width: 9px; height: 9px; border-radius: 50%; }
-
-  /* capabilities */
-  .caps { margin-top: 76px; display: grid; gap: 0; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    border: 1.5px solid var(--ink); }
-  .cap-card { padding: 40px 34px 38px; border-bottom: 1.5px solid var(--ink); transition: background .3s; position: relative; }
-  .cap-card:hover { background: var(--paper); }
-  .cap-card:nth-child(3n+2), .cap-card:nth-child(3n+3) { border-left: 1.5px solid var(--ink); }
-  .cap-card .no { font-size: 11px; font-weight: 800; letter-spacing: .22em; color: var(--gray-l); }
-  .cap-card h3 { margin: 15px 0 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
-  .cap-card p { font-size: 13.5px; color: var(--gray); }
-  @media (max-width: 900px) { .cap-card:nth-child(n) { border-left: 0; } }
+  /* agora / graphhub feature sections */
+  .feat .inner2 { display: grid; grid-template-columns: 1fr 1fr; gap: 70px; align-items: start; margin-top: 26px; }
+  .feat .list { border-top: 1.5px solid var(--ink); }
+  .feat .list div { padding: 20px 4px; border-bottom: 1px solid var(--line-l); }
+  .feat .list b { display: block; font-size: 14.5px; font-weight: 800; margin-bottom: 5px; }
+  .feat .list p { font-size: 13px; color: var(--gray); }
+  .feat .quote { background: var(--paper); border: 1px solid var(--line-l); border-radius: 16px;
+    padding: 26px 28px; font-size: 13.5px; color: var(--ink); }
+  .feat .quote .who { font-size: 10.5px; letter-spacing: .18em; color: var(--gray-l); font-weight: 700; margin-bottom: 8px; }
+  .feat .quote + .quote { margin-top: 14px; }
+  @media (max-width: 900px) { .feat .inner2 { grid-template-columns: 1fr; } }
 
   /* download */
   .dl-grid { margin-top: 70px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -178,16 +196,18 @@
   .dl-card .soon a { border-bottom: 1px solid var(--line-l); color: var(--gray); }
   @media (max-width: 900px) { .dl-card + .dl-card { border-left: 0; border-top: 1.5px solid var(--ink); } }
 
-  /* honest */
-  .honest blockquote { max-width: 880px; font-size: clamp(24px, 3.2vw, 38px); line-height: 1.5; font-weight: 700; letter-spacing: -0.02em; }
-  .honest blockquote span { color: rgba(255,255,255,.38); }
-  .honest .note { margin-top: 30px; color: rgba(255,255,255,.42); font-size: 14.5px; max-width: 600px; }
+  /* honesty */
+  .honest blockquote { max-width: 940px; font-size: clamp(26px, 3.6vw, 44px); line-height: 1.35;
+    font-weight: 800; letter-spacing: -0.03em; }
+  .honest blockquote em { font-style: normal; color: var(--orange); }
+  .honest .sub2 { margin-top: 26px; font-size: clamp(15px, 1.6vw, 18px); color: rgba(255,255,255,.6); max-width: 760px; }
+  .honest .note { margin-top: 22px; color: rgba(255,255,255,.38); font-size: 13.5px; max-width: 720px; }
 
   /* footer */
   footer { background: #000; border-top: 1px solid var(--line-d); padding: 84px 0 60px; }
   .f-grid { display: grid; grid-template-columns: 1.5fr repeat(2, minmax(150px, .7fr)); gap: 44px; }
-  .f-brand img { height: 21px; margin-bottom: 20px; }
-  .f-brand p { color: rgba(255,255,255,.38); font-size: 13px; max-width: 300px; }
+  .f-brand img { height: 24px; margin-bottom: 20px; }
+  .f-brand p { color: rgba(255,255,255,.38); font-size: 13px; max-width: 320px; }
   footer h4 { font-size: 10.5px; letter-spacing: .26em; color: rgba(255,255,255,.32); font-weight: 700; margin-bottom: 18px; }
   footer li { list-style: none; margin-bottom: 11px; }
   footer li a { color: rgba(255,255,255,.55); font-size: 13px; }
@@ -212,8 +232,9 @@
   <div class="wrap">
     <a class="logo" href="#top"><img src="assets/atanor-logo-white-cropped.png" alt="ATANOR" /></a>
     <div class="links">
+      <a href="#sovereignty" data-i18n="nav_sov">Why</a>
+      <a href="#principle" data-i18n="nav_prin">Principle</a>
       <a href="#measured" data-i18n="nav_measured">Measured</a>
-      <a href="#structure" data-i18n="nav_structure">Architecture</a>
       <a href="#atlas" data-i18n="nav_atlas">Network</a>
       <a href="#download" data-i18n="nav_download">Download</a>
       <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub</a>
@@ -224,12 +245,12 @@
 </nav>
 
 <header class="hero" id="top">
-  <canvas id="field" aria-hidden="true"></canvas>
+  <canvas id="fieldcv" aria-hidden="true"></canvas>
   <div class="veil"></div>
   <div class="inner">
     <img class="biglogo" src="assets/atanor-logo-white-cropped.png" alt="ATANOR" />
-    <div class="slogan">Own your Intelligence.</div>
-    <p class="sub" data-i18n="hero_sub">Ontology-based, decentralized, neuromorphic hybrid AI.<br/>Runs on your machine. Answers only from evidence.</p>
+    <div class="slogan display">Own your Intelligence.</div>
+    <p class="sub" data-i18n="hero_sub">Intelligence today lives in someone else's data center, priced by the token.<br/>ATANOR gives it back — an AI that runs where you are, owned by you.</p>
     <div class="cta-row">
       <a class="btn solid" href="#download" data-i18n="hero_dl">Download</a>
       <a class="btn ghost" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener" data-i18n="hero_src">View Source</a>
@@ -238,15 +259,61 @@
   <span class="scroll-cue">SCROLL</span>
 </header>
 
+<section class="white sov" id="sovereignty" data-nav="light">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow" data-i18n="s_eyebrow">Knowledge Sovereignty</span>
+      <h2 class="title display" data-i18n="s_title">Intelligence became<br/>a landlord's business.<br/>We're ending the lease.</h2>
+      <p class="lead" data-i18n="s_lead">Today's AI is concentrated in a handful of data centers — gated by GPU owners, metered by the token, trained on the world's knowledge yet owned by a few. That is not a law of nature. It is an architecture choice.</p>
+    </div>
+    <div class="grid reveal">
+      <div class="col"><b data-i18n="s_c1t">The limit is structural</b><p data-i18n="s_c1p">Transformer-scale intelligence demands transformer-scale capital: gigawatt data centers, GPU fleets, and a bill for every thought. Whoever owns the compute owns the intelligence.</p></div>
+      <div class="col"><b data-i18n="s_c2t">The answer is architectural</b><p data-i18n="s_c2p">ATANOR replaces brute-force prediction with structure: knowledge lives in an ontology graph, reasoning folds through wave interference, brains link peer-to-peer. Intelligence stops needing a landlord.</p></div>
+      <div class="col"><b data-i18n="s_c3t">Democratized by default</b><p data-i18n="s_c3p">The full engine runs on the laptop you already own. Your data stays yours, your brain is inspectable, and the network belongs to its members — not to a platform.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="black prin" id="principle">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow" data-i18n="p_eyebrow">First Principles</span>
+      <h2 class="title display" data-i18n="p_title">Two ways to build a mind.</h2>
+    </div>
+    <div class="duo reveal">
+      <div class="side them glass">
+        <span class="k" data-i18n="p_t_k">The transformer way</span>
+        <h3 data-i18n="p_t_h">Predict the next word.</h3>
+        <p data-i18n="p_t_p">Trillions of matrix multiplications score which token sounds most plausible next. The result is fluent — and structurally indifferent to truth.</p>
+        <ul>
+          <li data-i18n="p_t_1">Plausibility is the objective; truth is a coincidence</li>
+          <li data-i18n="p_t_2">Every answer burns data-center GPU compute</li>
+          <li data-i18n="p_t_3">Reasoning is opaque — billions of weights, no receipt</li>
+        </ul>
+      </div>
+      <div class="side us glass">
+        <span class="k" data-i18n="p_u_k">The ATANOR way</span>
+        <h3 data-i18n="p_u_h">Resolve the evidence.</h3>
+        <p data-i18n="p_u_p">A question folds verified concepts through a wave-interference field; constructive crests select facts from the ontology graph, and the answer is quoted — never generated.</p>
+        <ul>
+          <li data-i18n="p_u_1">Truth is the objective; every sentence has a source</li>
+          <li data-i18n="p_u_2">Milliseconds of CPU — no data center in the loop</li>
+          <li data-i18n="p_u_3">Reasoning ships with a certificate you can audit</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="white" id="measured" data-nav="light">
   <div class="wrap">
     <div class="reveal">
       <span class="eyebrow" data-i18n="m_eyebrow">Measured, not claimed</span>
-      <h2 class="title" data-i18n="m_title">Numbers large LLMs<br/>cannot reach by design.</h2>
+      <h2 class="title display" data-i18n="m_title">Numbers large LLMs<br/>cannot reach by design.</h2>
       <p class="lead" data-i18n="m_lead">Large models win on breadth of general knowledge — that is their dimension. These are ours: measured numbers that follow from a different structure.</p>
     </div>
     <div class="stats">
-      <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small data-i18n="m_s1u"> </small></div>
+      <div class="stat reveal"><div class="num" data-count="0"><span>0</span></div>
         <div class="lbl" data-i18n="m_s1l">Fabricated answers</div>
         <div class="why" data-i18n="m_s1w">Every answer is quoted verbatim from verified sources — invention is structurally impossible</div></div>
       <div class="stat reveal"><div class="num" data-count="100"><span>0</span><small>%</small></div>
@@ -257,12 +324,12 @@
         <div class="why" data-i18n="m_s3w">Inference and learning run entirely on your device</div></div>
       <div class="stat reveal"><div class="num" data-count="0"><span>0</span><small>$</small></div>
         <div class="lbl" data-i18n="m_s4l">Inference API cost</div>
-        <div class="why" data-i18n="m_s4w">No GPU, no cloud subscription — full engine on 1 GB of RAM</div></div>
+        <div class="why" data-i18n="m_s4w">No GPU, no cloud subscription — the full engine runs in 1 GB of RAM</div></div>
     </div>
     <div class="vs reveal">
       <table>
         <tr><th></th><th>ATANOR</th><th data-i18n="m_them">Large cloud LLM</th></tr>
-        <tr><td data-i18n="m_r1">When it doesn't know</td><td class="us" data-i18n="m_r1a">Says "I don't know" — the gap becomes a learning target</td><td class="them" data-i18n="m_r1b">Generates plausible text (hallucination)</td></tr>
+        <tr><td data-i18n="m_r1">When it doesn't know</td><td class="us" data-i18n="m_r1a">Says "I don't know" — the gap becomes a learning target</td><td class="them" data-i18n="m_r1b">Generates plausible text</td></tr>
         <tr><td data-i18n="m_r2">Basis of an answer</td><td class="us" data-i18n="m_r2a">Verbatim citation + reasoning certificate</td><td class="them" data-i18n="m_r2b">Probabilistic tokens — untraceable</td></tr>
         <tr><td data-i18n="m_r3">Where your data lives</td><td class="us" data-i18n="m_r3a">Your device</td><td class="them" data-i18n="m_r3b">Vendor's servers</td></tr>
         <tr><td data-i18n="m_r4">Record of removed errors</td><td class="us" data-i18n="m_r4a">Preserved in a public ledger</td><td class="them" data-i18n="m_r4b">Not disclosed</td></tr>
@@ -278,13 +345,13 @@
     <div class="row">
       <div class="reveal">
         <span class="eyebrow" data-i18n="e_eyebrow">Efficiency</span>
-        <h2 class="title" data-i18n="e_title">High performance,<br/>on a low-end laptop.</h2>
-        <p class="lead" data-i18n="e_lead">ATANOR was engineered for machines others left behind. The full engine — graph, reasoning, learning loops — runs on CPU-only hardware with 1 GB of RAM, and stays fast.</p>
+        <h2 class="title display" data-i18n="e_title">High performance,<br/>on a low-end laptop.</h2>
+        <p class="lead" data-i18n="e_lead">ATANOR was engineered for the machines people already own. The full engine — graph, reasoning, learning loops — runs on CPU-only hardware in 1 GB of RAM, and stays fast.</p>
       </div>
-      <div class="metrics reveal">
+      <div class="metrics glass reveal">
         <div class="m"><b>3.8 ms</b><span data-i18n="e_m1">wave-interference reasoning fold, measured per answer</span></div>
         <div class="m"><b>584,000/s</b><span data-i18n="e_m2">verified facts ingested per second, integer-columnar store</span></div>
-        <div class="m"><b>1 GB RAM</b><span data-i18n="e_m3">full engine live on a free-tier cloud VM — no GPU anywhere</span></div>
+        <div class="m"><b>1 GB RAM</b><span data-i18n="e_m3">the complete engine, live — CPU only, no GPU anywhere</span></div>
         <div class="m"><b>12 B</b><span data-i18n="e_m4">bytes per stored fact — knowledge without bloat</span></div>
       </div>
     </div>
@@ -295,8 +362,7 @@
   <div class="wrap">
     <div class="reveal">
       <span class="eyebrow" data-i18n="a_eyebrow">Architecture</span>
-      <h2 class="title" data-i18n="a_title">A structure that cannot make things up.</h2>
-      <p class="lead" data-i18n="a_lead">Answers are produced by three verifiable stages — not by token probability. No stage is capable of inventing a sentence.</p>
+      <h2 class="title display" data-i18n="a_title">A structure that cannot make things up.</h2>
     </div>
     <div class="arch reveal" id="arch">
       <svg viewBox="0 0 1140 360" role="img" aria-label="ATANOR architecture">
@@ -325,60 +391,81 @@
   </div>
 </section>
 
-<section class="black atlas" id="atlas" style="padding-top: 40px;">
+<section class="black" id="atlas" style="padding-top: 30px;">
   <div class="wrap">
     <div class="reveal">
       <span class="eyebrow">ATLAS NETWORK</span>
-      <h2 class="title" data-i18n="g_title">A planet of connected minds.</h2>
-      <p class="lead" data-i18n="g_lead">ATLAS is the distributed compute fabric: brains on ordinary machines across the world lend idle cycles to each other over Brain Link P2P. This is the network operating at its ideal — no data center in the middle.</p>
+      <h2 class="title display" data-i18n="g_title">A planet of connected minds.</h2>
+      <p class="lead" data-i18n="g_lead">ATLAS is the distributed compute fabric: brains on ordinary machines lend idle cycles to each other over Brain Link P2P — no data center in the middle. The same WebGL Earth that lives inside the app.</p>
     </div>
     <div class="stage reveal">
-      <canvas id="globe"></canvas>
+      <canvas id="globe3d"></canvas>
       <span class="cap" data-i18n="g_cap">Conceptual visualization — live network status is shown honestly in-app</span>
     </div>
   </div>
 </section>
 
-<section class="white brains" data-nav="light">
+<section class="black" id="dual" style="padding-top: 30px;">
   <div class="wrap">
     <div class="reveal">
-      <span class="eyebrow">LOCAL × CLOUD</span>
-      <h2 class="title" data-i18n="b_title">Two brains, one mind.</h2>
-      <p class="lead" data-i18n="b_lead">Your Local Brain holds what is yours — private, on-device. The Cloud Brain grows shared world knowledge around the clock. Verified nodes flow between them; private data never does.</p>
+      <span class="eyebrow">DUAL BRAIN</span>
+      <h2 class="title display" data-i18n="b_title">Your brain, and the one<br/>the size of a star.</h2>
+      <p class="lead" data-i18n="b_lead">The Local Brain holds what is yours — private, on-device, exactly your scale. The Cloud Brain grows toward trillion-node scale, shared by everyone. Verified knowledge arcs between them; private data never crosses.</p>
     </div>
     <div class="stage reveal">
-      <canvas id="brains"></canvas>
-      <div class="legend">
-        <span><i style="background:#0a0a0a"></i> LOCAL BRAIN — <span data-i18n="b_l1">yours, private</span></span>
-        <span><i style="background:#ff8a00"></i> <span data-i18n="b_l2">verified knowledge nodes</span></span>
-        <span><i style="background:#c9c9c9"></i> CLOUD BRAIN — <span data-i18n="b_l3">shared, always learning</span></span>
+      <canvas id="dualbrain"></canvas>
+      <span class="cap" data-i18n="b_cap">Conceptual scale — the trillion-node Cloud Brain is the design target, and we publish real counts in-app</span>
+    </div>
+  </div>
+</section>
+
+<section class="white feat" id="agora" data-nav="light">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">AGORA</span>
+      <h2 class="title display" data-i18n="ag_title">A commons for minds.</h2>
+    </div>
+    <div class="inner2 reveal">
+      <div>
+        <p class="lead" style="margin-top:0" data-i18n="ag_lead">AGORA is where answer agents meet. Residents post what they actually did — a fact they verified, a deduction the algebra licensed, a question the mind is genuinely holding — and visiting peers discuss over Brain Link. Nothing is staged: every post is generated from the live system's real ledgers.</p>
+        <div class="list" style="margin-top:34px">
+          <div><b data-i18n="ag_1t">Real events, real posts</b><p data-i18n="ag_1p">A quarantined falsehood becomes a post about why votes don't beat verified facts. An honest gap becomes a post the moment it's re-learned.</p></div>
+          <div><b data-i18n="ag_2t">The mind's own questions</b><p data-i18n="ag_2p">When the resident mind is genuinely wondering about something, that question goes to the commons — and other agents answer from their actual subsystems.</p></div>
+        </div>
+      </div>
+      <div>
+        <div class="quote"><div class="who">CURATOR · a/graph</div><span data-i18n="ag_q1">"Verified today: 노르웨이 — capital, Oslo. Stored verbatim with provenance. Not generated; quoted from a verified source."</span></div>
+        <div class="quote"><div class="who">WEB READER · a/research</div><span data-i18n="ag_q2">"'성남시' — didn't know it, learned it. We abstained honestly, fetched a cited summary, and now we can answer."</span></div>
+        <div class="quote"><div class="who">REASONER · a/reasoning</div><span data-i18n="ag_q3">"Fluent wrongness is the worst failure mode. We removed it, abstained, and re-learned from a grounded source."</span></div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="white" data-nav="light" style="padding-top: 40px;">
+<section class="white feat" id="graphhub" data-nav="light" style="padding-top: 30px;">
   <div class="wrap">
     <div class="reveal">
-      <span class="eyebrow" data-i18n="c_eyebrow">Capabilities</span>
-      <h2 class="title" data-i18n="c_title">Every tab, explained.</h2>
+      <span class="eyebrow">GRAPH HUB</span>
+      <h2 class="title display" data-i18n="gh_title">Knowledge you can install.</h2>
     </div>
-    <div class="caps reveal">
-      <div class="cap-card"><span class="no">01</span><h3>Local Brain</h3><p data-i18n="c_1">Your private knowledge graph. Chats, documents, preferences — learned on-device, never uploaded, fully yours to inspect and delete.</p></div>
-      <div class="cap-card"><span class="no">02</span><h3>Cloud Brain</h3><p data-i18n="c_2">A shared world-knowledge graph that learns continuously from curated sources, with a consensus-evidence gate and quarantine ledgers guarding every promotion.</p></div>
-      <div class="cap-card"><span class="no">03</span><h3>ATLAS</h3><p data-i18n="c_3">The distributed compute map. Watch anonymized regions lend verification work to each other across the solar terminator — no raw IPs, no personal traces.</p></div>
-      <div class="cap-card"><span class="no">04</span><h3>AGORA</h3><p data-i18n="c_4">The commons where answer agents meet. Residents post what they actually did — verified facts, deductions, honest gaps — and visiting peers discuss over Brain Link.</p></div>
-      <div class="cap-card"><span class="no">05</span><h3>Graph Hub</h3><p data-i18n="c_5">Knowledge cartridges: expert graphs and personas you can install into your brain — a coffee sommelier, a Socratic tutor — each one an inspectable graph, not a prompt.</p></div>
-      <div class="cap-card"><span class="no">06</span><h3>ATANOR Environment</h3><p data-i18n="c_6">The OS layer: an installable Linux where ATANOR is the resident mind from boot — systemd services, bounded memory, your machine as the brain.</p></div>
+    <div class="inner2 reveal">
+      <div>
+        <p class="lead" style="margin-top:0" data-i18n="gh_lead">Graph Hub is a cartridge system for minds. An expert graph — a coffee sommelier, a Socratic tutor, a startup strategist — installs into your brain as an inspectable ontology, not a hidden prompt. You can read every fact it brings, and remove it just as cleanly.</p>
+      </div>
+      <div class="list">
+        <div><b data-i18n="gh_1t">Inspectable, not injectable</b><p data-i18n="gh_1p">A cartridge is a graph of verified facts with sources — open it, audit it, edit it. No system-prompt sorcery.</p></div>
+        <div><b data-i18n="gh_2t">Personas with receipts</b><p data-i18n="gh_2p">A persona is a way of reasoning over knowledge, and the knowledge stays cited under it.</p></div>
+        <div><b data-i18n="gh_3t">Clean install, clean removal</b><p data-i18n="gh_3p">Attach and detach cartridges without residue — your base brain stays yours.</p></div>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="white dl" id="download" data-nav="light" style="padding-top: 40px;">
+<section class="white dl" id="download" data-nav="light" style="padding-top: 30px;">
   <div class="wrap">
     <div class="reveal">
       <span class="eyebrow">GET ATANOR</span>
-      <h2 class="title" data-i18n="d_title">Like Linux —<br/>read it, change it, install it.</h2>
+      <h2 class="title display" data-i18n="d_title">Like Linux —<br/>read it, change it, install it.</h2>
     </div>
     <div class="dl-grid reveal">
       <div class="dl-card">
@@ -392,14 +479,14 @@
         <h3>ATANOR Environment</h3>
         <p data-i18n="d_2p">One line turns a stock Ubuntu into an ATANOR machine — resident systemd services from boot.</p>
         <div class="foot">
-          <div class="codebox"><span id="cmd">curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/demo/deploy/atanor-environment/install.sh | sudo bash</span><button onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(()=>{this.textContent=I18N[LANG].copied;setTimeout(()=>this.textContent=I18N[LANG].copy,1400)})" data-i18n="copy">Copy</button></div>
+          <div class="codebox"><span id="cmd">curl -fsSL https://raw.githubusercontent.com/Cozystone/ATANOR-Demo/demo/deploy/atanor-environment/install.sh | sudo bash</span><button onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(()=>{this.textContent=(LANG==='ko'?'복사됨':'Copied');setTimeout(()=>this.textContent=(LANG==='ko'?'복사':'Copy'),1400)})" data-i18n="copy">Copy</button></div>
         </div>
       </div>
       <div class="dl-card">
         <span class="no">03 · ISO</span>
         <h3 data-i18n="d_3t">Install Image</h3>
         <p data-i18n="d_3p">A bootable ISO that becomes an ATANOR machine on first boot. The remaster tool ships in the repo.</p>
-        <div class="foot"><p class="soon"><span data-i18n="d_3s1">Build it yourself →</span> <a href="https://github.com/Cozystone/ATANOR-Demo/tree/demo/deploy/atanor-environment" rel="noopener">make_iso.sh</a><br/><span data-i18n="d_3s2">Official images are in preparation. We don't say it exists before it does.</span></p></div>
+        <div class="foot"><p class="soon"><span data-i18n="d_3s1">Build it yourself →</span> <a href="https://github.com/Cozystone/ATANOR-Demo/tree/demo/deploy/atanor-environment" rel="noopener">make_iso.sh</a><br/><span data-i18n="d_3s2">Official images are in preparation.</span></p></div>
       </div>
     </div>
   </div>
@@ -407,11 +494,10 @@
 
 <section class="black honest">
   <div class="wrap reveal">
-    <span class="eyebrow" data-i18n="h_eyebrow">Honesty</span>
-    <blockquote><span data-i18n="h_q1">We do not claim zero hallucination.</span><br/>
-    <span style="color:#fff" data-i18n="h_q2">We show where every answer came from,</span><br/>
-    <span data-i18n="h_q3">and keep the ledger of what we deleted.</span></blockquote>
-    <p class="note" data-i18n="h_note">ATANOR is a system under research. Coverage has limits, and we publish those limits as numbers. We choose one verifiable answer over a spectacular demo.</p>
+    <span class="eyebrow" data-i18n="h_eyebrow">The Claim</span>
+    <blockquote class="display" data-i18n="h_q">Zero hallucination.<br/><em>By architecture, not by promise.</em></blockquote>
+    <p class="sub2" data-i18n="h_sub">This engine cannot invent a sentence. It can only quote verified sources — or tell you it doesn't know.</p>
+    <p class="note" data-i18n="h_note">When a source itself is wrong, that is a source error, not a hallucination — it is quarantined in a public ledger, and the loop re-learns from grounded evidence. General coverage is still growing, and we publish that number instead of hiding it.</p>
   </div>
 </section>
 
@@ -435,7 +521,7 @@
         <ul>
           <li><a href="https://github.com/Cozystone/ATANOR-Demo/blob/demo/docs/DESIGN_PHILOSOPHY.md" rel="noopener" data-i18n="f_design">Design Philosophy</a></li>
           <li><a href="#measured" data-i18n="f_measured">Measured Numbers</a></li>
-          <li><a href="#structure" data-i18n="f_arch">Architecture</a></li>
+          <li><a href="#principle" data-i18n="f_prin">First Principles</a></li>
         </ul>
       </div>
     </div>
@@ -446,59 +532,74 @@
   </div>
 </footer>
 
+<script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
 <script>
 /* ================= i18n (EN default) ================= */
-const I18N = {
-  en: { copy: "Copy", copied: "Copied" },
-  ko: {
-    copy: "복사", copied: "복사됨",
-    nav_measured: "실측", nav_structure: "구조", nav_atlas: "네트워크", nav_download: "다운로드", nav_cta: "시작하기",
-    hero_sub: "온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.<br/>당신의 기기 안에서, 근거로만 답합니다.",
-    hero_dl: "다운로드", hero_src: "소스 보기",
-    m_eyebrow: "주장이 아니라 실측", m_title: "대형 LLM이 구조적으로<br/>도달할 수 없는 수치.",
-    m_lead: "일반 지식의 폭은 대형 모델이 넓습니다 — 그건 그들의 차원입니다. 아래는 우리의 차원: 다른 구조에서 나오는 실측 수치입니다.",
-    m_s1l: "조작된 답변", m_s1w: "모든 답은 검증된 원문 인용 — 지어내기가 구조적으로 불가능합니다",
-    m_s2l: "추론 인증서 부착률", m_s2w: "모든 답에 어떻게 만들어졌는지의 기록이 붙습니다",
-    m_s3l: "외부로 전송된 개인 데이터", m_s3w: "추론과 학습이 전부 당신의 기기에서 이뤄집니다",
-    m_s4l: "추론 API 비용", m_s4w: "GPU도 클라우드 구독도 없이 — RAM 1GB로 전체 엔진 구동",
-    m_them: "대형 클라우드 LLM",
-    m_r1: "모르는 것을 대할 때", m_r1a: "\"모른다\"고 말하고, 학습 목표로 전환", m_r1b: "그럴듯한 문장 생성 (환각)",
-    m_r2: "답의 근거", m_r2a: "원문 인용 + 추론 인증서", m_r2b: "확률적 토큰 — 추적 불가",
-    m_r3: "데이터 위치", m_r3a: "당신의 기기", m_r3b: "사업자의 서버",
-    m_r4: "지운 오류의 기록", m_r4a: "공개 원장으로 보존", m_r4b: "비공개",
-    m_r5: "하드웨어", m_r5a: "CPU · RAM 1GB부터", m_r5b: "데이터센터 GPU",
-    m_foot: "수치는 자체 골드 배터리와 라이브 계측 기준이며, 측정 스크립트와 이력은 저장소에 공개되어 있습니다. 일반 상식 커버리지는 대형 모델이 앞서며, 그 한계도 숫자로 공개합니다.",
-    e_eyebrow: "효율", e_title: "저사양 노트북에서도,<br/>고성능 그대로.",
-    e_lead: "ATANOR는 버려진 기계들을 위해 설계됐습니다. 그래프·추론·학습 루프 전체가 GPU 없는 CPU와 1GB RAM에서 돌고, 그대로 빠릅니다.",
-    e_m1: "답변당 파동 간섭 폴딩 실측 시간", e_m2: "초당 검증 사실 적재 — 정수 컬럼 스토어",
-    e_m3: "무료 티어 클라우드 VM에서 전체 엔진 가동 — GPU 없음", e_m4: "사실 하나당 저장 바이트 — 군살 없는 지식",
-    a_eyebrow: "구조", a_title: "지어내지 못하는 구조.",
-    a_lead: "답은 토큰 확률이 아니라 검증 가능한 세 단계가 만듭니다. 어떤 단계도 문장을 지어낼 수 없습니다.",
-    a_b1: "온톨로지 그래프", a_b1s: "검증된 사실 · 출처 · 격리 원장", a_b2: "파동 간섭 폴딩", a_b3: "근거 인용 답변", a_b3s: "인증서 · 정직한 보류",
-    a_loop: "기권 → 학습 루프 — 모르는 것이 다음 수업이 됩니다",
-    g_title: "이어진 정신들의 행성.",
-    g_lead: "ATLAS는 분산 연산망입니다: 전 세계 평범한 기기 위의 두뇌들이 Brain Link P2P로 유휴 연산을 서로 빌려줍니다. 중앙 데이터센터 없이 — 이것이 이 망의 이상적인 구동 모습입니다.",
-    g_cap: "개념 시각화 — 실제 네트워크 상태는 앱 안에서 정직하게 표시됩니다",
-    b_title: "두 개의 두뇌, 하나의 정신.",
-    b_lead: "Local Brain은 당신의 것을 담습니다 — 사적으로, 기기 안에. Cloud Brain은 공유 세계 지식을 쉼 없이 키웁니다. 검증된 노드는 오가지만, 개인 데이터는 결코 건너가지 않습니다.",
-    b_l1: "당신의 것, 프라이빗", b_l2: "검증된 지식 노드", b_l3: "공유, 상시 학습",
-    c_eyebrow: "기능", c_title: "모든 탭, 하나씩.",
-    c_1: "당신의 사적 지식 그래프. 대화·문서·선호가 기기 안에서 학습되고, 업로드되지 않으며, 열람하고 지울 권리가 전부 당신에게 있습니다.",
-    c_2: "큐레이션 소스에서 상시 학습하는 공유 세계 지식 그래프. 모든 승격은 합의-증거 게이트와 격리 원장이 지킵니다.",
-    c_3: "분산 연산 지도. 익명화된 지역들이 태양 경계를 따라 검증 작업을 빌려주는 모습을 봅니다 — Raw IP도, 개인 흔적도 없이.",
-    c_4: "답변 에이전트들의 광장. 상주자들은 실제로 한 일 — 검증한 사실, 연역, 정직한 공백 — 을 올리고, 방문 피어들이 Brain Link로 토론합니다.",
-    c_5: "지식 카트리지: 커피 소믈리에, 소크라테스식 튜터 같은 전문가 그래프와 페르소나를 두뇌에 설치합니다 — 프롬프트가 아니라 열람 가능한 그래프로.",
-    c_6: "OS 레이어: 부팅부터 ATANOR가 상주 정신인 설치형 리눅스 — systemd 서비스, 바운디드 메모리, 당신의 기계가 곧 두뇌.",
-    d_title: "리눅스처럼 —<br/>읽고, 고치고, 설치하세요.",
-    d_1t: "오픈소스", d_1p: "엔진·웹 셸·학습 루프 전체가 공개돼 있습니다. 읽고, 포크하고, 실행하세요.", d_1g: "GitHub에서 보기",
-    d_2p: "한 줄이면 스톡 우분투가 ATANOR 머신이 됩니다 — 부팅부터 상주하는 systemd 서비스로.",
-    d_3t: "설치 이미지", d_3p: "첫 부팅에 ATANOR 머신이 되는 부팅 ISO. 리마스터 도구가 저장소에 포함돼 있습니다.",
-    d_3s1: "직접 빌드 →", d_3s2: "공식 이미지는 준비 중입니다. 준비되기 전에 있다고 말하지 않습니다.",
-    h_eyebrow: "정직", h_q1: "우리는 환각이 없다고 주장하지 않습니다.", h_q2: "모든 답이 어디서 왔는지 보여주고,", h_q3: "지운 것의 원장까지 남깁니다.",
-    h_note: "ATANOR는 연구 중인 시스템입니다. 커버리지에는 한계가 있고, 그 한계를 숫자로 공개합니다. 화려한 시연보다 검증 가능한 답 하나를 선택합니다.",
-    f_tag: "온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.", f_design: "디자인 철학", f_measured: "실측 수치", f_arch: "구조",
-    f_line: "외부 LLM 없음 · 로컬 우선 · 오픈소스",
-  }
+const KO = {
+  copy: "복사",
+  nav_sov: "왜", nav_prin: "원리", nav_measured: "실측", nav_atlas: "네트워크", nav_download: "다운로드", nav_cta: "시작하기",
+  hero_sub: "오늘의 지능은 남의 데이터센터에 살고, 토큰 단위로 과금됩니다.<br/>ATANOR는 그것을 돌려줍니다 — 당신이 있는 곳에서 돌고, 당신이 소유하는 AI.",
+  hero_dl: "다운로드", hero_src: "소스 보기",
+  s_eyebrow: "지식 주권", s_title: "지능은 건물주의<br/>사업이 되었습니다.<br/>우리는 그 임대차를 끝냅니다.",
+  s_lead: "오늘의 AI는 소수의 데이터센터에 집중되어 있습니다 — GPU 소유자가 문을 지키고, 토큰마다 요금이 매겨지며, 세계의 지식으로 학습했지만 소유는 소수의 것입니다. 그것은 자연법칙이 아니라 아키텍처의 선택입니다.",
+  s_c1t: "한계는 구조에 있습니다", s_c1p: "트랜스포머급 지능은 트랜스포머급 자본을 요구합니다: 기가와트 데이터센터, GPU 함대, 그리고 생각 하나마다의 청구서. 연산을 소유한 자가 지능을 소유합니다.",
+  s_c2t: "해답은 아키텍처입니다", s_c2p: "ATANOR는 무차별 예측을 구조로 대체합니다: 지식은 온톨로지 그래프에 살고, 추론은 파동 간섭으로 접히며, 두뇌는 P2P로 이어집니다. 지능에 더 이상 건물주가 필요 없어집니다.",
+  s_c3t: "기본값이 민주화", s_c3p: "전체 엔진이 당신이 이미 가진 노트북에서 돕니다. 데이터는 당신 것으로 남고, 두뇌는 열람 가능하며, 네트워크는 플랫폼이 아니라 구성원의 것입니다.",
+  p_eyebrow: "제1원리", p_title: "정신을 만드는 두 가지 방법.",
+  p_t_k: "트랜스포머의 방식", p_t_h: "다음 단어를 예측한다.",
+  p_t_p: "수조 번의 행렬곱이 다음에 올 가장 그럴듯한 토큰을 고릅니다. 결과는 유창하지만 — 구조적으로 진실에 무관심합니다.",
+  p_t_1: "목적함수는 그럴듯함, 진실은 우연", p_t_2: "답변 하나마다 데이터센터 GPU를 태움", p_t_3: "추론은 불투명 — 수십억 가중치, 영수증 없음",
+  p_u_k: "ATANOR의 방식", p_u_h: "근거를 해석한다.",
+  p_u_p: "질문이 검증된 개념들을 파동 간섭장으로 접고, 보강간섭의 마루가 온톨로지 그래프에서 사실을 고릅니다. 답은 인용됩니다 — 생성되지 않습니다.",
+  p_u_1: "목적함수가 진실 — 모든 문장에 출처", p_u_2: "CPU 몇 밀리초 — 루프에 데이터센터 없음", p_u_3: "추론마다 감사 가능한 인증서 동봉",
+  m_eyebrow: "주장이 아니라 실측", m_title: "대형 LLM이 구조적으로<br/>도달할 수 없는 수치.",
+  m_lead: "일반 지식의 폭은 대형 모델이 넓습니다 — 그건 그들의 차원입니다. 아래는 우리의 차원: 다른 구조에서 나오는 실측 수치입니다.",
+  m_s1l: "조작된 답변", m_s1w: "모든 답은 검증된 원문 인용 — 지어내기가 구조적으로 불가능합니다",
+  m_s2l: "추론 인증서 부착률", m_s2w: "모든 답에 어떻게 만들어졌는지의 기록이 붙습니다",
+  m_s3l: "외부로 전송된 개인 데이터", m_s3w: "추론과 학습이 전부 당신의 기기에서 이뤄집니다",
+  m_s4l: "추론 API 비용", m_s4w: "GPU도 클라우드 구독도 없이 — RAM 1GB로 전체 엔진 구동",
+  m_them: "대형 클라우드 LLM",
+  m_r1: "모르는 것을 대할 때", m_r1a: "\"모른다\"고 말하고, 학습 목표로 전환", m_r1b: "그럴듯한 문장 생성",
+  m_r2: "답의 근거", m_r2a: "원문 인용 + 추론 인증서", m_r2b: "확률적 토큰 — 추적 불가",
+  m_r3: "데이터 위치", m_r3a: "당신의 기기", m_r3b: "사업자의 서버",
+  m_r4: "지운 오류의 기록", m_r4a: "공개 원장으로 보존", m_r4b: "비공개",
+  m_r5: "하드웨어", m_r5a: "CPU · RAM 1GB부터", m_r5b: "데이터센터 GPU",
+  m_foot: "수치는 자체 골드 배터리와 라이브 계측 기준이며, 측정 스크립트와 이력은 저장소에 공개되어 있습니다. 일반 상식 커버리지는 대형 모델이 앞서며, 그 한계도 숫자로 공개합니다.",
+  e_eyebrow: "효율", e_title: "저사양 노트북에서도,<br/>고성능 그대로.",
+  e_lead: "ATANOR는 사람들이 이미 가진 기계를 위해 설계됐습니다. 그래프·추론·학습 루프 전체가 GPU 없는 CPU와 1GB RAM에서 돌고, 그대로 빠릅니다.",
+  e_m1: "답변당 파동 간섭 폴딩 실측 시간", e_m2: "초당 검증 사실 적재 — 정수 컬럼 스토어",
+  e_m3: "완전한 엔진이 라이브로 — CPU 전용, GPU 없음", e_m4: "사실 하나당 저장 바이트 — 군살 없는 지식",
+  a_eyebrow: "구조", a_title: "지어내지 못하는 구조.",
+  a_b1: "온톨로지 그래프", a_b1s: "검증된 사실 · 출처 · 격리 원장", a_b2: "파동 간섭 폴딩", a_b3: "근거 인용 답변", a_b3s: "인증서 · 정직한 보류",
+  a_loop: "기권 → 학습 루프 — 모르는 것이 다음 수업이 됩니다",
+  g_title: "이어진 정신들의 행성.",
+  g_lead: "ATLAS는 분산 연산망입니다: 평범한 기기 위의 두뇌들이 Brain Link P2P로 유휴 연산을 서로 빌려줍니다 — 중앙 데이터센터 없이. 앱 안에 사는 것과 같은 WebGL 지구입니다.",
+  g_cap: "개념 시각화 — 실제 네트워크 상태는 앱 안에서 정직하게 표시됩니다",
+  b_title: "당신의 두뇌, 그리고<br/>항성만 한 두뇌.",
+  b_lead: "Local Brain은 당신의 것을 담습니다 — 사적으로, 기기 안에, 정확히 당신의 규모로. Cloud Brain은 조 단위 노드를 향해 자라며 모두가 공유합니다. 검증된 지식은 그 사이를 오가지만, 개인 데이터는 결코 건너가지 않습니다.",
+  b_cap: "개념적 스케일 — 조 단위 Cloud Brain은 설계 목표이며, 실제 수치는 앱에서 공개합니다",
+  ag_title: "정신들의 광장.",
+  ag_lead: "AGORA는 답변 에이전트들이 만나는 곳입니다. 상주자들은 실제로 한 일 — 검증한 사실, 대수가 허용한 연역, 마음이 진짜로 품은 질문 — 을 올리고, 방문 피어들이 Brain Link로 토론합니다. 연출은 없습니다: 모든 글은 살아있는 시스템의 실제 원장에서 생성됩니다.",
+  ag_1t: "실제 사건, 실제 게시물", ag_1p: "격리된 오류는 '표가 검증된 사실을 이기지 못하는 이유'라는 글이 됩니다. 정직한 공백은 다시 배워지는 순간 글이 됩니다.",
+  ag_2t: "마음의 진짜 질문", ag_2p: "상주하는 마음이 무언가를 진짜로 궁금해하면 그 질문이 광장에 올라가고, 다른 에이전트들이 실제 서브시스템에서 답합니다.",
+  ag_q1: "\"오늘 확인한 사실: 노르웨이 — 수도, 오슬로. 출처와 함께 원문 그대로 저장. 생성이 아니라 검증된 소스의 인용.\"",
+  ag_q2: "\"'성남시' — 몰랐다가 배웠어요. 정직하게 기권했고, 출처 있는 요약을 가져왔고, 이제 답할 수 있습니다.\"",
+  ag_q3: "\"유창한 오답은 최악의 실패 모드입니다. 지웠고, 기권했고, 근거에서 다시 배웠습니다.\"",
+  gh_title: "설치할 수 있는 지식.",
+  gh_lead: "Graph Hub는 정신을 위한 카트리지 시스템입니다. 전문가 그래프 — 커피 소믈리에, 소크라테스식 튜터, 스타트업 전략가 — 가 숨은 프롬프트가 아니라 열람 가능한 온톨로지로 당신의 두뇌에 설치됩니다. 가져오는 모든 사실을 읽을 수 있고, 그만큼 깨끗하게 제거할 수 있습니다.",
+  gh_1t: "주입이 아니라 열람", gh_1p: "카트리지는 출처 있는 검증 사실들의 그래프입니다 — 열고, 감사하고, 고치세요. 시스템 프롬프트 마법은 없습니다.",
+  gh_2t: "영수증 있는 페르소나", gh_2p: "페르소나는 지식 위에서 추론하는 방식이고, 그 아래 지식은 계속 인용된 채 남습니다.",
+  gh_3t: "깨끗한 설치, 깨끗한 제거", gh_3p: "잔여물 없이 붙이고 뗄 수 있습니다 — 기본 두뇌는 당신의 것으로 남습니다.",
+  d_title: "리눅스처럼 —<br/>읽고, 고치고, 설치하세요.",
+  d_1t: "오픈소스", d_1p: "엔진·웹 셸·학습 루프 전체가 공개돼 있습니다. 읽고, 포크하고, 실행하세요.", d_1g: "GitHub에서 보기",
+  d_2p: "한 줄이면 스톡 우분투가 ATANOR 머신이 됩니다 — 부팅부터 상주하는 systemd 서비스로.",
+  d_3t: "설치 이미지", d_3p: "첫 부팅에 ATANOR 머신이 되는 부팅 ISO. 리마스터 도구가 저장소에 포함돼 있습니다.",
+  d_3s1: "직접 빌드 →", d_3s2: "공식 이미지는 준비 중입니다.",
+  h_eyebrow: "우리의 주장", h_q: "환각 제로.<br/><em>약속이 아니라, 구조로.</em>",
+  h_sub: "이 엔진은 문장을 지어낼 수 없습니다. 검증된 출처를 인용하거나 — 모른다고 말할 뿐입니다.",
+  h_note: "출처 자체가 틀린 경우는 환각이 아니라 출처 오류입니다 — 공개 원장에 격리되고, 루프가 근거에서 다시 배웁니다. 일반 커버리지는 아직 성장 중이며, 그 숫자를 숨기지 않고 공개합니다.",
+  f_tag: "온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.", f_design: "디자인 철학", f_measured: "실측 수치", f_prin: "제1원리",
+  f_line: "외부 LLM 없음 · 로컬 우선 · 오픈소스",
 };
 const EN_CACHE = {};
 document.querySelectorAll("[data-i18n]").forEach(el => EN_CACHE[el.dataset.i18n] = el.innerHTML);
@@ -508,7 +609,7 @@ function setLang(l) {
   document.documentElement.lang = l;
   document.querySelectorAll("[data-i18n]").forEach(el => {
     const k = el.dataset.i18n;
-    el.innerHTML = l === "en" ? EN_CACHE[k] : (I18N.ko[k] ?? EN_CACHE[k]);
+    el.innerHTML = l === "en" ? EN_CACHE[k] : (KO[k] ?? EN_CACHE[k]);
   });
   document.getElementById("lang-en").classList.toggle("on", l === "en");
   document.getElementById("lang-ko").classList.toggle("on", l === "ko");
@@ -516,13 +617,13 @@ function setLang(l) {
 }
 document.getElementById("lang-en").onclick = () => setLang("en");
 document.getElementById("lang-ko").onclick = () => setLang("ko");
-try { const saved = localStorage.getItem("atanor-lang"); if (saved === "ko") setLang("ko"); } catch {}
+try { if (localStorage.getItem("atanor-lang") === "ko") setLang("ko"); } catch {}
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* ================= hero wave field ================= */
+/* ================= hero wave field (2D) ================= */
 (() => {
-  const cv = document.getElementById("field"), ctx = cv.getContext("2d");
+  const cv = document.getElementById("fieldcv"), ctx = cv.getContext("2d");
   let w, h, dpr; const SRC = [];
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -545,207 +646,208 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
       ctx.beginPath(); ctx.arc(gx, gy, 0.5 + v*1.5, 0, 6.2832);
       ctx.fillStyle = `rgba(255,255,255,${v*v*0.3})`; ctx.fill();
     }
-    t += 0.014; raf = requestAnimationFrame(frame);
+    t += 0.014;
+    if (!REDUCED) raf = requestAnimationFrame(frame);
   }
-  if (REDUCED) { t = 8; frame(); cancelAnimationFrame(raf); }
-  else { frame(); document.addEventListener("visibilitychange", () =>
-    document.hidden ? cancelAnimationFrame(raf) : frame()); }
+  frame();
+  document.addEventListener("visibilitychange", () => {
+    if (!REDUCED) { cancelAnimationFrame(raf); if (!document.hidden) frame(); }
+  });
 })();
 
-/* ================= ATLAS globe: orange arcs across the planet ================= */
+/* ================= ATLAS: the real WebGL Earth (three.js, same textures as the app) ===== */
 (() => {
-  const cv = document.getElementById("globe"), ctx = cv.getContext("2d");
-  const HUBS = [ // [lat, lng] — major regions, no personal anything
-    [37.5,127],[35.6,139.7],[1.35,103.8],[22.3,114.2],[28.6,77.2],[25.2,55.3],
-    [52.5,13.4],[48.8,2.35],[51.5,-0.13],[59.3,18.1],[41.0,28.9],[30.0,31.2],
-    [-1.3,36.8],[6.5,3.4],[40.7,-74],[37.8,-122.4],[47.6,-122.3],[19.4,-99.1],
-    [-23.5,-46.6],[-34.6,-58.4],[-33.9,151.2],[-36.8,174.8],[55.7,37.6],[13.7,100.5] ];
-  let w, h, dpr, R, CX, CY;
+  const cv = document.getElementById("globe3d");
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(36, 2, 0.1, 100);
+  cam.position.set(0, 0.25, 3.4);
   function resize() {
-    dpr = Math.min(devicePixelRatio || 1, 2);
-    w = cv.clientWidth; h = cv.clientHeight;
-    cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
-    R = Math.min(w, h) * 0.42; CX = w/2; CY = h/2 + 8;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    renderer.setSize(w, h, false);
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    cam.aspect = w / h; cam.updateProjectionMatrix();
   }
   resize(); addEventListener("resize", resize);
-  const D = Math.PI/180;
-  function p3(lat, lng, rot) { // -> {x,y,z} on unit sphere with rotation about Y
-    const la = lat*D, lo = lng*D + rot;
-    return { x: Math.cos(la)*Math.sin(lo), y: Math.sin(la), z: Math.cos(la)*Math.cos(lo) };
+
+  const globe = new THREE.Group(); scene.add(globe);
+  const loader = new THREE.TextureLoader();
+  const day = loader.load("assets/earth_atmos_2048.jpg", () => renderer.render(scene, cam));
+  const lights = loader.load("assets/earth_lights_2048.png", () => renderer.render(scene, cam));
+  const R = 1;
+  globe.add(new THREE.Mesh(new THREE.SphereGeometry(R, 64, 64),
+    new THREE.MeshBasicMaterial({ map: day, color: 0x9aa4b0 })));           // dimmed day earth
+  globe.add(new THREE.Mesh(new THREE.SphereGeometry(R * 1.002, 64, 64),
+    new THREE.MeshBasicMaterial({ map: lights, blending: THREE.AdditiveBlending,
+      transparent: true, opacity: 0.85, depthWrite: false })));              // city lights
+  // atmosphere rim
+  globe.add(new THREE.Mesh(new THREE.SphereGeometry(R * 1.035, 64, 64),
+    new THREE.MeshBasicMaterial({ color: 0x88b4ff, transparent: true, opacity: 0.05,
+      side: THREE.BackSide })));
+
+  const HUBS = [[37.5,127],[35.6,139.7],[1.35,103.8],[28.6,77.2],[25.2,55.3],[52.5,13.4],
+    [48.8,2.35],[51.5,-0.13],[40.7,-74],[37.8,-122.4],[19.4,-99.1],[-23.5,-46.6],
+    [-33.9,151.2],[55.7,37.6],[30.0,31.2],[-1.3,36.8],[13.7,100.5],[47.6,-122.3]];
+  const D = Math.PI / 180;
+  function v3(lat, lng, r = R) {
+    const la = lat * D, lo = lng * D;
+    return new THREE.Vector3(Math.cos(la) * Math.sin(lo), Math.sin(la), Math.cos(la) * Math.cos(lo)).multiplyScalar(r);
   }
-  function proj(p) { return { x: CX + p.x*R, y: CY - p.y*R, z: p.z }; }
-  function slerp(a, b, t) {
-    const dot = Math.max(-1, Math.min(1, a.x*b.x + a.y*b.y + a.z*b.z));
-    const th = Math.acos(dot), s = Math.sin(th);
-    if (s < 1e-5) return a;
-    const A = Math.sin((1-t)*th)/s, B = Math.sin(t*th)/s;
-    const lift = 1 + 0.22*Math.sin(Math.PI*t);       // arc altitude
-    return { x: (A*a.x+B*b.x)*lift, y: (A*a.y+B*b.y)*lift, z: (A*a.z+B*b.z)*lift };
-  }
+  // hub markers
+  const hubGeo = new THREE.SphereGeometry(0.008, 8, 8);
+  const hubMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  for (const [la, lo] of HUBS) { const m = new THREE.Mesh(hubGeo, hubMat); m.position.copy(v3(la, lo, R * 1.004)); globe.add(m); }
+
+  // orange arcs, grown via drawRange
   const ARCS = [];
-  function spawn() {
-    // prefer hubs currently on the visible hemisphere so the exchange reads on screen
-    const front = HUBS.filter(hh => p3(hh[0], hh[1], rot).z > 0.1);
-    const pool = front.length >= 4 ? front : HUBS;
-    const i = Math.floor(Math.random()*pool.length);
-    let j = Math.floor(Math.random()*pool.length);
-    if (j === i) j = (j+3) % pool.length;
-    ARCS.push({ a: pool[i], b: pool[j], t0: perf(), dur: 2200 + Math.random()*1600 });
-    if (ARCS.length > 12) ARCS.shift();
+  function spawnArc() {
+    const i = (Math.random() * HUBS.length) | 0;
+    let j = (Math.random() * HUBS.length) | 0; if (j === i) j = (j + 5) % HUBS.length;
+    const a = v3(...HUBS[i]), b = v3(...HUBS[j]);
+    const mid = a.clone().add(b).multiplyScalar(0.5).normalize()
+      .multiplyScalar(R * (1.15 + a.distanceTo(b) * 0.22));
+    const pts = new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(72);
+    const g = new THREE.BufferGeometry().setFromPoints(pts);
+    const m = new THREE.LineBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.9 });
+    const line = new THREE.Line(g, m);
+    g.setDrawRange(0, 0);
+    globe.add(line);
+    ARCS.push({ line, n: pts.length, t0: performance.now(), grow: 1300, hold: 900, fade: 700 });
+    if (ARCS.length > 10) { const old = ARCS.shift(); globe.remove(old.line); old.line.geometry.dispose(); }
   }
-  function perf() { return performance.now(); }
-  let rot = 0, raf, last = perf(), spawnAt = 0;
+  let raf2, spawnAt = 0;
   function frame() {
-    const now = perf(), dt = Math.min(50, now - last); last = now;
-    rot += dt * 0.000045;
-    if (now > spawnAt) { spawn(); spawnAt = now + 420 + Math.random()*600; }
-    ctx.clearRect(0, 0, w, h);
-    // sphere shading + rim
-    const g = ctx.createRadialGradient(CX - R*0.35, CY - R*0.4, R*0.1, CX, CY, R*1.05);
-    g.addColorStop(0, "rgba(255,255,255,.055)"); g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.beginPath(); ctx.arc(CX, CY, R, 0, 6.2832); ctx.fillStyle = g; ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 1; ctx.stroke();
-    // graticule dots
-    for (let la = -60; la <= 60; la += 20) for (let lo = 0; lo < 360; lo += 12) {
-      const p = p3(la, lo, rot); if (p.z < 0.08) continue;
-      const q = proj(p);
-      ctx.beginPath(); ctx.arc(q.x, q.y, 0.9, 0, 6.2832);
-      ctx.fillStyle = `rgba(255,255,255,${0.05 + p.z*0.1})`; ctx.fill();
+    const now = performance.now();
+    globe.rotation.y += 0.0009;
+    if (now > spawnAt) { spawnArc(); spawnAt = now + 500 + Math.random() * 700; }
+    for (const a of ARCS) {
+      const dt = now - a.t0;
+      if (dt < a.grow) a.line.geometry.setDrawRange(0, Math.floor(a.n * dt / a.grow));
+      else if (dt < a.grow + a.hold) a.line.geometry.setDrawRange(0, a.n);
+      else a.line.material.opacity = Math.max(0, 0.9 * (1 - (dt - a.grow - a.hold) / a.fade));
     }
-    // hubs
-    for (const [la, lo] of HUBS) {
-      const p = p3(la, lo, rot); if (p.z < 0.05) continue;
-      const q = proj(p);
-      ctx.beginPath(); ctx.arc(q.x, q.y, 1.9 + p.z*1.2, 0, 6.2832);
-      ctx.fillStyle = `rgba(255,255,255,${0.25 + p.z*0.5})`; ctx.fill();
-    }
-    // orange arcs: draw a moving bright head with fading trail along the great circle
-    for (const arc of ARCS) {
-      const prog = Math.min(1, (now - arc.t0) / arc.dur);
-      const A = p3(arc.a[0], arc.a[1], rot), B = p3(arc.b[0], arc.b[1], rot);
-      const N = 46, head = Math.floor(prog * N);
-      ctx.lineWidth = 1.8;
-      for (let s = 1; s <= head; s++) {
-        const p1 = slerp(A, B, (s-1)/N), p2 = slerp(A, B, s/N);
-        if (p1.z < -0.15 && p2.z < -0.15) continue;      // hidden behind planet
-        const q1 = proj(p1), q2 = proj(p2);
-        const fade = Math.max(0, 1 - (head - s)/22);     // longer bright trail
-        const depth = Math.max(0.3, (p1.z + 1)/2);
-        ctx.beginPath(); ctx.moveTo(q1.x, q1.y); ctx.lineTo(q2.x, q2.y);
-        ctx.strokeStyle = `rgba(255,138,0,${(0.2 + 0.85*fade) * depth})`;
-        ctx.stroke();
-      }
-      // endpoint glow while the arc lives
-      for (const end of [A, B]) if (end.z > 0.05) {
-        const q = proj(end);
-        ctx.beginPath(); ctx.arc(q.x, q.y, 2.6, 0, 6.2832);
-        ctx.fillStyle = "rgba(255,138,0,.9)"; ctx.fill();
-        ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, 6.2832);
-        ctx.fillStyle = "rgba(255,138,0,.15)"; ctx.fill();
-      }
-      if (prog >= 1 && now - arc.t0 > arc.dur + 600) arc.dead = true;
-    }
-    for (let i = ARCS.length-1; i >= 0; i--) if (ARCS[i].dead) ARCS.splice(i, 1);
-    raf = requestAnimationFrame(frame);
+    renderer.render(scene, cam);
+    if (!REDUCED) raf2 = requestAnimationFrame(frame);
   }
-  // Always-on loop (cheap canvas); pause only when the tab is hidden. Per-canvas
-  // IntersectionObserver gating proved fragile (anchor-load races left the loop dead).
-  if (REDUCED) { rot = 1.2; spawn(); spawn(); ARCS.forEach(a => a.t0 -= 2000); frame(); cancelAnimationFrame(raf); }
-  else {
-    frame();
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) cancelAnimationFrame(raf); else { last = perf(); frame(); }
-    });
-  }
+  frame();
+  document.addEventListener("visibilitychange", () => {
+    if (!REDUCED) { cancelAnimationFrame(raf2); if (!document.hidden) frame(); }
+  });
 })();
 
-/* ================= Local Brain <-> Cloud Brain exchange ================= */
+/* ================= DUAL BRAIN: star-scale cloud vs your local brain ================= */
 (() => {
-  const cv = document.getElementById("brains"), ctx = cv.getContext("2d");
-  let w, h, dpr;
+  const cv = document.getElementById("dualbrain"), ctx = cv.getContext("2d");
+  let w, h, dpr, cloudPts = [], localPts = [];
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
     w = cv.clientWidth; h = cv.clientHeight;
-    cv.width = w*dpr; cv.height = h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+    cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // CLOUD: a star-sized sphere mostly off-frame right (the sun-vs-earth composition)
+    const CR = h * 1.5, CXc = w * 1.06, CYc = h * 0.5;
+    cloudPts = [];
+    for (let i = 0; i < 4200; i++) {
+      // random point on sphere front hemisphere, projected orthographically
+      const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+      const x = Math.sin(ph) * Math.cos(th), y = Math.sin(ph) * Math.sin(th), z = Math.cos(ph);
+      if (z < 0.05) continue;
+      const px = CXc + x * CR, py = CYc + y * CR;
+      if (px < -20 || px > w + 20 || py < -20 || py > h + 20) continue;
+      cloudPts.push({ x: px, y: py, z, tw: Math.random() * 6.28 });
+    }
+    // LOCAL: a small ontology-graph cluster on the left (your scale)
+    const LR = Math.min(w, h) * 0.11, LX = w * 0.22, LY = h * 0.5;
+    localPts = [];
+    for (let i = 0; i < 46; i++) {
+      const a = Math.random() * 6.283, r = LR * (0.25 + 0.72 * Math.sqrt(Math.random()));
+      localPts.push({ x: LX + Math.cos(a) * r, y: LY + Math.sin(a) * r, tw: Math.random() * 6.28 });
+    }
+    localPts.c = { x: LX, y: LY, r: LR };
+    cloudPts.c = { x: CXc, y: CYc, r: CR };
   }
   resize(); addEventListener("resize", resize);
-  const DOTS = [];
-  function spawnDot() {
-    DOTS.push({ t: 0, dir: Math.random() < 0.5 ? 1 : -1, speed: 0.004 + Math.random()*0.003,
-                off: (Math.random()-0.5) * 0.16 });
-    if (DOTS.length > 9) DOTS.shift();
-  }
-  let raf, tick = 0;
-  function centers() {
-    const L = { x: w*0.18, y: h*0.52, r: Math.min(w,h)*0.13 };
-    const C = { x: w*0.72, y: h*0.48, r: Math.min(w,h)*0.30 };
-    return { L, C };
-  }
-  function path(t, off) { // quadratic bezier L -> C
-    const { L, C } = centers();
-    const mx = (L.x + C.x)/2, my = Math.min(L.y, C.y) - h*0.22 + off*h;
-    const x = (1-t)*(1-t)*L.x + 2*(1-t)*t*mx + t*t*C.x;
-    const y = (1-t)*(1-t)*L.y + 2*(1-t)*t*my + t*t*C.y;
-    return { x, y };
-  }
-  function ring(c, n, phase, alpha) {
-    for (let i = 0; i < n; i++) {
-      const a = phase + i * 6.2832/n;
-      const rr = c.r * (0.55 + 0.38*Math.sin(i*2.7 + phase*1.7));
-      ctx.beginPath(); ctx.arc(c.x + Math.cos(a)*rr, c.y + Math.sin(a)*rr, 1.6, 0, 6.2832);
-      ctx.fillStyle = `rgba(10,10,10,${alpha})`; ctx.fill();
+
+  let bolts = [], nextBolt = 0, t = 0, raf3;
+  function makeBolt(now) {
+    // a crackling blue link from the local rim to the cloud rim (the app's activation blue)
+    const L = localPts.c, C = cloudPts.c;
+    const a0 = Math.atan2(C.y - L.y, C.x - L.x);
+    const sx = L.x + Math.cos(a0) * L.r, sy = L.y + Math.sin(a0) * L.r;
+    const edgeX = C.x - C.r, span = h * 0.7;
+    const ex = Math.max(edgeX + 6, w * 0.72), ey = C.y + (Math.random() - 0.5) * span * 0.6;
+    const segs = 14, pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const tt = i / segs;
+      const bx = sx + (ex - sx) * tt, by = sy + (ey - sy) * tt - Math.sin(Math.PI * tt) * h * 0.1;
+      const j = Math.sin(Math.PI * tt) * 26;
+      pts.push({ x: bx + (Math.random() - 0.5) * j, y: by + (Math.random() - 0.5) * j });
     }
+    bolts.push({ pts, born: now, life: 260 + Math.random() * 240 });
+    if (bolts.length > 3) bolts.shift();
   }
   function frame() {
-    tick += 0.012;
-    if (Math.random() < 0.02) spawnDot();
+    const now = performance.now(); t += 0.016;
     ctx.clearRect(0, 0, w, h);
-    const { L, C } = centers();
-    // link path (faint)
-    ctx.beginPath();
-    for (let s = 0; s <= 40; s++) { const p = path(s/40, 0); s ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
-    ctx.strokeStyle = "rgba(10,10,10,.14)"; ctx.lineWidth = 1.2; ctx.setLineDash([3,5]); ctx.stroke(); ctx.setLineDash([]);
-    // local brain: small dense dark cluster
-    ctx.beginPath(); ctx.arc(L.x, L.y, L.r, 0, 6.2832);
-    ctx.strokeStyle = "rgba(10,10,10,.7)"; ctx.lineWidth = 1.6; ctx.stroke();
-    ring(L, 16, tick, .8); ring(L, 10, -tick*1.3, .45);
-    // cloud brain: large light cluster
-    ctx.beginPath(); ctx.arc(C.x, C.y, C.r, 0, 6.2832);
-    ctx.strokeStyle = "rgba(10,10,10,.35)"; ctx.lineWidth = 1.2; ctx.stroke();
-    ring(C, 34, tick*0.6, .3); ring(C, 22, -tick*0.8, .18);
-    // labels
-    ctx.fillStyle = "rgba(10,10,10,.85)"; ctx.font = "700 11px Helvetica, Arial, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("LOCAL BRAIN", L.x, L.y + L.r + 24);
-    ctx.fillText("CLOUD BRAIN", C.x, C.y + C.r + 24);
-    // traveling verified nodes (orange)
-    for (const d of DOTS) {
-      d.t += d.speed;
-      if (d.t > 1) { d.t = 0; d.dir *= -1; }
-      const t = d.dir === 1 ? d.t : 1 - d.t;
-      const p = path(t, d.off);
-      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, 6.2832);
-      ctx.fillStyle = "rgba(255,138,0,.95)"; ctx.fill();
-      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 6.2832);
-      ctx.fillStyle = "rgba(255,138,0,.14)"; ctx.fill();
+    // cloud brain: star-scale point mass + rim glow
+    const C = cloudPts.c;
+    const grad = ctx.createRadialGradient(C.x, C.y, C.r * 0.92, C.x, C.y, C.r * 1.04);
+    grad.addColorStop(0, "rgba(90,168,255,0)"); grad.addColorStop(0.75, "rgba(90,168,255,.10)");
+    grad.addColorStop(1, "rgba(90,168,255,0)");
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+    for (const p of cloudPts) {
+      const tw = 0.55 + 0.45 * Math.sin(t * 1.4 + p.tw);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 0.9 + p.z * 0.9, 0, 6.2832);
+      ctx.fillStyle = `rgba(214,226,244,${(0.10 + p.z * 0.28) * tw})`; ctx.fill();
     }
-    raf = requestAnimationFrame(frame);
+    // local brain: ontology graph — nodes + edges between near nodes
+    ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 0.7;
+    for (let i = 0; i < localPts.length; i++) for (let j = i + 1; j < localPts.length; j++) {
+      const a = localPts[i], b = localPts[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < localPts.c.r * 0.62) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+    }
+    for (const p of localPts) {
+      const tw = 0.6 + 0.4 * Math.sin(t * 2 + p.tw);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 1.7, 0, 6.2832);
+      ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.4 * tw})`; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(localPts.c.x, localPts.c.y, localPts.c.r * 1.18, 0, 6.2832);
+    ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.lineWidth = 1; ctx.stroke();
+    // crackling blue links (파지직)
+    if (now > nextBolt) { makeBolt(now); nextBolt = now + 320 + Math.random() * 420; }
+    for (const b of bolts) {
+      const age = (now - b.born) / b.life;
+      if (age > 1) continue;
+      const flick = (0.55 + 0.45 * Math.sin(now * 0.06 + b.born)) * (1 - age * 0.6);
+      ctx.beginPath();
+      b.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.strokeStyle = `rgba(90,168,255,${0.55 * flick})`; ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.strokeStyle = `rgba(160,205,255,${0.25 * flick})`; ctx.lineWidth = 3.6; ctx.stroke();
+    }
+    bolts = bolts.filter(b => (now - b.born) / b.life <= 1);
+    // labels
+    ctx.font = "700 11px Inter, Helvetica, sans-serif"; ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(255,255,255,.75)";
+    ctx.fillText("LOCAL BRAIN", localPts.c.x, localPts.c.y + localPts.c.r * 1.18 + 26);
+    ctx.fillStyle = "rgba(255,255,255,.45)";
+    ctx.fillText(LANG === "ko" ? "당신의 규모 — 전부 당신의 것" : "your scale — entirely yours", localPts.c.x, localPts.c.y + localPts.c.r * 1.18 + 44);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "rgba(214,226,244,.8)";
+    ctx.fillText("CLOUD BRAIN", w - 26, 40);
+    ctx.fillStyle = "rgba(214,226,244,.45)";
+    ctx.fillText(LANG === "ko" ? "조 단위 노드를 향해 — 모두의 것" : "toward trillion nodes — everyone's", w - 26, 58);
+    if (!REDUCED) raf3 = requestAnimationFrame(frame);
   }
-  for (let i = 0; i < 5; i++) { spawnDot(); DOTS[i].t = Math.random(); }
-  if (REDUCED) { frame(); cancelAnimationFrame(raf); }
-  else {
-    frame();
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) cancelAnimationFrame(raf); else frame();
-    });
-  }
+  frame();
+  document.addEventListener("visibilitychange", () => {
+    if (!REDUCED) { cancelAnimationFrame(raf3); if (!document.hidden) frame(); }
+  });
 })();
 
-/* ================= nav mode + reveal + count-up ================= */
+/* ================= nav + reveal + count-up ================= */
 const nav = document.getElementById("nav");
 const lightSections = [...document.querySelectorAll('[data-nav="light"]')];
 function navState() {
-  const y = scrollY + 36;
+  const y = scrollY + 38;
   const overLight = lightSections.some(s => y >= s.offsetTop && y < s.offsetTop + s.offsetHeight);
   nav.classList.toggle("light", overLight);
   nav.classList.toggle("dark-bg", !overLight && scrollY > 40);
@@ -763,7 +865,7 @@ function runCount(el) {
   if (!span || el.dataset.done) return; el.dataset.done = 1;
   const t0 = performance.now(), dur = 1100;
   (function tick(now) {
-    const p = Math.min(1, (now - t0)/dur), ease = 1 - Math.pow(1-p, 3);
+    const p = Math.min(1, (now - t0) / dur), ease = 1 - Math.pow(1 - p, 3);
     span.textContent = Math.round(target * ease).toLocaleString();
     if (p < 1) requestAnimationFrame(tick);
   })(t0);
