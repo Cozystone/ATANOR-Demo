@@ -133,6 +133,25 @@ if [ "$PHASE" = atanor ] || [ "$PHASE" = all ]; then
   install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/tint2rc" "$ROOTFS/etc/atanor/tint2rc"
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/orb-window.sh" "$ROOTFS/usr/local/bin/atanor-orb-window"
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/surface.sh" "$ROOTFS/usr/local/bin/atanor-surface"
+  # fcitx5 profile: hangul must actually be IN the input-method group — the
+  # default profile ships keyboard-us only, so Ctrl+Space toggled nothing
+  mkdir -p "$ROOTFS/home/atanor/.config/fcitx5"
+  cat > "$ROOTFS/home/atanor/.config/fcitx5/profile" <<'EOF'
+[Groups/0]
+Name=Default
+Default Layout=us
+DefaultIM=hangul
+
+[Groups/0/Items/0]
+Name=keyboard-us
+
+[Groups/0/Items/1]
+Name=hangul
+
+[GroupOrder]
+0=Default
+EOF
+  in_chroot "chown -R atanor:atanor /home/atanor/.config"
   # firefox wallpaper (chromium renderer is broken on this minbase — measured)
   install -m 0755 "$ROOTFS/opt/atanor/deploy/atanor-linux/wallpaper.sh" "$ROOTFS/usr/local/bin/atanor-orb-wallpaper"
   # start-corner launcher entry (tint2 launcher references it)

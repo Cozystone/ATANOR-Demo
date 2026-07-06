@@ -20,6 +20,7 @@ export type PureFieldMode = "idle" | "listening" | "thinking" | "speaking" | "ma
 type PureFieldProps = {
   budget?: number;
   mode?: PureFieldMode;
+  scale?: number; // ring radius multiplier — tracks the orb's on-screen size
 };
 
 function gaussian(): number {
@@ -54,7 +55,7 @@ const PALETTE = [
   new THREE.Color("#c6ccd4"),
 ];
 
-export default function PureField({ budget = 5200, mode = "idle" }: PureFieldProps) {
+export default function PureField({ budget = 5200, mode = "idle", scale = 1 }: PureFieldProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const modeRef = useRef<PureFieldMode>(mode);
   useEffect(() => {
@@ -82,7 +83,7 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
     const pos = new Float32Array(n * 3);
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i += 1) {
-      radius[i] = 2.5 + Math.min(1.1, Math.abs(gaussian()) * 0.8); // ANNULUS 2.5–3.6: gaussian tail clamped, no strays to the screen edges
+      radius[i] = (2.5 + Math.min(1.1, Math.abs(gaussian()) * 0.8)) * scale; // ANNULUS, orb-proportional
       theta[i] = Math.random() * Math.PI * 2;
       phi[i] = Math.acos(2 * Math.random() - 1);
       phase[i] = Math.random() * Math.PI * 2;
@@ -146,7 +147,7 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
 
           if (m === "thinking") {
             // spiral condensation: the swarm pulls toward the core and churns
-            r = 2.45 + (r - 2.45) * (0.45 + 0.1 * Math.sin(t * 0.9 + p));
+            r = 2.45 * scale + (r - 2.45 * scale) * (0.45 + 0.1 * Math.sin(t * 0.9 + p));
           } else if (m === "listening") {
             // concentric ripple travelling outward through the band
             r += Math.sin(t * 3.2 - radius[i] * 2.4 + p * 0.2) * 0.22;
@@ -160,7 +161,7 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
             r += Math.sin(t * 0.35 + p) * 0.12;
           }
 
-          r = Math.max(2.35, r); // the gap is inviolable — nothing enters the orb's space
+          r = Math.max(2.35 * scale, r); // the gap is inviolable — nothing enters the orb's space
           const sr = Math.sin(ph) * r;
           attr.array[i * 3] = Math.cos(th) * sr + Math.sin(t * 0.07 + p * 1.7) * 0.08;
           attr.array[i * 3 + 1] = Math.cos(ph) * r * 0.82 + Math.cos(t * 0.06 + p) * 0.08;
@@ -186,7 +187,7 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [budget]);
+  }, [budget, scale]);
 
   return <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />;
 }

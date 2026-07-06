@@ -10729,9 +10729,11 @@ p {
 .atanor-os-shell-orb { display: grid; place-items: center; align-self: center; }
 /* scale the shared orb up for the OS face; its own ring/gradient stays as designed */
 .atanor-os-shell .hologram-voice-orb {
-  width: min(42vmin, 400px);
-  min-width: 260px;
-  min-height: 260px;
+  /* owner's red-circle spec: ~27% of the viewport's short side, centered,
+     generous negative space around it. vmin keeps it responsive. */
+  width: min(27vmin, 340px);
+  min-width: 200px;
+  min-height: 200px;
 }
 
 .atanor-os-shell-tier {
