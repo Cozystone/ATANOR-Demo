@@ -719,41 +719,63 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ================= MIND ORB: the app's breathing particle sphere (Siri-of-ours) ========= */
 (() => {
+  // The Ultimate orb (owner reference): a dark particle SHELL, luminous cyan/violet
+  // ribbons flowing inside, and a bright white core — not the flat orange ball.
   const cv = document.getElementById("orb"), ctx = cv.getContext("2d");
-  let w, h, dpr; const P = [];
+  let w, h, dpr; const SHELL = [];
+  const RIBBONS = [
+    { a: 2, b: 3, c: 1, ph: 0.0, hue: "126,224,232" },   // cyan
+    { a: 3, b: 2, c: 2, ph: 1.7, hue: "176,127,232" },   // violet
+    { a: 1, b: 4, c: 3, ph: 3.9, hue: "150,180,236" },   // blue-mix
+  ];
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
     w = cv.clientWidth; h = cv.clientHeight;
     cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    P.length = 0;
-    for (let i = 0; i < 900; i++) {
+    SHELL.length = 0;
+    for (let i = 0; i < 2100; i++) {
       const th = Math.random() * 6.283, ph = Math.acos(2 * Math.random() - 1);
-      P.push({ th, ph, r0: 0.86 + Math.random() * 0.14, tw: Math.random() * 6.283, sp: 0.2 + Math.random() * 0.6 });
+      SHELL.push({ th, ph, tw: Math.random() * 6.283 });
     }
   }
   resize(); addEventListener("resize", resize);
   let t = 0, raf;
   function frame() {
     ctx.clearRect(0, 0, w, h);
-    const R0 = Math.min(w, h) * 0.34, cx = w / 2, cy = h / 2;
-    const breath = 1 + 0.045 * Math.sin(t * 0.9);
-    // core glow
-    const g = ctx.createRadialGradient(cx, cy, R0 * 0.1, cx, cy, R0 * 1.5);
-    g.addColorStop(0, "rgba(255,148,30,.25)"); g.addColorStop(.55, "rgba(255,120,10,.07)");
-    g.addColorStop(1, "rgba(255,120,10,0)");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    const rotY = t * 0.18;
-    for (const p of P) {
-      const th = p.th + rotY * p.sp;
+    const R0 = Math.min(w, h) * 0.36, cx = w / 2, cy = h / 2;
+    const rotY = t * 0.1;
+    // 1) dark speckled shell — tiny dim particles on the sphere surface
+    for (const p of SHELL) {
+      const th = p.th + rotY;
       const x3 = Math.sin(p.ph) * Math.cos(th), y3 = Math.cos(p.ph), z3 = Math.sin(p.ph) * Math.sin(th);
-      const r = R0 * p.r0 * breath * (1 + 0.03 * Math.sin(t * 1.7 + p.tw));
-      const px = cx + x3 * r, py = cy + y3 * r * 0.96;
+      const px = cx + x3 * R0, py = cy + y3 * R0;
       const depth = (z3 + 1) / 2;
-      const a = (0.12 + depth * 0.75) * (0.7 + 0.3 * Math.sin(t * 2 + p.tw));
-      ctx.beginPath(); ctx.arc(px, py, 0.7 + depth * 1.5, 0, 6.2832);
-      ctx.fillStyle = depth > 0.82 ? `rgba(255,196,120,${a})` : `rgba(255,138,0,${a * 0.85})`;
-      ctx.fill();
+      const a = (0.05 + depth * 0.16) * (0.75 + 0.25 * Math.sin(t * 1.6 + p.tw));
+      ctx.beginPath(); ctx.arc(px, py, 0.5 + depth * 0.7, 0, 6.2832);
+      ctx.fillStyle = `rgba(205,214,226,${a})`; ctx.fill();
     }
+    // 2) flowing ribbons inside (lissajous loops, particle trails with a bright head)
+    for (const rb of RIBBONS) {
+      const N = 130, drift = t * 0.55 + rb.ph;
+      for (let i = 0; i < N; i++) {
+        const u = i / N * 6.283 + drift;
+        let x3 = Math.sin(rb.a * u + rb.ph), y3 = Math.sin(rb.b * u), z3 = Math.cos(rb.c * u + rb.ph * 0.5);
+        const thR = rotY * 0.6;
+        const xr = x3 * Math.cos(thR) - z3 * Math.sin(thR), zr = x3 * Math.sin(thR) + z3 * Math.cos(thR);
+        const r = R0 * 0.55;
+        const px = cx + xr * r, py = cy + y3 * r * 0.9;
+        const depth = (zr + 1) / 2;
+        const head = i / N;                       // brighter toward the trail head
+        const a = (0.1 + depth * 0.5) * (0.3 + 0.7 * head * head);
+        ctx.beginPath(); ctx.arc(px, py, 0.8 + depth * 1.6 + head * 1.0, 0, 6.2832);
+        ctx.fillStyle = `rgba(${rb.hue},${a})`; ctx.fill();
+      }
+    }
+    // 3) bright white core + soft halo
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R0 * 0.34);
+    g.addColorStop(0, "rgba(255,255,255,.92)"); g.addColorStop(0.18, "rgba(240,246,255,.5)");
+    g.addColorStop(0.5, "rgba(190,210,240,.10)"); g.addColorStop(1, "rgba(190,210,240,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R0 * 0.34, 0, 6.2832); ctx.fill();
     t += 0.016;
     if (!REDUCED) raf = requestAnimationFrame(frame);
   }
@@ -863,10 +885,10 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
         .multiplyScalar(R * (1.06 + a.distanceTo(b) * 0.16));
       const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
       const g = new THREE.BufferGeometry().setFromPoints(curve.getPoints(48));
-      const m = new THREE.LineBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.13 });
+      const m = new THREE.LineBasicMaterial({ color: 0xffa030, transparent: true, opacity: 0.34 });
       const line = new THREE.Line(g, m);
       globe.add(line);
-      CURVES.push({ i, j, curve, line, base: 0.13, pulse: 0 });
+      CURVES.push({ i, j, curve, line, base: 0.34, pulse: 0 });
     }
   }
   // one packet per line, cycling with its own phase/speed (정보 전달)
@@ -926,26 +948,26 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     dpr = Math.min(devicePixelRatio || 1, 2);
     w = cv.clientWidth; h = cv.clientHeight;
     cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // CLOUD: pushed further right (only its shoulder enters the frame) and rendered like
-    // the app's cloud sphere — blue-tinted glow points with faint internal graph edges
-    const CR = h * 0.8, CXc = w * 0.97, CYc = h * 0.46;
+    // CLOUD: the WHOLE mesh ball visible on the right — the app's cloud graph is a
+    // dense wire-mesh sphere where connections carry the shape (owner reference).
+    const CR = h * 0.46, CXc = w * 0.72, CYc = h * 0.46;
     cloudPts = [];
-    for (let i = 0; i < 3800; i++) {
+    for (let i = 0; i < 4200; i++) {
       const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
       const x = Math.sin(ph) * Math.cos(th), y = Math.sin(ph) * Math.sin(th), z = Math.cos(ph);
-      if (z < 0.05) continue;
+      if (z < -0.15) continue;                    // front hemisphere + a little rim depth
       const px = CXc + x * CR, py = CYc + y * CR;
       if (px < -20 || px > w + 20 || py < -20 || py > h + 20) continue;
-      cloudPts.push({ x: px, y: py, z, tw: Math.random() * 6.28 });
+      cloudPts.push({ x: px, y: py, z: Math.max(z, 0.02), tw: Math.random() * 6.28 });
     }
-    // precompute faint internal edges between near points (the graph look of the real render)
+    const dMax = CR * 0.18;
     cloudPts.edges = [];
-    for (let i = 0; i < cloudPts.length && cloudPts.edges.length < 520; i += 3) {
+    for (let i = 0; i < cloudPts.length && cloudPts.edges.length < 2600; i++) {
       const a = cloudPts[i];
-      for (let k = 0; k < 6; k++) {
+      for (let k = 0; k < 8; k++) {
         const b = cloudPts[(Math.random() * cloudPts.length) | 0];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (d > 14 && d < 64) { cloudPts.edges.push([a, b]); break; }
+        if (d > 8 && d < dMax) { cloudPts.edges.push([a, b, Math.random() < 0.22]); break; }
       }
     }
     // LOCAL: a small ontology-graph cluster on the left (your scale)
@@ -1001,11 +1023,16 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     grad.addColorStop(0, "rgba(90,168,255,0)"); grad.addColorStop(0.75, "rgba(90,168,255,.10)");
     grad.addColorStop(1, "rgba(90,168,255,0)");
     ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
-    // internal graph edges first (under the points), then blue-glow nodes — the app's look
-    ctx.lineWidth = 0.6;
-    for (const [a, b] of (cloudPts.edges || [])) {
+    // internal graph edges first (under the points), then glow nodes — the app renders
+    // mostly grey-white wiring with a blue minority, and the lines carry the shape
+    ctx.lineWidth = 0.55;
+    for (const [a, b, blue] of (cloudPts.edges || [])) {
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-      ctx.strokeStyle = `rgba(111,176,255,${0.05 + Math.min(a.z, b.z) * 0.06})`; ctx.stroke();
+      const depth = Math.min(a.z, b.z);
+      ctx.strokeStyle = blue
+        ? `rgba(111,176,255,${0.12 + depth * 0.16})`
+        : `rgba(210,222,238,${0.09 + depth * 0.13})`;
+      ctx.stroke();
     }
     for (const p of cloudPts) {
       const tw = 0.55 + 0.45 * Math.sin(t * 1.4 + p.tw);
