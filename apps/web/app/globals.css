@@ -10726,12 +10726,12 @@ p {
 }
 .atanor-os-shell[data-overlay="1"] { background: transparent; }
 
-.atanor-os-shell-orb { display: grid; place-items: center; padding-top: 4vh; }
+.atanor-os-shell-orb { display: grid; place-items: center; align-self: center; }
 /* scale the shared orb up for the OS face; its own ring/gradient stays as designed */
 .atanor-os-shell .hologram-voice-orb {
-  width: min(58vmin, 520px);
-  min-width: 300px;
-  min-height: 300px;
+  width: min(42vmin, 400px);
+  min-width: 260px;
+  min-height: 260px;
 }
 
 .atanor-os-shell-tier {
@@ -10833,9 +10833,9 @@ p {
 .atanor-os-shell-icon {
   display: grid;
   justify-items: center;
-  gap: 6px;
-  width: 84px;
-  padding: 10px 6px 8px;
+  gap: 5px;
+  width: 72px;
+  padding: 9px 4px 7px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -10848,4 +10848,23 @@ p {
   background: rgba(210, 82, 31, 0.12);
   border-color: rgba(210, 82, 31, 0.35);
 }
-.atanor-os-shell-icon svg { width: 34px; height: 34px; opacity: 0.9; }
+.atanor-os-shell-icon svg { width: 28px; height: 28px; opacity: 0.85; }
+
+/* composer — type to the machine when there is no microphone (VMs) */
+.atanor-os-shell-composer { margin: 18px auto 0; max-width: 560px; }
+.atanor-os-shell-composer input {
+  width: 100%;
+  padding: 11px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(10, 12, 16, 0.66);
+  color: #f4f6f9;
+  font-size: 14px;
+  outline: none;
+  text-align: center;
+}
+.atanor-os-shell-composer input::placeholder { color: rgba(223, 228, 234, 0.35); }
+.atanor-os-shell-composer input:focus {
+  border-color: #d2521f;
+  box-shadow: 0 0 0 3px rgba(210, 82, 31, 0.15);
+}

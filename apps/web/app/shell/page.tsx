@@ -182,12 +182,16 @@ export default function ShellPage() {
   }, []);
 
   const statusLine: Record<ShellState, string> = {
-    idle: "스페이스 또는 오브를 눌러 말하세요",
+    idle: "말하거나, 아래에 입력하세요",
     listening: "듣는 중… (다시 눌러 끝내기)",
     thinking: "그래프에서 근거를 찾는 중…",
     speaking: "답하는 중",
     offline: "로컬 엔진에 연결할 수 없습니다",
   };
+
+  // typed commands: same lane as voice — a machine without a microphone (VMs,
+  // headless boxes) still gets the full AI desktop
+  const [draft, setDraft] = useState("");
 
   return (
     <main className="atanor-os-shell" data-overlay={overlay ? "1" : "0"} data-wallpaper={wallpaper ? "1" : "0"}
@@ -256,6 +260,13 @@ export default function ShellPage() {
             </div>
           </div>
         ) : null}
+
+        <form className="atanor-os-shell-composer" onClick={(e) => e.stopPropagation()}
+          onSubmit={(e) => { e.preventDefault(); const q = draft.trim(); if (q) { setDraft(""); void ask(q); } }}>
+          <input value={draft} onChange={(e) => setDraft(e.target.value)}
+                 placeholder="무엇이든 — 질문하거나, 명령하세요 (예: 터미널 열어줘)"
+                 aria-label="ATANOR에게 말하기" />
+        </form>
 
         <div className="atanor-os-shell-honesty">
           모든 처리는 이 기기 안에서 · 근거 없으면 정직하게 기권 · 모든 조작은 감사 기록에 남고 즉시 정지 가능

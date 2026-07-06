@@ -5,7 +5,6 @@
 # the hologram orb floats always-on-top. No GNOME, no Ubuntu, no Debian face.
 tint2 -c /etc/atanor/tint2rc &
 /usr/local/bin/atanor-orb-wallpaper &
-/usr/local/bin/atanor-orb-window &
 # perception stream: in-session sensor, engine distills, nothing leaves the device
 [ -x /opt/atanor/deploy/atanor-environment/perception_probe.py ] && \
   python3 /opt/atanor/deploy/atanor-environment/perception_probe.py &
