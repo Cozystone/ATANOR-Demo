@@ -96,3 +96,23 @@ def test_precision_guards_hold_after_recall_expansion():
     assert x("그는 어제 학교에 갔다.") is None            # past tense stays out
     assert x("He is a teacher.") is None                   # stop-subject stays out
     assert x("In 1999, the company was a startup, and it grew.") is None  # comma clause stays out
+
+
+def test_bridge_composes_multi_fact_subjects(tmp_path, monkeypatch):
+    """P2 wiring: a subject with two stored predicates answers with a composed
+    paragraph (grounded_composition), not the single-fact template."""
+    from packages.graph_scale import answer_bridge as ab
+    from packages.graph_scale.triple_store import TripleStore
+
+    store = TripleStore(tmp_path / "kg")
+    store.bulk_ingest([
+        ("에스프레소", "defined_as", "곱게 간 원두에 고압의 물을 통과시켜 추출한 커피"),
+        ("에스프레소", "is_a", "커피 음료"),
+    ])
+    store.flush()
+    monkeypatch.setattr(ab, "_store", lambda: store)
+    r = ab.answer_from_triples("에스프레소란?")
+    assert r is not None and r["answer_kind"] == "grounded_composition"
+    assert r["answer"].startswith("에스프레소는 곱게 간 원두에 고압의 물을 통과시켜 추출한 커피입니다.")
+    assert "또한 커피 음료의 일종입니다." in r["answer"]
+    assert len(r["reasoning_certificate"]["steps"]) == 2

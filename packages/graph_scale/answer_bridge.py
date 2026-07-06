@@ -183,6 +183,24 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
             continue
         s, p, o = chosen[0]
         display_s = f"{hop_from}(={s})" if hop_from else s
+        # P2 grounded composition: several stored facts -> one fluent paragraph
+        # (definitional/general intents; vocabulary closed over templates+facts,
+        # so composition cannot invent content). Hops and targeted relation
+        # questions keep their precise single-fact paths.
+        if hop_from is None and language == "ko" and (not want or (want & {"defined_as", "is_a"})):
+            try:
+                from packages.grounded_composer import compose_from_facts
+
+                composed = compose_from_facts(s, facts)
+            except Exception:
+                composed = None
+            if composed is not None:
+                return {
+                    "answer": composed.answer,
+                    "reasoning_certificate": composed.certificate(),
+                    "confidence": 0.88,
+                    "answer_kind": "grounded_composition",
+                }
         if language == "ko":
             template = _KO_TEMPLATE.get(p)
             # particle follows the REAL subject's final syllable even when the display
