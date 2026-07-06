@@ -115,6 +115,25 @@ def _wiktionary_defs(term: str, lang: str) -> list[str]:
     return heads
 
 
+def _wikidata_label(term: str) -> str | None:
+    """ENTITY lane resolver: acronyms and proper nouns (AGN, Lusatia) often have no
+    dictionary entry but ARE curated Wikidata items whose Korean label carries the
+    real name (AGN -> 활동 은하핵). EXACT label/alias match only — the search also
+    returns 'Agnes' for 'AGN', and a fuzzy hit here would be a wrong-referent bug."""
+    url = ("https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json"
+           "&language=ko&uselang=ko&type=item&limit=5&search=" + urllib.parse.quote(term))
+    req = urllib.request.Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    tl = term.lower()
+    for hit in data.get("search", []):
+        matched = str((hit.get("match") or {}).get("text") or "").lower()
+        label = (hit.get("label") or "").strip()
+        if matched == tl and label and label.lower() != tl:
+            return label
+    return None
+
+
 def _definition_sentences(term: str, extract: str) -> list[str]:
     # sentence boundaries must ignore punctuation INSIDE parens: '동적(董赤, ?~…)은'
     # was split at the birth-year '?' and the definition never survived as one sentence.
@@ -195,6 +214,31 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
                     candidates.append(trip)
             if defs:
                 log(f"  {term}: wiktionary dictionary lane -> {len(defs)} sense(s)")
+        if not candidates:
+            # WIKIDATA ENTITY lane: resolve to the curated Korean label, then define
+            # via that label's own encyclopedia summary — two verbatim facts (the
+            # label's definition + the term->label alias), judge-gated like the rest.
+            wd_label = None
+            # NAME-shaped terms only: Wikidata resolves entity NAMES (AGN, Colobus,
+            # Lusatia). An all-lowercase English word is dictionary material — the
+            # country-code alias turned 'is' into Iceland (retracted, guarded).
+            if not re.fullmatch(r"[a-z0-9 ]+", term):
+                try:
+                    wd_label = _wikidata_label(term)
+                except Exception:
+                    wd_label = None
+            if wd_label:
+                try:
+                    extract, _dab = _summary2("ko.wikipedia.org", wd_label)
+                except Exception:
+                    extract = ""
+                if extract:
+                    first = re.split(r"(?<=다\.)\s+|(?<=[.?!])\s+", extract)[0].strip()
+                    trip = extract_definition_triple(first)
+                    if trip and (wd_label.lower() in trip[0].lower()
+                                 or trip[0].lower() in wd_label.lower()):
+                        candidates = [trip, (term, "alias", trip[0])]
+                        log(f"  {term}: wikidata entity -> {wd_label}")
         if not candidates and saw_disambig:
             # SENSE EXPANSION: the disambiguation page asserts these senses. Ingest each
             # sense's own definition under the SENSE title, plus (term, alias, sense) —
