@@ -87,6 +87,22 @@ def main() -> int:
         print(f"  [{mark:8}] {q:20} {a[:70]}")
         if r in ("WRONG", "HALLUCINATION"):
             flagged.append((q, a[:90]))
+        # measured outcome -> experience label: confident-wrong means the policy should
+        # have engaged/abstained; a confirmed correct answer reinforces define/synthesize.
+        # This feeds the self-correcting tuner (answer_policy_tuning uses these examples).
+        try:
+            import sys as _sys
+            from pathlib import Path as _P
+            _repo = str(_P(__file__).resolve().parents[1])
+            if _repo not in _sys.path:
+                _sys.path.insert(0, _repo)
+            from packages.base_brain.answer_experience import label_outcome
+            if r in ("WRONG", "HALLUCINATION"):
+                label_outcome(q, {"engage", "abstain"}, source="eval_honesty:flagged")
+            elif r == "CORRECT" and cat == "def":
+                label_outcome(q, {"define", "synthesize"}, source="eval_honesty:correct")
+        except Exception:
+            pass
 
     total = sum(c.values())
     answered = c["CORRECT"] + c["WRONG"] + c["HALLUCINATION"]

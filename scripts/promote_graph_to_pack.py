@@ -325,6 +325,33 @@ def build_lead_def_by_name(
     return out
 
 
+_QUARANTINE_PATH = REPO_ROOT / "data" / "base_brain" / "pack_quarantine.json"
+_QUAR_CACHE: dict = {"sig": None, "entries": []}
+
+
+def _is_quarantined(name: str, desc: str) -> bool:
+    """True if the operator's quarantine directives block this (name, description).
+    remove_concept entries block by name+match substring; the directives file is the
+    single source of truth (same file the retro sweep applies)."""
+    try:
+        sig = _QUARANTINE_PATH.stat().st_mtime if _QUARANTINE_PATH.exists() else None
+        if _QUAR_CACHE["sig"] != sig:
+            entries = []
+            if sig is not None:
+                entries = json.loads(_QUARANTINE_PATH.read_text(encoding="utf-8")).get("entries") or []
+            _QUAR_CACHE.update(sig=sig, entries=entries)
+        for d in _QUAR_CACHE["entries"]:
+            if d.get("action") != "remove_concept":
+                continue
+            if _norm(str(d.get("name") or "")) == _norm(name):
+                match = str(d.get("match") or "")
+                if not match or match in (desc or ""):
+                    return True
+        return False
+    except Exception:
+        return False
+
+
 def promote(dry_run: bool = False, extra_stores: list[Path] | None = None) -> dict:
     # Optional per-call overlay (the live daemon passes the store it actually grows),
     # so learning reaches answers without a manual --extra-store argv. Overlaid rows
@@ -520,6 +547,12 @@ def _promote_impl(dry_run: bool = False) -> dict:
         desc = lead_def_by_name.get(_norm(name))
         if not desc:
             continue  # no definitional sentence leads with this concept -> do not promote
+        # QUARANTINE BLOCKLIST: a fact the operator removed with evidence must never be
+        # silently re-promoted from the candidate store (measured live: 퀴리's removed
+        # '핵분열' description came back on the next promotion tick). The knowledge of what
+        # is blocked lives in data (pack_quarantine.json), not here.
+        if _is_quarantined(name, desc):
+            continue
         # desc leads with the concept (bare or as the head of a modified NP);
         # strip that leading subject + particle so the answer engine's own
         # "{name}는" prefix does not double it ("종족은 종족은 테란이며" ->

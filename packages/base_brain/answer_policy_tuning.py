@@ -67,18 +67,25 @@ def accuracy(weights: dict[str, dict[str, float]] | None = None) -> tuple[float,
     return hits / max(1, len(_BATTERY)), detail
 
 
-def _margin(weights: dict[str, dict[str, float]] | None = None) -> float:
-    """SMOOTH objective: sum over the battery of a HINGE margin (correct-best-score minus
-    best-wrong-score, clamped at +1). Accuracy is a step function that traps coordinate
-    descent; this smooth margin lets the boundary move continuously so the tuner can
-    actually recover from bad weights. Higher = better and implies higher accuracy."""
+def _hinge(feats: dict[str, float], expected: set[str],
+           weights: dict[str, dict[str, float]] | None) -> float:
+    scores = score_modes(feats, weights)
+    best_ok = max(scores[m] for m in expected)
+    best_wrong = max((scores[m] for m in MODES if m not in expected), default=0.0)
+    return min(1.0, best_ok - best_wrong)         # hinge: no reward past a safe margin
+
+
+def _margin(weights: dict[str, dict[str, float]] | None = None,
+            experience: list[tuple[dict[str, float], set[str]]] | None = None) -> float:
+    """SMOOTH objective: sum of HINGE margins (correct-best minus best-wrong, clamped +1)
+    over the hand battery PLUS labelled live experience. Accuracy is a step function that
+    traps coordinate descent; the smooth margin lets the boundary move continuously.
+    Experience terms are weighted 0.5 — lived evidence steers, the curated battery anchors."""
     total = 0.0
     for q, sig, expected in _BATTERY:
-        feats = extract_features(q, sig)
-        scores = score_modes(feats, weights)
-        best_ok = max(scores[m] for m in expected)
-        best_wrong = max((scores[m] for m in MODES if m not in expected), default=0.0)
-        total += min(1.0, best_ok - best_wrong)   # hinge: no reward past a safe margin
+        total += _hinge(extract_features(q, sig), expected, weights)
+    for feats, expected in (experience or []):
+        total += 0.5 * _hinge(feats, expected, weights)
     return total
 
 
@@ -89,7 +96,15 @@ def tune(*, steps: int = 30, delta: float = 0.4, save: bool = False) -> dict[str
     only when `save` and accuracy improved."""
     weights = copy.deepcopy(load_weights())
     base_acc, _ = accuracy(weights)
-    margin = _margin(weights)
+    # labelled LIVE experience joins the objective (self-correction from real outcomes);
+    # the hand battery stays a hard accuracy floor below.
+    try:
+        from .answer_experience import training_examples
+
+        experience = training_examples()
+    except Exception:
+        experience = []
+    margin = _margin(weights, experience)
     for _ in range(steps):
         improved_this_pass = False
         for mode in MODES:
@@ -97,7 +112,7 @@ def tune(*, steps: int = 30, delta: float = 0.4, save: bool = False) -> dict[str
                 for step in (delta, -delta):
                     trial = copy.deepcopy(weights)
                     trial[mode][feat] = trial[mode].get(feat, 0.0) + step
-                    trial_margin = _margin(trial)
+                    trial_margin = _margin(trial, experience)
                     if trial_margin > margin + 1e-9:  # strict margin improvement
                         weights, margin = trial, trial_margin
                         improved_this_pass = True

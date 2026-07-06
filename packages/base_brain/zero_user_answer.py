@@ -783,6 +783,15 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
                                            or KO_DESCRIPTIONS.get(str(strong[0].get("concept_id")), "")).strip()),
             }
             _mode = decide_mode(query, _sig)[0]
+            # experience ledger: the decision + its exact feature snapshot, so measured
+            # outcomes (honesty eval) can later label THIS decision and move the weights.
+            try:
+                from .answer_experience import record_decision
+                from .answer_policy import extract_features as _xf
+
+                record_decision(query, _xf(query, _sig), _mode)
+            except Exception:
+                pass
         except Exception:  # pragma: no cover - policy must never break the answer path
             _mode = "engage" if _question_shape(query) in ("causal", "advice", "opinion", "personal") else "define"
         if _mode == "engage":
