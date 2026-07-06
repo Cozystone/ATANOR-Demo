@@ -74,6 +74,42 @@ def _wiki_summary(term: str, lang: str | None = None) -> str:
         return ""
 
 
+def _wiki_allowed() -> bool:
+    """HARD RULE (owner, twice now): the source is the SEARCH API, never
+    wikipedia-centric scraping. Wiki lanes exist only behind an explicit
+    opt-in; the default drain never touches them."""
+    import os
+
+    return os.getenv("ATANOR_ALLOW_WIKI", "") == "1"
+
+
+def _tavily_definitions(term: str) -> list[str]:
+    """PRIMARY source lane: real web search (Tavily). Returns candidate
+    definitional sentences from the top results' cleaned content — the same
+    conservative extractor and judge gate run downstream, so a source change
+    never loosens honesty."""
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    api_dir = str(_Path(__file__).resolve().parents[2] / "apps" / "api")
+    if api_dir not in _sys.path:
+        _sys.path.insert(0, api_dir)
+    from app.services.web_search import tavily_search  # noqa: E402
+
+    lang = _term_lang(term)
+    q = f"{term}이란 무엇인가" if lang == "ko" else f"what is {term}"
+    sentences: list[str] = []
+    for row in tavily_search(q, count=5):
+        text = str(row.get("snippet") or row.get("content") or "")
+        for s in re.split(r"(?<=다\.)\s+|(?<=[.?!])\s+", text):
+            s = s.strip()
+            if term.lower() in s.lower() and 8 <= len(s) <= 240:
+                sentences.append(s)
+        if len(sentences) >= 6:
+            break
+    return sentences[:6]
+
+
 def _wiktionary_defs(term: str, lang: str) -> list[str]:
     """Dictionary lane: wiktionary DEFINITIONS are '#' list items inside language
     sections — invisible to the REST summary, whose lead is empty for most entries
@@ -158,14 +194,23 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
     for rec in records:
         term = str(rec.get("term") or "")
         counters["terms"] += 1
-        # two-source drain: the encyclopedia page can be ABOUT something else
-        # (근본 -> a redirect note) while the dictionary holds the real definition.
-        # Each source runs through the SAME conservative extractor.
         lang = _term_lang(term)
         sentences: list[str] = []
         candidates: list[tuple[str, str, str]] = []
         saw_disambig = False
-        for host in (f"{lang}.wikipedia.org", f"{lang}.wiktionary.org"):
+        # PRIMARY: the search API (hard rule — never wikipedia-centric). Same
+        # conservative extractor + subject-relevance + judge gate downstream.
+        try:
+            sentences = _tavily_definitions(term)
+        except Exception:
+            sentences = []
+        candidates = [t for s in sentences if (t := extract_definition_triple(s))]
+        tl0 = term.lower()
+        candidates = [c for c in candidates if tl0 in c[0].lower() or c[0].lower() in tl0]
+        if candidates:
+            log(f"  {term}: search-api lane -> {len(candidates)} candidate(s)")
+        # wiki lanes: OPT-IN ONLY (ATANOR_ALLOW_WIKI=1); the default drain skips them
+        for host in ((f"{lang}.wikipedia.org", f"{lang}.wiktionary.org") if (_wiki_allowed() and not candidates) else ()):
             try:
                 extract, is_dab = _summary2(host, term)
             except Exception:
@@ -202,8 +247,8 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
                         and re.search(r"\(\s*" + re.escape(term) + r"\s*[),]", s)
                         and (term, pred, obj) not in candidates):
                     candidates.append((term, pred, obj))
-        if not candidates:
-            # DICTIONARY lane (wikitext '#' senses) — same judge gate downstream.
+        if not candidates and _wiki_allowed():
+            # DICTIONARY lane (wikitext '#' senses) — OPT-IN, same judge gate.
             try:
                 defs = _wiktionary_defs(term, lang)
             except Exception:
@@ -228,10 +273,12 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
                 except Exception:
                     wd_label = None
             if wd_label:
-                try:
-                    extract, _dab = _summary2("ko.wikipedia.org", wd_label)
-                except Exception:
-                    extract = ""
+                extract = ""
+                if _wiki_allowed():
+                    try:
+                        extract, _dab = _summary2("ko.wikipedia.org", wd_label)
+                    except Exception:
+                        extract = ""
                 if extract:
                     first = re.split(r"(?<=다\.)\s+|(?<=[.?!])\s+", extract)[0].strip()
                     trip = extract_definition_triple(first)

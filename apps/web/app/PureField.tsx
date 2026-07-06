@@ -46,11 +46,12 @@ function grainTexture(): THREE.Texture {
   return tex;
 }
 
+// plain GRAYS (owner): the field must never be confused with the orb's own
+// colored particles — it is quiet context, not a second light show
 const PALETTE = [
-  new THREE.Color("#22e0f5"),
-  new THREE.Color("#8f7bff"),
-  new THREE.Color("#c86df0"),
-  new THREE.Color("#e8f0ff"),
+  new THREE.Color("#8b939e"),
+  new THREE.Color("#a8b0ba"),
+  new THREE.Color("#c6ccd4"),
 ];
 
 export default function PureField({ budget = 5200, mode = "idle" }: PureFieldProps) {
@@ -81,7 +82,7 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
     const pos = new Float32Array(n * 3);
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i += 1) {
-      radius[i] = 1.6 + Math.abs(gaussian()) * 1.7; // band: hugs the orb, fades out
+      radius[i] = 3.5 + Math.abs(gaussian()) * 1.3; // ring: a clear GAP from the orb
       theta[i] = Math.random() * Math.PI * 2;
       phi[i] = Math.acos(2 * Math.random() - 1);
       phase[i] = Math.random() * Math.PI * 2;
@@ -97,11 +98,11 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
     geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
     const mat = new THREE.PointsMaterial({
       map: grainTexture(),
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending, // no additive glow — grays stay gray
       depthWrite: false,
       transparent: true,
-      opacity: 0.95,
-      size: 0.13,
+      opacity: 0.8,
+      size: 0.11,
       sizeAttenuation: true,
       vertexColors: true,
     });
@@ -145,7 +146,7 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
 
           if (m === "thinking") {
             // spiral condensation: the swarm pulls toward the core and churns
-            r *= 0.78 + 0.1 * Math.sin(t * 0.9 + p);
+            r = 3.15 + (r - 3.15) * (0.45 + 0.1 * Math.sin(t * 0.9 + p));
           } else if (m === "listening") {
             // concentric ripple travelling outward through the band
             r += Math.sin(t * 3.2 - radius[i] * 2.4 + p * 0.2) * 0.22;
@@ -159,13 +160,14 @@ export default function PureField({ budget = 5200, mode = "idle" }: PureFieldPro
             r += Math.sin(t * 0.35 + p) * 0.12;
           }
 
+          r = Math.max(3.1, r); // the gap is inviolable — nothing enters the orb's space
           const sr = Math.sin(ph) * r;
           attr.array[i * 3] = Math.cos(th) * sr + Math.sin(t * 0.07 + p * 1.7) * 0.08;
           attr.array[i * 3 + 1] = Math.cos(ph) * r * 0.82 + Math.cos(t * 0.06 + p) * 0.08;
           attr.array[i * 3 + 2] = Math.sin(th) * sr * 0.6;
         }
         attr.needsUpdate = true;
-        mat.opacity = m === "manual" ? 0.35 : 0.95;
+        mat.opacity = m === "manual" ? 0.3 : 0.8;
       }
       renderer.render(scene, camera);
       raf = window.requestAnimationFrame(frame);
