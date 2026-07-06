@@ -62,7 +62,7 @@ _KO_DEF: list[tuple[re.Pattern, str]] = [
     # 있는 시') the old cap rejected. Still comma-free and $-anchored — a sentence that
     # continues past a comma stays an honest MISS, never a meaning-changing cut.
     (re.compile(r"^(?P<s>[가-힣A-Za-z0-9 ]{1,20}?)(?:은|는|이란|란|이라는|라는)\s+"
-                r"(?P<o>[가-힣A-Za-z0-9 ]{2,60}?)(?:이다|입니다|이라고 한다|을 말한다|를 말한다"
+                r"(?P<o>[가-힣A-Za-z0-9·~, ]{2,90}?)(?:이다|입니다|이라고 한다|을 말한다|를 말한다"
                 r"|을 가리킨다|를 가리킨다|을 일컫는다|를 일컫는다)\.?$"), "defined_as"),
 ]
 # Encyclopedia first sentences open with a field adverbial ('In botany, …') that the bare
@@ -70,14 +70,14 @@ _KO_DEF: list[tuple[re.Pattern, str]] = [
 _EN_LEAD = r"(?:In [A-Za-z][A-Za-z \-]{1,30},\s+)?"
 _EN_DEF: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^" + _EN_LEAD + r"(?:(?:a|an|the)\s+)?(?P<s>[A-Za-z][A-Za-z0-9 \-]{1,40}?)\s+(?:is|are)\s+(?:a|an|the)\s+"
-                r"(?P<o>[A-Za-z][A-Za-z0-9 \-']{1,90}?)\.?$", re.I), "is_a"),
+                r"(?P<o>[A-Za-z][A-Za-z0-9 \-']{1,150}?)\.?$", re.I), "is_a"),
     (re.compile(r"^" + _EN_LEAD + r"(?:(?:a|an|the)\s+)?(?P<s>[A-Za-z][A-Za-z0-9 \-]{1,40}?)\s+refers to\s+(?:a|an|the)?\s*"
-                r"(?P<o>[A-Za-z][A-Za-z0-9 \-']{1,90}?)\.?$", re.I), "defined_as"),
+                r"(?P<o>[A-Za-z][A-Za-z0-9 \-']{1,150}?)\.?$", re.I), "defined_as"),
     # 'X is the process/study/… of …' — the standard abstract-noun definition frame
     # (AutoML, photosynthesis…): keep the frame noun IN the object, verbatim.
     (re.compile(r"^" + _EN_LEAD + r"(?:(?:a|an|the)\s+)?(?P<s>[A-Za-z][A-Za-z0-9 \-]{1,40}?)\s+(?:is|are)\s+"
                 r"(?P<o>the (?:process|study|practice|act|set|branch|field|form|method|art|science) of "
-                r"[A-Za-z][A-Za-z0-9 \-']{1,90}?)\.?$", re.I), "defined_as"),
+                r"[A-Za-z][A-Za-z0-9 \-']{1,150}?)\.?$", re.I), "defined_as"),
 ]
 _STOP_SUBJECT = {"그", "이", "저", "그것", "이것", "it", "this", "that", "there", "he", "she", "they"}
 
@@ -92,6 +92,11 @@ def extract_definition_triple(sentence: str) -> tuple[str, str, str] | None:
     # Hanja/romanization aside breaks the subject pattern but carries no assertion.
     # Same normalization the promotion gate applies; conservative (removes, never adds).
     s = re.sub(r"\s*\([^)]*\)", "", s).strip()
+    # alias subject BEFORE matching: '헌장 또는 차터는 …' asserts both names — keep the
+    # primary; otherwise the '는' of '또는' is misread as the topic particle and the
+    # subject shears to '헌장 또'. (The alternate name is recoverable from the raw
+    # sentence by same-sentence alias rules.)
+    s = re.sub(r"^([가-힣A-Za-z0-9]{1,20}) 또는 [가-힣A-Za-z0-9]{1,20}(은|는)\s", r"\1\2 ", s)
     if not s or len(s) > 200:
         return None
     for pat, pred in _KO_DEF + _EN_DEF:
@@ -100,6 +105,11 @@ def extract_definition_triple(sentence: str) -> tuple[str, str, str] | None:
             subj, obj = m.group("s").strip(), m.group("o").strip()
             if (subj.lower() in _STOP_SUBJECT or subj.lower() == obj.lower()
                     or not subj or not obj):
+                return None
+            # comma guard: enumerations ('국가, 기관, 단체') are fine, but a second
+            # CLAUSE after a comma ('B이고, C는 D') would weld two assertions into one
+            # false fact — reject when a topic particle follows any comma.
+            if re.search(r",\s*[가-힣A-Za-z0-9 ]{1,20}(?:은|는)\s", obj):
                 return None
             return subj, pred, obj
     return None

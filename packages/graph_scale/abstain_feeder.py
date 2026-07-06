@@ -55,7 +55,14 @@ def _wiki_summary(term: str, lang: str | None = None) -> str:
 
 
 def _definition_sentences(term: str, extract: str) -> list[str]:
-    sents = [s.strip() for s in re.split(r"(?<=다\.)\s+|(?<=[.?!])\s+", extract) if s.strip()]
+    # sentence boundaries must ignore punctuation INSIDE parens: '동적(董赤, ?~…)은'
+    # was split at the birth-year '?' and the definition never survived as one sentence.
+    masked = re.sub(r"\([^)]*\)", lambda m: m.group(0).replace(".", "·").replace("?", "·").replace("!", "·"), extract)
+    spans, start = [], 0
+    for m in re.finditer(r"(?<=다\.)\s+|(?<=[.?!])\s+", masked):
+        spans.append((start, m.start())); start = m.end()
+    spans.append((start, len(masked)))
+    sents = [extract[a:b].strip() for a, b in spans if extract[a:b].strip()]
     tl = term.lower()
     return [s for s in sents[:3] if term in s or tl in s.lower()]
 
