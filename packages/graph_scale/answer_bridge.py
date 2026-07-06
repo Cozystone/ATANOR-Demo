@@ -249,7 +249,13 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                 body = f"{display_s}의 {_ko_topic(pred_ko)} {o}입니다."
             answer = f"{body} (출처: 큐레이션 지식그래프)"
         else:
-            answer = f"The {p.replace('_', ' ')} of {display_s} is {o}. (source: curated knowledge graph)"
+            # reuse the composer's clean single-fact English frames — the generic
+            # 'The {p} of {s} is {o}' turned is_a into 'The is a of concerto is …'
+            from packages.grounded_composer.composer import _EN_LEAD
+
+            frame = _EN_LEAD.get(p)
+            body = frame.format(s=display_s, o=o) if frame else f"{display_s}: {o}"
+            answer = f"{body}. (source: curated knowledge graph)"
         return {
             "answer": answer,
             "reasoning_certificate": {

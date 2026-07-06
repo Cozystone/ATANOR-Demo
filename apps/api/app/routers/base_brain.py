@@ -77,7 +77,14 @@ def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
     # existing quality paths are untouched.
     try:
         answer_text = str(result.get("answer") or "")
-        if "근거가 부족" in answer_text and "실시간" not in answer_text:
+        # abstain detection is language-aware: the KO abstain says '근거가 부족',
+        # the EN abstain says 'do not have enough base concepts'. Checking only the
+        # Korean string meant English abstentions never reached the curated bridge
+        # (incl. the English realizer) — measured: 'What is a concerto?' abstained
+        # while the concerto facts sat in the store.
+        abstained = ("근거가 부족" in answer_text) or ("do not have enough" in answer_text.lower())
+        realtime = ("실시간" in answer_text) or ("real-time" in answer_text.lower())
+        if abstained and not realtime:
             from packages.graph_scale.answer_bridge import answer_from_triples
 
             bridged = answer_from_triples(request.query, request.language or "ko")
