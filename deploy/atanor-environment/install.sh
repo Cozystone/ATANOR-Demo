@@ -5,7 +5,12 @@
 # the machine boots straight into the ATANOR shell in kiosk mode.
 #
 #   sudo bash install.sh                 # services only (reach it at http://localhost:3000)
-#   sudo bash install.sh --kiosk         # + boot into full-screen ATANOR shell
+#   sudo bash install.sh --kiosk         # + boot into the full-screen orb shell ONLY
+#   sudo bash install.sh --desktop       # + full GNOME desktop (install apps, browse —
+#                                        #   a normal computer) with ATANOR as a resident
+#                                        #   window that opens at login. Owner direction:
+#                                        #   the OS must stay a general-purpose machine,
+#                                        #   with the AI woven through it — not a cage.
 #
 # Idempotent: safe to re-run for updates (git pull + rebuild + restart).
 # Honest boundaries: no kernel/driver work here — Ubuntu LTS carries that. Ctrl+Alt+F2
@@ -18,7 +23,9 @@ APP_DIR=/opt/atanor
 DATA_DIR=/var/lib/atanor
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIOSK=0
+DESKTOP=0
 [ "${1:-}" = "--kiosk" ] && KIOSK=1
+[ "${1:-}" = "--desktop" ] && DESKTOP=1
 
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 
@@ -36,6 +43,12 @@ fi
 if [ "$KIOSK" -eq 1 ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y cage chromium-browser || \
   DEBIAN_FRONTEND=noninteractive apt-get install -y cage chromium
+fi
+if [ "$DESKTOP" -eq 1 ]; then
+  # A real desktop: install apps, browse, use it like any computer. ATANOR rides on
+  # top as a resident window, it does not replace the desktop.
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal chromium-browser || \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal chromium
 fi
 
 echo "[2/6] atanor system user + directories"
@@ -75,6 +88,28 @@ if [ "$KIOSK" -eq 1 ]; then
   echo "[6/6] kiosk shell (boots into ATANOR; Ctrl+Alt+F2 stays a normal TTY)"
   install -m 0644 "$HERE/atanor-shell.service" /etc/systemd/system/atanor-shell.service
   systemctl enable atanor-shell.service
+  systemctl set-default graphical.target
+elif [ "$DESKTOP" -eq 1 ]; then
+  echo "[6/6] desktop mode — GNOME + ATANOR resident window at login"
+  # system-wide autostart: every user gets the orb window on login; closing it is
+  # allowed (relaunch from the app grid) — the AI lives WITH the desktop, not over it.
+  mkdir -p /etc/xdg/autostart
+  cat > /etc/xdg/autostart/atanor-orb.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ATANOR
+Comment=Your resident intelligence — voice orb (local-only)
+Exec=sh -c 'sleep 4; exec chromium-browser --app=http://127.0.0.1:3000/shell --window-size=560,560 2>/dev/null || exec chromium --app=http://127.0.0.1:3000/shell --window-size=560,560'
+X-GNOME-Autostart-enabled=true
+EOF
+  cat > /usr/share/applications/atanor.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=ATANOR
+Comment=Dashboard (full panels)
+Exec=sh -c 'exec chromium-browser --app=http://127.0.0.1:3000 2>/dev/null || exec chromium --app=http://127.0.0.1:3000'
+Categories=Utility;
+EOF
   systemctl set-default graphical.target
 else
   echo "[6/6] no kiosk requested — open http://localhost:3000"
