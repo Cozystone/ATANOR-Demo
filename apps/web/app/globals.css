@@ -10741,7 +10741,7 @@ p {
 .atanor-os-shell .hologram-voice-orb {
   /* owner's red-circle spec: ~27% of the viewport's short side, centered,
      generous negative space around it. vmin keeps it responsive. */
-  width: min(27vmin, 340px);
+  width: min(34vmin, 430px); /* measured 22% -> spec 28%: x1.27 */
   min-width: 200px;
   min-height: 200px;
 }

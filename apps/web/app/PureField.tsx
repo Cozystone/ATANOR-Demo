@@ -83,7 +83,7 @@ export default function PureField({ budget = 5200, mode = "idle", scale = 1 }: P
     const pos = new Float32Array(n * 3);
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i += 1) {
-      radius[i] = (2.5 + Math.min(1.1, Math.abs(gaussian()) * 0.8)) * scale; // ANNULUS, orb-proportional
+      radius[i] = (2.5 + Math.min(0.95, Math.abs(gaussian()) * 0.7)) * scale; // tight halo band
       theta[i] = Math.random() * Math.PI * 2;
       phi[i] = Math.acos(2 * Math.random() - 1);
       phase[i] = Math.random() * Math.PI * 2;
