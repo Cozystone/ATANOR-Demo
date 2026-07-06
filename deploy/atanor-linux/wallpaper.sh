@@ -42,9 +42,20 @@ while [ $i -lt 120 ]; do
   i=$((i+1)); sleep 1
 done
 if [ -n "$WID" ]; then
-  xprop -id "$WID" -f _NET_WM_WINDOW_TYPE 32a \
-    -set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_DESKTOP
-  sleep 1
+  # 1) strip the WM titlebar: openbox honors live _MOTIF_WM_HINTS changes
+  #    (flags=2 => DECORATIONS field valid, decorations=0 => none). This is the
+  #    reliable path — firefox's --name/--class flags are unreliable on X11, and
+  #    openbox ignores a post-map _NET_WM_WINDOW_TYPE change. Retry: firefox can
+  #    re-assert its own decor hints while the page loads.
+  n=0
+  while [ $n -lt 6 ]; do
+    xprop -id "$WID" -f _MOTIF_WM_HINTS 32c \
+      -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0"
+    n=$((n+1)); sleep 1
+  done
+  # 2) push it to the background layer, every workspace, out of the taskbar
+  wmctrl -i -r "$WID" -b add,below,sticky,skip_taskbar,skip_pager 2>/dev/null || true
+  # 3) fill the screen (below the panel, which owns its strut)
   xdotool windowmove "$WID" 0 0
   xdotool windowsize "$WID" 100% 100%
 fi
