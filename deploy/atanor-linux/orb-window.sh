@@ -2,7 +2,14 @@
 # The resident orb: a floating, undecorated, always-on-top window over the
 # ATANOR desktop. MOTIF hints strip the titlebar (openbox honors them);
 # wmctrl pins above+sticky. The window is the SAME /shell surface as the app.
-until curl -sf http://127.0.0.1:3000/shell >/dev/null 2>&1; do sleep 1; done
+# STABLE web, not just alive: at first boot the web unit cycles with the engine
+# (Requires=), and a surface launched into a down-window keeps an error page
+# forever. Two consecutive 200s five seconds apart = actually up.
+ok=0
+while [ "$ok" -lt 2 ]; do
+  if curl -sf -m 4 http://127.0.0.1:3000/shell >/dev/null 2>&1; then ok=$((ok+1)); else ok=0; fi
+  sleep 5
+done
 chromium --app="http://127.0.0.1:3000/shell?overlay=1" --window-size=520,560 &
 BROWSER=$!
 WID=""

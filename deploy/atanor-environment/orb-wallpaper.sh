@@ -6,7 +6,14 @@
 # particle field IS the wallpaper, and clicking the empty desktop talks to the orb.
 # No own-OS required for this; the compositor treats the wallpaper as just
 # another surface. (Xorg session; the own-compositor stage-2 does this natively.)
-until curl -sf http://127.0.0.1:3000/ >/dev/null 2>&1; do sleep 1; done
+# STABLE web, not just alive: at first boot the web unit cycles with the engine
+# (Requires=), and a surface launched into a down-window keeps an error page
+# forever. Two consecutive 200s five seconds apart = actually up.
+ok=0
+while [ "$ok" -lt 2 ]; do
+  if curl -sf -m 4 http://127.0.0.1:3000/shell >/dev/null 2>&1; then ok=$((ok+1)); else ok=0; fi
+  sleep 5
+done
 U="http://127.0.0.1:3000/shell?wallpaper=1"
 (chromium-browser --app="$U" --start-fullscreen 2>/dev/null \
   || chromium --app="$U" --start-fullscreen) &
