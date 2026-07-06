@@ -67,10 +67,12 @@ EOF
     iproute2 iputils-ping systemd-resolved systemd-timesyncd \
     ca-certificates curl git sudo locales \
     python3 python3-venv python3-pip \
-    cage xwayland xorg xinit openbox tint2 jgmenu pcmanfm lxterminal firefox-esr \
+    cage xwayland pcmanfm lxterminal firefox-esr \
+    fcitx5 fcitx5-hangul fcitx5-frontend-gtk3 fcitx5-frontend-qt5 \
+    grim ydotool wayland-utils \
     libgl1-mesa-dri libegl-mesa0 \
     alsa-utils fonts-noto-cjk fonts-noto-color-emoji adwaita-icon-theme \
-    xdotool x11-utils x11-xserver-utils wmctrl openssh-server"
+    x11-utils openssh-server"
   echo "== node 20 (web shell) =="
   # pipefail matters: if the nodesource setup fails, plain 'apt install nodejs' would
   # silently install Debian's node 18 (too old for Next 16) — fail loudly instead
@@ -216,6 +218,8 @@ StandardInput=tty
 StandardOutput=journal
 UtmpIdentifier=tty1
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+# VM (virtio-vga, no GL): software render; harmless on metal, revisit for GPU boxes
+Environment=WLR_RENDERER=pixman
 ExecStartPre=/bin/sh -c 'mkdir -p /run/user/1000 && chown atanor:atanor /run/user/1000'
 ExecStart=/usr/bin/cage -s -- /usr/local/bin/atanor-surface
 Restart=always
