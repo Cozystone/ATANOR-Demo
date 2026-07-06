@@ -53,7 +53,19 @@ class LinuxDesktopBackend:
             return self._run(str(a.get("command", "")), shell=True)
         if k == "open_app":
             app = str(a.get("app", ""))
-            return self._run(f"gtk-launch {shlex.quote(app)} || {shlex.quote(app)} &", shell=True)
+            # DETACH, never wait: gtk-launch stays attached to the app it opens, so
+            # the lane's timeout killed the very window it had just launched
+            # (measured: detail='timeout', app dead). A launch is fire-and-forget —
+            # its success is the window appearing, not the launcher exiting.
+            try:
+                subprocess.Popen(
+                    ["sh", "-c", f"gtk-launch {shlex.quote(app)} 2>/dev/null || exec {shlex.quote(app)}"],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                return True, f"launched {app}", ""
+            except Exception as exc:  # noqa: BLE001
+                return False, "", str(exc)[:500]
         if k == "list_windows":
             return self._run(["wmctrl", "-l"])
         if k == "focus_window":
