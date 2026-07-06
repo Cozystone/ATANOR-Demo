@@ -201,9 +201,13 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                         "confidence": 0.85,
                         "answer_kind": "multi_sense_enumeration",
                     }
-            # ONE visible alias hop — ONLY the redirect signature (exactly one target):
-            # a redirect asserts equivalence; anything weaker must not substitute.
-            alias_targets = [o for (_s, p, o) in facts if p == "alias"]
+            # ONE visible alias hop — ONLY the redirect signature (exactly one DISTINCT
+            # target): a redirect asserts equivalence; anything weaker must not
+            # substitute. Distinct matters — the same equivalence asserted by two
+            # sources (seed + ConceptNet Synonym) is STRONGER evidence, yet the raw
+            # row list read it as ambiguity and refused the hop (기획 stayed abstained
+            # with a perfectly grounded 계획 definition one hop away).
+            alias_targets = list(dict.fromkeys(o for (_s, p, o) in facts if p == "alias"))
             if len(alias_targets) == 1:
                 tfacts = store.facts_about(alias_targets[0], limit=12)
                 tchosen = [(s2, p2, o2) for (s2, p2, o2) in tfacts
