@@ -78,14 +78,29 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
     for rec in records:
         term = str(rec.get("term") or "")
         counters["terms"] += 1
-        try:
-            extract = _wiki_summary(term)
-        except Exception as exc:
-            abstain_queue.mark(term, "fetch_failed", str(exc)[:80])
-            counters["failed"] += 1
-            continue
-        sentences = _definition_sentences(term, extract)
-        candidates = [t for s in sentences if (t := extract_definition_triple(s))]
+        # two-source drain: the encyclopedia page can be ABOUT something else
+        # (근본 -> a redirect note) while the dictionary holds the real definition.
+        # Each source runs through the SAME conservative extractor.
+        lang = _term_lang(term)
+        sentences: list[str] = []
+        candidates: list[tuple[str, str, str]] = []
+        for host in (f"{lang}.wikipedia.org", f"{lang}.wiktionary.org"):
+            try:
+                extract = _rest_summary(host, term)
+            except Exception:
+                continue
+            if not extract:
+                continue
+            sentences = _definition_sentences(term, extract)
+            candidates = [t for s in sentences if (t := extract_definition_triple(s))]
+            # subject relevance: this drain answers THIS term — a true sentence about a
+            # different subject on the same page (planet -> 'best available theory of
+            # planet formation') must not be stored as the answer to this query.
+            tl = term.lower()
+            candidates = [c for c in candidates
+                          if tl in c[0].lower() or c[0].lower() in tl]
+            if candidates:
+                break
         # acronym alias: when the SOURCE SENTENCE itself asserts both names —
         # 'Automated machine learning (AutoML) is …' — the fact is stored under the
         # queried name too. Verbatim-grounded: only if '(term)' literally appears.

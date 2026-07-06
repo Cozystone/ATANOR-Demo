@@ -70,14 +70,19 @@ _KO_DEF: list[tuple[re.Pattern, str]] = [
 _EN_LEAD = r"(?:In [A-Za-z][A-Za-z \-]{1,30},\s+)?"
 _EN_DEF: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^" + _EN_LEAD + r"(?:(?:a|an|the)\s+)?(?P<s>[A-Za-z][A-Za-z0-9 \-]{1,40}?)\s+(?:is|are)\s+(?:a|an|the)\s+"
-                r"(?P<o>[A-Za-z][A-Za-z0-9 \-']{1,150}?)\.?$", re.I), "is_a"),
+                r"(?P<o>[A-Za-z][A-Za-z0-9 ,\-']{1,150}?)\.?$", re.I), "is_a"),
     (re.compile(r"^" + _EN_LEAD + r"(?:(?:a|an|the)\s+)?(?P<s>[A-Za-z][A-Za-z0-9 \-]{1,40}?)\s+refers to\s+(?:a|an|the)?\s*"
-                r"(?P<o>[A-Za-z][A-Za-z0-9 \-']{1,150}?)\.?$", re.I), "defined_as"),
+                r"(?P<o>[A-Za-z][A-Za-z0-9 ,\-']{1,150}?)\.?$", re.I), "defined_as"),
     # 'X is the process/study/… of …' — the standard abstract-noun definition frame
     # (AutoML, photosynthesis…): keep the frame noun IN the object, verbatim.
     (re.compile(r"^" + _EN_LEAD + r"(?:(?:a|an|the)\s+)?(?P<s>[A-Za-z][A-Za-z0-9 \-]{1,40}?)\s+(?:is|are)\s+"
                 r"(?P<o>the (?:process|study|practice|act|set|branch|field|form|method|art|science) of "
-                r"[A-Za-z][A-Za-z0-9 \-']{1,150}?)\.?$", re.I), "defined_as"),
+                r"[A-Za-z][A-Za-z0-9 ,\-']{1,150}?)\.?$", re.I), "defined_as"),
+    # entailment-preserving genus frame (is_a ONLY): object = the genus head before
+    # a restrictive clause/appended predicate. X is_a 'B that C' entails X is_a B —
+    # the class only widens, so the stored fact stays true (standard genus-differentia).
+    (re.compile(r"^" + _EN_LEAD + r"(?:(?:a|an|the)\s+)?(?P<s>[A-Za-z][A-Za-z0-9 \-]{1,40}?)\s+(?:is|are)\s+(?:a|an|the)\s+"
+                r"(?P<o>[A-Za-z][A-Za-z0-9 ,\-']{1,90}?)(?:\s+that\s|\s+which\s|,\s+and\s|,\s+but\s)", re.I), "is_a"),
 ]
 _STOP_SUBJECT = {"그", "이", "저", "그것", "이것", "it", "this", "that", "there", "he", "she", "they"}
 
@@ -105,12 +110,13 @@ def extract_definition_triple(sentence: str) -> tuple[str, str, str] | None:
             subj, obj = m.group("s").strip(), m.group("o").strip()
             if (subj.lower() in _STOP_SUBJECT or subj.lower() == obj.lower()
                     or not subj or not obj):
-                return None
-            # comma guard: enumerations ('국가, 기관, 단체') are fine, but a second
-            # CLAUSE after a comma ('B이고, C는 D') would weld two assertions into one
-            # false fact — reject when a topic particle follows any comma.
-            if re.search(r",\s*[가-힣A-Za-z0-9 ]{1,20}(?:은|는)\s", obj):
-                return None
+                continue  # this frame misfired; another may fit honestly
+            # weld guard: enumerations ('국가, 기관, 단체' / 'large, rounded body') are
+            # fine; what must never pass is a second CLAUSE stitched on ('B이고, C는 D' /
+            # ', and X is Y'). Detect the clause CONNECTOR, not any comma — a '…는 '
+            # after a comma is usually a relative-clause ending (되는/있는), not a weld.
+            if re.search(r"(?:이고|이며|하고),", obj) or re.search(r",\s*(?:and|but|so|then|which|whose|who)\s", obj, re.I):
+                continue  # welded clause under THIS frame; the genus frame may still apply
             return subj, pred, obj
     return None
 
