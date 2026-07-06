@@ -27,8 +27,10 @@ cp "$HERE/autoinstall/user-data" "$WORK/iso/atanor/user-data"
 touch "$WORK/iso/atanor/meta-data"
 
 echo "[3/4] boot flags -> autoinstall"
-# GRUB (UEFI + BIOS both read boot/grub/grub.cfg on Ubuntu live-server)
-sed -i 's|---|autoinstall ds=nocloud\\;s=/cdrom/atanor/ ---|' "$WORK/iso/boot/grub/grub.cfg"
+# GRUB (UEFI + BIOS both read boot/grub/grub.cfg on Ubuntu live-server).
+# console=ttyS0 secondary so headless/VM runs stream kernel+installer logs to serial
+# (tty1 stays primary — the physical screen keeps the normal installer output).
+sed -i 's|---|autoinstall ds=nocloud\\;s=/cdrom/atanor/ console=ttyS0,115200 console=tty1 ---|' "$WORK/iso/boot/grub/grub.cfg"
 grep -q "autoinstall" "$WORK/iso/boot/grub/grub.cfg" || { echo "grub patch failed"; exit 1; }
 
 echo "[4/4] rebuild hybrid ISO (replaying the source ISO's own boot layout)"
