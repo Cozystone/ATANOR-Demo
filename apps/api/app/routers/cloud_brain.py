@@ -1971,6 +1971,19 @@ def cloud_brain_candidate_graph(
     return candidate_cloud_graph(candidate_store_path or _resolve_candidate_store_path(), max_nodes=max_nodes, max_edges=max_edges)
 
 
+@router.get("/logical-sphere/summary")
+def cloud_brain_logical_sphere_summary() -> dict[str, Any]:
+    """Read-only Logical Sphere count semantics: verified / candidate / working-memory /
+    rendered domains reported SEPARATELY so a viewport sample or unpromoted learning can
+    never be mistaken for production graph size. Uses the same resolved candidate store
+    as the candidate panel so both surfaces agree. No scan, no mutation, no promotion."""
+    from packages.cloud_brain.logical_sphere_summary import build_logical_sphere_summary
+
+    return build_logical_sphere_summary(
+        candidate_store_path=_resolve_candidate_store_path()
+    ).to_dict()
+
+
 @router.get("/graph-answer-learn")
 def cloud_brain_graph_answer_learn(
     query: str = Query(..., max_length=200),
