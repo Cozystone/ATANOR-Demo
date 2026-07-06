@@ -75,20 +75,54 @@ def _nt(path: Path) -> Iterator[tuple[str, str, str]]:
                 yield clean(m.group(1)), clean(m.group(2)), clean(m.group(3))
 
 
+# ConceptNet relation -> our canonical predicate vocabulary. Everything the answer
+# bridge templates/cues speak is snake_case (is_a, defined_as, alias, ...) — raw
+# CamelCase rels would silently miss every intent filter. Relations NOT in this map
+# are dropped on purpose: RelatedTo/HasContext/EtymologicallyRelatedTo etc. are too
+# loose to answer from (precision first — the store is only as honest as its edges).
+_CN_REL: dict[str, str] = {
+    "IsA": "is_a",
+    "DefinedAs": "defined_as",
+    "Synonym": "alias",           # visible one-hop substitution, same as redirects
+    "PartOf": "part_of",
+    "HasA": "has_a",
+    "AtLocation": "located_in",
+    "UsedFor": "used_for",
+    "CapableOf": "capable_of",
+    "HasProperty": "has_property",
+    "MadeOf": "made_of",
+    "MannerOf": "manner_of",
+    "Antonym": "antonym",
+    "Causes": "causes",
+    "HasSubevent": "has_subevent",
+    "MotivatedByGoal": "motivated_by",
+    "SymbolOf": "symbol_of",
+}
+
+
 def _conceptnet(path: Path) -> Iterator[tuple[str, str, str]]:
     """ConceptNet assertions CSV. Keeps only Korean/English concept edges so the store stays
-    on-language; a concept URI is /c/<lang>/<term>[/...]."""
+    on-language; a concept URI is /c/<lang>/<term>[/...]. Relations are normalized to the
+    bridge's snake_case vocabulary and weak edges (weight < 1.0) are dropped — curated
+    means curated."""
     with _open_text(path) as fh:
         for line in fh:
             cols = line.split("\t")
-            if len(cols) < 4:
+            if len(cols) < 5:
                 continue
-            rel = cols[1].rsplit("/", 1)[-1]
+            rel = _CN_REL.get(cols[1].rsplit("/", 1)[-1])
+            if rel is None:
+                continue
             sp, op = cols[2].split("/"), cols[3].split("/")
             if len(sp) < 4 or len(op) < 4:
                 continue
             if sp[2] not in ("ko", "en") or op[2] not in ("ko", "en"):  # language filter
                 continue
+            try:  # cols[4] is the edge-metadata JSON; weight 1.0 = default asserted edge
+                if float(json.loads(cols[4]).get("weight", 1.0)) < 1.0:
+                    continue
+            except Exception:
+                pass
             s, o = sp[3], op[3]
             if s and o:
                 yield s.replace("_", " "), rel, o.replace("_", " ")

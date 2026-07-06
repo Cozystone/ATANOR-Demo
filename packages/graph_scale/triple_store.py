@@ -238,6 +238,11 @@ class TripleStore:
         """All stored (s, p, o) with this subject — a bounded memmap scan, no full load."""
         self.flush()
         sid = self.terms.lookup(subject)
+        if sid is None and subject != subject.lower():
+            # curated KG dumps (ConceptNet URIs) store English terms lowercase;
+            # a query surface gives 'Colobus' — fold case rather than miss the fact
+            subject = subject.lower()
+            sid = self.terms.lookup(subject)
         if sid is None:
             return []
         cols = self.open_columns()
