@@ -60,7 +60,16 @@
                 linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,0) 32%, rgba(0,0,0,.92) 90%, #000 100%); }
   .hero .inner { position: relative; z-index: 2; padding: 120px 24px 70px; width: 100%; }
   .hero .biglogo { width: min(620px, 78vw); margin: 0 auto 44px; }
-  .hero .slogan { font-size: clamp(32px, 4.6vw, 62px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.06; }
+  /* the slogan keeps the earlier Helvetica voice (owner preference over Inter Tight) */
+  .hero .slogan { font-family: "Helvetica Neue", Helvetica, Arial, "Pretendard Variable", sans-serif;
+    font-size: clamp(32px, 4.5vw, 60px); font-weight: 700; letter-spacing: -0.035em; line-height: 1.08; }
+  /* Linear-style blur-in entrance for the hero */
+  @keyframes blurIn { from { opacity: 0; filter: blur(14px); transform: translateY(12px); }
+                      to { opacity: 1; filter: blur(0); transform: none; } }
+  .hero .biglogo { animation: blurIn 1.1s cubic-bezier(.2,.6,.2,1) both; }
+  .hero .slogan { animation: blurIn 1.1s cubic-bezier(.2,.6,.2,1) .15s both; }
+  .hero .sub { animation: blurIn 1.1s cubic-bezier(.2,.6,.2,1) .3s both; }
+  .hero .cta-row { animation: blurIn 1.1s cubic-bezier(.2,.6,.2,1) .45s both; }
   .hero .sub { margin: 26px auto 0; max-width: 640px; color: rgba(255,255,255,.55);
     font-size: clamp(14px, 1.5vw, 17px); }
   .hero .cta-row { margin-top: 46px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
@@ -217,8 +226,9 @@
   .f-bottom span:last-child { margin-left: auto; }
   @media (max-width: 760px) { .f-grid { grid-template-columns: 1fr; } .nav .links a:not(.cta) { display: none; } }
 
-  .reveal { opacity: 0; transform: translateY(28px); transition: opacity .85s ease, transform .85s cubic-bezier(.2,.6,.2,1); }
-  .reveal.in { opacity: 1; transform: none; }
+  .reveal { opacity: 0; transform: translateY(24px); filter: blur(10px);
+    transition: opacity .9s ease, transform .9s cubic-bezier(.2,.6,.2,1), filter .9s ease; }
+  .reveal.in { opacity: 1; transform: none; filter: blur(0); }
   @media (prefers-reduced-motion: reduce) {
     .reveal { opacity: 1; transform: none; transition: none; }
     .scroll-cue { animation: none; }
@@ -263,12 +273,12 @@
   <div class="wrap">
     <div class="reveal">
       <span class="eyebrow" data-i18n="s_eyebrow">Knowledge Sovereignty</span>
-      <h2 class="title display" data-i18n="s_title">Intelligence became<br/>a landlord's business.<br/>We're ending the lease.</h2>
-      <p class="lead" data-i18n="s_lead">Today's AI is concentrated in a handful of data centers — gated by GPU owners, metered by the token, trained on the world's knowledge yet owned by a few. That is not a law of nature. It is an architecture choice.</p>
+      <h2 class="title display" data-i18n="s_title">Intelligence,<br/>returned to its owner.</h2>
+      <p class="lead" data-i18n="s_lead">Today's AI is concentrated in a handful of data centers — metered by the token, trained on the world's knowledge, owned by a few. That is not a law of nature. It is an architecture choice, and we made a different one.</p>
     </div>
     <div class="grid reveal">
       <div class="col"><b data-i18n="s_c1t">The limit is structural</b><p data-i18n="s_c1p">Transformer-scale intelligence demands transformer-scale capital: gigawatt data centers, GPU fleets, and a bill for every thought. Whoever owns the compute owns the intelligence.</p></div>
-      <div class="col"><b data-i18n="s_c2t">The answer is architectural</b><p data-i18n="s_c2p">ATANOR replaces brute-force prediction with structure: knowledge lives in an ontology graph, reasoning folds through wave interference, brains link peer-to-peer. Intelligence stops needing a landlord.</p></div>
+      <div class="col"><b data-i18n="s_c2t">The answer is architectural</b><p data-i18n="s_c2p">ATANOR replaces brute-force prediction with structure: knowledge lives in an ontology graph, reasoning folds through wave interference, brains link peer-to-peer. Intelligence no longer needs a data center to exist.</p></div>
       <div class="col"><b data-i18n="s_c3t">Democratized by default</b><p data-i18n="s_c3p">The full engine runs on the laptop you already own. Your data stays yours, your brain is inspectable, and the network belongs to its members — not to a platform.</p></div>
     </div>
   </div>
@@ -537,13 +547,13 @@
 /* ================= i18n (EN default) ================= */
 const KO = {
   copy: "복사",
-  nav_sov: "왜", nav_prin: "원리", nav_measured: "실측", nav_atlas: "네트워크", nav_download: "다운로드", nav_cta: "시작하기",
-  hero_sub: "오늘의 지능은 남의 데이터센터에 살고, 토큰 단위로 과금됩니다.<br/>ATANOR는 그것을 돌려줍니다 — 당신이 있는 곳에서 돌고, 당신이 소유하는 AI.",
+  nav_sov: "철학", nav_prin: "원리", nav_measured: "실측", nav_atlas: "네트워크", nav_download: "다운로드", nav_cta: "시작하기",
+  hero_sub: "오늘의 지능은 소수의 데이터센터에 살고, 토큰 단위로 과금됩니다.<br/>ATANOR는 그것을 돌려줍니다 — 당신이 있는 곳에서 돌고, 당신이 소유하는 AI.",
   hero_dl: "다운로드", hero_src: "소스 보기",
-  s_eyebrow: "지식 주권", s_title: "지능은 건물주의<br/>사업이 되었습니다.<br/>우리는 그 임대차를 끝냅니다.",
-  s_lead: "오늘의 AI는 소수의 데이터센터에 집중되어 있습니다 — GPU 소유자가 문을 지키고, 토큰마다 요금이 매겨지며, 세계의 지식으로 학습했지만 소유는 소수의 것입니다. 그것은 자연법칙이 아니라 아키텍처의 선택입니다.",
+  s_eyebrow: "지식 주권", s_title: "지능을,<br/>주인에게 돌려줍니다.",
+  s_lead: "오늘의 AI는 소수의 데이터센터에 집중되어 있습니다 — 토큰마다 요금이 매겨지고, 세계의 지식으로 학습했지만 소유는 소수의 것입니다. 그것은 자연법칙이 아니라 아키텍처의 선택이고, 우리는 다른 선택을 했습니다.",
   s_c1t: "한계는 구조에 있습니다", s_c1p: "트랜스포머급 지능은 트랜스포머급 자본을 요구합니다: 기가와트 데이터센터, GPU 함대, 그리고 생각 하나마다의 청구서. 연산을 소유한 자가 지능을 소유합니다.",
-  s_c2t: "해답은 아키텍처입니다", s_c2p: "ATANOR는 무차별 예측을 구조로 대체합니다: 지식은 온톨로지 그래프에 살고, 추론은 파동 간섭으로 접히며, 두뇌는 P2P로 이어집니다. 지능에 더 이상 건물주가 필요 없어집니다.",
+  s_c2t: "해답은 아키텍처입니다", s_c2p: "ATANOR는 무차별 예측을 구조로 대체합니다: 지식은 온톨로지 그래프에 살고, 추론은 파동 간섭으로 접히며, 두뇌는 P2P로 이어집니다. 지능이 존재하는 데 더 이상 데이터센터가 필요하지 않습니다.",
   s_c3t: "기본값이 민주화", s_c3p: "전체 엔진이 당신이 이미 가진 노트북에서 돕니다. 데이터는 당신 것으로 남고, 두뇌는 열람 가능하며, 네트워크는 플랫폼이 아니라 구성원의 것입니다.",
   p_eyebrow: "제1원리", p_title: "정신을 만드는 두 가지 방법.",
   p_t_k: "트랜스포머의 방식", p_t_h: "다음 단어를 예측한다.",
@@ -661,7 +671,7 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(36, 2, 0.1, 100);
-  cam.position.set(0, 0.25, 3.4);
+  cam.position.set(0, 0.05, 4.1);          // pulled back: the whole globe fits with margin
   function resize() {
     const w = cv.clientWidth, h = cv.clientHeight;
     renderer.setSize(w, h, false);
@@ -676,7 +686,7 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const lights = loader.load("assets/earth_lights_2048.png", () => renderer.render(scene, cam));
   const R = 1;
   globe.add(new THREE.Mesh(new THREE.SphereGeometry(R, 64, 64),
-    new THREE.MeshBasicMaterial({ map: day, color: 0x9aa4b0 })));           // dimmed day earth
+    new THREE.MeshBasicMaterial({ map: day })));                             // natural blue marble, same as the app
   globe.add(new THREE.Mesh(new THREE.SphereGeometry(R * 1.002, 64, 64),
     new THREE.MeshBasicMaterial({ map: lights, blending: THREE.AdditiveBlending,
       transparent: true, opacity: 0.85, depthWrite: false })));              // city lights
@@ -743,11 +753,11 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     dpr = Math.min(devicePixelRatio || 1, 2);
     w = cv.clientWidth; h = cv.clientHeight;
     cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // CLOUD: a star-sized sphere mostly off-frame right (the sun-vs-earth composition)
-    const CR = h * 1.5, CXc = w * 1.06, CYc = h * 0.5;
+    // CLOUD: star-scale sphere anchored right, partially off-frame — but sized so it
+    // never overlaps the local brain (measured complaint: overlap at v4 sizes)
+    const CR = h * 0.86, CXc = w * 0.88, CYc = h * 0.44;
     cloudPts = [];
-    for (let i = 0; i < 4200; i++) {
-      // random point on sphere front hemisphere, projected orthographically
+    for (let i = 0; i < 3600; i++) {
       const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
       const x = Math.sin(ph) * Math.cos(th), y = Math.sin(ph) * Math.sin(th), z = Math.cos(ph);
       if (z < 0.05) continue;
@@ -756,7 +766,7 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
       cloudPts.push({ x: px, y: py, z, tw: Math.random() * 6.28 });
     }
     // LOCAL: a small ontology-graph cluster on the left (your scale)
-    const LR = Math.min(w, h) * 0.11, LX = w * 0.22, LY = h * 0.5;
+    const LR = Math.min(w, h) * 0.10, LX = w * 0.16, LY = h * 0.52;
     localPts = [];
     for (let i = 0; i < 46; i++) {
       const a = Math.random() * 6.283, r = LR * (0.25 + 0.72 * Math.sqrt(Math.random()));
@@ -767,23 +777,37 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
   resize(); addEventListener("resize", resize);
 
-  let bolts = [], nextBolt = 0, t = 0, raf3;
-  function makeBolt(now) {
-    // a crackling blue link from the local rim to the cloud rim (the app's activation blue)
-    const L = localPts.c, C = cloudPts.c;
-    const a0 = Math.atan2(C.y - L.y, C.x - L.x);
-    const sx = L.x + Math.cos(a0) * L.r, sy = L.y + Math.sin(a0) * L.r;
-    const edgeX = C.x - C.r, span = h * 0.7;
-    const ex = Math.max(edgeX + 6, w * 0.72), ey = C.y + (Math.random() - 0.5) * span * 0.6;
-    const segs = 14, pts = [];
-    for (let i = 0; i <= segs; i++) {
-      const tt = i / segs;
-      const bx = sx + (ex - sx) * tt, by = sy + (ey - sy) * tt - Math.sin(Math.PI * tt) * h * 0.1;
-      const j = Math.sin(Math.PI * tt) * 26;
-      pts.push({ x: bx + (Math.random() - 0.5) * j, y: by + (Math.random() - 0.5) * j });
+  let sparks = [], nextSpark = 0, travelers = [], t = 0, raf3;
+  function makeSpark(now) {
+    // the app's INTERNAL cloud-brain verification lines: short blue crackles (팟팟)
+    // between nearby nodes INSIDE the cloud mass — not local↔cloud links.
+    const a = cloudPts[(Math.random() * cloudPts.length) | 0];
+    if (!a) return;
+    let b = null, best = 1e9;
+    for (let k = 0; k < 24; k++) {
+      const c = cloudPts[(Math.random() * cloudPts.length) | 0];
+      const d = Math.hypot(a.x - c.x, a.y - c.y);
+      if (d > 24 && d < 130 && d < best) { best = d; b = c; }
     }
-    bolts.push({ pts, born: now, life: 260 + Math.random() * 240 });
-    if (bolts.length > 3) bolts.shift();
+    if (!b) return;
+    const segs = 3 + ((Math.random() * 3) | 0), pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const tt = i / segs, j = Math.sin(Math.PI * tt) * 9;
+      pts.push({ x: a.x + (b.x - a.x) * tt + (Math.random() - 0.5) * j,
+                 y: a.y + (b.y - a.y) * tt + (Math.random() - 0.5) * j });
+    }
+    sparks.push({ pts, born: now, life: 130 + Math.random() * 160 });
+    if (sparks.length > 8) sparks.shift();
+  }
+  function linkPath(tt) {
+    // subtle neutral link local -> cloud rim, along which verified nodes travel
+    const L = localPts.c, C = cloudPts.c;
+    const sx = L.x + L.r * 1.15, sy = L.y;
+    const ex = C.x - C.r * 0.99, ey = C.y + C.r * 0.28;
+    const mx = (sx + ex) / 2, my = Math.min(sy, ey) - h * 0.16;
+    const x = (1 - tt) * (1 - tt) * sx + 2 * (1 - tt) * tt * mx + tt * tt * ex;
+    const y = (1 - tt) * (1 - tt) * sy + 2 * (1 - tt) * tt * my + tt * tt * ey;
+    return { x, y };
   }
   function frame() {
     const now = performance.now(); t += 0.016;
@@ -812,18 +836,32 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
     }
     ctx.beginPath(); ctx.arc(localPts.c.x, localPts.c.y, localPts.c.r * 1.18, 0, 6.2832);
     ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.lineWidth = 1; ctx.stroke();
-    // crackling blue links (파지직)
-    if (now > nextBolt) { makeBolt(now); nextBolt = now + 320 + Math.random() * 420; }
-    for (const b of bolts) {
-      const age = (now - b.born) / b.life;
+    // the cloud's INTERNAL blue verification sparks (팟팟) — the app's real behaviour
+    if (now > nextSpark) { makeSpark(now); if (Math.random() < 0.5) makeSpark(now);
+      nextSpark = now + 90 + Math.random() * 160; }
+    for (const s of sparks) {
+      const age = (now - s.born) / s.life;
       if (age > 1) continue;
-      const flick = (0.55 + 0.45 * Math.sin(now * 0.06 + b.born)) * (1 - age * 0.6);
+      const flick = (0.6 + 0.4 * Math.sin(now * 0.09 + s.born)) * (1 - age);
       ctx.beginPath();
-      b.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
-      ctx.strokeStyle = `rgba(90,168,255,${0.55 * flick})`; ctx.lineWidth = 1.6; ctx.stroke();
-      ctx.strokeStyle = `rgba(160,205,255,${0.25 * flick})`; ctx.lineWidth = 3.6; ctx.stroke();
+      s.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.strokeStyle = `rgba(90,168,255,${0.8 * flick})`; ctx.lineWidth = 1.3; ctx.stroke();
+      ctx.strokeStyle = `rgba(160,205,255,${0.3 * flick})`; ctx.lineWidth = 3; ctx.stroke();
     }
-    bolts = bolts.filter(b => (now - b.born) / b.life <= 1);
+    sparks = sparks.filter(s => (now - s.born) / s.life <= 1);
+    // quiet link between the two brains + verified (orange) nodes traveling it
+    ctx.beginPath();
+    for (let i = 0; i <= 36; i++) { const p = linkPath(i / 36); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+    ctx.setLineDash([2, 6]); ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.setLineDash([]);
+    if (travelers.length < 3 && Math.random() < 0.015) travelers.push({ t: 0, sp: 0.003 + Math.random() * 0.003 });
+    for (const tr of travelers) {
+      tr.t += tr.sp;
+      const p = linkPath(Math.min(1, tr.t));
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.6, 0, 6.2832); ctx.fillStyle = "rgba(255,138,0,.95)"; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 6.2832); ctx.fillStyle = "rgba(255,138,0,.15)"; ctx.fill();
+    }
+    travelers = travelers.filter(tr => tr.t <= 1);
     // labels
     ctx.font = "700 11px Inter, Helvetica, sans-serif"; ctx.textAlign = "center";
     ctx.fillStyle = "rgba(255,255,255,.75)";
