@@ -49,18 +49,10 @@ if [ "$DESKTOP" -eq 1 ]; then
   # top as a resident window, it does not replace the desktop.
   DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal chromium-browser || \
   DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop-minimal chromium
-  # Windows-like layout: one bottom taskbar (Dash-to-Panel) instead of top bar + dock.
-  # Lives in UNIVERSE — a minimal server install ships main-only, and the silent
-  # '|| true' once hid exactly this failure (desktop stayed stock). Enable it first.
-  add-apt-repository -y universe >/dev/null 2>&1 || true
-  apt-get update -qq || true
-  DEBIAN_FRONTEND=noninteractive apt-get install -y gnome-shell-extension-dash-to-panel
-  # xdotool (active-window sensing) is Xorg-only; GNOME defaults to Wayland. Until the
-  # orb extension reports focus natively, run the session on Xorg — honest trade-off.
-  if [ -f /etc/gdm3/custom.conf ] && ! grep -q '^WaylandEnable=false' /etc/gdm3/custom.conf; then
-    sed -i 's/^#\?WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/custom.conf
-    grep -q '^WaylandEnable=false' /etc/gdm3/custom.conf || sed -i '/^\[daemon\]/a WaylandEnable=false' /etc/gdm3/custom.conf
-  fi
+  # Windows-like bottom taskbar (Dash-to-Panel, from extensions.gnome.org — noble
+  # dropped the apt package), Xorg session, dconf keyfile, perception unit: all
+  # handled by the shared repair script so install and repair can never diverge.
+  bash "$HERE/fix-desktop.sh"
   # OS Action Lane actuators: real desktop control (input/windows/audio/screenshot)
   DEBIAN_FRONTEND=noninteractive apt-get install -y ydotool wmctrl gnome-screenshot || true
   systemctl enable --now ydotool || systemctl enable --now ydotoold 2>/dev/null || true

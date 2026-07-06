@@ -19,11 +19,26 @@ dconf compile /tmp/atanor-dconf-test.db /etc/dconf/db/local.d
 rm -f /tmp/atanor-dconf-test.db
 echo "DCONF-COMPILE-OK"
 
-# Dash-to-Panel lives in universe; a minimal install ships main-only
-if [ ! -d /usr/share/gnome-shell/extensions/dash-to-panel@jderose9.github.com ]; then
-  add-apt-repository -y universe >/dev/null 2>&1 || true
-  apt-get update -qq || true
-  DEBIAN_FRONTEND=noninteractive apt-get install -y gnome-shell-extension-dash-to-panel
+# Dash-to-Panel: NOT packaged in noble (24.04) — install from the official GNOME
+# extensions site (the canonical channel), matched to the running shell version.
+FAIL=0
+DTP=dash-to-panel@jderose9.github.com
+if [ ! -d /usr/share/gnome-shell/extensions/$DTP ]; then
+  SHELL_V="$(gnome-shell --version 2>/dev/null | grep -o '[0-9]*' | head -1 || echo 46)"
+  DL="$(curl -sf "https://extensions.gnome.org/extension-info/?uuid=$DTP&shell_version=$SHELL_V" \
+        | python3 -c 'import sys,json;print(json.load(sys.stdin)["download_url"])' 2>/dev/null || true)"
+  if [ -n "$DL" ] && curl -sfL "https://extensions.gnome.org$DL" -o /tmp/dtp.zip; then
+    mkdir -p /usr/share/gnome-shell/extensions/$DTP
+    python3 -c "import zipfile; zipfile.ZipFile('/tmp/dtp.zip').extractall('/usr/share/gnome-shell/extensions/$DTP')"
+    # system-wide extensions must not carry per-user schema compilation leftovers
+    command -v glib-compile-schemas >/dev/null 2>&1 && \
+      [ -d /usr/share/gnome-shell/extensions/$DTP/schemas ] && \
+      glib-compile-schemas /usr/share/gnome-shell/extensions/$DTP/schemas || true
+    rm -f /tmp/dtp.zip
+    echo "DTP-INSTALLED (shell $SHELL_V)"
+  else
+    echo "DTP-DOWNLOAD-FAILED"; FAIL=1
+  fi
 fi
 
 # Xorg session (xdotool active-window sensing is Xorg-only for now)
@@ -42,4 +57,6 @@ ls /usr/share/gnome-shell/extensions/
 command -v chromium chromium-browser firefox 2>/dev/null || true
 [ -f /etc/xdg/autostart/atanor-orb.desktop ] && echo "AUTOSTART-OK" || echo "AUTOSTART-MISSING"
 [ -f /usr/share/atanor/logo.png ] && echo "LOGO-OK" || echo "LOGO-MISSING"
+grep -q '^WaylandEnable=false' /etc/gdm3/custom.conf 2>/dev/null && echo "XORG-OK" || echo "XORG-NOT-SET"
 echo "reboot (or log out/in) to apply"
+exit $FAIL
