@@ -11,12 +11,32 @@ import re
 
 from .models import Action
 
+import shutil
+
+
+def _first_available(*candidates: str) -> str:
+    """Environment-appropriate app resolution: the same intent ('터미널 열어줘')
+    must work on the GNOME stage-1 VM (gnome-terminal) AND on ATANOR Linux
+    (lxterminal) — resolve to whatever this machine actually has."""
+    for c in candidates:
+        if shutil.which(c):
+            return c
+    return candidates[0]
+
+
 _APP_ALIASES = {
-    "터미널": "gnome-terminal", "terminal": "gnome-terminal",
-    "브라우저": "chromium-browser", "browser": "chromium-browser", "크롬": "chromium-browser",
-    "파일": "nautilus", "파일탐색기": "nautilus", "files": "nautilus",
+    "터미널": _first_available("gnome-terminal", "lxterminal", "x-terminal-emulator", "xterm"),
+    "terminal": _first_available("gnome-terminal", "lxterminal", "x-terminal-emulator", "xterm"),
+    "브라우저": _first_available("chromium-browser", "chromium", "firefox-esr", "firefox"),
+    "browser": _first_available("chromium-browser", "chromium", "firefox-esr", "firefox"),
+    "크롬": _first_available("chromium-browser", "chromium", "firefox-esr", "firefox"),
+    "파일": _first_available("nautilus", "pcmanfm"),
+    "파일탐색기": _first_available("nautilus", "pcmanfm"),
+    "파일 관리자": _first_available("nautilus", "pcmanfm"),
+    "files": _first_available("nautilus", "pcmanfm"),
     "설정": "gnome-control-center", "settings": "gnome-control-center",
     "계산기": "gnome-calculator", "메모": "gedit", "텍스트": "gedit",
+    "대시보드": "atanor-dashboard", "dashboard": "atanor-dashboard",
 }
 
 

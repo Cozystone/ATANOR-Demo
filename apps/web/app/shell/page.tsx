@@ -205,6 +205,26 @@ export default function ShellPage() {
         </div>
       ) : null}
 
+      {/* wallpaper mode: desktop icons, Windows-like — but every launch goes
+          THROUGH the AI action lane (proposed, gated by trust tier, audited).
+          The desktop surface is ours, so the icons are ours too. */}
+      {wallpaper ? (
+        <div className="atanor-os-shell-icons" onClick={(e) => e.stopPropagation()}>
+          {[
+            { name: "파일", cmd: "파일 관리자 열어줘", d: "M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z" },
+            { name: "터미널", cmd: "터미널 열어줘", d: "M4 5h16v14H4V5zm3 4 3 3-3 3m5 0h5" },
+            { name: "브라우저", cmd: "브라우저 열어줘", d: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm-9 9h18M12 3c-2.5 2.5-4 5.5-4 9s1.5 6.5 4 9c2.5-2.5 4-5.5 4-9s-1.5-6.5-4-9z" },
+            { name: "ATANOR", cmd: "대시보드 열어줘", d: "M12 3l8 5v8l-8 5-8-5V8l8-5zm0 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" },
+          ].map((ic) => (
+            <button key={ic.name} className="atanor-os-shell-icon" onClick={() => void ask(ic.cmd)} title={ic.cmd}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+                   strokeLinecap="round" strokeLinejoin="round"><path d={ic.d} /></svg>
+              <span>{ic.name}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {/* the real orb, front and center */}
       <div className="atanor-os-shell-orb">
         <HologramVoiceOrb state={orbState} density={density}

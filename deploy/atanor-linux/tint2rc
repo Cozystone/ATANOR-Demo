@@ -33,6 +33,7 @@ wm_menu = 1
 launcher_padding = 8 4 8
 launcher_icon_size = 22
 launcher_icon_theme_override = 0
+launcher_item_app = /usr/share/applications/atanor-start.desktop
 launcher_item_app = /usr/share/applications/atanor-dashboard.desktop
 launcher_item_app = /usr/share/applications/pcmanfm.desktop
 launcher_item_app = /usr/share/applications/lxterminal.desktop

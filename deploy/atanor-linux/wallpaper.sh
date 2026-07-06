@@ -8,6 +8,13 @@ while [ "$ok" -lt 2 ]; do
   sleep 5
 done
 mkdir -p /tmp/ffwall
+cat > /tmp/ffwall/user.js <<'PREFS'
+user_pref("media.navigator.permission.disabled", true);
+user_pref("permissions.default.microphone", 1);
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+PREFS
 firefox-esr --kiosk --new-instance --profile /tmp/ffwall \
   "http://127.0.0.1:3000/shell?wallpaper=1" &
 B=$!

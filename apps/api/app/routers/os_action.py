@@ -14,6 +14,7 @@ action is audited to data/os_action/audit.jsonl. Starts at ASSIST (approve-every
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/api/os-action", tags=["os-action"])
 
 _AUDIT = Path(__file__).resolve().parents[4] / "data" / "os_action" / "audit.jsonl"
 # one process-lifetime lane on the REAL desktop; ASSIST until the user raises the tier.
-_LANE = OSActionLane(LinuxDesktopBackend(), tier=TrustTier.ASSIST, audit_path=_AUDIT)
+_LANE = OSActionLane(LinuxDesktopBackend(), tier=TrustTier(int(os.environ.get("ATANOR_TRUST_TIER", TrustTier.ASSIST))), audit_path=_AUDIT)
 
 
 class ProposeIn(BaseModel):

@@ -9,4 +9,4 @@ tint2 -c /etc/atanor/tint2rc &
 # perception stream: in-session sensor, engine distills, nothing leaves the device
 [ -x /opt/atanor/deploy/atanor-environment/perception_probe.py ] && \
   python3 /opt/atanor/deploy/atanor-environment/perception_probe.py &
-exec openbox
+exec openbox --config-file /etc/atanor/openbox-rc.xml

@@ -67,7 +67,7 @@ EOF
     iproute2 iputils-ping systemd-resolved systemd-timesyncd \
     ca-certificates curl git sudo locales \
     python3 python3-venv python3-pip \
-    xorg xinit openbox tint2 pcmanfm lxterminal firefox-esr \
+    xorg xinit openbox tint2 jgmenu pcmanfm lxterminal firefox-esr \
     libgl1-mesa-dri libegl-mesa0 \
     alsa-utils fonts-noto-cjk fonts-noto-color-emoji \
     xdotool x11-utils x11-xserver-utils wmctrl openssh-server"
@@ -144,6 +144,29 @@ Exec=firefox-esr --new-instance --profile /tmp/ffdash http://127.0.0.1:3000
 Icon=chromium
 Categories=Utility;
 EOF
+  # our window chrome + start menu (Windows-like, our tokens)
+  install -d "$ROOTFS/usr/share/themes/ATANOR/openbox-3"
+  install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/openbox-theme/openbox-3/themerc" "$ROOTFS/usr/share/themes/ATANOR/openbox-3/themerc"
+  install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/openbox-rc.xml" "$ROOTFS/etc/atanor/openbox-rc.xml"
+  install -m 0644 "$ROOTFS/opt/atanor/deploy/atanor-linux/jgmenurc" "$ROOTFS/etc/atanor/jgmenurc"
+  mkdir -p "$ROOTFS/home/atanor/.config/jgmenu"
+  cp "$ROOTFS/opt/atanor/deploy/atanor-linux/jgmenurc" "$ROOTFS/home/atanor/.config/jgmenu/jgmenurc"
+  in_chroot "chown -R atanor:atanor /home/atanor/.config"
+  cat > "$ROOTFS/usr/share/applications/atanor-start.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=시작
+Comment=ATANOR start menu
+Exec=jgmenu_run
+Icon=view-app-grid-symbolic
+Categories=Utility;
+EOF
+  # the OS acts through the AI: GUARDED tier by default (reversible = auto,
+  # destructive = confirm) — this is the product default, not the dev default
+  mkdir -p "$ROOTFS/etc/systemd/system/atanor-engine.service.d"
+  printf '[Service]
+Environment=ATANOR_TRUST_TIER=2
+' > "$ROOTFS/etc/systemd/system/atanor-engine.service.d/trust-tier.conf"
   # systemd session on tty1 needs the X wrapper to allow it
   printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > "$ROOTFS/etc/X11/Xwrapper.config"
   cat > "$ROOTFS/etc/systemd/system/atanor-desktop.service" <<'EOF'

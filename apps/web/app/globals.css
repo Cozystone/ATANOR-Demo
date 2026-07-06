@@ -10819,3 +10819,33 @@ p {
 .atanor-os-shell[data-wallpaper="1"] .atanor-os-shell-tier,
 .atanor-os-shell[data-wallpaper="1"] .atanor-os-shell-readout { position: relative; z-index: 1; }
 .atanor-os-shell[data-wallpaper="1"] .atanor-os-shell-tier { position: absolute; z-index: 2; }
+
+/* desktop icons (wallpaper mode) — Windows-like grid, top-left; every launch
+   is an AI action-lane proposal, never a raw exec */
+.atanor-os-shell-icons {
+  position: absolute;
+  top: 24px;
+  left: 20px;
+  z-index: 2;
+  display: grid;
+  gap: 10px;
+}
+.atanor-os-shell-icon {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 84px;
+  padding: 10px 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #dfe4ea;
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.atanor-os-shell-icon:hover {
+  background: rgba(210, 82, 31, 0.12);
+  border-color: rgba(210, 82, 31, 0.35);
+}
+.atanor-os-shell-icon svg { width: 34px; height: 34px; opacity: 0.9; }
