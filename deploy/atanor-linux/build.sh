@@ -69,7 +69,7 @@ EOF
     python3 python3-venv python3-pip \
     xorg xinit openbox tint2 jgmenu pcmanfm lxterminal firefox-esr \
     libgl1-mesa-dri libegl-mesa0 \
-    alsa-utils fonts-noto-cjk fonts-noto-color-emoji \
+    alsa-utils fonts-noto-cjk fonts-noto-color-emoji adwaita-icon-theme \
     xdotool x11-utils x11-xserver-utils wmctrl openssh-server"
   echo "== node 20 (web shell) =="
   # pipefail matters: if the nodesource setup fails, plain 'apt install nodejs' would
