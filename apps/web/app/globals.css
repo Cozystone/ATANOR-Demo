@@ -10907,3 +10907,44 @@ p {
 
 /* manual mode: the plane calms — readable, precise, no theatre */
 .atanor-os-shell-field[data-mode="manual"] { opacity: 0.35; }
+
+/* ── owner polish round: no ring, docking orb, fixed composer ────────────── */
+
+/* the 'strange blue circle' behind the orb was the button's own CSS ring
+   (radial-gradient + border) sized independently of the canvas sphere. On the
+   OS surface the canvas IS the orb — particles must meet the field with no
+   painted boundary. */
+.atanor-os-shell .hologram-voice-orb {
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+/* Ultimate-style docking: while an OS action runs, the orb steps aside to the
+   bottom-right and shrinks — the workspace belongs to the action, the presence
+   stays visible. Spring-ish ease, no mechanical snap. */
+.atanor-os-shell-orb {
+  transition: transform 0.9s cubic-bezier(0.22, 1.15, 0.3, 1);
+  will-change: transform;
+}
+.atanor-os-shell-orb[data-docked="true"] {
+  transform: translate(36vw, 30vh) scale(0.38);
+}
+
+/* the composer LIVES at the window bottom — stable, always reachable */
+.atanor-os-shell-composer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  margin: 0 auto;
+  width: min(560px, 82vw);
+  z-index: 4;
+}
+.atanor-os-shell-readout { padding-bottom: 96px; }
+
+/* the Omni-Node mark: silver logic frame, cyan core that ignites on hover */
+.atanor-omni-mark { color: #a0aec0; }
+.atanor-omni-core { fill: #00f0ff; transition: filter 0.3s ease; }
+.atanor-os-shell-icon:hover .atanor-omni-mark { color: #e2e8f0; }
+.atanor-os-shell-icon:hover .atanor-omni-core { filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.9)); }
