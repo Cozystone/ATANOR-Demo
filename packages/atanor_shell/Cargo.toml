@@ -1,0 +1,20 @@
+[package]
+name = "atanor-shell"
+version = "0.0.1"
+edition = "2021"
+description = "ATANOR's own compositor — the particle field is the desktop, drawn natively (stage 2b, M0 scaffold)"
+license = "UNLICENSED"
+
+[dependencies]
+# M0 keeps dependencies minimal: a window + a GPU clear, proving the toolchain.
+# smithay lands in M1 (feature-gated so M0 builds fast everywhere, incl. CI).
+winit = "0.29"
+wgpu = "0.19"
+pollster = "0.3"
+env_logger = "0.11"
+log = "0.4"
+
+[features]
+default = []
+# M1+: the real compositor backends
+# smithay = ["dep:smithay"]
