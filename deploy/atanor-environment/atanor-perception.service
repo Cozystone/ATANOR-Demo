@@ -1,8 +1,9 @@
 # ATANOR Environment — perception stream daemon (OPT-IN).
-# Polls the active window every few seconds and distills it to concepts via the local
-# engine (POST /api/perception/tick). Reads ONLY window title+app, discards the raw,
-# stores concepts on-device. Disabled by default — the user turns it on knowingly.
-# Enable:  systemctl --user enable --now atanor-perception  (or the desktop toggle)
+# Runs in the user's graphical session (where the active window is visible) and
+# posts app+window-title to the LOCAL engine, which distills to concepts and
+# discards the raw. Reads ONLY title+app — no contents, no keystrokes, no
+# screenshots — and nothing leaves 127.0.0.1. Disabled by default; enable with:
+#   systemctl --user enable --now atanor-perception
 [Unit]
 Description=ATANOR perception stream (local-only activity context)
 After=graphical-session.target
@@ -10,8 +11,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-# xdotool needs the user's X/Wayland session, so this is a --user unit.
-ExecStart=/bin/sh -c 'while true; do curl -sf -X POST http://127.0.0.1:3000/api/perception/tick >/dev/null 2>&1 || curl -sf -X POST http://127.0.0.1:8502/api/perception/tick >/dev/null 2>&1; sleep 5; done'
+ExecStart=/usr/bin/python3 /opt/atanor/deploy/atanor-environment/perception_probe.py
 Restart=always
 RestartSec=3
 

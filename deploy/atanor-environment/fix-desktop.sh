@@ -19,6 +19,24 @@ dconf compile /tmp/atanor-dconf-test.db /etc/dconf/db/local.d
 rm -f /tmp/atanor-dconf-test.db
 echo "DCONF-COMPILE-OK"
 
+# Dash-to-Panel lives in universe; a minimal install ships main-only
+if [ ! -d /usr/share/gnome-shell/extensions/dash-to-panel@jderose9.github.com ]; then
+  add-apt-repository -y universe >/dev/null 2>&1 || true
+  apt-get update -qq || true
+  DEBIAN_FRONTEND=noninteractive apt-get install -y gnome-shell-extension-dash-to-panel
+fi
+
+# Xorg session (xdotool active-window sensing is Xorg-only for now)
+if [ -f /etc/gdm3/custom.conf ] && ! grep -q '^WaylandEnable=false' /etc/gdm3/custom.conf; then
+  sed -i 's/^#\?WaylandEnable=.*/WaylandEnable=false/' /etc/gdm3/custom.conf
+  grep -q '^WaylandEnable=false' /etc/gdm3/custom.conf || sed -i '/^\[daemon\]/a WaylandEnable=false' /etc/gdm3/custom.conf
+fi
+
+# perception daemon (user unit; OPT-IN — enabled per-user, not here)
+mkdir -p /etc/systemd/user
+install -m 0644 "$HERE/atanor-perception.service" /etc/systemd/user/atanor-perception.service
+command -v xdotool >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y xdotool
+
 echo "--- diagnostics ---"
 ls /usr/share/gnome-shell/extensions/
 command -v chromium chromium-browser firefox 2>/dev/null || true
