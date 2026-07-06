@@ -23,7 +23,7 @@ use crate::{AtanorShell, CalloopData};
 const DEEP_SPACE: [f32; 4] = [0.0196, 0.0275, 0.0392, 1.0];
 
 pub fn init_winit(
-    event_loop: &mut EventLoop<CalloopData>,
+    event_loop: &mut EventLoop<'static, CalloopData>,
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let display_handle = &mut data.display_handle;

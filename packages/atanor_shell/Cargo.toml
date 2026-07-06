@@ -16,8 +16,13 @@ features = [
     "backend_winit",
     "wayland_frontend",
     "desktop",
+    # M1b: the metal path — DRM/KMS output, libinput via libseat, software
+    # render through pixman into dumb buffers (the VM has no GL). backend_gbm
+    # is only for the GbmDevice type parameter (we pass None).
+    "backend_drm",
+    "backend_udev",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_gbm",
+    "renderer_pixman",
 ]
-
-# M1b adds: backend_drm, backend_udev, backend_libinput, backend_session_libseat
-# (TTY boot on ATANOR Linux). The state/handlers/input layers above are
-# backend-agnostic and stay unchanged.
