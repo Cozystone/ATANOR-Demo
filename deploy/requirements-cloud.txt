@@ -11,3 +11,4 @@ scipy>=1.10
 # them in the engine is try/except-guarded and disabled via HOMAGE_DISABLE_BGE_M3
 # in the Dockerfile, so the cloud brain runs fine without those multi-GB wheels.
 # If `docker build`/startup ever fails on a missing module, add it here.
+python-multipart>=0.0.9
