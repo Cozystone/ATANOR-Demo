@@ -51,7 +51,9 @@ if [ -n "$WID" ]; then
   # firefox re-asserts its decor hints after a finite burst ends (measured —
   # the titlebar returned). Re-apply every 20s for the surface's lifetime.
   (
-    while kill -0 "$B" 2>/dev/null; do
+    # loop on WINDOW existence, not the launcher PID — firefox wrappers fork,
+    # so $B can die while the surface lives (keeper exited instantly once)
+    while xdotool getwindowname "$WID" >/dev/null 2>&1; do
       xprop -id "$WID" -f _MOTIF_WM_HINTS 32c \
         -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0" 2>/dev/null
       wmctrl -i -r "$WID" -b add,below,sticky,skip_taskbar,skip_pager 2>/dev/null
