@@ -129,3 +129,37 @@ def test_chatter_never_triggers_chain_shapes():
     from packages.graph_scale.chain_reasoner import has_chain_intent
     for chatter in ("안녕하세요", "고마워", "오늘 기분 어때", "참새란?", "그거 좋네"):
         assert has_chain_intent(chatter) is False, chatter
+
+
+# ------------------------------------------------ cross-language gloss hops
+
+_CROSS = [
+    ("참새", "defined_as", "sparrow"),
+    ("sparrow", "is_a", "bird"),
+    ("bird", "is_a", "animal"),
+    ("동물", "defined_as", "animal"),
+]
+
+
+def test_verify_rides_the_english_ladder_via_gloss():
+    fa = _store(_CROSS)
+    r = answer_relationship("참새는 동물인가?", fa, ["참새", "동물"])
+    assert r is not None
+    assert r["answer"].startswith("네 — ")
+    assert "'sparrow'" in r["answer"]              # the identity hop is SHOWN
+    assert "동물(animal)의 일종입니다" in r["answer"]  # asked label leads, graph label audits
+    assert r["reasoning_certificate"]["question_kind"] == "verify"
+
+
+def test_ultimate_rides_the_english_ladder_via_gloss():
+    fa = _store(_CROSS)
+    r = answer_relationship("참새는 결국 무엇인가?", fa, ["참새"])
+    assert r is not None
+    assert "'sparrow'" in r["answer"]
+    assert "animal" in r["answer"]
+
+
+def test_phrase_gloss_is_not_an_identity():
+    # a phrase is a description, not a translation — must not hop
+    fa = _store([("참새", "defined_as", "a small brown bird"), ("bird", "is_a", "animal")])
+    assert answer_relationship("참새는 동물인가?", fa, ["참새", "동물"]) is None

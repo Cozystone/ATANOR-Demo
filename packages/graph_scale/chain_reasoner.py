@@ -71,6 +71,9 @@ _PRED_CLAUSE: dict[str, tuple[str, str]] = {
     "has_property": ("{s}{neun} '{o}' 속성을 가지고", "{s}{neun} '{o}' 속성을 가집니다"),
     "has_part": ("{s}에는 {o}{i_ga} 있고", "{s}에는 {o}{i_ga} 있습니다"),
     "used_for": ("{s}{neun} {o}에 쓰이고", "{s}{neun} {o}에 쓰입니다"),
+    # identity gloss hop (참새 = 'sparrow') — reads as an equation, not a relation
+    "defined_as": ("{s}{neun} '{o}'이고", "{s}{neun} '{o}'입니다"),
+    "alias": ("{s}{neun} '{o}'이고", "{s}{neun} '{o}'입니다"),
 }
 
 
@@ -137,11 +140,15 @@ def _conclusion_ko(start: str, edge_obj: str, rel: str) -> str:
 
 
 def _verbalize_path(chain: list[tuple[str, str, str]], composed: str | None,
-                    start: str, prefix: str = "") -> str:
+                    start: str, prefix: str = "", end_label: str | None = None) -> str:
     clauses = [_clause(e, final=(i == len(chain) - 1)) for i, e in enumerate(chain)]
     body = prefix + ", ".join(clauses)
     if composed and len(chain) >= 2:
-        concl = _conclusion_ko(start, chain[-1][2], composed)
+        # the asked-about label leads; the graph label follows in parens when they
+        # differ (동물(animal)) — cross-language chains stay readable AND auditable
+        end = chain[-1][2]
+        label = end if end_label in (None, end) else f"{end_label}({end})"
+        concl = _conclusion_ko(start, label, composed)
         if concl:
             body += f". {concl}"
     return body + ". (출처: 큐레이션 지식그래프 · 다단계 추론)"
@@ -188,20 +195,55 @@ def reason_chain(start: str, facts_about: Callable[[str], list[tuple[str, str, s
                        chain=chain, local_minimum=result.local_minimum)
 
 
+_GLOSS_RE = re.compile(r"^[A-Za-z][A-Za-z-]{2,24}$")
+
+
+def _gloss_hops(node: str, facts_about: Callable[[str], list[tuple[str, str, str]]]
+                ) -> list[tuple[str, str, str]]:
+    """Single-latin-word dictionary glosses of a Korean term (참새 defined_as
+    'sparrow') act as IDENTITY hops: the gloss is the same concept in the other
+    half of the graph, connecting Korean questions to the English taxonomy.
+    Single-token-only — a phrase gloss is a description, not an identity."""
+    if not re.search(r"[가-힣]", node):
+        return []
+    try:
+        edges = facts_about(node)
+    except Exception:
+        return []
+    return [(s, p, o) for (s, p, o) in edges
+            if p in ("defined_as", "alias") and _GLOSS_RE.match(o)]
+
+
+def _gloss_targets(target: str,
+                   facts_about: Callable[[str], list[tuple[str, str, str]]]) -> set[str]:
+    """The target plus its identity glosses — '동물인가?' must also match 'animal'."""
+    return {target} | {o for _s, _p, o in _gloss_hops(target, facts_about)}
+
+
 def find_path(start: str, target: str,
               facts_about: Callable[[str], list[tuple[str, str, str]]],
               max_depth: int = 4, max_nodes: int = 2048
               ) -> tuple[list[tuple[str, str, str]], str | None] | None:
     """BFS from start toward target over algebra predicates, tracking the COMPOSED
     relation. A hop whose composition is undefined prunes (soundness over reach).
+    Identity glosses expand the start frontier and the target set (cross-language).
     Returns (chain, composed_relation) or None. Visited-set => no cycles; bounded."""
     from collections import deque
 
     if start == target:
         return None
+    targets = _gloss_targets(target, facts_about)
     queue: deque[tuple[str, str | None, tuple[tuple[str, str, str], ...]]] = deque()
     queue.append((start, None, ()))
     seen = {start}
+    # identity hop first: the gloss IS the start concept, relation still unset
+    for edge in _gloss_hops(start, facts_about):
+        gloss = edge[2]
+        if gloss in targets:
+            return [edge], None
+        if gloss not in seen:
+            seen.add(gloss)
+            queue.append((gloss, None, (edge,)))
     while queue:
         node, rel, chain = queue.popleft()
         if len(chain) >= max_depth or len(seen) >= max_nodes:
@@ -217,7 +259,7 @@ def find_path(start: str, target: str,
             if nrel is None:
                 continue
             nchain = chain + ((s, p, o),)
-            if o == target:
+            if o in targets:
                 return list(nchain), nrel
             if o not in seen:
                 seen.add(o)
@@ -359,13 +401,20 @@ def answer_relationship(query: str, facts_about: Callable[[str], list[tuple[str,
     (its own cue) and every clause is a stored edge — no shape ever fires on chatter."""
     q = query.strip()
 
-    # ultimate: '결국/궁극적으로 무엇' — the settled top of the transitive ladder
+    # ultimate: '결국/궁극적으로 무엇' — the settled top of the transitive ladder;
+    # a Korean term with an identity gloss climbs the English ladder too
     if _ULTIMATE_RE.search(q):
         for subj in subjects:
             r = reason_chain(subj, facts_about, "is_a")
             if r and len(r.chain) >= 2:
                 return _payload(r.to_answer_ko(), r.start, r.chain,
                                 "ultimate_ancestor", r.predicate, 0.86)
+            for gloss_edge in _gloss_hops(subj, facts_about):
+                rg = reason_chain(gloss_edge[2], facts_about, "is_a")
+                if rg and len(rg.chain) >= 2:
+                    full = [gloss_edge] + rg.chain
+                    ans = _verbalize_path(full, "is_a", subj)
+                    return _payload(ans, subj, full, "ultimate_ancestor", "is_a", 0.84)
         return None
 
     # verify: 'A는 B인가?' / 'A는 B에 속하나?' — path from A to B or honest silence
@@ -378,7 +427,8 @@ def answer_relationship(query: str, facts_about: Callable[[str], list[tuple[str,
                 found = find_path(start, target, facts_about)
                 if found:
                     chain, composed = found
-                    ans = _verbalize_path(chain, composed, start, prefix="네 — ")
+                    ans = _verbalize_path(chain, composed, start, prefix="네 — ",
+                                          end_label=target)
                     return _payload(ans, start, chain, "verify", composed, 0.84)
         return None
 
