@@ -7235,7 +7235,9 @@ function FullApp() {
                       {language === "ko" ? "그래프 갱신" : "Refresh graph"}
                     </button>
                   </div>
-                  {semanticGrowthRun ? (
+                  {semanticGrowthRun &&
+                  (Number(semanticGrowthRun.concepts_created ?? 0) > 0 ||
+                    Number(semanticGrowthRun.relations_created ?? 0) > 0) ? (
                     <small className="atanor-cloud-growth-inline">
                       +{Number(semanticGrowthRun.concepts_created ?? 0).toLocaleString()} concepts / +{Number(semanticGrowthRun.relations_created ?? 0).toLocaleString()} relations
                     </small>
@@ -7759,7 +7761,9 @@ function FullApp() {
                     {language === "ko" ? "그래프 갱신" : "Refresh graph"}
                   </button>
                 </div>
-                {semanticGrowthRun ? (
+                {semanticGrowthRun &&
+                (Number(semanticGrowthRun.concepts_created ?? 0) > 0 ||
+                  Number(semanticGrowthRun.relations_created ?? 0) > 0) ? (
                   <small className="atanor-cloud-growth-inline">
                     +{Number(semanticGrowthRun.concepts_created ?? 0).toLocaleString()} concepts / +{Number(semanticGrowthRun.relations_created ?? 0).toLocaleString()} relations
                   </small>
