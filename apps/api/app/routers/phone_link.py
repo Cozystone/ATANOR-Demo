@@ -38,3 +38,28 @@ def disable() -> dict[str, Any]:
     st = phone_link.start(False)
     st["link_url"] = LINK_URL
     return st
+
+
+# ---- device continuity v0 (Phase 5): the session follows the person ----
+@router.post("/continuity/snapshot")
+def continuity_snapshot(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    from packages.phone_link.continuity import make_snapshot
+
+    device = str((payload or {}).get("device") or "desktop")[:40]
+    return make_snapshot(device)
+
+
+@router.get("/continuity")
+def continuity_read() -> dict[str, Any]:
+    from packages.phone_link.continuity import read_snapshot
+
+    snap = read_snapshot()
+    return snap or {"snapshot": None, "reason": "no session snapshot taken yet"}
+
+
+@router.post("/continuity/adopt")
+def continuity_adopt(payload: dict[str, Any]) -> dict[str, Any]:
+    from packages.phone_link.continuity import adopt_snapshot
+
+    return adopt_snapshot(str(payload.get("token") or ""),
+                          str(payload.get("device") or "phone")[:40])

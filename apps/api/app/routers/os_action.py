@@ -80,6 +80,15 @@ def status() -> dict[str, Any]:
             "audit_path": str(_AUDIT)}
 
 
+@router.get("/trust-recommendation")
+def trust_recommendation() -> dict[str, Any]:
+    """Phase 5: evidence-backed tier-promotion recommendation from the audit
+    track record. Reports only — the grant is always the user's (POST /tier)."""
+    from packages.os_action_lane.trust_record import promotion_recommendation
+
+    return promotion_recommendation(_AUDIT, _LANE.tier)
+
+
 @router.post("/tier")
 def set_tier(body: TierIn) -> dict[str, Any]:
     _LANE.set_tier(TrustTier(body.tier))
