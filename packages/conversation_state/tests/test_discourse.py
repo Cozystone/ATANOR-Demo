@@ -20,6 +20,11 @@ def test_user_turn_outranks_assistant_mention():
 
 
 def test_person_name_ending_in_type_word_stays_eligible():
+    # other test modules monkeypatch the shared bridge store to tmp stores —
+    # force a reload of the REAL store so the graph type-check sees 세종대왕
+    from packages.graph_scale import answer_bridge as ab
+
+    ab._STORE = {"obj": None, "sig": None, "building": False, "built_at": 0.0}
     ctx = [{"role": "user", "content": "세종대왕에 대해 알려줘"},
            {"role": "assistant", "content": "세종대왕은 조선의 4대 왕입니다"}]
     r = resolve_deixis("그 사람이 만든 문자는?", ctx)

@@ -41,6 +41,18 @@ _PROPS: dict[str, tuple[str, str]] = {
     "P610": ("최고점", "item"),
     "P2044": ("고도", "quantity"),        # elevation
     "P625": ("좌표", "globe"),
+    # relation-DIVERSITY tranche: reasoning and creativity scale with the VARIETY
+    # of edge types, not node count (measured conclusion) — these give the
+    # composition algebra real material beyond is_a/defined_as
+    "P50": ("저자", "item"),
+    "P170": ("제작자", "item"),
+    "P112": ("설립자", "item"),
+    "P169": ("최고경영자", "item"),
+    "P61": ("발견자", "item"),
+    "P527": ("구성요소", "item"),          # has part
+    "P361": ("상위개념", "item"),          # part of
+    "P828": ("원인", "item"),
+    "P1542": ("결과", "item"),
 }
 
 

@@ -22,7 +22,10 @@ def test_identification_comes_first_then_elaboration():
     # defined_as leads even though is_a arrived first in the list
     assert r.answer.startswith("커피는 커피나무 열매의 씨앗을 볶아 우려낸 음료입니다.")
     assert r.facts_used[0][1] == "defined_as"
-    assert "또한 전 세계에 위치합니다." in r.answer
+    # the connective is chosen by the LEARNED discourse model within the closed
+    # whitelist — assert the elaboration content, not one pinned connective
+    assert "전 세계에 위치합니다." in r.answer
+    assert any(f"{c} 전 세계에 위치합니다." in r.answer for c in _CONNECTIVES)
 
 
 def test_redundant_elaboration_is_dropped():

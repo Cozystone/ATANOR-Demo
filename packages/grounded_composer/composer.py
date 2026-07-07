@@ -22,8 +22,10 @@ from typing import Any
 
 # identification first, then elaboration — the standard definitional discourse schema.
 _PRED_ORDER = ("defined_as", "is_a", "capital", "capital_of", "located_in", "country", "author")
-# closed connective whitelist (the ONLY non-template, non-fact tokens allowed)
-_CONNECTIVES = ("또한", "그리고", "한편")
+# closed connective whitelist (the ONLY non-template, non-fact tokens allowed).
+# The learned discourse model RANKS within this list from corpus statistics —
+# it chooses among approved tokens, it can never add one (testable closure).
+_CONNECTIVES = ("또한", "그리고", "한편", "이와 함께", "특히", "더불어", "아울러", "이어서")
 # contrast/commonality connectives for the comparison schema — same closed-vocabulary rule
 _CONTRAST_CONNECTIVES = ("반면", "둘 다")
 # subject-dropped continuation frames: Korean elaboration reads naturally without
@@ -145,6 +147,18 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
             if frame is None:  # unknown predicate: keep it out rather than improvise
                 continue
             conn = conns[min(len(connectives), len(conns) - 1)]
+            if language == "ko":
+                # learned discourse model (corpus-ranked, closed vocabulary) —
+                # falls back to the static tuple when no stats are trained
+                try:
+                    from .discourse_model import pick_connective
+
+                    learned = pick_connective(len(connectives),
+                                              connectives[-1] if connectives else None)
+                    if learned and learned in _CONNECTIVES:
+                        conn = learned
+                except Exception:
+                    pass
             connectives.append(conn)
             sentences.append(f"{conn} {frame.format(o=o)}.")
             used.append((s, p, o))

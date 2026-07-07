@@ -114,5 +114,9 @@ def test_bridge_composes_multi_fact_subjects(tmp_path, monkeypatch):
     r = ab.answer_from_triples("에스프레소란?")
     assert r is not None and r["answer_kind"] == "grounded_composition"
     assert r["answer"].startswith("에스프레소는 곱게 간 원두에 고압의 물을 통과시켜 추출한 커피입니다.")
-    assert "또한 커피 음료의 일종입니다." in r["answer"]
+    # connective is learned (closed whitelist) — assert content, not one token
+    from packages.grounded_composer.composer import _CONNECTIVES
+
+    assert "커피 음료의 일종입니다." in r["answer"]
+    assert any(f"{c} 커피 음료의 일종입니다." in r["answer"] for c in _CONNECTIVES)
     assert len(r["reasoning_certificate"]["steps"]) == 2
