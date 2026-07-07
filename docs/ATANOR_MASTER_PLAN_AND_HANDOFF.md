@@ -277,6 +277,22 @@ Phase 5 = ATANOR OS/브라우저 완전체 (구 Phase 4), Phase 6 = 공개 (구 
 - 진입 데모: 1-5와 결합 "보고 즉석에서 유창하게 말하기"
 - 재렌더링=상상: 트리플 경로→SPLATRA 파티클 역산 (영상 블랙홀 방지, 몇 바이트 공유)
 
+## 난제 트랙 (2026-07-07, Fable5 최종일 — 초장기 밑바탕)
+- **다의어 허브 분리** ✅ packages/graph_scale/sense_split.py (정의문 클러스터 sense
+  유도 + 3단 문맥 해소; answer_bridge 정의 레인 훅). 추론 코어 병목 근본 수리.
+- **브라우저 밑바탕** ✅ packages/atanor_browser: page_distiller(타이틀 앵커 게이트,
+  코풀라 정의, 보일러플레이트 차단, 출처, 스토어 비기입) + browser_ingest(호스트=
+  voice 다출처 합의 + 판정 게이트; 검증스토어 절대 비기입). /api/browser/{ingest,
+  promotable,stats}. 실증: 2호스트 합의→promotable, 오염문장은 앵커 불일치로 문에서 차단.
+- **셸 M2 정밀 계약** ✅ docs/ATANOR_SHELL_M2_SPLATRA_CONTRACT.md (트리플버퍼/pixman
+  스탬프캐시/UDS 상태 프로토콜/DoD/함정 선답 — 약한 모델도 기계적 구현 가능).
+- **자가정제 플라이휠** ✅ 1단계 모순소독(측정 함수성+신뢰계층 판정, 동점=학습큐) +
+  3단계 가설민팅(질문만 발행, 증거만 등록=모델붕괴 면역). 2단계 압축은 의도 보류.
+- **터보 인제스트** ✅ Arrow 해시커널 + 파일직행 TSV(3.0M rows/s 실측) + audit_sweep.
+  Gemini 가속 명세는 원리만 채택, mmap/GPU파싱/무결성우회는 수치로 기각.
+- **보안** ✅ docs/ATANOR_THREAT_MODEL.md + peer_trust_guard(암호신원+Sybil PoW+
+  철회가능 격리). HW ID 영구저주는 위조·오탐·GDPR로 기각.
+
 ## Phase 5 — ATANOR OS/브라우저 (구 4)
 - atanor-shell M2 심화 / M3 XWayland (ATANOR Linux 워크트리 — 별도 세션)
 - OS Action Lane 티어 승격 ✅(2026-07-07): 감사 원장 실적(20건 무실패·무거절·
