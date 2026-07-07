@@ -167,6 +167,15 @@ def fetch_profile(term: str, dry_run: bool = False, log: Any = print,
 
         store = TripleStore(STORE_ROOT)
     sid = store.intern_source("wikidata.org", url) if store is not None else None
+    # existing profile values, so a re-fetch UPDATES (newest wins) instead of
+    # accumulating stale duplicates that a first-wins reader would surface
+    existing: dict[str, str] = {}
+    if store is not None:
+        try:
+            for (_s, p, o, _n, _u) in store.facts_with_sources(term, limit=40, preds=_PROFILE_PREDS):
+                existing.setdefault(p, o)
+        except Exception:
+            pass
     for prop, (pred_ko, _kind) in _PROPS.items():
         claim = _best_claim(claims.get(prop, []))
         if claim is None:
@@ -182,6 +191,9 @@ def fetch_profile(term: str, dry_run: bool = False, log: Any = print,
         out["attributes"].append((pred_ko, val))
         log(f"  {term}: {pred_ko} = {val}  ({url})")
         if not dry_run and store is not None:
+            if pred_ko in existing and existing[pred_ko] != val:
+                store.retract(term, pred_ko, existing[pred_ko],
+                              reason=f"superseded by fresh wikidata value {val}")
             if store.add(term, pred_ko, val, source=sid):
                 out["stored"] += 1
     if not dry_run and store is not None and out["stored"]:
