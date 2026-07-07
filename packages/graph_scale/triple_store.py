@@ -145,6 +145,17 @@ class TripleStore:
         # readers back to a stale index generation (measured: 5M-row tail scans)
         if getattr(self, "_index_ts", None):
             meta["index_ts"] = self._index_ts
+        # turbo audit-debt flags must survive unrelated writes too (same bug
+        # class): a query-path flush between ingest and sweep must not erase
+        # the pending-audit marker
+        try:
+            prev = json.loads((self.root / "meta.json").read_text(encoding="utf-8"))
+            for k in ("turbo_audit_pending", "turbo_last_batch",
+                      "last_audit_removed", "last_audit_at"):
+                if k in prev:
+                    meta[k] = prev[k]
+        except Exception:
+            pass
         if extra:
             meta.update(extra)
         (self.root / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
