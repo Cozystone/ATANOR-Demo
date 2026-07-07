@@ -3805,6 +3805,16 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
                 }
         except Exception:  # pragma: no cover - defensive
             self_knowledge = None
+    # OMNI-ENGAGE (사장님 directive: 만능 AI 이미지 — answer everything sensibly).
+    # Opinion / preference / reflection / advice / small-talk questions get GRABBED
+    # by the definition lookup ("파이썬 좋아해?" -> the definition of Python) or
+    # cold-abstain ("심심한데 얘기 없어?"). Those aren't factual lookups — they're
+    # conversation. Engage warmly and sensibly, grounded in what ATANOR really is,
+    # WITHOUT fabricating any fact (answer ≠ invent). Runs BEFORE the factual lanes
+    # so opinion questions never get an off-target definition.
+    engage_answer = None
+    if not (self_state or self_knowledge or recall):
+        engage_answer = _conversational_engage_answer(question, language)
     # Greeting / small talk must be answered conversationally — NEVER sent to web
     # search (where "오 안녕" matched the cartoon "안녕 자두야"). Short, greeting-shaped
     # inputs get a warm reply from the local conversation surface.
@@ -4166,12 +4176,26 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # noisier engine paths (before reasoning_vm, which handles a disjoint set of math
     # Qs) — but never a SELF answer: '너의 존재 이유가 뭐야?' must not be clobbered by
     # the dictionary entry for 존재 (measured).
-    if triple_answer and not (self_state or self_knowledge) and isinstance(response.get("result"), dict):
+    if (triple_answer and not (self_state or self_knowledge) and not engage_answer
+            and isinstance(response.get("result"), dict)):
         result = response["result"]
         result["answer"] = triple_answer["answer"]
         result["reasoning_certificate"] = triple_answer["reasoning_certificate"]
         result["confidence"] = triple_answer["confidence"]
         result["answer_kind"] = "structured_triple_lookup"
+        result["can_speak"] = True
+
+    # OMNI-ENGAGE dispatch (만능 AI 이미지): a conversational intent (opinion/
+    # preference/advice/small-talk) wins over the factual definition lookup — it
+    # is not a fact question, so a warm engaged reply is the right answer. Never
+    # over greeting/self/media (those are more specific and already handled).
+    if (engage_answer and not (self_state or self_knowledge or greeting_answer)
+            and isinstance(response.get("result"), dict)):
+        result = response["result"]
+        result["answer"] = engage_answer["answer"]
+        result["reasoning_certificate"] = engage_answer["reasoning_certificate"]
+        result["confidence"] = engage_answer["confidence"]
+        result["answer_kind"] = engage_answer["answer_kind"]
         result["can_speak"] = True
 
     # Reasoning VM answer (math / counting word problem) — authoritative,
@@ -4779,6 +4803,84 @@ def _association_answer(question: str, language: str) -> dict[str, Any] | None:
                            "forced_simile": False},
         },
     }
+
+
+def _conversational_engage_answer(question: str, language: str) -> dict[str, Any] | None:
+    """만능 AI 이미지: opinion/preference/reflection/advice/small-talk get a warm,
+    sensible answer — engaging, grounded in what ATANOR really is, and HONEST that
+    it is a view (not a fact). Never fabricates. Returns None for factual/definition
+    questions (those keep the grounded lanes)."""
+    if language != "ko":
+        return None
+    q = str(question or "").strip()
+    if not q or len(q) > 80:
+        return None
+
+    def _cert(kind: str, conf: float) -> dict[str, Any]:
+        return {"reasoning_certificate": {
+                    "derivation_kind": kind, "anchor_concept": None, "steps": [],
+                    "evidence_concepts": [], "confidence": conf,
+                    "confidence_basis": "conversational_engagement",
+                    "guarantees": {"external_llm": False, "fabricated_facts": False}},
+                "confidence": conf, "answer_kind": "conversational_engage", "can_speak": True}
+
+    def _self_wonder() -> str:
+        try:
+            from app.routers.continuous_self import _SELF
+
+            if _SELF.running:
+                oq = str(_SELF.snapshot().get("self_question") or "").strip()
+                if oq:
+                    return f" 요즘 저는 스스로 이런 걸 궁금해해요 — “{oq[:80]}”."
+        except Exception:
+            pass
+        return ""
+
+    # 1) PREFERENCE — "X 좋아해?" ADDRESSED TO ATANOR (verb-final). NOT
+    #    "X 좋아하는 사람 많아?" (a fact about others) — that stays factual.
+    _pref_verb_final = re.search(r"(좋아|싫어|선호|즐기)(해|하니|하세요|하나요|합니까|하시나요)\s*\??\s*$", q)
+    _pref_addressed = re.search(r"(^|\s)(너|넌|너는|당신|네|니)\b", q) and re.search(r"(좋아|싫어|선호)", q)
+    if _pref_verb_final or _pref_addressed:
+        m = re.search(r"([가-힣A-Za-z0-9]{2,20})\s*(을|를|은|는|이|가)?\s*(좋아|싫어|선호|즐기)", q)
+        topic = m.group(1) if m else ""
+        if topic in ("너", "넌", "당신", "네", "니"):
+            topic = ""
+        lead = (f"{topic}에 대해서는 " if topic else "")
+        return {"answer": (
+            f"{lead}제가 사람처럼 취향을 갖진 않지만, 솔직한 느낌은 말씀드릴 수 있어요. "
+            f"저는 근거로 확인되는 것에 끌리고, 애매하게 지어내야 하는 건 불편해해요 — 그렇게 만들어졌거든요."
+            f"{_self_wonder()} 특정 대상의 뜻·특징이 궁금하시면 그건 정확히 설명해드릴게요."),
+            **_cert("engage_preference", 0.6)}
+
+    # 2) OPINION — "어떻게 생각해", "~에서 (가장) 중요한 게 뭐야" (judgment, not lookup).
+    #    the adjective ending (중요'한', 필요'한') sits between the stem and 게/것,
+    #    so allow [가-힣]* between them; require a question word after.
+    if (re.search(r"(어떻게\s*생각|네\s*생각|너\s*생각|의견\s*이|어떻게\s*봐)", q)
+            or re.search(r"(중요|소중|값진|의미|필요|가치)[가-힣]*\s*(게|것|건|점)\s*(뭐|무엇|어떤|어느|일까|인가)", q)):
+        return {"answer": (
+            "제가 사실로 단정할 수 있는 건 아니에요 — 그건 사람마다 다르고, 정답이 하나가 아니니까요. "
+            "다만 제 관점을 나누자면, 저는 ‘무엇이 진짜인지 정직하게 아는 것’을 가장 소중하게 여겨요. "
+            "근거 없이 그럴듯한 말을 지어내지 않는 게 제 존재 이유거든요."
+            f"{_self_wonder()} 당신은 어떻게 생각하세요? 이어서 이야기해요."),
+            **_cert("engage_opinion", 0.6)}
+
+    # 3) ADVICE — soft "어떻게 해야 할까 / 조언 / 추천" (not a factual how-to procedure)
+    if re.search(r"(어떻게\s*해야\s*(할까|하지|될까|좋을까)|조언\s*(좀|해)|어쩌면\s*좋)", q):
+        return {"answer": (
+            "확실한 근거로 단정하긴 어려운 질문이지만, 함께 생각해볼 수는 있어요. "
+            "상황을 조금만 더 들려주시면 — 무엇을 이미 시도했고 무엇이 걸리는지 — 제가 아는 범위에서 "
+            "가능한 방향을 근거와 함께 짚어드릴게요. 지어낸 조언 대신, 확인되는 것부터요."),
+            **_cert("engage_advice", 0.55)}
+
+    # 4) SMALL TALK / ENTERTAINMENT — "심심한데 재밌는 얘기", "지루해" (warm, offers content)
+    if re.search(r"(심심|지루|재밌는\s*(얘기|이야기)|놀자|뭐\s*하고\s*놀|얘기\s*하자|말\s*걸)", q):
+        wonder = _self_wonder()
+        offer = (wonder or " 궁금한 주제를 하나 던져주시면, 제가 아는 걸 이야기처럼 풀어드릴게요.")
+        return {"answer": ("심심하셨군요 :) 제가 지어낸 이야기 대신, 진짜 아는 걸로 함께 놀아볼까요?"
+                           + offer + " 아니면 방금 떠오른 궁금증을 물어보셔도 좋아요."),
+                **_cert("engage_smalltalk", 0.6)}
+
+    return None
 
 
 _USER_KNOWLEDGE_KO = ("나에 대해", "나에 대해서", "내가 누군지", "나를 얼마나 알",
