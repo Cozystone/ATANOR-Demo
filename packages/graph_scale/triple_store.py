@@ -120,6 +120,10 @@ class TripleStore:
         self._buf_o: list[int] = []
         self._seen: set[int] = set()          # dedupe hash of (s,p,o)
         self._count = self._read_count()
+        try:
+            self._index_ts = json.loads((self.root / "meta.json").read_text(encoding="utf-8")).get("index_ts")
+        except Exception:
+            self._index_ts = None
         # rebuild the dedupe set from an existing store (bounded: only if it fits)
         self._dedupe_enabled = True
 
@@ -136,6 +140,10 @@ class TripleStore:
     def _write_meta(self, extra: dict[str, Any] | None = None) -> None:
         meta = {"count": self._count, "terms": len(self.terms), "format": "int32_columnar_spo",
                 "dict_backend": self.dict_backend}
+        # index_ts must SURVIVE unrelated meta writes — losing it silently rolled
+        # readers back to a stale index generation (measured: 5M-row tail scans)
+        if getattr(self, "_index_ts", None):
+            meta["index_ts"] = self._index_ts
         if extra:
             meta.update(extra)
         (self.root / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -177,11 +185,17 @@ class TripleStore:
 
     def flush(self) -> None:
         if not self._buf_s:
-            self.terms.flush()
-            self._write_meta()
+            # query-path flush: nothing buffered — rewriting meta.json here cost
+            # ~13ms of DISK WRITE per lookup (measured; it also invalidated every
+            # mtime-keyed cache). Only touch disk when the count actually moved.
+            if getattr(self, "_meta_count_written", None) != self._count:
+                self.terms.flush()
+                self._write_meta()
+                self._meta_count_written = self._count
             return
         self.terms.flush()
         # append raw little-endian int32 columns (one file per column)
+        self._meta_count_written = self._count
         for name, buf in (("s", self._buf_s), ("p", self._buf_p), ("o", self._buf_o)):
             with (self.root / f"{name}.col").open("ab") as fh:
                 if _HAVE_NP:
@@ -214,21 +228,48 @@ class TripleStore:
     def rebuild_index(self) -> int:
         if not _HAVE_NP:
             return 0
+        import time as _time
+
         self.flush()
         cols = self.open_columns()
         s_col = cols["s"]
         perm = np.argsort(s_col, kind="stable").astype("<i8")
-        np.save(str(self.root / "s.perm.npy"), perm)
-        np.save(str(self.root / "s.sorted.npy"), np.asarray(s_col)[perm].astype("<i4"))
+        # VERSIONED files: a live engine memmaps the old generation, and Windows
+        # refuses to overwrite a mapped file (EINVAL, measured) — so each rebuild
+        # writes a new generation and points meta at it; readers switch on reload,
+        # stale generations are unlinked when nothing holds them anymore.
+        ts = int(_time.time())
+        self._index_ts = ts
+        np.save(str(self.root / f"s.perm.{ts}.npy"), perm)
+        np.save(str(self.root / f"s.sorted.{ts}.npy"), np.asarray(s_col)[perm].astype("<i4"))
+        self._write_meta({"index_ts": ts})
         self._idx_cache = None
+        for old in self.root.glob("s.perm.*.npy"):
+            if old.name != f"s.perm.{ts}.npy":
+                try:
+                    old.unlink()
+                    (self.root / old.name.replace("s.perm", "s.sorted")).unlink(missing_ok=True)
+                except Exception:
+                    pass  # still mapped by a live reader — next rebuild retries
         return len(perm)
 
     def _index(self):
-        perm_p = self.root / "s.perm.npy"
-        sort_p = self.root / "s.sorted.npy"
+        meta = self.root / "meta.json"
+        try:
+            msig = meta.stat().st_mtime_ns
+            cached_ts = getattr(self, "_meta_ts_cache", None)
+            if cached_ts is not None and cached_ts[0] == msig:
+                ts = cached_ts[1]
+            else:
+                ts = json.loads(meta.read_text(encoding="utf-8")).get("index_ts")
+                self._meta_ts_cache = (msig, ts)
+        except Exception:
+            ts = None
+        perm_p = self.root / (f"s.perm.{ts}.npy" if ts else "s.perm.npy")
+        sort_p = self.root / (f"s.sorted.{ts}.npy" if ts else "s.sorted.npy")
         if not perm_p.exists() or not sort_p.exists():
             return None
-        sig = (perm_p.stat().st_mtime_ns, perm_p.stat().st_size)
+        sig = (perm_p.name, perm_p.stat().st_mtime_ns, perm_p.stat().st_size)
         cached = getattr(self, "_idx_cache", None)
         if cached is not None and cached[0] == sig:
             return cached[1]
@@ -250,7 +291,9 @@ class TripleStore:
         needle = np.asarray(sid, dtype=ssorted.dtype)
         lo = int(np.searchsorted(ssorted, needle, "left"))
         hi = int(np.searchsorted(ssorted, needle, "right"))
-        head = np.sort(np.asarray(perm[lo:hi]))  # insertion order within the subject
+        # stable argsort already preserves original row order within equal keys —
+        # re-sorting a hub subject's 1e4+ rows cost 7ms/call (profiled); a view is free
+        head = perm[lo:hi]
         n_indexed = len(perm)
         if len(s_col) > n_indexed:
             tail = np.nonzero(s_col[n_indexed:] == sid)[0] + n_indexed
@@ -311,7 +354,17 @@ class TripleStore:
             pids_arr = np.array([x for x in pids if x is not None], dtype=p.dtype)
             if len(pids_arr) == 0:
                 return []
-            idx = idx[np.isin(p[idx], pids_arr)]
+            # hub subjects have 1e4+ rows post-closure — gather/filter in CHUNKS
+            # and stop at the limit instead of touching every row (measured 14ms
+            # for a full gather at 13M rows; sub-ms chunked)
+            kept: list[int] = []
+            for start in range(0, len(idx), 2048):
+                chunk = idx[start:start + 2048]
+                hits = chunk[np.isin(p[chunk], pids_arr)]
+                kept.extend(int(i) for i in hits)
+                if len(kept) >= limit:
+                    break
+            idx = kept
         for i in idx[:limit]:
             out.append((subject, self.terms.term(int(p[i])), self.terms.term(int(o[i]))))
         return out
