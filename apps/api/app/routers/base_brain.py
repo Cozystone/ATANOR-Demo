@@ -66,13 +66,43 @@ def base_brain_build() -> dict[str, Any]:
 
 @router.post("/answer")
 def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
+    # self-awareness -> answer depth: if the self is currently pondering this
+    # subject, weave in MORE grounded relations. Defensive + additive; boost is 0
+    # (identical behaviour) unless genuinely engaged — and the self ponders ITSELF,
+    # so factual answers are untouched. hallucination-0 preserved (grounded only).
+    _boost = 0
+    _self_engaged = False
+    try:
+        from packages.continuous_self.inquiry_fusion import depth_bias, extra_relation_budget
+        from packages.graph_scale.query_frame import parse as _qf_parse
+        from app.routers.continuous_self import _SELF as _self_loop
+
+        _st = _self_loop.state
+        _state = {
+            "self_question": getattr(_st, "self_question", "") or "",
+            "self_question_open": bool(getattr(_st, "self_question_open", False)),
+            "last_inquiry_topic": getattr(_st, "_last_inquiry_topic", "") or "",
+            "curiosity": float(getattr(_st, "curiosity", 0.5) or 0.5),
+        }
+        _subj = _qf_parse(request.query).subject or request.query
+        _bias = depth_bias(_subj, _state)
+        if _bias >= 0.5:
+            _boost = max(0, extra_relation_budget(_bias) - 3)
+            _self_engaged = _boost > 0
+    except Exception:
+        _boost = 0
+
     result = answer_with_base_brain(
         request.query,
         language=request.language,  # type: ignore[arg-type]
         audience_level=request.audience_level,  # type: ignore[arg-type]
         mode=request.mode,  # type: ignore[arg-type]
         apply_persona=request.apply_persona,
+        self_depth_boost=_boost,
     )
+    if _self_engaged and isinstance(result, dict):
+        result["self_engaged"] = True
+        result["self_depth_boost"] = _boost
     # abstain backstop 1: the curated triple store (facts ingested by the abstain-to-ingest
     # loop land there) — verbatim, cited, never inferred. Only consulted on abstain, so the
     # existing quality paths are untouched.

@@ -701,7 +701,7 @@ def _project_level_answer(query: str, language: str) -> tuple[str, bool] | None:
     return None
 
 
-def _compose_answer(query: str, context: list[dict[str, Any]], language: str, audience_level: str, intent: str) -> tuple[str, bool]:
+def _compose_answer(query: str, context: list[dict[str, Any]], language: str, audience_level: str, intent: str, self_depth_boost: int = 0) -> tuple[str, bool]:
     project_answer = _project_level_answer(query, language)
     if project_answer is not None:
         return project_answer
@@ -820,14 +820,16 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
             answer = base
         # graph relations are substantive reasoning (not hand-holding): keep them
         # at every audience level so expert answers are not strictly thinner.
-        rel_sentence = _korean_relation_sentence(primary, context_map)
+        rel_sentence = _korean_relation_sentence(primary, context_map,
+                                                 max_relations=3 + max(0, self_depth_boost))
         if rel_sentence:
             answer = f"{answer} {rel_sentence}"
         return answer, True
 
     base_text = base.rstrip(". ").strip()
     parts = [base_text] if base_text else []
-    rel_sentence = _english_relation_sentence(primary, context_map)
+    rel_sentence = _english_relation_sentence(primary, context_map,
+                                              max_relations=3 + max(0, self_depth_boost))
     if rel_sentence:
         parts.append(rel_sentence.rstrip("."))
     second_hop = _english_second_hop(primary, context_map)
@@ -1210,7 +1212,10 @@ def answer_with_base_brain(
     audience_level: AudienceLevel = "beginner",
     mode: AnswerMode = "default",
     apply_persona: bool = False,
+    self_depth_boost: int = 0,
 ) -> dict[str, Any]:
+    # self-awareness -> depth: when the self is engaged with the subject, weave in
+    # MORE grounded relations. Default 0 = identical behaviour (all evals pass).
     pack = load_base_brain_pack()
     semantic_context = get_semantic_context(query, pack, limit=12)
     semantic_context = _disambiguate_memory_context(query, semantic_context)
@@ -1239,7 +1244,8 @@ def answer_with_base_brain(
     intent = classify_intent(query, pack)
     surface_candidates = get_surface_candidates(query, semantic_context, language, audience_level, limit=8, pack=pack)
     selection = select_surface_candidates(surface_candidates, max_selected=4, seed=_seed(query), q_cortex_enabled=True)
-    answer, useful = _compose_answer(query, semantic_context, language, audience_level, intent)
+    answer, useful = _compose_answer(query, semantic_context, language, audience_level, intent,
+                                     self_depth_boost=self_depth_boost)
     # Graph Hub fallback: if the base pack abstains, consult an installed domain-expert
     # cartridge (e.g. coffee) so an attached specialist graph can answer what the base cannot.
     cartridge_source = None
