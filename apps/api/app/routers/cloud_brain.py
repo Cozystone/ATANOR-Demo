@@ -1979,7 +1979,21 @@ def cloud_brain_merge_candidates() -> dict[str, Any]:
 def cloud_brain_candidate_status(
     candidate_store_path: str | None = Query(default=None, max_length=800),
 ) -> dict[str, Any]:
-    return candidate_cloud_status(candidate_store_path or _resolve_candidate_store_path())
+    out = candidate_cloud_status(candidate_store_path or _resolve_candidate_store_path())
+    # KG SUBSTRATE (kg_triples): the 25M-row int-columnar triple store that answers
+    # questions is a DIFFERENT store from this semantic concept graph — the lab
+    # panel read only the latter, so tens of millions were invisible (owner-
+    # reported confusion). Cheap meta.json read, no store load.
+    try:
+        import json as _json
+        from pathlib import Path as _P
+
+        _meta = _P(__file__).resolve().parents[4] / "data" / "graph_scale" / "kg_triples" / "meta.json"
+        if _meta.exists():
+            out["kg_substrate_triples"] = int(_json.loads(_meta.read_text(encoding="utf-8")).get("count") or 0)
+    except Exception:
+        pass
+    return out
 
 
 @router.get("/candidate/graph")

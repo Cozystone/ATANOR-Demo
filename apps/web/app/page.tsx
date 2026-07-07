@@ -5411,6 +5411,12 @@ function FullApp() {
       // SEPARATED ("A + B") — candidate learning must never be presented as one
       // production graph size (docs/ATANOR_logical_sphere_semantics.md).
       : [
+        // the KG SUBSTRATE (int-columnar triple store that ANSWERS questions) is a
+        // separate, far larger store than this semantic concept graph — shown first
+        // so tens of millions of curated triples are never invisible in the lab
+        ...(Number(cloudCandidateStatus?.kg_substrate_triples ?? 0) > 0
+          ? [{ label: language === "ko" ? "지식 트리플 (KG 기반)" : "Knowledge triples (KG substrate)", value: Number(cloudCandidateStatus?.kg_substrate_triples ?? 0).toLocaleString() }]
+          : []),
         { label: language === "ko" ? "노드 (검증+후보)" : "Nodes (verified+cand.)", value: `${Number(Number(graphVizLogical.node_count ?? semanticStoreConceptCount ?? displayMemoryNodeCount) || 0).toLocaleString()} + ${Number(Number(cloudCandidateStatus?.candidate_concepts ?? 0) || 0).toLocaleString()}` },
         { label: language === "ko" ? "관계 (검증+후보)" : "Relations (verified+cand.)", value: `${Number(Number(graphVizLogical.stored_relation_count ?? semanticStoreRelationCount ?? displayMemoryEdgeCount) || 0).toLocaleString()} + ${Number(Number(cloudCandidateStatus?.candidate_relations ?? 0) || 0).toLocaleString()}` },
         { label: language === "ko" ? "Materialized" : "Materialized", value: Number(graphVizMaterialized.node_count ?? displayMemoryNodeCount).toLocaleString() },
