@@ -169,3 +169,19 @@
   그래프 탐색 → 맥락 제안 (물병 시나리오 데모). OS Action Lane 신뢰 티어 준수.
 
 Phase 5 = ATANOR OS/브라우저 완전체 (구 Phase 4), Phase 6 = 공개 (구 Phase 5).
+
+### 지각 AGI — UI/UX 초기 적용 (2026-07-07 추가)
+초기 단계 상호작용 = 디바이스 **후면카메라 실시간 인식**:
+- 다중 객체 감지: docs/ultimate-vision/ 평가 레포 (NVIDIA Eagle /
+  LocateAnything 계열) — 프레임 내 객체 라벨+위치.
+- 사용자 상태 인지: **DeepFace (github.com/serengil/deepface)** — 얼굴 인식/
+  속성으로 "지금 모자를 쓰고 계시네요!" 류의 실시간 사용자 인지. 전부 온디바이스,
+  프레임은 저장하지 않고 인지 결과(이벤트)만 에피소드 그래프에 기록.
+- 깊이: apple/ml-depth-pro (zero-shot metric depth) — 장면 기하.
+- 파이프라인: 카메라 프레임 → 객체/얼굴 인지 → episodic_memory.record_event
+  (시간축 기록) → 인스턴스 매칭(시각 시그니처) → repurchase_suggestion 류
+  제안 프리미티브 → OS Action Lane 티어 준수 발화.
+- Phase 3-1 에피소드 시간축 그래프 v0 SHIPPED (packages/episodic_memory):
+  record_event/timeline/age_days/repurchase_suggestion — 물병 프리미티브 실증
+  ("집에 있는 물병을 구매한 지 약 3년 됐어요. 이 참에 하나 더 마련하는 건
+  어떨까요?" — 기록된 근거에서만 발화, 미기록=None).
