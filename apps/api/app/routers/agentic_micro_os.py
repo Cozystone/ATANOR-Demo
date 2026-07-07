@@ -154,6 +154,42 @@ def _run_wikipedia_grounded_learning(*, force: bool = False) -> dict[str, Any]:
     return result
 
 
+# ── abstain -> ingest closed loop ─────────────────────────────────────────────
+# When the answer path abstains ("근거 없음"), abstain_queue.record_abstain has
+# already logged the missing terms. This tick DRAINS that queue: it fetches
+# attributed evidence (national dictionary / search API, judge-gated, k-source)
+# and ingests it, so the SAME question becomes answerable next time. Coverage
+# rises WITHOUT lowering truth — the drain only stores gated, attributed facts.
+ABSTAIN_DRAIN_MIN_INTERVAL_SEC = 75.0
+ABSTAIN_DRAIN_TERMS_PER_TICK = 3
+_LAST_ABSTAIN_DRAIN_AT = 0.0
+_LAST_ABSTAIN_DRAIN_RESULT: dict[str, Any] = {}
+
+
+def _run_abstain_drain(*, force: bool = False) -> dict[str, Any]:
+    """Close the abstain->ingest loop for a bounded batch of pending terms.
+    Cadence-gated, bounded web budget, judge-gated inside drain(). Never raises."""
+    global _LAST_ABSTAIN_DRAIN_AT, _LAST_ABSTAIN_DRAIN_RESULT
+    now = time.monotonic()
+    if not force and (now - _LAST_ABSTAIN_DRAIN_AT) < ABSTAIN_DRAIN_MIN_INTERVAL_SEC:
+        return {"drained": False, "reason": "cadence_throttled"}
+    _LAST_ABSTAIN_DRAIN_AT = now
+    try:
+        from packages.graph_scale import abstain_feeder, abstain_queue
+
+        pending_before = len(abstain_queue.pending(limit=200))
+        if pending_before == 0:
+            result = {"drained": True, "terms": 0, "ingested": 0, "pending_before": 0}
+        else:
+            counters = abstain_feeder.drain(limit=ABSTAIN_DRAIN_TERMS_PER_TICK,
+                                            log=lambda *a, **k: None)
+            result = {"drained": True, "pending_before": pending_before, **counters}
+    except Exception as exc:  # pragma: no cover - learning must never break the loop
+        result = {"drained": False, "reason": f"abstain_drain_error:{type(exc).__name__}"}
+    _LAST_ABSTAIN_DRAIN_RESULT = result
+    return result
+
+
 def _auto_promote_review_queue() -> dict[str, Any]:
     """Operator-free auto-promotion (user's unconditional-promotion policy)."""
     try:
@@ -319,6 +355,11 @@ class AutonomousDaemon:
             grounded = _run_wikipedia_grounded_learning()
             if grounded.get("ingested") and grounded.get("concepts_added"):
                 record["wikipedia_grounded_concepts"] = int(grounded.get("concepts_added") or 0)
+            # close the abstain->ingest loop: turn "근거 없음" into learned coverage
+            drained = _run_abstain_drain()
+            if drained.get("drained") and (drained.get("ingested") or drained.get("evidence")):
+                record["abstain_ingested"] = int(drained.get("ingested") or 0)
+                record["abstain_evidence"] = int(drained.get("evidence") or 0)
             # User policy: AGORA has no operator; promotion is allowed
             # unconditionally. Auto-promote newly-eligible candidates to verified
             # staging (still skips private/mutation payloads; no production write).
@@ -615,6 +656,26 @@ class ScopedPatchRollbackApiRequest(BaseModel):
     operator_confirmation: str = ""
     tier_session_id: str = ""
     operator_id: str = "operator"
+
+
+@router.get("/abstain/status")
+def abstain_status() -> dict[str, Any]:
+    """The abstain->ingest loop's state: how many terms are pending re-learning
+    and the last drain's result."""
+    from packages.graph_scale import abstain_queue
+
+    return {
+        "pending": len(abstain_queue.pending(limit=200)),
+        "pending_terms": abstain_queue.pending(limit=20),
+        "last_drain": _LAST_ABSTAIN_DRAIN_RESULT,
+    }
+
+
+@router.post("/abstain/drain")
+def abstain_drain() -> dict[str, Any]:
+    """On-demand: close the abstain->ingest loop now (fetch attributed evidence
+    for pending abstained terms and ingest it). Bounded + judge-gated inside."""
+    return _run_abstain_drain(force=True)
 
 
 @router.get("/status")
