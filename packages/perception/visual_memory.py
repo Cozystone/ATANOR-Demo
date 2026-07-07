@@ -112,13 +112,21 @@ def learn_visual(concept: str, count: int = 4, log: Any = print) -> dict[str, An
     record = {"concept": concept, "signature": avg, "sources": kept,
               "images_measured": len(sigs), "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     VISUAL_DIR.mkdir(parents=True, exist_ok=True)
-    (VISUAL_DIR / f"{abs(hash(concept)) & 0xFFFFFFFF:x}.json").write_text(
+    (VISUAL_DIR / f"{_key(concept)}.json").write_text(
         json.dumps(record, ensure_ascii=False), encoding="utf-8")
     return record
 
 
+def _key(concept: str) -> str:
+    import hashlib
+
+    # STABLE key — python's str hash is per-process randomized (PYTHONHASHSEED),
+    # which made memories written by one process invisible to the server (measured)
+    return hashlib.sha256(concept.encode("utf-8")).hexdigest()[:12]
+
+
 def _load(concept: str) -> dict[str, Any] | None:
-    p = VISUAL_DIR / f"{abs(hash(concept)) & 0xFFFFFFFF:x}.json"
+    p = VISUAL_DIR / f"{_key(concept)}.json"
     if not p.exists():
         return None
     try:
