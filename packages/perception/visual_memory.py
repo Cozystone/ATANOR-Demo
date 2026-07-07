@@ -114,6 +114,22 @@ def learn_visual(concept: str, count: int = 4, log: Any = print) -> dict[str, An
     VISUAL_DIR.mkdir(parents=True, exist_ok=True)
     (VISUAL_DIR / f"{_key(concept)}.json").write_text(
         json.dumps(record, ensure_ascii=False), encoding="utf-8")
+    # Phase 4-4: the measurement becomes KG triples THE MOMENT it exists
+    # (visual-KG anchoring) and a dated event on the universal timeline.
+    # Both best-effort — a store hiccup never loses the visual memory itself.
+    try:
+        from .visual_kg import anchor_visual_triples
+
+        anchor_visual_triples(concept)
+    except Exception:
+        pass
+    try:
+        from packages.episodic_memory.timeline import record_event
+
+        record_event("ATANOR", "시각측정", concept,
+                     note=f"{len(sigs)}장 실측", source="perception")
+    except Exception:
+        pass
     return record
 
 
