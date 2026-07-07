@@ -63,6 +63,35 @@ def test_judge_contradiction_blocks_promotion(tmp_path):
     assert any(c["object"] == "Canberra" for c in prom2)
 
 
+def test_gate_preview_default_deny_and_auto(tmp_path):
+    led = BrowserEvidenceLedger(tmp_path / "l.jsonl", min_hosts=2)
+    ingest_page(_page("팔란티어", "미국의 소프트웨어 기업"),
+                url="https://ko.wikipedia.org/wiki/팔란티어", ledger=led)
+    ingest_page(_page("팔란티어", "미국의 소프트웨어 기업"),
+                url="https://namu.wiki/w/팔란티어", ledger=led)
+    # default (operator) mode: status=pending is NOT approved -> blocked, not written
+    prev = led.gate_preview()
+    assert prev["available"] and prev["candidates"] == 1
+    assert len(prev["eligible"]) == 0
+    assert any("not_human_approved" in r
+               for b in prev["blocked"] for r in b["rejection_reasons"])
+    # auto mode drops the approval gate but keeps provenance + confidence floors
+    auto = led.gate_preview(auto_mode=True)
+    assert len(auto["eligible"]) == 1  # 2 host-voices -> confidence 0.5, real urls
+
+
+def test_gate_items_carry_real_provenance(tmp_path):
+    led = BrowserEvidenceLedger(tmp_path / "l.jsonl", min_hosts=2)
+    for host in ("https://a.org/x", "https://b.org/y"):
+        ingest_page(_page("바다", "소금물이 넓게 고인 곳"), url=host, ledger=led)
+    items = led.to_gate_items()
+    assert len(items) == 1
+    it = items[0]
+    assert it["item_type"] == "cloud_candidate"
+    assert set(it["source_refs"]) == {"https://a.org/x", "https://b.org/y"}
+    assert it["payload"]["origin"] == "atanor_browser"
+
+
 def test_ingest_never_writes_verified_store(tmp_path):
     led = BrowserEvidenceLedger(tmp_path / "l.jsonl")
     out = ingest_page(_page("바다", "소금물이 넓게 고인 곳"),

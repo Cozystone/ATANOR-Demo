@@ -79,6 +79,21 @@ def browser_promotable() -> dict[str, Any]:
     return {"promotable": _ledger().promotable(store=store)}
 
 
+@router.get("/promote-preview")
+def browser_promote_preview(auto_mode: bool = False) -> dict[str, Any]:
+    """Run consensus-cleared candidates through the SAME default-deny promotion
+    gate the rest of the engine uses — shows eligible vs blocked (+reasons).
+    Writes nothing; the operator confirms actual promotion via the gate."""
+    store = None
+    try:
+        from packages.graph_scale.answer_bridge import _store
+
+        store = _store()
+    except Exception:
+        store = None
+    return _ledger().gate_preview(store=store, auto_mode=auto_mode)
+
+
 @router.get("/stats")
 def browser_stats() -> dict[str, Any]:
     return _ledger().stats()

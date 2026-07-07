@@ -107,6 +107,47 @@ class BrowserEvidenceLedger:
         out.sort(key=lambda c: -c["host_voices"])
         return out
 
+    def to_gate_items(self, store: Any = None) -> list[dict[str, Any]]:
+        """Map consensus-cleared candidates to CandidatePromotionGate item dicts.
+        Confidence rises with independent host-voices (0.5 at min_hosts, ->0.9);
+        source_refs are the real URLs. These feed the SAME default-deny gate the
+        rest of the engine uses — browsing never gets a private promotion path."""
+        items = []
+        for c in self.promotable(store=store):
+            v = c["host_voices"]
+            confidence = min(0.9, 0.5 + 0.1 * (v - self.min_hosts + 1))
+            items.append({
+                "item_id": _key(c["subject"], c["predicate"], c["object"]),
+                "item_type": "cloud_candidate",
+                "title": f"{c['subject']} {c['predicate']} {c['object']}"[:160],
+                "confidence": round(confidence, 3),
+                "risk_level": "low",
+                "status": "pending",  # default-deny: operator still approves
+                "source_refs": c["urls"],
+                "payload": {"subject": c["subject"], "predicate": c["predicate"],
+                            "object": c["object"], "host_voices": v,
+                            "judge": c["judge"], "origin": "atanor_browser"},
+            })
+        return items
+
+    def gate_preview(self, store: Any = None, *, auto_mode: bool = False) -> dict[str, Any]:
+        """Run consensus-cleared candidates through the promotion gate WITHOUT
+        writing anything: shows which would be eligible and why not. The actual
+        promotion stays the operator's draft_manifest -> confirm path."""
+        try:
+            from packages.candidate_promotion_gate.gate import evaluate_candidate_item
+        except Exception:
+            return {"available": False, "reason": "promotion gate unavailable"}
+        items = self.to_gate_items(store=store)
+        evals = [evaluate_candidate_item(it, auto_mode=auto_mode) for it in items]
+        return {
+            "available": True, "auto_mode": auto_mode,
+            "candidates": len(items),
+            "eligible": [e.to_dict() for e in evals if e.eligible],
+            "blocked": [e.to_dict() for e in evals if not e.eligible],
+            "note": "eligible items are NOT promoted here — operator confirms via the gate",
+        }
+
     def stats(self) -> dict[str, Any]:
         return {"candidates": len(self._agg),
                 "multi_host": sum(1 for s in self._agg.values()
