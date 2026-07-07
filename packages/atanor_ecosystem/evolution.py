@@ -153,10 +153,13 @@ def _mutate(agent: Agent, rng: random.Random, rate: float, gen: int) -> Agent:
 
 
 def evolve(eco: Ecosystem, *, generations: int = 40, mutation: float = 0.15,
-           scenarios_per_gen: int = 12) -> dict[str, Any]:
+           scenarios_per_gen: int = 12, sexual: bool = True) -> dict[str, Any]:
     """Run the selection loop. Returns the measured trajectory + best survivor.
-    Every generation: evaluate, kill the hallucinators + bottom half, replicate
-    the survivors with mutation. Deterministic per seed."""
+    Every generation: evaluate, kill the hallucinators + bottom half, then breed
+    the survivors — super-crossover of two parents (sexual) + mutation. The best
+    survivor is returned as the candidate meta-controller. Deterministic per seed."""
+    from .genome import crossover  # local import: genome depends on this module
+
     rng = random.Random(eco.seed * 31 + 1)
     history: list[dict[str, Any]] = []
     best: Agent | None = None
@@ -174,21 +177,61 @@ def evolve(eco: Ecosystem, *, generations: int = 40, mutation: float = 0.15,
         keep = survivors[: max(2, len(eco.population) // 2)]
         if keep and (best is None or keep[0].fitness > best.fitness):
             best = keep[0]
-        # replicate survivors with mutation back up to population size
+        # breed the next generation from the survivors (elitism + sexual crossover)
         nxt = list(keep)
-        i = 0
         while len(nxt) < len(eco.population) and keep:
-            nxt.append(_mutate(keep[i % len(keep)], rng, mutation, gen + 1))
-            i += 1
+            if sexual and len(keep) >= 2:
+                pa, pb = rng.choice(keep), rng.choice(keep)
+                child = crossover(pa, pb, rng, gen=gen + 1)
+                nxt.append(_mutate(child, rng, mutation, gen + 1))
+            else:
+                nxt.append(_mutate(keep[len(nxt) % len(keep)], rng, mutation, gen + 1))
         eco.population = nxt or [random_agent(rng, eco.n_domains, eco.n_beliefs)]
         history.append({"gen": gen, "alive": len(keep),
                         "best_fitness": round(keep[0].fitness, 3) if keep else 0.0})
     return {
         "generations": generations,
         "final_best_fitness": round(best.fitness, 3) if best else 0.0,
+        "best_agent": best,
         "deaths_by_hallucination": deaths_by_hallucination,
         "best_origin": best.origin if best else None,
         "history": history[-8:],
+    }
+
+
+# ── the decisive test: does evolution BEAT the fixed human heuristic? ─────────
+def _fixed_homeostasis_agent(n_domains: int, n_beliefs: int) -> Agent:
+    """The baseline: a hand-designed policy standing in for homeostasis.py's
+    fixed if-then heuristic — attend uniformly to defect signal, assert nothing
+    (the safe human default). Evolution must BEAT this to earn promotion."""
+    return Agent(domain_w=[1.0] * n_domains, belief_w=[0.0] * n_beliefs,
+                 origin="fixed_homeostasis")
+
+
+def beats_baseline(*, size: int = 60, generations: int = 60, seed: int = 7) -> dict[str, Any]:
+    """The ONLY question that justifies ever promoting an evolved controller: does
+    it out-schedule the fixed homeostasis heuristic on the SAME task? Measures
+    both on a held-out scenario set. If evolution does not beat the human
+    heuristic, it is decoration — and we say so."""
+    rng = random.Random(seed * 97 + 3)
+    eco = Ecosystem(seed=seed, n_domains=4, n_beliefs=6)
+    eco.seed_random(size)
+    res = evolve(eco, generations=generations)
+    evolved = res.get("best_agent")
+    baseline = _fixed_homeostasis_agent(eco.n_domains, eco.n_beliefs)
+    # held-out evaluation set (different draws than training)
+    heldout = [default_world(rng, eco.n_domains, eco.n_beliefs) for _ in range(200)]
+    ev_fit = evaluate(evolved, heldout) if evolved else 0.0
+    bl_fit = evaluate(baseline, heldout)
+    delta = round(ev_fit - bl_fit, 3)
+    return {
+        "evolved_fitness": round(ev_fit, 3),
+        "baseline_fitness": round(bl_fit, 3),
+        "delta": delta,
+        "evolution_beats_human_heuristic": delta > 0.02,
+        "both_hallucination_free": ev_fit > -999 and bl_fit > -999,
+        "note": ("promotion is justified only if this is True AND survives repeated "
+                 "seeds; still human-gated, still sandbox until then"),
     }
 
 
