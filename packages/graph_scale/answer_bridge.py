@@ -357,6 +357,48 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     confidence} or None when the store can't answer it (empty store, no subject match, or
     the relation intent isn't present)."""
     ql = query.lower()
+    # 4D TEMPORAL lane (owner's true 4D: ontology + TIME AXIS — 4D-fluents
+    # validity slices): a question that names a time resolves against recorded
+    # intervals BEFORE the realtime guard. '2020년 대통령' and '지금 대통령' are
+    # DIFFERENT facts, both answerable when a timeline exists; a moment outside
+    # every slice (탄핵 공백기) stays an honest miss, and every answer shows the
+    # validity interval that grounded it.
+    _m_year = re.search(r"((?:19|20)\d{2})\s*년", query)
+    if _m_year or any(m in ql for m in ("지금", "현재")):
+        try:
+            from .temporal_kg import at_time, current, timeline_of
+
+            _when = _m_year.group(1) if _m_year else None
+            _cands = _subject_candidates(query)
+            for _ts in _cands:
+                for _tp in _cands:
+                    if _tp == _ts or not timeline_of(_ts, _tp):
+                        continue
+                    fact = at_time(_ts, _tp, _when) if _when else current(_ts, _tp)
+                    if fact is None:
+                        continue
+                    _vt = fact["valid_to"] or "현재"
+                    _lead = f"{_when}년 기준 " if _when else "현재 "
+                    return {
+                        "answer": (f"{_lead}{_ts}의 {_tp}은(는) {fact['object']}입니다 "
+                                   f"(유효 기간: {fact['valid_from']} ~ {_vt})."),
+                        "reasoning_certificate": {
+                            "derivation_kind": "temporal_slice_lookup",
+                            "anchor_concept": {"label": _ts},
+                            "steps": [{"type": "temporal_fact",
+                                       "fact": f"{_ts} {_tp} {fact['object']} "
+                                               f"[{fact['valid_from']}~{_vt}]"}],
+                            "evidence_concepts": [_ts, fact["object"]],
+                            "confidence": 0.9,
+                            "confidence_basis": "validity_interval_resolution",
+                            "guarantees": {"external_llm": False, "fabricated_facts": False,
+                                           "inferred": False, "time_sliced": True},
+                        },
+                        "confidence": 0.9,
+                        "answer_kind": "temporal_slice_lookup",
+                    }
+        except Exception:
+            pass
     if any(m in ql for m in _REALTIME_MARKERS):
         return None  # real-time intent — the honest realtime abstain must stand
     # imperative shape = a COMMAND, not a definition question. Without this,
