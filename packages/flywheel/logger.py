@@ -36,10 +36,13 @@ _CORRECTION_RE = re.compile(r"^\s*(아니|그게 아니|아니라|틀렸|다시|
 
 def log_turn(question: str, answer: str, answer_kind: str = "", confidence: float = 0.0,
              latency_ms: int = 0, language: str = "", context_len: int = 0,
-             lane: str = "", router_pred: str = "", router_conf: float = 0.0) -> None:
+             lane: str = "", router_pred: str = "", router_conf: float = 0.0,
+             gold_intent: str = "") -> None:
     """Append one turn. Best-effort by contract: a logging failure must never
     touch the chat path. `lane` is the rule lane that actually fired; `router_pred`
-    is the learned router's SHADOW prediction — disagreements are training gold."""
+    is the learned router's SHADOW prediction; `gold_intent` is the authoritative
+    intent in the ROUTER's OWN vocabulary (query_frame.answer_type) — so
+    router-vs-gold agreement is measurable and promotion can finally be judged."""
     try:
         FLYWHEEL_DIR.mkdir(parents=True, exist_ok=True)
         row = {
@@ -49,6 +52,7 @@ def log_turn(question: str, answer: str, answer_kind: str = "", confidence: floa
             "kind": answer_kind, "conf": round(float(confidence or 0.0), 3),
             "ms": int(latency_ms), "lang": language, "ctx": int(context_len),
             "lane": lane, "router": router_pred, "router_conf": round(float(router_conf or 0.0), 3),
+            "gold_intent": gold_intent,
         }
         with TURNS_PATH.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")

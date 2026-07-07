@@ -3743,6 +3743,24 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         web_query = build_conversation_context(question, request.conversation_context).contextual_query or question
     except Exception:  # pragma: no cover - defensive
         web_query = question
+    # RELATION queries carry a subject anchor (query_frame): '물의 화학식' must be
+    # answered ABOUT 물, so the web anchor is 물 — otherwise the search grabs the
+    # '화학식' page (the more-specific term) and defines the RELATION, not the
+    # subject. Setting the anchor here lets the rescue's relevance gate reject an
+    # off-subject page instead of pasting it.
+    _frame_anchor = ""       # the subject a relation query is ABOUT (물)
+    _frame_relation_word = ""  # the relation surface (화학식) — a wrong page DEFINES this
+    try:
+        from packages.graph_scale.query_frame import parse as _qf_parse
+
+        _qf = _qf_parse(question)
+        if _qf.answer_type == "relation" and _qf.subject:
+            _frame_anchor = _qf.subject
+            import re as _re_qf
+            _mrel = _re_qf.search(r"의\s+([가-힣A-Za-z0-9]{2,20})", question)
+            _frame_relation_word = _mrel.group(1) if _mrel else ""
+    except Exception:
+        pass
     # Local Brain cumulative learning: accumulate user prefs/info from this turn.
     _accumulate_user_facts(question, language)
     recall = _local_brain_recall(question, language)
@@ -4291,6 +4309,22 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
                         label_web_rescue_outcome(question, anchored=False)
             except Exception:
                 pass
+            # RELATION-ANCHOR relevance gate (query_frame): '물의 화학식' must be
+            # answered ABOUT 물, not DEFINE 화학식. If the web answer's own subject
+            # is the RELATION word (it opens '화학식(...)은 …' — defining the
+            # relation), it is the wrong page — refuse it honestly rather than
+            # pasting the definition of the relation.
+            if (rescue and _frame_relation_word and not rescue.get("web_unreachable")):
+                _head = str(rescue.get("answer") or "")[:len(_frame_relation_word) + 2]
+                if _head.startswith(_frame_relation_word):
+                    rescue = None
+                    result["answer"] = (
+                        f"‘{_frame_anchor}의 {_frame_relation_word}’에 대한 확인된 자료를 이번엔 찾지 "
+                        f"못했어요 — ‘{_frame_relation_word}’ 자체의 뜻을 엉뚱하게 갖다 붙이진 않을게요. "
+                        f"조금 더 좁혀 주시면 다시 찾아볼게요.")
+                    result["answer_kind"] = "honest_relation_gap"
+                    result["confidence"] = 0.3
+                    result["can_speak"] = True
             if rescue:
                 result["answer"] = rescue["answer"]
                 result["reasoning_certificate"] = rescue["reasoning_certificate"]
@@ -4463,11 +4497,20 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
 
         _res = response.get("result") if isinstance(response.get("result"), dict) else {}
         _rp, _rc = _router_predict(question)
+        # authoritative intent in the router's OWN vocabulary — the gold label the
+        # flywheel was missing, so router-vs-gold agreement becomes measurable and
+        # shadow->primary promotion can finally be judged on real data.
+        try:
+            from packages.graph_scale.query_frame import parse as _qf_parse
+            _gold = str(_qf_parse(question).answer_type or "")
+        except Exception:
+            _gold = ""
         log_turn(question=question, answer=str(_res.get("answer") or ""),
                  answer_kind=str(_res.get("answer_kind") or ""),
                  confidence=float(_res.get("confidence") or 0.0),
                  language=language, context_len=len(request.conversation_context or []),
-                 lane=str(_res.get("answer_kind") or ""), router_pred=_rp, router_conf=_rc)
+                 lane=str(_res.get("answer_kind") or ""), router_pred=_rp, router_conf=_rc,
+                 gold_intent=_gold)
     except Exception:
         pass
     return response
