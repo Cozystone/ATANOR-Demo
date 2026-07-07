@@ -3719,9 +3719,22 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         from packages.graph_scale.answer_bridge import answer_from_triples
 
         triple_answer = answer_from_triples(question, language)
-        # follow-up context ('그럼 그 나라의 수도는?'): when the bare question can't
-        # resolve, retry with the context-resolved query so the prior topic (일본)
-        # carries into the lookup — the whole point of conversation context.
+        # follow-up context, two tiers: (1) REAL deixis resolution — '그 나라' binds
+        # to the graph-typed salient entity ('일본의 수도는?'), auditable bindings;
+        # (2) the coarser context-concatenated query as the fallback net.
+        if triple_answer is None and request.conversation_context:
+            try:
+                from packages.conversation_state import resolve_deixis
+
+                _dx = resolve_deixis(question, request.conversation_context)
+                if _dx["resolved"] != question:
+                    triple_answer = answer_from_triples(_dx["resolved"], language)
+                    if triple_answer is not None:
+                        cert = triple_answer.get("reasoning_certificate")
+                        if isinstance(cert, dict):
+                            cert["deixis_bindings"] = _dx["bindings"]
+            except Exception:
+                pass
         if triple_answer is None and web_query and web_query != question:
             triple_answer = answer_from_triples(web_query, language)
     except Exception:  # pragma: no cover - never break chat
@@ -4267,6 +4280,23 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # particle scene; everything else is text.
     if isinstance(response.get("result"), dict) and not (directive and directive.get("action") == "close_window"):
         response["result"] = _decide_answer_modality(response["result"], question)
+    # FLYWHEEL: log every real turn (question, answer, lane) plus the learned
+    # router's SHADOW prediction. Disagreements between the rule lane that fired
+    # and the learned prediction are the training gold that makes the next
+    # router strictly better — the data engine behind all learned components.
+    try:
+        from packages.flywheel import log_turn
+        from packages.learned_router import predict as _router_predict
+
+        _res = response.get("result") if isinstance(response.get("result"), dict) else {}
+        _rp, _rc = _router_predict(question)
+        log_turn(question=question, answer=str(_res.get("answer") or ""),
+                 answer_kind=str(_res.get("answer_kind") or ""),
+                 confidence=float(_res.get("confidence") or 0.0),
+                 language=language, context_len=len(request.conversation_context or []),
+                 lane=str(_res.get("answer_kind") or ""), router_pred=_rp, router_conf=_rc)
+    except Exception:
+        pass
     return response
 
 
