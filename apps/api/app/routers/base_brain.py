@@ -132,6 +132,19 @@ def base_brain_interference_scene() -> dict[str, Any]:
         return {"nodes": [], "links": [], "prunes": []}
 
 
+@router.get("/graph-health")
+def base_brain_graph_health() -> dict[str, Any]:
+    """Read-only integrity report: the self-refinement flywheel made observable.
+    Runs every defect detector with apply=False (nothing is modified) and returns
+    counts + a 0..1 integrity score. Safe to poll."""
+    try:
+        from packages.graph_scale.graph_health import health_report
+
+        return health_report()
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/visual-memory/{concept}")
 def base_brain_visual_recall(concept: str, learn: bool = False) -> dict[str, Any]:
     """Perceptual grounding v0: the measured visual signature of a concept
