@@ -94,6 +94,25 @@ def browser_promote_preview(auto_mode: bool = False) -> dict[str, Any]:
     return _ledger().gate_preview(store=store, auto_mode=auto_mode)
 
 
+@router.post("/forget")
+def browser_forget(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    """Right to be forgotten (threat model §4): retract every graph row that
+    mentions a subject. Auditable; returns the masked subject + count only."""
+    subject = str(body.get("subject") or "").strip()
+    if not subject:
+        return {"ok": False, "reason": "subject required"}
+    try:
+        from packages.graph_scale.answer_bridge import _store
+        from packages.graph_scale.pii_guard import forget
+
+        store = _store()
+        if store is None:
+            return {"ok": False, "reason": "store unavailable"}
+        return {"ok": True, **forget(store, subject)}
+    except Exception as exc:
+        return {"ok": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/stats")
 def browser_stats() -> dict[str, Any]:
     return _ledger().stats()

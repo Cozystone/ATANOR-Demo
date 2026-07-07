@@ -1801,11 +1801,21 @@ def _continuous_worker() -> None:
                     _hyp_mint(store=_kg2, k_terms=40)
                     _hyp_investigate(limit=2)
                     _sres = _hyp_settle(store=_kg2)
+                    # PII quarantine sweep (threat model §4): personal data that
+                    # slipped past the ingest gate is retracted (reversible).
+                    _pii = {}
+                    try:
+                        from packages.graph_scale.pii_guard import scan_and_quarantine as _pii_scan
+
+                        _pii = _pii_scan(_kg2, max_rows=500_000)
+                    except Exception:
+                        _pii = {}
                     with _CONT_LOCK:
                         _CONT["self_refine"] = {
                             "conflicts": _cres.get("conflicts", 0),
                             "resolved": _cres.get("resolved", 0),
                             "hyp_confirmed": _sres.get("confirmed", 0),
+                            "pii_quarantined": _pii.get("quarantined", 0),
                             "at": _time.time()}
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:

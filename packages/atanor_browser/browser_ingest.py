@@ -162,10 +162,21 @@ def ingest_page(html: str, url: str = "",
     store is never touched here."""
     led = ledger or BrowserEvidenceLedger()
     result = distill_page(html, url=url)
-    recorded = 0
+    # PII guard at the ingest boundary (threat model §4): a candidate carrying
+    # personal data never becomes a browser candidate. Prevention beats cleanup.
+    try:
+        from packages.graph_scale.pii_guard import gate as _pii_gate
+    except Exception:
+        _pii_gate = None
+    recorded = pii_blocked = 0
     for t in result.get("triples", []):
+        if _pii_gate is not None and not _pii_gate(
+                t["subject"], t["predicate"], t["object"])["allowed"]:
+            pii_blocked += 1
+            continue
         led.record(t["subject"], t["predicate"], t["object"], url)
         recorded += 1
     return {"anchor": result.get("anchor"), "distilled": len(result.get("triples", [])),
-            "recorded": recorded, "evidence_kept": len(result.get("evidence", [])),
+            "recorded": recorded, "pii_blocked": pii_blocked,
+            "evidence_kept": len(result.get("evidence", [])),
             "dropped": result.get("dropped", {}), "written_to_verified_store": False}
