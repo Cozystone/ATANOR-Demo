@@ -44,6 +44,19 @@ def test_cooldown_dedupes_repeat_sightings(monkeypatch, tmp_path):
     assert len(tl.timeline("컵", limit=50)) == 1  # one event, not three
 
 
+def test_person_sighting_raises_presence_for_selfhood(monkeypatch, tmp_path):
+    client, _ = _client(monkeypatch, tmp_path)
+    from app.routers import perception
+
+    monkeypatch.setattr(perception, "_PRESENCE_PATH", tmp_path / "presence.json")
+    assert perception.person_recently_seen() is False
+    client.post("/api/perception/visual-ingest", json={
+        "detections": [{"label": "사람", "score": 0.92}]})
+    # the camera's person-sighting IS the user_present signal (4-5 x 3-6)
+    assert perception.person_recently_seen() is True
+    assert perception.person_recently_seen(window_s=0.0) is False  # window honored
+
+
 def test_old_possession_triggers_grounded_suggestion(monkeypatch, tmp_path):
     client, tl = _client(monkeypatch, tmp_path)
     # a REAL recorded purchase 3 years ago — the 물병 시나리오 precondition

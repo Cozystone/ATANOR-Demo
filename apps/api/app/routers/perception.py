@@ -13,6 +13,7 @@ screenshot; only concepts + app + time land in the ledger, and nothing leaves 12
 """
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,30 @@ class VisualIngestIn(BaseModel):
 _SEEN_COOLDOWN_S = 60.0
 _last_seen: dict[str, float] = {}
 
+# presence handshake with the selfhood loop: a person in frame = the user is
+# HERE. Written through to disk so the observation survives module reloads.
+_PRESENCE_PATH = _LEDGER_PATH.parent / "presence.json"
+_PERSON_LABELS = {"사람", "person"}
+
+
+def _mark_person_seen() -> None:
+    try:
+        _PRESENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PRESENCE_PATH.write_text(json.dumps({"person_seen_at": time.time()}),
+                                  encoding="utf-8")
+    except Exception:
+        pass
+
+
+def person_recently_seen(window_s: float = 120.0) -> bool:
+    """The selfhood observation's user_present signal (Phase 4-5 x 3-6 wiring):
+    True while a camera person-sighting is fresher than the window."""
+    try:
+        at = float(json.loads(_PRESENCE_PATH.read_text(encoding="utf-8"))["person_seen_at"])
+        return (time.time() - at) < window_s
+    except Exception:
+        return False
+
 
 @router.post("/visual-ingest")
 def visual_ingest(body: VisualIngestIn) -> dict[str, Any]:
@@ -85,6 +110,8 @@ def visual_ingest(body: VisualIngestIn) -> dict[str, Any]:
         label = det.label.strip()
         if not label or det.score < 0.5:
             continue
+        if label in _PERSON_LABELS:
+            _mark_person_seen()  # presence refreshes every sighting (no cooldown)
         if now - _last_seen.get(label, 0.0) < _SEEN_COOLDOWN_S:
             continue
         _last_seen[label] = now

@@ -70,6 +70,15 @@ def _observe() -> Observation:
             deficits = int(json.loads(last).get("hard_remaining") or 0)
     except Exception:
         pass
+    # Phase 4-5 x 3-6: the camera's person-sighting IS the user's presence —
+    # perception reaching the selfhood loop (arrival fires noradrenaline there)
+    user_present = False
+    try:
+        from .perception import person_recently_seen
+
+        user_present = person_recently_seen()
+    except Exception:
+        pass
     return Observation(
         learning_active=learning_active,
         concepts_delta=c_delta,
@@ -77,6 +86,7 @@ def _observe() -> Observation:
         uncertainty_signal=uncertainty,
         resource_pressure=_disk_pressure(),
         deficit_count=deficits,
+        user_present=user_present,
     )
 
 
