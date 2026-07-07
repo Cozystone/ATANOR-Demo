@@ -254,10 +254,39 @@ def _verify_submission(sentences: list[str], decomps: list[dict[str, Any]]) -> d
             "checked": checked, "matched": matched}
 
 
+@router.get("/peer/challenge")
+def peer_challenge(peer_id: str) -> dict[str, Any]:
+    """Sybil cost: a peer must solve this PoW before registering (threat model
+    §5). The peer runs solve_pow(peer_id) and submits the nonce to /register.
+    Trusted/legacy clients that omit the nonce still register — the guard raises
+    the cost of BULK identity creation without breaking a single honest join."""
+    from packages.brain_link_pool.peer_trust_guard import POW_DIFFICULTY, pow_challenge
+
+    return {"peer_id": peer_id, "challenge": pow_challenge(peer_id),
+            "difficulty": POW_DIFFICULTY,
+            "how": "find nonce so sha256(challenge+nonce) has `difficulty` leading zeros"}
+
+
 @router.post("/peer/register")
 def peer_register(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
     peer_id = str(body.get("peer_id") or f"peer-{uuid.uuid4().hex[:8]}")
     label = str(body.get("label") or peer_id)
+    # Trust guard (threat model §5): a quarantined KEY is refused (reversible,
+    # expiring — never a hardware curse); a supplied PoW nonce is verified to
+    # make Sybil identity-farming expensive. Absent nonce = legacy path (still
+    # economy tier, zero privileges) so honest existing clients keep working.
+    try:
+        from packages.brain_link_pool import peer_trust_guard as _guard
+
+        if _guard.is_quarantined(peer_id):
+            return {"ok": False, "peer_id": peer_id,
+                    "reason": "key quarantined (reversible, expiring — POST /peer/appeal)"}
+        _nonce = body.get("pow_nonce")
+        if _nonce is not None and not _guard.verify_pow(peer_id, int(_nonce)):
+            return {"ok": False, "peer_id": peer_id,
+                    "reason": "proof-of-work invalid (Sybil cost unmet)"}
+    except Exception:
+        pass
     now = _time.time()
     with _LOCK:
         existing = _POOL["peers"].get(peer_id, {})
@@ -329,6 +358,16 @@ def work_submit(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
         _rate = len(b.get("sentences") or []) / _dt
         _prev = float(registry.register(peer_id).get("bench") or 0.0)
         registry.set_bench(peer_id, round(0.7 * _prev + 0.3 * _rate, 2) if _prev else round(_rate, 2))
+        # Trust guard (threat model §5): behavioral auto-quarantine on a KEY whose
+        # failure/replay rate breaches threshold — reversible, expiring, audited.
+        # Uses the registry's own jobs/failed record (no hardware fingerprint).
+        from packages.brain_link_pool import peer_trust_guard as _guard
+
+        _rec = registry.register(peer_id)
+        _replays = 1 if (not proof.get("verified") and proof.get("reason") == "replay") else 0
+        _guard.assess(peer_id, jobs=int(_rec.get("jobs", 0)),
+                      failed=int(_rec.get("failed", 0)),
+                      replays=_replays)
     except Exception:
         pass
     if not proof.get("verified"):
@@ -357,6 +396,24 @@ def work_submit(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
     return {"ok": True, "store_concepts_added": added_c, "store_relations_added": added_r,
             "store_concepts_total": _STORE_TOTALS["concepts_added"],
             "store_relations_total": _STORE_TOTALS["relations_added"]}
+
+
+@router.post("/peer/appeal")
+def peer_appeal(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    """Contest a quarantine (threat model §5: bans are reversible, never a
+    hardware curse). A signed message lifts an auto-quarantine; operator review
+    can also lift. Absent signature -> logged for operator review, not auto-lifted."""
+    from packages.brain_link_pool import peer_trust_guard as _guard
+
+    peer_id = str(body.get("peer_id") or "")
+    if not peer_id or not _guard.is_quarantined(peer_id):
+        return {"ok": True, "quarantined": False, "reason": "not currently quarantined"}
+    msg, sig = str(body.get("message") or ""), str(body.get("signature") or "")
+    if msg and sig and _guard.verify_signature(peer_id, msg, sig):
+        _guard.lift_quarantine(peer_id, note="appeal: valid signature")
+        return {"ok": True, "lifted": True, "reason": "signature verified — quarantine lifted"}
+    return {"ok": True, "lifted": False,
+            "reason": "appeal logged for operator review (no valid signature supplied)"}
 
 
 @router.get("/pool/status")
