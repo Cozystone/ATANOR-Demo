@@ -478,6 +478,12 @@ class SplatraImaginationCommandApiRequest(BaseModel):
     archetype: str | None = None
 
 
+class ImagineGenerativeApiRequest(BaseModel):
+    concept: str
+    count: int = 2200
+    controls: dict[str, float] = Field(default_factory=dict)
+
+
 class SplatraSceneChoreographyApiRequest(BaseModel):
     stage_layout: str = "conversation"
     orb_anchor: str = "center"
@@ -676,6 +682,62 @@ def abstain_drain() -> dict[str, Any]:
     """On-demand: close the abstain->ingest loop now (fetch attributed evidence
     for pending abstained terms and ingest it). Bounded + judge-gated inside."""
     return _run_abstain_drain(force=True)
+
+
+_IMAGINE_STORE: Any = None
+
+
+def _imagine_store() -> Any:
+    """Cached TripleStore — opening the 25M-fact store costs ~7s, so open ONCE
+    and reuse across /imagine calls (fresh-open per request would hang)."""
+    global _IMAGINE_STORE
+    if _IMAGINE_STORE is None:
+        from packages.graph_scale.abstain_feeder import STORE_ROOT
+        from packages.graph_scale.triple_store import TripleStore
+
+        _IMAGINE_STORE = TripleStore(STORE_ROOT)
+    return _IMAGINE_STORE
+
+
+def _concept_graph_features(concept: str) -> dict[str, Any]:
+    """The concept's knowledge signature (degree, relation diversity, hierarchy),
+    so its imagined form reflects what ATANOR actually KNOWS about it. Defensive:
+    an empty/unknown concept just yields a hash-only (still unique) form."""
+    try:
+        store = _imagine_store()
+        facts = store.facts_about(concept, limit=80)
+        preds = [p for (_s, p, _o) in facts]
+        is_a = any(p in ("is_a", "defined_as", "종류", "일종") for p in preds)
+        part_of = sum(1 for p in preds if "part" in p.lower() or p in ("부분", "구성", "구성요소"))
+        return {"degree": len(facts), "relation_types": len(set(preds)),
+                "is_a": is_a, "part_of": part_of}
+    except Exception:
+        return {}
+
+
+@router.post("/imagine")
+def imagine(req: ImagineGenerativeApiRequest) -> dict[str, Any]:
+    """Generative particle synthesis: ANY concept -> its OWN animated form,
+    synthesised (not selected) from the concept's graph signature. Unlimited,
+    deterministic, No-LLM/No-image-model. This is the real-time generative
+    replacement for the fixed 9-archetype path."""
+    from packages.splatra_imagination.generative import synthesize_form, form_descriptor
+
+    concept = (req.concept or "").strip()
+    if not concept:
+        return {"error": "concept_required", "particles": [], "particle_count": 0}
+    gf = _concept_graph_features(concept)
+    particles = synthesize_form(concept, count=req.count, controls=req.controls,
+                                graph_features=gf or None)
+    return {
+        "concept": concept,
+        "source": "generative",
+        "descriptor": form_descriptor(concept, gf or None),
+        "particle_count": len(particles),
+        "particles": [p.to_dict() for p in particles],
+        "safety_flags": {"external_llm": False, "external_sllm": False,
+                         "image_model_used": False, "proof_only": True},
+    }
 
 
 @router.get("/status")
