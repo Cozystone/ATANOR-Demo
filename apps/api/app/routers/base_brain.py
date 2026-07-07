@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter
@@ -92,7 +93,17 @@ def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
         cert = result.get("reasoning_certificate")
         neighborhoodish = isinstance(cert, dict) and (
             cert.get("derivation_kind") == "grounded_neighborhood_synthesis")
-        if (abstained or neighborhoodish) and not realtime:
+        # COMPOUND-SPLIT miss: '인공지능이란?' answered about '지능' — the base path
+        # split the compound and defined a FRAGMENT. When the answer's leading subject
+        # is a proper substring of the query's compound noun, it's the wrong referent;
+        # the curated bridge (which now tries the maximal compound first) outranks it.
+        compound_miss = False
+        _qm = re.match(r"\s*([가-힣]{3,})(?:이?란|이란 ?뭐|은|는|이|가|의)", request.query)
+        if _qm and answer_text:
+            _asub = re.match(r"\s*([가-힣]{2,})(?:은|는|이|가|란)", answer_text)
+            if _asub and _asub.group(1) != _qm.group(1) and _asub.group(1) in _qm.group(1):
+                compound_miss = True
+        if (abstained or neighborhoodish or compound_miss) and not realtime:
             from packages.graph_scale.answer_bridge import answer_from_triples
 
             bridged = answer_from_triples(request.query, request.language or "ko")

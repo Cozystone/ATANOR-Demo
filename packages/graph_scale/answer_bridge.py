@@ -108,7 +108,24 @@ def _subject_candidates(query: str) -> list[str]:
 
         kw = _kiwi()
         if kw is not None:
-            for tok in kw.tokenize(query):
+            toks = list(kw.tokenize(query))
+            # ADJACENT-noun compounds first: Kiwi splits 인공지능 -> 인공+지능, and
+            # looking up the fragment 지능 answers the WRONG subject (measured
+            # hallucination). Join runs of ≥2 adjacent NNG/NNP into the maximal
+            # compound and try it before its parts (sort by length keeps it first).
+            run: list[str] = []
+            for tok in toks:
+                if tok.tag in ("NNP", "NNG") and tok.form.lower() not in _EN_STOPWORDS:
+                    run.append(tok.form)
+                else:
+                    if len(run) >= 2:
+                        comp = "".join(run)
+                        if comp not in cands:
+                            cands.append(comp)
+                    run = []
+            if len(run) >= 2 and "".join(run) not in cands:
+                cands.append("".join(run))
+            for tok in toks:
                 if tok.tag in ("NNP", "NNG", "SL") and len(tok.form) >= 2:
                     if tok.form.lower() in _EN_STOPWORDS:
                         continue
