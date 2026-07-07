@@ -1799,6 +1799,26 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"abstain_feed_tick: {type(exc).__name__}"[:120]
+        # FLYWHEEL retrain tick every K ticks (default 120 ≈ 2h at 60s pace): mine
+        # conversation failures; when enough new gold accumulated, retrain the
+        # learned router in place — real usage keeps improving the understanding
+        # layer without an operator (the ATANOR gradient step).
+        try:
+            _fe = int(os.getenv("ATANOR_FLYWHEEL_EVERY", "120") or 120)
+            if _fe > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _fe == 0:
+                import importlib.util as _ilu
+                from pathlib import Path as _P
+
+                _fp = _P(__file__).resolve().parents[3] / "scripts" / "flywheel_retrain.py"
+                _spec = _ilu.spec_from_file_location("flywheel_retrain", str(_fp))
+                _mod = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_mod)
+                _mod.main()
+                with _CONT_LOCK:
+                    _CONT["flywheel_ticks"] = _CONT.get("flywheel_ticks", 0) + 1
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"flywheel_tick: {type(exc).__name__}"[:120]
         # Pace to respect the search-API free tier (default 60s; ATANOR_LEARN_INTERVAL_SEC).
         _time.sleep(_learn_interval)
 

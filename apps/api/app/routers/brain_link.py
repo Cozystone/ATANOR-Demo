@@ -186,6 +186,60 @@ def _reclaim_stale() -> None:
                 _POOL["queue"].appendleft(s)
 
 
+# ── Render-model economy (BME credits + reputation tiers) ──────────────────
+# The coordinator is the REQUESTER (it wants learning done): it burns Synapse
+# credits when a peer claims work, and the peer MINTS them only when the
+# submitted batch passes verification. See brain_link_pool/render_economy.py.
+_ECONOMY: dict[str, Any] = {"ledger": None, "registry": None}
+COORDINATOR = "coordinator"
+BATCH_PRICE = 1.0  # credits per claimed batch
+
+
+def _economy() -> tuple[Any, Any]:
+    if _ECONOMY["ledger"] is None:
+        from packages.brain_link_pool.render_economy import CreditLedger, PeerRegistry
+
+        ledger = CreditLedger()
+        registry = PeerRegistry()
+        if ledger.balance(COORDINATOR) <= 0:
+            ledger.grant(COORDINATOR, 10_000.0, "coordinator_genesis")
+        _ECONOMY["ledger"], _ECONOMY["registry"] = ledger, registry
+    return _ECONOMY["ledger"], _ECONOMY["registry"]
+
+
+def _verify_submission(sentences: list[str], decomps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Proof-of-Inference at the pool: a submitted batch must carry decompositions
+    whose evidence actually BELONGS to the claimed batch. The peer protocol keys
+    evidence by source_hash = sha256(sentence)[:16] (peer_worker._source_sentence),
+    so membership is checked on hashes — a fabricated or recycled submission fails."""
+    if not decomps:
+        # honest empty result (all sentences rejected by the verify gate) is VALID
+        return {"verified": True, "checked": 0, "matched": 0, "empty": True}
+    import hashlib as _hl
+
+    hash_set = {_hl.sha256(s.encode("utf-8")).hexdigest()[:16] for s in sentences}
+    sent_set = {s.strip() for s in sentences}
+    checked = matched = 0
+    for d in decomps[:5]:
+        ev = d.get("evidence")
+        ev_list = ev if isinstance(ev, list) else [ev]
+        ok = False
+        for e in ev_list:
+            if not isinstance(e, dict):
+                continue
+            if str(e.get("source_hash") or "") in hash_set:
+                ok = True
+                break
+            if str(e.get("source_sentence") or e.get("text") or "").strip() in sent_set:
+                ok = True
+                break
+        checked += 1
+        if ok:
+            matched += 1
+    return {"verified": checked == 0 or matched == checked,
+            "checked": checked, "matched": matched}
+
+
 @router.post("/peer/register")
 def peer_register(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
     peer_id = str(body.get("peer_id") or f"peer-{uuid.uuid4().hex[:8]}")
@@ -201,6 +255,11 @@ def peer_register(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
             "completed": existing.get("completed", 0),
         }
         _POOL["by_peer"].setdefault(peer_id, {"concepts": 0, "relations": 0, "batches": 0})
+    try:
+        _, registry = _economy()
+        registry.register(peer_id)
+    except Exception:
+        pass
     _seed_queue()
     return {"ok": True, "peer_id": peer_id, "label": label}
 
@@ -222,6 +281,12 @@ def work_claim(peer_id: str, n: int = 25) -> dict[str, Any]:
         _POOL["inflight"][batch_id] = {"peer_id": peer_id, "sentences": batch, "claimed_at": _time.time()}
         _POOL["peers"][peer_id]["claimed"] += 1
         _POOL["peers"][peer_id]["last_seen"] = _time.time()
+    # BME burn: the coordinator pays for requested work at claim time
+    try:
+        ledger, _ = _economy()
+        ledger.burn(COORDINATOR, BATCH_PRICE, batch_id)
+    except Exception:
+        pass
     return {"batch_id": batch_id, "sentences": batch}
 
 
@@ -234,6 +299,18 @@ def work_submit(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
         b = _POOL["inflight"].pop(batch_id, None)
         if b is None or b["peer_id"] != peer_id:
             return {"ok": False, "reason": "unknown_or_foreign_batch"}
+    # Proof-of-Inference gate BEFORE the merge: a submission that fails membership
+    # verification neither enters the store nor mints — and reputation bleeds.
+    proof = _verify_submission(b.get("sentences") or [], decomps)
+    try:
+        ledger, registry = _economy()
+        registry.record_outcome(peer_id, bool(proof.get("verified")))
+        if proof.get("verified") and not proof.get("empty"):
+            ledger.mint(peer_id, BATCH_PRICE, batch_id, proof)
+    except Exception:
+        pass
+    if not proof.get("verified"):
+        return {"ok": False, "reason": "verification_failed", "proof": proof}
     # Merge the peer's neuro-symbolic decompositions into the shared store — the
     # brain actually GROWS from distributed peer compute.
     added_c, added_r = _accumulate_decompositions(decomps)
@@ -291,7 +368,26 @@ def pool_status() -> dict[str, Any]:
             "architecture": "p2p_shared_compute_pool",
             # The merge engine that absorbs peer output (persistent + sharded).
             "merge_engine": merge,
+            # Render-model economy: BME equilibrium + per-peer tier/reputation.
+            "economy": _economy_status(peers),
         }
+
+
+def _economy_status(peers: list[dict[str, Any]]) -> dict[str, Any] | None:
+    try:
+        ledger, registry = _economy()
+        return {
+            "model": "render_bme",
+            "equilibrium": ledger.equilibrium(),
+            "coordinator_balance": ledger.balance(COORDINATOR),
+            "peers": {p["peer_id"]: {
+                "tier": registry.tier(p["peer_id"]),
+                "reputation": registry.register(p["peer_id"])["reputation"],
+                "credits": ledger.balance(p["peer_id"]),
+            } for p in peers},
+        }
+    except Exception:
+        return None
 
 
 @router.get("/pool/graph")

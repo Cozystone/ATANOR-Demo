@@ -4282,6 +4282,31 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # particle scene; everything else is text.
     if isinstance(response.get("result"), dict) and not (directive and directive.get("action") == "close_window"):
         response["result"] = _decide_answer_modality(response["result"], question)
+    # LEARNED-ROUTER RESCUE (first decision power, deliberately narrow): when
+    # every rule lane passed and the engine is about to send the abstain
+    # boilerplate for what the learned router confidently reads as CONVERSATION
+    # (chatter/social/greeting), answer conversationally instead. Knowledge
+    # abstentions are untouched — honesty is not negotiable, tone is.
+    try:
+        from packages.learned_router import predict as _router_predict
+    except Exception:
+        _router_predict = None
+    if _router_predict is not None and isinstance(response.get("result"), dict):
+        _res0 = response["result"]
+        if _answer_is_abstention(str(_res0.get("answer") or "")):
+            _rp0, _rc0 = _router_predict(question)
+            if _rc0 >= 0.6 and _rp0 in ("chatter", "social", "greeting") and language == "ko":
+                _res0["answer"] = "네, 듣고 있어요. 편하게 이어가 주세요 — 궁금한 게 생기면 뭐든 물어보시고요."
+                _res0["answer_kind"] = "learned_router_conversational"
+                _res0["confidence"] = round(float(_rc0), 2)
+                _res0["reasoning_certificate"] = {
+                    "derivation_kind": "learned_router_rescue",
+                    "anchor_concept": None,
+                    "steps": [{"type": "learned_intent", "fact": f"{_rp0} ({_rc0:.2f})"}],
+                    "evidence_concepts": [], "confidence": round(float(_rc0), 2),
+                    "confidence_basis": "trained_intent_classifier",
+                    "guarantees": {"external_llm": False, "fabricated_facts": False, "web_used": False},
+                }
     # FLYWHEEL: log every real turn (question, answer, lane) plus the learned
     # router's SHADOW prediction. Disagreements between the rule lane that fired
     # and the learned prediction are the training gold that makes the next
