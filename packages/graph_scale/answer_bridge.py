@@ -133,12 +133,14 @@ def _subject_candidates(query: str) -> list[str]:
                     run.append(tok.form)
                 else:
                     if len(run) >= 2:
-                        comp = "".join(run)
-                        if comp not in cands:
-                            cands.append(comp)
+                        for comp in ("".join(run), " ".join(run)):  # 인공지능 AND 해리 포터
+                            if comp not in cands:
+                                cands.append(comp)
                     run = []
-            if len(run) >= 2 and "".join(run) not in cands:
-                cands.append("".join(run))
+            if len(run) >= 2:
+                for comp in ("".join(run), " ".join(run)):
+                    if comp not in cands:
+                        cands.append(comp)
             for tok in toks:
                 if tok.tag in ("NNP", "NNG", "SL") and len(tok.form) >= 2:
                     if tok.form.lower() in _EN_STOPWORDS:
