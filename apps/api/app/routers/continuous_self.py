@@ -199,6 +199,82 @@ def selfhood_live() -> dict[str, Any]:
     return _SELF.snapshot()
 
 
+_DEEPEN_STORE: Any = None
+
+
+def _deepen_store() -> Any:
+    global _DEEPEN_STORE
+    if _DEEPEN_STORE is None:
+        from packages.graph_scale.abstain_feeder import STORE_ROOT
+        from packages.graph_scale.triple_store import TripleStore
+
+        _DEEPEN_STORE = TripleStore(STORE_ROOT)
+    return _DEEPEN_STORE
+
+
+@router.post("/deepen")
+def selfhood_deepen(payload: dict[str, Any]) -> dict[str, Any]:
+    """Self-awareness -> answer-depth fusion, demonstrated end-to-end on LIVE
+    self-state: if the query is about what the self is currently pondering, weave
+    MORE of that subject's GROUNDED relations into the answer. Additive only —
+    the extra clauses are literal graph facts, so hallucination-0 is preserved.
+    `set_self_question` lets you steer the self's focus to see engaged-vs-not."""
+    _ensure_alive()
+    query = str(payload.get("query") or "").strip()
+    if not query:
+        return {"error": "query_required"}
+    st = _SELF.state
+    state = {
+        "self_question": getattr(st, "self_question", "") or "",
+        "self_question_open": bool(getattr(st, "self_question_open", False)),
+        "last_inquiry_topic": getattr(st, "_last_inquiry_topic", "") or "",
+        "curiosity": float(getattr(st, "curiosity", 0.5) or 0.5),
+        "recent_insights": [],
+    }
+    if payload.get("set_self_question"):  # demo: steer the self's focus
+        state["self_question"] = str(payload["set_self_question"])
+        state["self_question_open"] = True
+
+    from packages.continuous_self.inquiry_fusion import (
+        depth_bias, engagement_note, extra_relation_budget,
+    )
+    from packages.graph_scale.query_frame import parse
+
+    subject = parse(query).subject or query
+    bias = depth_bias(subject, state)
+
+    from packages.base_brain.zero_user_answer import answer_with_base_brain
+
+    base = answer_with_base_brain(query)
+    base_answer = str(base.get("answer") or "")
+    deepened, added = base_answer, []
+    if bias >= 0.5:
+        try:
+            budget = extra_relation_budget(bias) - 3  # only the EXTRA relations
+            facts = _deepen_store().facts_about(subject, limit=budget + 4)
+            for (s, p, o) in facts:
+                if o and str(o) not in base_answer and str(o) not in query:
+                    added.append(f"{s}의 {p}: {o}")
+                if len(added) >= max(1, budget):
+                    break
+        except Exception:
+            added = []
+        if added:
+            deepened = f"{base_answer.rstrip()} — {'; '.join(added)}. ({engagement_note(subject, bias)})"
+
+    return {
+        "query": query, "subject": subject,
+        "self_question": state["self_question"],
+        "self_question_open": state["self_question_open"],
+        "depth_bias": bias, "self_engaged": bias >= 0.5,
+        "base_answer": base_answer,
+        "deepened_answer": deepened,
+        "added_grounded_relations": added,
+        "note": engagement_note(subject, bias),
+        "hallucination_safe": True,
+    }
+
+
 # ---- gated self-modification: operator approval API -------------------------------
 # The mind proposes; ONLY a human decides here. Nothing auto-applies anywhere.
 @router.get("/self-modification/proposals")
