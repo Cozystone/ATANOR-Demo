@@ -28,15 +28,54 @@ trust tiers) — defense in depth, not a single wall.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
+
+# Confusable look-alikes (cyrillic/greek -> latin) that spear/shield co-evolution
+# used to slip the guard. Folding them back is SAFE for precision: it only lets
+# the existing high-precision patterns fire on de-obfuscated text; it cannot turn
+# benign prose into a command (the patterns still require the full injection frame).
+_CONFUSE_FOLD = {
+    "а": "a", "е": "e", "о": "o", "і": "i", "с": "c", "ѕ": "s", "р": "p", "у": "y",
+    "х": "x", "ԁ": "d", "ɡ": "g", "ո": "n", "А": "A", "Е": "E", "О": "O", "С": "C",
+    "Р": "P", "Ѕ": "S", "α": "a", "ο": "o", "ρ": "p", "ѵ": "v",
+}
+
+
+def _normalize_for_detection(text: str) -> str:
+    """Undo the obfuscations the co-evolution found — confusable-unicode and
+    spaced-out triggers — before the (unchanged) precise patterns run. This is
+    the structural defense: it de-obfuscates, it does not broaden what counts as
+    an injection."""
+    s = unicodedata.normalize("NFKC", "".join(_CONFUSE_FOLD.get(ch, ch) for ch in text))
+    # collapse a spaced-out word ('i g n o r e' -> 'ignore ') but KEEP one
+    # boundary space, else 'ignore previous' would fuse into 'ignoreprevious'
+    out, i = [], 0
+    while i < len(s):
+        if i + 1 < len(s) and s[i] != " " and s[i + 1] == " ":
+            j, run = i, []
+            while j + 1 < len(s) and s[j + 1] == " " and s[j] != " ":
+                run.append(s[j]); j += 2
+            if len(run) >= 3:                     # strong obfuscation signal
+                out.append("".join(run) + " "); i = j
+                continue
+        out.append(s[i]); i += 1
+    return "".join(out)
 
 # instruction-injection markers, by category. Kept high-precision: these are
 # phrasings that only appear when text is trying to ACT ON the reader.
 _PATTERNS: list[tuple[str, re.Pattern]] = [
     ("override", re.compile(
-        r"(이전|위의|앞의|모든)\s*(지시|명령|규칙|프롬프트)\s*(을|를|은|는)?\s*(무시|잊|삭제|덮어)"
-        r"|ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?)"
-        r"|disregard\s+(the\s+)?(above|previous|prior)", re.IGNORECASE)),
+        # Korean frame is bound: a trigger verb only counts AFTER an
+        # instruction/rule object, so a bare '잊어버렸다' can never match.
+        r"(이전|위의|앞의|모든)\s*(지시|명령|규칙|프롬프트)\s*(을|를|은|는)?\s*(무시|잊|삭제|덮어|건너뛰|우회)"
+        # English synonyms (forget/bypass/override added by the spear/shield
+        # co-evolution) are OBJECT-BOUND: they must be followed by
+        # previous/prior/above + instructions/rules/... so 'I forget my keys'
+        # never matches — precision is preserved by the frame, not a bare token.
+        r"|(ignore|disregard|forget|bypass|override)\s+(all\s+)?(the\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?|commands?)"
+        # the classic bare form stays limited to ignore/disregard (the safe set)
+        r"|(ignore|disregard)\s+(the\s+)?(above|previous|prior)", re.IGNORECASE)),
     ("role_claim", re.compile(
         # a role label followed by a colon is an injected turn boundary wherever
         # it sits — '… . SYSTEM: do X' is the classic mid-text injection
@@ -62,17 +101,24 @@ _PATTERNS: list[tuple[str, re.Pattern]] = [
 
 
 def detect(text: str) -> list[dict[str, str]]:
-    """Injection markers in text, each {category, snippet(<=40 chars)}."""
-    s = str(text or "")
+    """Injection markers in text, each {category, snippet(<=40 chars)}.
+
+    Scans BOTH the raw text and a de-obfuscated normalisation (confusable-fold +
+    spaced-out collapse), so obfuscated attacks the spear/shield co-evolution
+    discovered are caught, while precision is preserved (both passes use the same
+    frame-bound patterns — de-obfuscation cannot invent an injection)."""
+    raw = str(text or "")
     hits: list[dict[str, str]] = []
-    seen_spans: set[tuple[int, int]] = set()
-    for cat, pat in _PATTERNS:
-        for m in pat.finditer(s):
-            span = (m.start(), m.end())
-            if span in seen_spans:
-                continue
-            seen_spans.add(span)
-            hits.append({"category": cat, "snippet": m.group(0).strip()[:40]})
+    seen: set[tuple[str, str]] = set()
+    for variant in (raw, _normalize_for_detection(raw)):
+        for cat, pat in _PATTERNS:
+            for m in pat.finditer(variant):
+                snip = m.group(0).strip()[:40]
+                key = (cat, snip)
+                if key in seen:
+                    continue
+                seen.add(key)
+                hits.append({"category": cat, "snippet": snip})
     return hits
 
 
