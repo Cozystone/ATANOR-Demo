@@ -55,6 +55,52 @@ def tick() -> dict[str, Any]:
     return {"probed": True, "app": ev.app, "concepts": ev.concepts, "redacted": ev.redacted}
 
 
+class Detection(BaseModel):
+    label: str = Field(max_length=80)
+    score: float = 0.0
+
+
+class VisualIngestIn(BaseModel):
+    detections: list[Detection] = Field(default_factory=list, max_length=32)
+
+
+# per-label cooldown so a bottle sitting in frame for a minute is ONE event,
+# not forty — the timeline stays a life log, not a frame log
+_SEEN_COOLDOWN_S = 60.0
+_last_seen: dict[str, float] = {}
+
+
+@router.post("/visual-ingest")
+def visual_ingest(body: VisualIngestIn) -> dict[str, Any]:
+    """Phase 4-5 v0: the browser page detects objects ON DEVICE and sends ONLY
+    labels here (frames never leave the page). Each new sighting lands on the
+    universal episodic timeline; possessions old enough trigger the 물병
+    suggestion primitive — grounded in recorded events, or silent."""
+    from packages.episodic_memory.timeline import record_event, repurchase_suggestion
+
+    now = time.time()
+    recorded: list[str] = []
+    suggestions: list[dict[str, Any]] = []
+    for det in body.detections:
+        label = det.label.strip()
+        if not label or det.score < 0.5:
+            continue
+        if now - _last_seen.get(label, 0.0) < _SEEN_COOLDOWN_S:
+            continue
+        _last_seen[label] = now
+        record_event("사용자", "목격", label,
+                     note=f"카메라 감지 score={det.score:.2f}", source="camera")
+        recorded.append(label)
+        try:
+            s = repurchase_suggestion(label)
+            if s:
+                suggestions.append(s)
+        except Exception:
+            continue
+    return {"recorded": recorded, "suggestions": suggestions,
+            "frames_received": 0, "left_device": False}
+
+
 @router.get("/status")
 def status() -> dict[str, Any]:
     return _LEDGER.stats()
