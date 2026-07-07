@@ -525,8 +525,13 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         if hop_from is None and language in ("ko", "en") and (not want or (want & {"defined_as", "is_a"})):
             try:
                 from packages.grounded_composer import compose_from_facts
+                from packages.grounded_composer.composer import compose_narrative
 
-                composed = compose_from_facts(s, facts, language=language)
+                # 뼈+살 v3: the multi-paragraph 기승전결 narrative when at least
+                # two paragraph groups have material; single paragraph otherwise
+                # (adaptive depth — never padded)
+                composed = compose_narrative(s, facts, language=language) \
+                    or compose_from_facts(s, facts, language=language)
             except Exception:
                 composed = None
             if composed is not None:

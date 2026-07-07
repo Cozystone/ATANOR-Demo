@@ -222,6 +222,69 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
     return ComposedAnswer(answer=answer, facts_used=used, connectives_used=connectives)
 
 
+# paragraph groups for the 기승전결 narrative: identity leads, origin/agency
+# develops, causality turns — the closing 결 is a 즉-summary of the identity.
+_PARA_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("defined_as", "is_a", "상위개념", "구성요소", "capital", "located_in", "country"),
+    ("설립자", "설립", "저자", "author", "발견자", "최고경영자", "capital_of"),
+    ("원인", "결과", "used_for"),
+)
+
+
+def compose_narrative(subject: str, facts: list[tuple[str, str, str]],
+                      language: str = "ko") -> ComposedAnswer | None:
+    """뼈+살 v3 first slice — a multi-PARAGRAPH answer with a 기승전결 arc.
+
+    ¶기  identity/composition, ¶승  origin/agency, ¶전  causality/use — each
+    paragraph composed by the same closed-vocabulary machinery — and ¶결 a
+    즉-summary that REUSES the identity object verbatim. Fires only when at
+    least two paragraph groups have material; otherwise the caller keeps the
+    single-paragraph composer (adaptive depth, never padding)."""
+    if language != "ko":
+        return None
+    by_pred: dict[str, tuple[str, str, str]] = {}
+    for s, p, o in facts:
+        if p not in ("alias", "sense") and p not in by_pred:
+            by_pred[p] = (s, p, o)
+    paragraphs: list[str] = []
+    used: list[tuple[str, str, str]] = []
+    conns: list[str] = []
+    for group in _PARA_GROUPS:
+        group_facts = [by_pred[p] for p in group if p in by_pred]
+        if not group_facts:
+            continue
+        comp = compose_from_facts(subject, group_facts, language="ko")
+        if comp is not None:
+            paragraphs.append(_strip_source(comp.answer))
+            used.extend(comp.facts_used)
+            conns.extend(comp.connectives_used)
+        elif len(group_facts) == 1 and paragraphs:
+            # a one-fact paragraph still contributes as a lead sentence
+            s, p, o = group_facts[0]
+            frame = _KO_LEAD.get(p)
+            if frame:
+                topic = s + _ko_topic_particle(s)
+                paragraphs.append(_resolve_josa(frame.format(s=s, o=o, s_topic=topic) + "."))
+                used.append((s, p, o))
+    if len(paragraphs) < 2:
+        return None
+    # ¶결: verbatim identity reuse — never new content
+    head = by_pred.get("defined_as") or by_pred.get("is_a")
+    if head:
+        closer = f"즉, {subject + _ko_topic_particle(subject)} {head[2]}"
+        closer += "의 일종입니다." if head[1] == "is_a" else "입니다."
+        paragraphs.append(_resolve_josa(closer))
+        conns.append("즉")
+    answer = "\n\n".join(paragraphs) + " (출처: 큐레이션 지식그래프)"
+    return ComposedAnswer(answer=answer, facts_used=used, connectives_used=conns)
+
+
+def _strip_source(text: str) -> str:
+    import re as _re
+
+    return _re.sub(r"\s*\((?:출처|source)[^)]*\)\s*$", "", text).rstrip()
+
+
 def _pick_lead(facts: list[tuple[str, str, str]],
                avoid: tuple[str, str, str] | None = None) -> tuple[str, str, str] | None:
     """Highest-priority identifying fact for a subject, preferring one that DIFFERS

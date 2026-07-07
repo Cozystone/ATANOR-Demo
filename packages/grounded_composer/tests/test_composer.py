@@ -77,3 +77,26 @@ def test_unknown_predicate_is_dropped_not_improvised():
     r = compose_from_facts("커피", facts)
     assert r is not None
     assert "이상한 값" not in r.answer and "weird_pred" not in r.answer
+
+
+def test_narrative_builds_multi_paragraph_arc():
+    from packages.grounded_composer.composer import compose_narrative
+
+    facts = [("테슬라", "defined_as", "미국의 전기자동차 제조사"),
+             ("테슬라", "상위개념", "나스닥 100"),
+             ("테슬라", "설립자", "마틴 에버하드"),
+             ("테슬라", "설립", "2003년 7월 1일")]
+    n = compose_narrative("테슬라", facts)
+    assert n is not None
+    paras = n.answer.split("\n\n")
+    assert len(paras) >= 3                      # 기 / 승 / 결
+    assert paras[-1].startswith("즉,")           # closing reuses identity verbatim
+    assert "미국의 전기자동차 제조사" in paras[-1]
+    assert "마틴 에버하드가 세웠습니다" in n.answer  # josa resolved
+
+
+def test_narrative_abstains_below_two_groups():
+    from packages.grounded_composer.composer import compose_narrative
+
+    facts = [("커피", "defined_as", "볶은 씨앗 음료"), ("커피", "is_a", "음료")]
+    assert compose_narrative("커피", facts) is None  # one group only -> no padding
