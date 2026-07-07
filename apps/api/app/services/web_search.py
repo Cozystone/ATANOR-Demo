@@ -805,7 +805,10 @@ def searxng_search(query: str, count: int = 6) -> list[dict[str, Any]]:
     query = (query or "").strip()
     if not query:
         return []
-    url = _SEARXNG_URL + "/search?" + urllib.parse.urlencode({"q": query, "format": "json", "language": "ko"})
+    # general+news: the whole-web mandate includes newspapers/outlets — news-category
+    # engines (naver news, bing news, reuters…) join every query, not just !bangs
+    url = _SEARXNG_URL + "/search?" + urllib.parse.urlencode(
+        {"q": query, "format": "json", "language": "ko", "categories": "general,news"})
     try:
         req = urllib.request.Request(url, headers={"User-Agent": WEB_USER_AGENT, "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=8) as resp:  # nosec B310 - local instance

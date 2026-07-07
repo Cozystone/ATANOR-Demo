@@ -259,9 +259,13 @@ _DISCUSS: dict[str, list[tuple[str, str, str]]] = {
 
 def _store_triples(limit: int = 400) -> list[tuple[str, str, str]]:
     try:
-        from packages.graph_scale.triple_store import TripleStore
+        # shared snapshot — a fresh TripleStore is an 8-10s build at 25M rows,
+        # far too heavy for a request handler (measured; see answer_bridge._store)
+        from packages.graph_scale.answer_bridge import _store
 
-        ts = TripleStore(_REPO / "data" / "graph_scale" / "kg_triples")
+        ts = _store()
+        if ts is None:
+            return []
         cols = ts.open_columns()
         n = min(limit, len(cols["s"]))
         return [(ts.terms.term(int(cols["s"][i])), ts.terms.term(int(cols["p"][i])),
@@ -306,10 +310,12 @@ def _gen_inquiry(posted: set[str], triples: list) -> dict[str, Any] | None:
         driver = str(snap.get("inquiry_driver") or "state")
         # terms of the question, so each replier can do a REAL lookup
         from packages.graph_scale.abstain_queue import _terms as _q_terms
-        from packages.graph_scale.triple_store import TripleStore
+        from packages.graph_scale.answer_bridge import _store
 
         terms = _q_terms(question)
-        ts = TripleStore(_REPO / "data" / "graph_scale" / "kg_triples")
+        ts = _store()
+        if ts is None:
+            return None
         found: list[tuple[str, str, str]] = []
         for term in terms:
             found = ts.facts_about(term, limit=3)

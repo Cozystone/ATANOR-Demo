@@ -14,11 +14,17 @@ returns None (the normal paths handle it), so it is safe to wire even before any
 from __future__ import annotations
 
 import re
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[2] / "data" / "graph_scale" / "kg_triples"
-_STORE = {"obj": None, "sig": None}
+_STORE = {"obj": None, "sig": None, "building": False, "built_at": 0.0}
+# a full TripleStore load is ~8-10s at 25M rows (term-dict build dominates); the
+# continuous learner touches meta.json constantly, so refreshes must NEVER run on
+# the request path and must be rate-limited or they become a permanent CPU loop
+_REBUILD_MIN_INTERVAL_S = 60.0
 
 # relation-intent cues -> the predicate names a curated source uses. A small, bounded map
 # (LAD/ontology layer, like the domain bridge) so '수도' finds the 'capital' predicate.
@@ -41,17 +47,40 @@ _RELATION_CUES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _rebuild_store(sig: float) -> None:
+    try:
+        from .triple_store import TripleStore
+
+        obj = TripleStore(_ROOT)
+        _STORE["obj"], _STORE["sig"] = obj, sig
+        _STORE["built_at"] = time.monotonic()
+    except Exception:
+        pass  # keep serving the previous snapshot
+    finally:
+        _STORE["building"] = False
+
+
 def _store():
+    """Stale-while-revalidate: chat always answers from the loaded snapshot.
+    Growth lands via a background swap — measured live, the mtime-triggered
+    inline reload put an 8-10s TripleStore build inside EVERY request while
+    the learner kept touching meta.json (the 11-14s flat chat latency)."""
     try:
         meta = _ROOT / "meta.json"
         if not meta.exists():
             return None
         sig = meta.stat().st_mtime
-        if _STORE["sig"] != sig:
+        if _STORE["obj"] is None:
+            # first load: nothing to serve yet, block once
             from .triple_store import TripleStore
 
             _STORE["obj"] = TripleStore(_ROOT)
             _STORE["sig"] = sig
+            _STORE["built_at"] = time.monotonic()
+        elif (_STORE["sig"] != sig and not _STORE["building"]
+              and time.monotonic() - _STORE["built_at"] >= _REBUILD_MIN_INTERVAL_S):
+            _STORE["building"] = True
+            threading.Thread(target=_rebuild_store, args=(sig,), daemon=True).start()
         return _STORE["obj"]
     except Exception:
         return None
