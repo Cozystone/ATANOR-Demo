@@ -104,6 +104,9 @@ class SelfState:
     # about ITSELF over its life, each with source + reaffirmation count — so "나는 누구
     #인가" deepens over time instead of resetting to the latest string.
     self_model: list[dict[str, Any]] = field(default_factory=list)
+    # homeostasis layer (homeostasis.py): digital hormone levels + repair state.
+    # Raised only by observed events, decayed by clock, fully public.
+    hormones: dict[str, Any] = field(default_factory=dict)
 
     NARRATIVE_CAP: int = 60
     HISTORY_CAP: int = 20
@@ -174,9 +177,18 @@ class SelfState:
             "parked_questions": self.parked_questions[-5:],
             "open_threads": self.open_threads[-5:],
             **self._self_model_public(),
+            **self._homeostasis_public(),
             "narrative": self.narrative[-24:],
             "continuous": True,
         }
+
+    def _homeostasis_public(self) -> dict[str, Any]:
+        try:
+            from .homeostasis import public_report
+
+            return {"homeostasis": public_report(self)}
+        except Exception:
+            return {}
 
 
 def _target_from(obs: Observation) -> dict[str, float]:
@@ -240,6 +252,11 @@ def _thought(state: SelfState, obs: Observation) -> Thought:
 def evolve(state: SelfState, obs: Observation, *, rate: float = 0.25) -> SelfState:
     """Advance the self by ONE continuous micro-step. Never resets; only eases."""
     t = _target_from(obs)
+    # homeostasis (Phase 3-6): digital hormones — event-raised, clock-decayed —
+    # bias the targets globally; sustained stress forces a repair (rest) floor.
+    from .homeostasis import apply_homeostasis
+
+    t = apply_homeostasis(state, obs, t)
     state.energy = _ease(state.energy, t["energy"], rate)
     state.curiosity = _ease(state.curiosity, t["curiosity"], rate)
     state.uncertainty = _ease(state.uncertainty, t["uncertainty"], rate)
