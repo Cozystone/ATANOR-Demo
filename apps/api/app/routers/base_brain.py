@@ -120,6 +120,18 @@ def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
     return result
 
 
+@router.get("/interference-scene")
+def base_brain_interference_scene() -> dict[str, Any]:
+    """Phase-interference visualization data — REAL trained concepts + true
+    resonance pairs from the phase space (nothing staged)."""
+    try:
+        from packages.graph_scale.phase_space import interference_scene
+
+        return interference_scene()
+    except Exception:
+        return {"nodes": [], "links": [], "prunes": []}
+
+
 @router.post("/benchmark")
 def base_brain_benchmark(request: BaseBrainBenchmarkRequest) -> dict[str, Any]:
     return run_zero_user_benchmark(limit=request.limit)

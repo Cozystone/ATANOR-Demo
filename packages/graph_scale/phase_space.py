@@ -225,6 +225,35 @@ def resonance(a: str, b: str) -> float | None:
     return float(np.cos(_SPACE["phases"][ia] - _SPACE["phases"][ib]).mean())
 
 
+def interference_scene(k_nodes: int = 18, seed: int = 5) -> dict[str, Any]:
+    """A REAL phase-interference scene for the 작동 원리 visualization: nodes are
+    actual trained concepts, links are TRUE constructive pairs (high resonance),
+    prunes are TRUE destructive pairs (low resonance). Nothing staged — the
+    simulation the UI plays is the geometry the engine actually learned."""
+    if not _load():
+        return {"nodes": [], "links": [], "prunes": []}
+    import numpy as _np
+
+    rng = _np.random.default_rng(seed)
+    terms = _SPACE["terms"]
+    ko = [i for i, t in enumerate(terms)
+          if any("가" <= c <= "힣" for c in t) and 2 <= len(t) <= 6][:400]
+    if len(ko) < k_nodes:
+        ko = list(range(min(len(terms), 400)))
+    picked = sorted(rng.choice(len(ko), size=min(k_nodes, len(ko)), replace=False).tolist())
+    idxs = [ko[i] for i in picked]
+    ph = _np.asarray(_SPACE["phases"])[idxs]
+    sims = _np.cos(ph[:, None, :] - ph[None, :, :]).mean(axis=2)
+    nodes = [{"id": i, "label": terms[t]} for i, t in enumerate(idxs)]
+    pairs = [(i, j, float(sims[i, j])) for i in range(len(idxs))
+             for j in range(i + 1, len(idxs))]
+    pairs.sort(key=lambda p: -p[2])
+    links = [{"a": a, "b": b, "resonance": round(r, 3)} for a, b, r in pairs[:14] if r > 0.3]
+    prunes = [{"a": a, "b": b, "resonance": round(r, 3)} for a, b, r in pairs[-8:] if r < -0.2]
+    return {"nodes": nodes, "links": links, "prunes": prunes,
+            "source": "trained_phase_space", "dim": DIM}
+
+
 def neighbors(term: str, k: int = 10) -> list[tuple[str, float]]:
     """k nearest concepts by phase interference — retrieval with NO string overlap."""
     if not _load():

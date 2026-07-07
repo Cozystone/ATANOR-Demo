@@ -3988,6 +3988,11 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["confidence"] = self_knowledge["confidence"]
         result["answer_kind"] = "atanor_identity_graph"
         result["can_speak"] = True
+        # 작동 원리 questions get the LIVE phase-interference visualization —
+        # real trained concepts + true resonance pairs, not a staged animation
+        if re.search(r"어떻게\s*작동|어떻게\s*동작|어떤\s*원리|작동\s*원리|how do you work", question, re.IGNORECASE):
+            result["render_iframe"] = {"url": "/interference",
+                                       "title": "위상 홀로그래모픽 간섭 — 작동 원리"}
 
     # Media-grounded answer (read a video transcript / image OCR) — authoritative; the
     # user explicitly pointed at media to read.
