@@ -3848,6 +3848,42 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         _q = question.strip()
         if re.search(r"(시|노래|가사|소설|이야기|스토리|동화|에세이|수필|글|편지|랩)\S*\s*(\S+\s+){0,2}(써|써줘|지어|지어줘|만들어|만들어줘|창작|작곡|작사)", _q) \
            or re.search(r"(그림|그려|그려줘|drawing|draw|poem|write me a|compose)", _q, re.IGNORECASE):
+            # CREATIVE FUSION (own next-token, No-LLM): a POEM request with an
+            # extractable theme tries the grounded creative composer first —
+            # holographic LM (corpus-attested units, new arrangement) + sensory
+            # impression + metaphor. Only when the graph holds too little does
+            # the honest decline remain.
+            _tm = re.search(r"([가-힣A-Za-z0-9]{2,16})\s*(?:에\s*대(?:해|한)\s*)?(?:관련\s*)?시", _q)
+            if _tm:
+                try:
+                    from packages.grounded_composer.creative_composer import compose_poem
+
+                    _poem = compose_poem(_tm.group(1))
+                except Exception:
+                    _poem = None
+                if _poem:
+                    creative_decline = {
+                        "answer": (f"{_poem['title']}\n\n" + "\n".join(_poem["lines"]) +
+                                   "\n\n— 위상장과 그래프의 실제 문장 단위들로만 조립한 창작입니다 "
+                                   f"(근거 {_poem['corpus_sentences']}문장). 사실 주장이 아니에요."),
+                        "reasoning_certificate": {
+                            "derivation_kind": "grounded_creative_composition",
+                            "anchor_concept": {"id": _poem["theme"], "label": _poem["theme"],
+                                               "match": "creative_fusion"},
+                            "steps": [{"type": "corpus", "source": "kg_definitions+evidence",
+                                       "fact": f"{_poem['corpus_sentences']} sentences"},
+                                      {"type": "next_token", "source": "holographic_lm",
+                                       "fact": "FHRR kernel generation"}],
+                            "evidence_concepts": _poem["concepts_used"],
+                            "confidence": 0.7,
+                            "confidence_basis": "corpus_attested_units_new_arrangement",
+                            "guarantees": {**_poem["guarantees"], "web_used": False},
+                        },
+                        "confidence": 0.7,
+                    }
+        if creative_decline is None and (
+           re.search(r"(시|노래|가사|소설|이야기|스토리|동화|에세이|수필|글|편지|랩)\S*\s*(\S+\s+){0,2}(써|써줘|지어|지어줘|만들어|만들어줘|창작|작곡|작사)", _q)
+           or re.search(r"(그림|그려|그려줘|drawing|draw|poem|write me a|compose)", _q, re.IGNORECASE)):
             creative_decline = {
                 "answer": (
                     "저는 근거에서 답을 짓는 그래프 기반 엔진이라, 시나 이야기 같은 창작은 하지 않아요 — "
