@@ -366,13 +366,21 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     _m_year = re.search(r"((?:19|20)\d{2})\s*년", query)
     if _m_year or any(m in ql for m in ("지금", "현재")):
         try:
-            from .temporal_kg import at_time, current, timeline_of
+            from .temporal_kg import at_time, current, predicates_for
 
+            # role synonyms so a query word matches a stored predicate it isn't
+            # spelled identically to (대통령 asks the 국가원수 timeline)
+            _ROLE_SYN = {"대통령": ("대통령", "국가원수"), "총리": ("정부수반",),
+                         "ceo": ("최고경영자",), "대표": ("최고경영자",)}
             _when = _m_year.group(1) if _m_year else None
             _cands = _subject_candidates(query)
             for _ts in _cands:
-                for _tp in _cands:
-                    if _tp == _ts or not timeline_of(_ts, _tp):
+                for _tp in predicates_for(_ts):
+                    # the stored predicate is relevant when the query names it OR
+                    # a synonym of it (role word in the question)
+                    named = _tp in query or any(
+                        w in query for w, syns in _ROLE_SYN.items() if _tp in syns)
+                    if not named:
                         continue
                     fact = at_time(_ts, _tp, _when) if _when else current(_ts, _tp)
                     if fact is None:
