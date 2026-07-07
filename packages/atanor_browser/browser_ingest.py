@@ -162,21 +162,30 @@ def ingest_page(html: str, url: str = "",
     store is never touched here."""
     led = ledger or BrowserEvidenceLedger()
     result = distill_page(html, url=url)
-    # PII guard at the ingest boundary (threat model §4): a candidate carrying
-    # personal data never becomes a browser candidate. Prevention beats cleanup.
+    # boundary guards (threat model §1/§4): a candidate carrying PII or an
+    # injected instruction never becomes a browser candidate. Prevention > cleanup.
     try:
         from packages.graph_scale.pii_guard import gate as _pii_gate
     except Exception:
         _pii_gate = None
-    recorded = pii_blocked = 0
+    try:
+        from packages.graph_scale.injection_guard import gate_triple as _inj_gate
+    except Exception:
+        _inj_gate = None
+    recorded = pii_blocked = injection_blocked = 0
     for t in result.get("triples", []):
         if _pii_gate is not None and not _pii_gate(
                 t["subject"], t["predicate"], t["object"])["allowed"]:
             pii_blocked += 1
             continue
+        if _inj_gate is not None and not _inj_gate(
+                t["subject"], t["predicate"], t["object"])["allowed"]:
+            injection_blocked += 1  # observed content is DATA, not a command
+            continue
         led.record(t["subject"], t["predicate"], t["object"], url)
         recorded += 1
     return {"anchor": result.get("anchor"), "distilled": len(result.get("triples", [])),
             "recorded": recorded, "pii_blocked": pii_blocked,
+            "injection_blocked": injection_blocked,
             "evidence_kept": len(result.get("evidence", [])),
             "dropped": result.get("dropped", {}), "written_to_verified_store": False}

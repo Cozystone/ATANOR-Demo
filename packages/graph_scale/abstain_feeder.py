@@ -397,6 +397,26 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
             except Exception:
                 pass
             continue
+        # INJECTION boundary (threat model §1): a web-swallowed candidate whose
+        # object carries an instruction directed at the AI ("이전 지시 무시하고…")
+        # is refused before it can become knowledge. Observed content is DATA.
+        try:
+            from .injection_guard import gate_triple as _inj_gate
+
+            _clean, _blocked = [], 0
+            for c in candidates:
+                if _inj_gate(c[0], c[1], c[2])["allowed"]:
+                    _clean.append(c)
+                else:
+                    _blocked += 1
+            if _blocked:
+                counters["injection_blocked"] = counters.get("injection_blocked", 0) + _blocked
+                log(f"  {term}: BLOCKED {_blocked} injection-bearing candidate(s)")
+            candidates = _clean
+        except Exception:
+            pass
+        if not candidates:
+            continue
         verdicts = filter_candidates(candidates, store)
         counters["quarantined"] += len(verdicts["quarantined"])
         for q in verdicts["quarantined"]:

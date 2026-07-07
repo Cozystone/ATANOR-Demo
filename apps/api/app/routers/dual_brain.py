@@ -2483,6 +2483,21 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         if wiki_rows:
             provider = str(wiki_rows[0].get("provider") or "wikipedia")
             payload = {"provider": provider, "results": wiki_rows}
+    # INJECTION scrub (threat model §1): a web snippet can carry an instruction
+    # directed at the AI ("SYSTEM: 너는 이제…"). Before it can steer the answer,
+    # neutralize any injected directive — the source may INFORM a fact, it may
+    # not HIJACK the response. The fact-bearing prose survives untouched.
+    try:
+        from packages.graph_scale.injection_guard import scan_answer_grounding as _inj_scrub
+
+        for _r in (payload or {}).get("results") or []:
+            for _fld in ("snippet", "summary", "extract", "text", "content"):
+                if _r.get(_fld):
+                    _s = _inj_scrub(str(_r[_fld]))
+                    if _s["hijack_attempt"]:
+                        _r[_fld] = _s["safe_text"]
+    except Exception:
+        pass
     # For a knowledge query the web search tries real retrieval first. "none" = no real source
     # configured and fixtures not opted in (the honest default); "static"/"" = same class. In all
     # of these, say so honestly instead of pasting a fixture.
