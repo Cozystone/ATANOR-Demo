@@ -487,6 +487,21 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         if _truncations:
             facts = [(s, p, o) for (s, p, o) in facts
                      if p not in ("defined_as", "is_a") or o not in _truncations]
+        # POLYSEMY HUB (난제 P1, 2026-07-07): when the term carries multiple
+        # senses (사랑=감정 vs 사랑=가옥), the query's own context resolves one
+        # and the OTHER senses' definition rows drop — a definitional answer
+        # never crosses senses. Graph-derived view (sense_split), no rule table;
+        # monosemous terms and no-signal contexts pass through unchanged.
+        try:
+            from packages.graph_scale.sense_split import induce_senses, sense_filtered_facts
+
+            _defs_now = [o for (_s, p, o) in facts if p in ("defined_as", "is_a")]
+            if len(_defs_now) >= 2:
+                _senses = induce_senses(subj, definitions=_defs_now)
+                if len(_senses) > 1:
+                    facts = sense_filtered_facts(subj, query, facts, senses=_senses)
+        except Exception:
+            pass
         # a full DEFINITION outranks a bare taxonomy edge: '김치' has both defined_as
         # ('소금에 절인 배추에…') and is_a ('고춧가루의 일종' — wrong), and first-wins
         # served the taxonomy edge. Prefer defined_as-with-Korean, then is_a-with-Korean;
