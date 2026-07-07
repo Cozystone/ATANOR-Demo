@@ -84,13 +84,21 @@ def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
         # while the concerto facts sat in the store.
         abstained = ("근거가 부족" in answer_text) or ("do not have enough" in answer_text.lower())
         realtime = ("실시간" in answer_text) or ("real-time" in answer_text.lower())
-        if abstained and not realtime:
+        # neighborhood synthesis is the LAST-resort lane ("no exact definition, but
+        # related facts…") — the curated triple store is a HIGHER-quality source and
+        # must outrank it. At 25M rows the neighborhood pool is full of entity names
+        # (measured: '서울이란?' -> 서울이문초등학교 anchor while the store held the
+        # real definition), so a synthesis answer is treated as bridge-eligible too.
+        cert = result.get("reasoning_certificate")
+        neighborhoodish = isinstance(cert, dict) and (
+            cert.get("derivation_kind") == "grounded_neighborhood_synthesis")
+        if (abstained or neighborhoodish) and not realtime:
             from packages.graph_scale.answer_bridge import answer_from_triples
 
             bridged = answer_from_triples(request.query, request.language or "ko")
             if bridged:
                 result = {**result, **bridged}
-            else:
+            elif abstained:
                 # abstain backstop 2: queue the query's knowledge terms as ingest targets
                 # (the abstain-to-ingest loop). Never affects the response.
                 from packages.graph_scale.abstain_queue import record_abstain
