@@ -202,14 +202,38 @@ def _urimalsaem_module():
     return _UMS_CACHE["m"]
 
 
+def _learn_evidence(term: str, query: str, store: TripleStore,
+                    log: Any = print) -> int | None:
+    """v2 knowledge-learner hook: QUESTION-level attributed web evidence for the
+    subject (verbatim sentences + page links, 2/domain, whole-web search). Runs
+    when a real user query hit the abstain queue, so the next ask gets a linked
+    answer even when no clean definitional triple exists. Returns None on the
+    cheap skip (subject already holds evidence) so the caller's per-drain web
+    budget only counts actual searches."""
+    try:
+        if store.facts_with_sources(term, limit=1, preds=("evidence",)):
+            return None
+    except Exception:
+        pass
+    try:
+        from .web_knowledge_drain import learn_from_question
+
+        c = learn_from_question(query or f"{term}이란?", subject_hint=term, log=log)
+        return int(c.get("evidence", 0)) + int(c.get("stored", 0))
+    except Exception:
+        return 0
+
+
 def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, int]:
     """Process up to `limit` pending terms. Returns counters; never raises (each term's
     failure is recorded on the queue and skipped)."""
-    counters = {"terms": 0, "ingested": 0, "quarantined": 0, "no_definition": 0, "failed": 0}
+    counters = {"terms": 0, "ingested": 0, "quarantined": 0, "no_definition": 0,
+                "failed": 0, "evidence": 0}
     records = abstain_queue.pending_records(limit)
     if not records:
         return counters
     store = TripleStore(STORE_ROOT)
+    web_learns = 0  # at most 2 question-level web learns per drain call (bounded tick)
     for rec in records:
         term = str(rec.get("term") or "")
         counters["terms"] += 1
@@ -348,6 +372,13 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
             abstain_queue.mark(term, "no_definition")
             counters["no_definition"] += 1
             log(f"  {term}: no clean definition (honest gap, stays visible)")
+            # no definitional triple != nothing to say — the knowledge learner can
+            # still gather attributed evidence (quotes + links) for this subject
+            if web_learns < 2 and not dry_run and rec.get("query"):
+                got = _learn_evidence(term, str(rec.get("query") or ""), store, log)
+                if got is not None:
+                    web_learns += 1
+                    counters["evidence"] += got
             # mine tomorrow's frames from today's real rejections (data, not intuition)
             try:
                 rejects = STORE_ROOT.parent / "extractor_rejects.jsonl"
@@ -369,6 +400,13 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
         abstain_queue.mark(term, "ingested", f"{r['added']} facts")
         for s, p, o in verdicts["promotable"]:
             log(f"  {term}: + {s} | {p} | {o}")
+        # enrich answered subjects too: the definition is the lead, attributed
+        # evidence is the '관련 근거' depth (adaptive rich answers, owner directive)
+        if web_learns < 2 and rec.get("query"):
+            got = _learn_evidence(term, str(rec.get("query") or ""), store, log)
+            if got is not None:
+                web_learns += 1
+                counters["evidence"] += got
         if r["added"]:
             # measured outcome for the routing policy: the query this term came from was
             # definitional after all (a judge-passed definition now exists in the store).
