@@ -3754,6 +3754,9 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # it as particles (recall as imagination, never playback).
     visual_answer = (_visual_recall_answer(question, language)
                      if not (self_state or media_answer) else None)
+    # Qualia seeds (3-7/3-8): 'X는 뭐 같아?' — grounded metaphor + felt impression
+    if visual_answer is None and not (self_state or media_answer):
+        visual_answer = _association_answer(question, language)
     # Self-model is no longer a curated answer table (that was rule-based). Identity
     # is a reference-resolution ROUTE → the GRAPH realizes the answer: an identity
     # question is answered from the "atanor" concept via answer_with_base_brain
@@ -4011,7 +4014,8 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["reasoning_certificate"] = visual_answer["reasoning_certificate"]
         result["confidence"] = visual_answer["confidence"]
         result["answer_kind"] = visual_answer["answer_kind"]
-        result["render_iframe"] = visual_answer["render_iframe"]
+        if visual_answer.get("render_iframe"):
+            result["render_iframe"] = visual_answer["render_iframe"]
         result["can_speak"] = True
 
     # Media-grounded answer (read a video transcript / image OCR) — authoritative; the
@@ -4663,6 +4667,65 @@ def _visual_recall_answer(question: str, language: str) -> dict[str, Any] | None
             "confidence_basis": f"measured_from_{n_img}_photos",
             "guarantees": {"external_llm": False, "fabricated_facts": False,
                            "playback": False, "reconstruction_from_signature": True},
+        },
+    }
+
+
+_ASSOC_RE = re.compile(
+    r"(?P<subj>[가-힣A-Za-z0-9·\s]{2,24}?)(?:[은는이가])?\s*"
+    r"(?:(?:뭐|무엇)\s*같아|하면\s*(?:뭐|무엇)[가이]?\s*떠올|연상\s*되는\s*게?\s*뭐)")
+
+
+def _association_answer(question: str, language: str) -> dict[str, Any] | None:
+    """Qualia seeds surfaced (3-7/3-8): 'X는 뭐 같아?' answers from the trained
+    phase field — a grounded metaphor and, when a visual memory exists, the
+    felt impression. Nothing in the band -> None (never a forced simile)."""
+    if language != "ko":
+        return None
+    m = _ASSOC_RE.search(str(question or ""))
+    if not m:
+        return None
+    subj = re.sub(r"\s+", " ", m.group("subj")).strip()
+    if not subj or len(subj) < 2 or subj.lower() in _VISUAL_SELF:
+        return None
+    met = imp = None
+    try:
+        from packages.graph_scale.metaphor import metaphor
+
+        met = metaphor(subj)
+    except Exception:
+        met = None
+    try:
+        from packages.continuous_self.sensory_interference import impression_from_visual
+
+        imp = impression_from_visual(subj)
+    except Exception:
+        imp = None
+    if not met and not imp:
+        return None
+    parts: list[str] = []
+    steps: list[dict[str, Any]] = []
+    if imp:
+        parts.append(imp["felt"])
+        steps.append({"type": "sensory_impression", "source": "visual_memory",
+                      "fact": f"measured_from={imp.get('measured_from')}"})
+    if met:
+        parts.append(met["surface"])
+        steps.append({"type": "cross_domain_resonance", "source": "trained_phase_space",
+                      "fact": f"{met['vehicle']} @ {met['resonance']}"})
+    return {
+        "answer": " ".join(parts),
+        "answer_kind": "phase_field_association",
+        "confidence": 0.7,
+        "reasoning_certificate": {
+            "derivation_kind": "phase_field_association",
+            "anchor_concept": {"id": subj, "label": subj, "match": "phase_space"},
+            "steps": steps,
+            "evidence_concepts": [subj],
+            "confidence": 0.7,
+            "confidence_basis": "measured_resonance_band",
+            "guarantees": {"external_llm": False, "fabricated_facts": False,
+                           "forced_simile": False},
         },
     }
 
