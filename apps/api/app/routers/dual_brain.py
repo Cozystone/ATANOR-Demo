@@ -3742,6 +3742,11 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # "Living creature" sense: answer questions about ATANOR's own live state by
     # pulling from every subsystem at once.
     self_state = _self_state_answer(question, language)
+    # Phase 3-2/3-3 fusion: questions about the USER ("나에 대해 뭘 알아") answer
+    # from the derived user model — possessions/habits/preferences with evidence
+    # counts, honest silence when nothing is recorded.
+    if self_state is None:
+        self_state = _user_knowledge_answer(question, language)
     # Media: if the question references a VIDEO (YouTube) or IMAGE (path/URL), READ it
     # (transcript / OCR) and answer from that — explicit user intent, so high priority.
     media_answer = _media_grounded_answer(question, language) if not self_state else None
@@ -4491,6 +4496,16 @@ def atanor_self_sense() -> dict[str, Any]:
     return {**_flags(), **_atanor_self_sense()}
 
 
+@router.get("/api/atanor/user-model")
+def atanor_user_model() -> dict[str, Any]:
+    """Phase 3-2: the derived user deep model (possessions/habits/preferences),
+    every item evidence-backed, local stores only."""
+    from packages.user_model import derive_user_model, summary_facts, user_context_line
+
+    model = derive_user_model()
+    return {**model, "summary": summary_facts(model), "context_line": user_context_line(model)}
+
+
 @router.get("/api/media/capabilities")
 def media_capabilities_endpoint() -> dict[str, Any]:
     from app.services.media_reader import media_capabilities
@@ -4529,6 +4544,61 @@ _SELF_REF_KO = ("너", "네", "니", "당신", "atanor", "아타노르", "자기
 # counterpart by default — Korean drops the pronoun. When the cue is about
 # thought/mood AND the question names no other subject, the 2nd person is implicit.
 _INNER_STATE_KO = ("무슨 생각", "기분 어때", "기분이 어때")
+
+
+_USER_KNOWLEDGE_KO = ("나에 대해", "나에 대해서", "내가 누군지", "나를 얼마나 알",
+                      "나 뭐 좋아", "내 취향", "나에 관해", "날 알아", "나 알아")
+
+
+def _user_knowledge_answer(question: str, language: str) -> dict[str, Any] | None:
+    """Phase 3-2/3-3: questions about the USER answered from the derived user
+    model (episodic events + local brain facts). Every sentence carries its
+    evidence count; an empty model says so instead of inventing a persona."""
+    raw = str(question or "")
+    if not any(m in raw for m in _USER_KNOWLEDGE_KO):
+        return None
+    # "나에 대해 어떻게 생각해" is an opinion request, not a memory readout
+    if re.search(r"어떻게\s*생각|평가\s*해", raw):
+        return None
+    try:
+        from packages.user_model import derive_user_model, summary_facts
+
+        model = derive_user_model()
+        sents = summary_facts(model, limit=5)
+    except Exception:
+        return None
+    ev = model.get("evidence_totals") or {}
+    n_events = int(ev.get("episodic_events") or 0)
+    n_facts = int(ev.get("brain_facts") or 0)
+    if language == "ko":
+        if sents:
+            answer = ("제가 기록에서 아는 만큼만 말씀드릴게요. " + " ".join(sents) +
+                      f" — 근거는 이 기기에 있는 일화 기록 {n_events}건과 대화 기억 {n_facts}건이에요.")
+        else:
+            answer = ("아직 당신에 대해 기록된 것이 거의 없어요. 대화하면서 알려주시는 것들과 "
+                      "일상 이벤트가 쌓이면, 그 근거만큼만 알게 돼요 — 지어내지는 않아요.")
+    else:
+        answer = (" ".join(sents) + f" (from {n_events} episodic events and {n_facts} conversational facts on this device)"
+                  if sents else
+                  "I have almost nothing recorded about you yet — I only ever know as much as the local evidence supports.")
+    return {
+        "answer": answer,
+        "answer_kind": "user_model_readout",
+        "confidence": 0.85 if sents else 0.6,
+        "reasoning_certificate": {
+            "derivation_kind": "user_model_aggregation",
+            "anchor_concept": {"id": "user_model", "label": "사용자 심층 모델", "match": "local_stores"},
+            "steps": [
+                {"type": "aggregate", "source": "episodic_events", "fact": f"{n_events} events"},
+                {"type": "aggregate", "source": "local_brain", "fact": f"{n_facts} facts"},
+            ],
+            "evidence_concepts": ["episodic_memory", "local_brain"],
+            "confidence": 0.85 if sents else 0.6,
+            "confidence_basis": "evidence_counted_aggregation",
+            "guarantees": {"external_llm": False, "fabricated_facts": False,
+                           "local_only": True},
+        },
+    }
 
 
 def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
@@ -4576,6 +4646,26 @@ def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
                              else f"The question I'm currently holding: “{open_q[:100]}”. ")
         except Exception:
             inner = ""
+        # Phase 3-3: the self-narrative cites the most recent REAL reasoning act
+        # (flywheel turn log) when asked what it was doing — lived history, not a
+        # status template.
+        if not inner and any(m in raw for m in ("뭐 했", "뭐했", "뭐 하고 있", "뭐하고 있", "최근에 뭐")):
+            try:
+                from packages.flywheel.logger import TURNS_PATH
+
+                last = None
+                if TURNS_PATH.exists():
+                    with TURNS_PATH.open(encoding="utf-8") as fh:
+                        for line in fh:
+                            last = line
+                if last:
+                    turn = json.loads(last)
+                    q_prev = str(turn.get("question") or "").strip()[:60]
+                    if q_prev and q_prev not in raw:
+                        inner = (f"조금 전엔 “{q_prev}” 질문에 답을 지었어요. " if language == "ko"
+                                 else f"A moment ago I composed an answer to “{q_prev}”. ")
+            except Exception:
+                pass
         # 존재 이유 gets the identity purpose, not a stats dump
         if language == "ko" and ("존재 이유" in raw or "왜 존재" in raw):
             answer = (
