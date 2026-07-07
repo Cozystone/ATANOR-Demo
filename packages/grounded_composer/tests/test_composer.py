@@ -22,7 +22,16 @@ def test_identification_comes_first_then_elaboration():
     # defined_as leads even though is_a arrived first in the list
     assert r.answer.startswith("커피는 커피나무 열매의 씨앗을 볶아 우려낸 음료입니다.")
     assert r.facts_used[0][1] == "defined_as"
-    assert "또한 음료의 일종입니다." in r.answer
+    assert "또한 전 세계에 위치합니다." in r.answer
+
+
+def test_redundant_elaboration_is_dropped():
+    # '…음료입니다. 또한 음료의 일종입니다' reads broken — the is_a object already
+    # appears as the head of the defined_as object, so the gate drops it.
+    r = compose_from_facts("커피", FACTS)
+    assert r is not None
+    assert "또한 음료의 일종입니다." not in r.answer
+    assert all(p != "is_a" for _s, p, _o in r.facts_used)
 
 
 def test_single_fact_defers_to_single_template_path():
@@ -58,8 +67,10 @@ def test_hallucination_safety_vocabulary_is_closed():
 
 
 def test_unknown_predicate_is_dropped_not_improvised():
+    # located_in (not redundant with the definition) keeps two realizable facts
+    # alive, so the weird predicate's exclusion is observable in a real answer.
     facts = [("커피", "defined_as", "볶은 씨앗 음료"), ("커피", "weird_pred", "이상한 값"),
-             ("커피", "is_a", "음료")]
+             ("커피", "located_in", "전 세계")]
     r = compose_from_facts("커피", facts)
     assert r is not None
     assert "이상한 값" not in r.answer and "weird_pred" not in r.answer

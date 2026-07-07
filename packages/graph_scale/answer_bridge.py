@@ -218,13 +218,39 @@ def _cite_sources(store: Any, subject: str, facts_used: list[tuple[str, str, str
     for (_s, p, o, name, url) in rows:
         if (p, o) in used and name not in seen:
             seen[name] = url
+    friendly = "큐레이션 지식그래프" if language == "ko" else "curated knowledge graph"
     if not seen:
-        tail = " (출처: 큐레이션 지식그래프)" if language == "ko" else " (source: curated knowledge graph)"
+        tail = f" (출처: {friendly})" if language == "ko" else f" (source: {friendly})"
         return {"suffix": tail, "sources": []}
     sources = [{"name": n, "url": u} for n, u in seen.items()]
     label = "출처" if language == "ko" else "sources"
-    parts = [f"{n}({u})" if u else n for n, u in seen.items()]
-    return {"suffix": f" ({label}: " + " · ".join(parts) + ")", "sources": sources}
+    # registry names like 'curated:legacy' are audit ids, not user-facing labels
+    parts = [f"{(friendly if n.startswith('curated:') else n)}({u})" if u
+             else (friendly if n.startswith("curated:") else n) for n, u in seen.items()]
+    return {"suffix": f" ({label}: " + " · ".join(dict.fromkeys(parts)) + ")", "sources": sources}
+
+
+def _evidence_section(store: Any, subj: str, limit: int = 3) -> tuple[str, list[dict[str, str]]]:
+    """Attributed web evidence for a subject: verbatim sentences + their page links.
+    The attribution IS the honesty contract — we say who said it and where. Display
+    caps at 2 sentences per domain so one outlet never monopolizes the warrant,
+    even when the store holds older single-domain rows."""
+    try:
+        rows = store.facts_with_sources(subj, limit=limit * 4, preds=("evidence",))
+    except Exception:
+        rows = []
+    lines: list[str] = []
+    sources: list[dict[str, str]] = []
+    per_dom: dict[str, int] = {}
+    for (_s, _p, sent, name, url) in rows:
+        if len(lines) >= limit:
+            break
+        if per_dom.get(name, 0) >= 2:
+            continue
+        per_dom[name] = per_dom.get(name, 0) + 1
+        lines.append(f"· {sent} — {name}({url})")
+        sources.append({"name": name, "url": url, "quote": sent})
+    return ("\n".join(lines), sources)
 
 
 def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | None:
@@ -329,6 +355,26 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                     chosen = tchosen
                     hop_from = subj
         if not chosen:
+            ev_text, ev_sources = _evidence_section(store, subj, limit=4)
+            if ev_text and (want & {"defined_as", "is_a"}):
+                head = (f"{subj}에 대해 웹에서 교차 확인된 근거입니다:" if language == "ko"
+                        else f"Web-attributed evidence about {subj}:")
+                return {
+                    "answer": head + "\n" + ev_text,
+                    "reasoning_certificate": {
+                        "derivation_kind": "attributed_web_evidence",
+                        "anchor_concept": {"label": subj},
+                        "steps": [{"type": "quote", "fact": e["quote"][:80]} for e in ev_sources],
+                        "evidence_concepts": [subj],
+                        "sources": ev_sources,
+                        "confidence": 0.8,
+                        "confidence_basis": "verbatim_quotes_with_page_links",
+                        "guarantees": {"external_llm": False, "fabricated_facts": False,
+                                       "inferred": False, "attributed": True},
+                    },
+                    "confidence": 0.8,
+                    "answer_kind": "attributed_web_evidence",
+                }
             continue
         s, p, o = chosen[0]
         display_s = f"{hop_from}(={s})" if hop_from else s
@@ -350,6 +396,12 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                 answer = _strip_generic_source(composed.answer) + cited["suffix"]
                 cert = composed.certificate()
                 cert["sources"] = cited["sources"]
+                # adaptive depth: open definitional questions get the attributed
+                # web-evidence section when the learner has gathered one
+                ev_text, ev_sources = _evidence_section(store, s)
+                if ev_text:
+                    answer = answer + "\n\n관련 근거:\n" + ev_text
+                    cert["evidence_sources"] = ev_sources
                 return {
                     "answer": answer,
                     "reasoning_certificate": cert,
@@ -378,6 +430,14 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
             body = frame.format(s=display_s, o=o) if frame else f"{display_s}: {o}"
             cited = _cite_sources(store, s, [(s, p, o)], "en")
             answer = f"{body}{cited['suffix']}"
+        # adaptive depth on the single-fact path too: a curated one-liner grows into
+        # a rich profile when the learner holds attributed evidence for the subject
+        ev_sources = []
+        if hop_from is None and (not want or (want & {"defined_as", "is_a"})):
+            ev_text, ev_sources = _evidence_section(store, s)
+            if ev_text:
+                label = "관련 근거" if language == "ko" else "Related evidence"
+                answer = f"{answer}\n\n{label}:\n{ev_text}"
         return {
             "answer": answer,
             "reasoning_certificate": {
@@ -387,6 +447,8 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                          + [{"type": "triple", "fact": f"{s} {p} {o}"}],
                 "evidence_concepts": [s, o], "confidence": 0.9,
                 "confidence_basis": "curated_structured_triple_verbatim",
+                "sources": cited["sources"],
+                **({"evidence_sources": ev_sources} if ev_sources else {}),
                 "guarantees": {"external_llm": False, "fabricated_facts": False, "inferred": False},
             },
             "confidence": 0.9,

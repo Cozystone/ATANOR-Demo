@@ -118,7 +118,14 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
             by_pred[p] = (s, p, o)
     ordered = [by_pred[p] for p in _PRED_ORDER if p in by_pred]
     ordered += [f for p, f in by_pred.items() if p not in _PRED_ORDER]
-    ordered = ordered[:max_facts]
+    # redundancy gate: '…위치하고 있는 도시입니다. 또한 도시의 일종입니다' reads broken —
+    # drop a fact whose object already appears verbatim inside an earlier fact's object
+    deduped: list[tuple[str, str, str]] = []
+    for f in ordered:
+        if any(f[2] and f[2] in prev[2] for prev in deduped):
+            continue
+        deduped.append(f)
+    ordered = deduped[:max_facts]
     if len(ordered) < 2:
         return None
 
