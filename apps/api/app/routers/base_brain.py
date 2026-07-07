@@ -132,6 +132,24 @@ def base_brain_interference_scene() -> dict[str, Any]:
         return {"nodes": [], "links": [], "prunes": []}
 
 
+@router.get("/visual-memory/{concept}")
+def base_brain_visual_recall(concept: str, learn: bool = False) -> dict[str, Any]:
+    """Perceptual grounding v0: the measured visual signature of a concept
+    (color bands/palette/texture from REAL photos, provenance attached), as
+    particle-scene parameters. learn=true fetches+measures when unknown."""
+    try:
+        from packages.perception import learn_visual, recall_scene
+
+        scene = recall_scene(concept)
+        if scene is None and learn:
+            learn_visual(concept, log=lambda *_: None)
+            scene = recall_scene(concept)
+        return scene or {"kind": "visual_recall", "concept": concept,
+                         "known": False}
+    except Exception:
+        return {"kind": "visual_recall", "concept": concept, "known": False}
+
+
 @router.post("/benchmark")
 def base_brain_benchmark(request: BaseBrainBenchmarkRequest) -> dict[str, Any]:
     return run_zero_user_benchmark(limit=request.limit)

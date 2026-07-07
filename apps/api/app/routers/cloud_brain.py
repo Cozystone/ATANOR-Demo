@@ -1799,6 +1799,24 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"abstain_feed_tick: {type(exc).__name__}"[:120]
+        # RELATION-MINER tick (fluency doctrine: edges are the fluency substrate):
+        # harvest causal/part-of edges from freshly accumulated evidence prose —
+        # subject-anchored + judge-gated, so yield grows as seeded targets land.
+        try:
+            _re_every = int(os.getenv("ATANOR_RELATION_MINE_EVERY", "180") or 180)
+            if _re_every > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _re_every == 0:
+                from packages.graph_scale.answer_bridge import _store as _kg_store
+                from packages.graph_scale.relation_miner import mine_relations
+
+                _kg = _kg_store()
+                if _kg is not None:
+                    _mc = mine_relations(_kg, log=lambda *_: None)
+                    if _mc.get("stored"):
+                        with _CONT_LOCK:
+                            _CONT["relations_mined"] = _CONT.get("relations_mined", 0) + _mc["stored"]
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"relation_mine_tick: {type(exc).__name__}"[:120]
         # FLYWHEEL retrain tick every K ticks (default 120 ≈ 2h at 60s pace): mine
         # conversation failures; when enough new gold accumulated, retrain the
         # learned router in place — real usage keeps improving the understanding
