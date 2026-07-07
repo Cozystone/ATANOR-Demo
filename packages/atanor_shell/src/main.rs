@@ -12,6 +12,7 @@
 //! M2: native SPLATRA point-sprite field as the layer-0 background.
 
 mod backend_drm;
+mod field;
 mod backend_winit;
 mod handlers;
 mod input;

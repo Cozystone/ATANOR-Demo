@@ -22,12 +22,15 @@ use smithay::{
         },
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
-            element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
+            element::{
+                memory::MemoryRenderBufferRenderElement, surface::WaylandSurfaceRenderElement,
+                AsRenderElements, Kind,
+            },
             pixman::PixmanRenderer,
+            ImportAll, ImportMem,
         },
         session::{libseat::LibSeatSession, Event as SessionEvent, Session},
     },
-    desktop::space::SpaceRenderElements,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{
@@ -42,17 +45,24 @@ use smithay::{
     utils::{DeviceFd, Scale, Transform},
 };
 
-use crate::{AtanorShell, CalloopData};
+use crate::{field::ParticleField, AtanorShell, CalloopData};
 
 const DEEP_SPACE: [f32; 4] = [0.0196, 0.0275, 0.0392, 1.0];
 
 type KioskCompositor = DrmCompositor<DumbAllocator, DrmDeviceFd, (), DrmDeviceFd>;
-type KioskElement = WaylandSurfaceRenderElement<PixmanRenderer>;
+
+smithay::render_elements! {
+    // layer 0 is OURS: clients composite over the native particle field
+    pub KioskFrame<R> where R: ImportAll + ImportMem;
+    Window=WaylandSurfaceRenderElement<R>,
+    Field=MemoryRenderBufferRenderElement<R>,
+}
 
 struct DrmRender {
     compositor: KioskCompositor,
     renderer: PixmanRenderer,
     output: Output,
+    field: ParticleField,
     queued: bool,
 }
 
@@ -165,6 +175,7 @@ pub fn init_drm(
         compositor,
         renderer,
         output,
+        field: ParticleField::new(w, h, 3200),
         queued: false,
     }));
 
@@ -207,21 +218,32 @@ fn render_frame(render: &Rc<RefCell<DrmRender>>, loop_handle: &LoopHandle<'stati
         if r.queued {
             return;
         }
-        let mut elements: Vec<SpaceRenderElements<PixmanRenderer, KioskElement>> = Vec::new();
+        r.field.step(1.0 / 60.0);
+        r.field.rasterize();
+        let mut elements: Vec<KioskFrame<PixmanRenderer>> = Vec::new();
         let windows: Vec<_> = data.state.space.elements().cloned().collect();
         for window in windows.iter().rev() {
             if let Some(loc) = data.state.space.element_location(window) {
                 let loc = loc.to_physical_precise_round(1.0);
-                elements.extend(
-                    window
-                        .render_elements::<SpaceRenderElements<PixmanRenderer, KioskElement>>(
-                            &mut r.renderer,
-                            loc,
-                            Scale::from(1.0),
-                            1.0,
-                        ),
-                );
+                elements.extend(window.render_elements::<KioskFrame<PixmanRenderer>>(
+                    &mut r.renderer,
+                    loc,
+                    Scale::from(1.0),
+                    1.0,
+                ));
             }
+        }
+        match MemoryRenderBufferRenderElement::from_buffer(
+            &mut r.renderer,
+            (0.0, 0.0),
+            &r.field.buffer,
+            None,
+            None,
+            None,
+            Kind::Unspecified,
+        ) {
+            Ok(el) => elements.push(KioskFrame::Field(el)),
+            Err(err) => tracing::warn!("field element: {err}"),
         }
         match r
             .compositor
