@@ -229,28 +229,55 @@ Phase 5 = ATANOR OS/브라우저 완전체 (구 Phase 4), Phase 6 = 공개 (구 
   전 그래프 4D화. 기준 논문: TechRxiv 10.36227/techrxiv.174494561.19053524.
 
 ## Phase 2 — Brain Link (RENDER 운영모델) [경제 실증 완료]
-- 2-1 BME 경제 ✅(소각804/발행803 실측) / 2-2 UI 탭(균형·티어·크레딧 시각화)
-- 2-3 원격 VM 피어(진짜 크로스-PC) / 2-4 synapse_bench 자동 승급 / 2-5 프로세스 샤드
+- 2-1 BME 경제 ✅(소각804/발행803 실측) / 2-2 UI 탭 ✅(균형·티어·크레딧 시각화)
+- 2-3 원격 VM 피어(진짜 크로스-PC) — VM 게스트 네트워크 복구 대기(리셋 필요)
+- 2-4 synapse_bench 자동 승급 ✅(실측 799.99 s/s, priority 자동 승급)
+- 2-5 프로세스 샤드 ✅(2026-07-07): 상주 워커 프로세스 + 개념키 라우팅,
+  실측 x2.15(774→1,665 decomp/sec, 4워커), 중복제거 정확 유지,
+  env ATANOR_CONTRIB_PROC_SHARDS 게이트. packages/brain_link_pool/process_sharded_store.py
 
 ## Phase 3 — 자의식·기억 (전제층)
 - 3-1 에피소드 시간축 이벤트 스트림 ✅v0 (범용: 지각·대화·방문·변화 전부 기록)
-- 3-2 사용자 심층 모델(선호·소유·습관, 로컬) / 3-3 자의식-추론 융합 심화
-- 3-4 가치 스택→내발적 커리큘럼 / 3-5 게이트된 코드 자기수정
-- [장기] Qualia 3요건: 3-6 인공 항상성+디지털 호르몬(씨앗: mood 스택) /
+- 3-2 사용자 심층 모델 ✅(2026-07-07): packages/user_model — 소유(최신일+나이),
+  습관(3건 이상만 주기 주장, 중앙값 간격), 선호(에피소드+로컬브레인 병합),
+  전부 근거 카운트 동반. GET /api/atanor/user-model + "나에 대해 뭘 알아" 레인.
+- 3-3 자의식-추론 융합 심화 ✅: 자기서사가 실제 최근 추론 행위(flywheel 턴)를
+  인용, 사용자 지식 질문은 심층 모델에서 정직 응답(빈 저장소=빈 답).
+- 3-4 가치 스택→내발적 커리큘럼 ✅: 실측 갭(플라이휠 실패)×사용자 관련성×
+  자기질문 호기심×KG 신규성(0.4/0.3/0.2/0.1) 랭킹→abstain 큐 공급.
+  신호 없으면 커리큘럼 없음. packages/continuous_self/curriculum.py, 데몬 틱 90.
+- 3-5 게이트된 코드 자기수정 ✅(기구축 확인): 화이트리스트+additive-only AST 검증+
+  스테이징 전용+운영자 게이트 (code_self_modification.py).
+- [장기] Qualia 3요건: 3-6 인공 항상성+디지털 호르몬 ✅v0(2026-07-07):
+  setpoint+이벤트 유발 코르티솔/도파민/노르아드레날린+지속 스트레스→수리(강제 휴식)
+  플로어, 스냅샷 공개(homeostasis 필드), 내면 변수만 변조 (답변 불변).
   3-7 다중감각 간섭 수용(씨앗: 실측 간섭) / 3-8 은유의 연속 위상공간(씨앗:
   trained phase_space). 원칙: 통제된 흔들림은 감각·은유 채널에만.
 
 ## Phase 4 — 지각 AGI (물병 시나리오)
-- 4-1 시각기억 자율 배선 ✅v0(색·구도 실측+출처) / 4-2 "어떻게 생겼어"→파티클 재현
+- 4-1 시각기억 자율 배선 ✅v0(색·구도 실측+출처)
+- 4-2 "어떻게 생겼어"→파티클 재현 ✅(2026-07-07): 실측 시그니처→색이름/밝기/질감
+  발화 + /recall 페이지 파티클 재구성(재생 아님·상상), maximal-match 주어 해소,
+  LAD 조사. 라이브 검증(바다: 사진3장 실측→흰·푸른 포인트).
 - 4-3 깊이 기하: apple/ml-depth-pro + **ByteDance-Seed/depth-anything-3** (Ultimate 지각층)
-- 4-4 시각-KG 앵커링(주어-앵커 게이트 배선, 트리플 직조) + 인스턴스 매칭
-- 4-5 실시간 스트림: 후면카메라 다중객체감지 + DeepFace(serengil/deepface) 사용자
-  상태 인지 → episodic record_event → 제안 (프레임 비저장, OS Action Lane 티어)
+- 4-4 시각-KG 앵커링 ✅(측정 즉시 주조색/시각_밝기/시각_질감 트리플+출처+타임라인
+  이벤트) + 인스턴스 매칭 ✅v0(same_kind/similar/different — '같은 모델' 주장 금지,
+  그것은 4-3 깊이 트랙). packages/perception/visual_kg.py
+- 4-5 실시간 스트림 ✅v0(2026-07-07): /perception 페이지 — 후면카메라+온디바이스
+  WASM 객체감지(MediaPipe efficientdet), 프레임 비저장(라벨만 127.0.0.1),
+  목격→에피소드 기록(60s 쿨다운)→물병 제안 프리미티브. 물병 세로 슬라이스
+  테스트 증명(3년 전 구매 기록+목격→근거 딸린 제안). DeepFace 사용자 인지는 다음.
 - 진입 데모: 1-5와 결합 "보고 즉석에서 유창하게 말하기"
 - 재렌더링=상상: 트리플 경로→SPLATRA 파티클 역산 (영상 블랙홀 방지, 몇 바이트 공유)
 
 ## Phase 5 — ATANOR OS/브라우저 (구 4)
-- atanor-shell M2 심화 / M3 XWayland / OS Action Lane 티어 승격 / 디바이스 연속성
+- atanor-shell M2 심화 / M3 XWayland (ATANOR Linux 워크트리 — 별도 세션)
+- OS Action Lane 티어 승격 ✅(2026-07-07): 감사 원장 실적(20건 무실패·무거절·
+  3일 이상)→승격 '추천'만, 부여는 언제나 사용자(POST /tier).
+  GET /api/os-action/trust-recommendation. packages/os_action_lane/trust_record.py
+- 디바이스 연속성 ✅v0(2026-07-07): 세션 스냅샷(자기 순간+최근 에피소드+사용자
+  컨텍스트)+토큰 인수 계약, 핸드오프 자체가 에피소드 이벤트로 기록.
+  /api/phone-link/continuity{,/snapshot,/adopt}. packages/phone_link/continuity.py
 - SPLATRA 모션: 4D Gaussian Splatting 계열(arXiv 2310.08528) — KG의 4D와 별개 축
 
 ## Phase 6 — 공개 (구 5)
