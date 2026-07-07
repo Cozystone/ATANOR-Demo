@@ -66,6 +66,7 @@ from app.routers.voice import router as voice_router
 from app.routers.os_action import router as os_action_router
 from app.routers.browser import router as browser_router
 from app.routers.worm_culture import router as worm_culture_router
+from app.routers.evolution import router as evolution_router
 from app.routers.perception import router as perception_router
 from app.routers.phone_link import router as phone_link_router
 from app.routers.link_relay import router as link_relay_router
@@ -215,6 +216,7 @@ app.include_router(os_action_router)
 app.include_router(perception_router)
 app.include_router(browser_router)
 app.include_router(worm_culture_router)
+app.include_router(evolution_router)
 app.include_router(phone_link_router)
 app.include_router(link_relay_router)
 app.include_router(contribution_router)

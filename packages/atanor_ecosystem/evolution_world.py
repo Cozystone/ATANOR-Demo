@@ -226,10 +226,11 @@ class World:
                     if (wm.x - f.x) ** 2 + (wm.y - f.y) ** 2 <= 16.0:
                         bite = min(f.amount, 0.25)
                         f.amount -= bite
-                        wm.energy = min(3.0, wm.energy + bite * 2.2)
+                        wm.energy = min(3.0, wm.energy + bite * 2.8)
                         wm.fitness += bite
-                # --- metabolise ---
-                wm.energy -= 0.012 + 0.006 * speed
+                # --- metabolise (gentle enough that a colony grows toward the cap
+                # and many worms crowd the tank, but the worst navigators still die) ---
+                wm.energy -= 0.008 + 0.005 * speed
                 if wm.energy <= 0:
                     wm.alive = False
             # food upkeep: remove eaten, keep density
