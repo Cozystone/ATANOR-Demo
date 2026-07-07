@@ -205,6 +205,59 @@ class TripleStore:
             cols[name] = np.memmap(str(path), dtype="<i4", mode="r", shape=(n,)) if n else np.zeros(0, "<i4")
         return cols
 
+    # ---- subject index (the trillion-scale lever) -------------------------------
+    # A full-column scan per lookup is O(n): fine at 500k, seconds at 100M, dead at
+    # 1T. The sidecar index (stable argsort of s.col) makes it O(log n) and stays
+    # correct THROUGH appends — rows past the indexed prefix are tail-scanned, so
+    # ingest never blocks queries; rebuild_index() folds the tail in when convenient.
+
+    def rebuild_index(self) -> int:
+        if not _HAVE_NP:
+            return 0
+        self.flush()
+        cols = self.open_columns()
+        s_col = cols["s"]
+        perm = np.argsort(s_col, kind="stable").astype("<i8")
+        np.save(str(self.root / "s.perm.npy"), perm)
+        np.save(str(self.root / "s.sorted.npy"), np.asarray(s_col)[perm].astype("<i4"))
+        self._idx_cache = None
+        return len(perm)
+
+    def _index(self):
+        perm_p = self.root / "s.perm.npy"
+        sort_p = self.root / "s.sorted.npy"
+        if not perm_p.exists() or not sort_p.exists():
+            return None
+        sig = (perm_p.stat().st_mtime_ns, perm_p.stat().st_size)
+        cached = getattr(self, "_idx_cache", None)
+        if cached is not None and cached[0] == sig:
+            return cached[1]
+        try:
+            pair = (np.load(str(perm_p), mmap_mode="r"), np.load(str(sort_p), mmap_mode="r"))
+        except Exception:
+            return None
+        self._idx_cache = (sig, pair)
+        return pair
+
+    def _subject_rows(self, sid: int, s_col) -> "np.ndarray":
+        pair = self._index()
+        if pair is None:
+            return np.nonzero(s_col == sid)[0]
+        perm, ssorted = pair
+        # needle must match the column dtype: a Python int promotes the WHOLE
+        # memmapped array to int64 (a 24MB copy per call, measured 30ms) —
+        # cast the needle, not the column
+        needle = np.asarray(sid, dtype=ssorted.dtype)
+        lo = int(np.searchsorted(ssorted, needle, "left"))
+        hi = int(np.searchsorted(ssorted, needle, "right"))
+        head = np.sort(np.asarray(perm[lo:hi]))  # insertion order within the subject
+        n_indexed = len(perm)
+        if len(s_col) > n_indexed:
+            tail = np.nonzero(s_col[n_indexed:] == sid)[0] + n_indexed
+            if len(tail):
+                return np.concatenate([head, tail])
+        return head
+
     def retract(self, subject: str, predicate: str, obj: str, reason: str = "") -> None:
         """Audit-logged tombstone — the store stays append-only; a retraction is itself
         an event, never a silent delete. facts_about filters tombstoned triples."""
@@ -252,7 +305,7 @@ class TripleStore:
         cols = self.open_columns()
         out: list[tuple[str, str, str]] = []
         s, p, o = cols["s"], cols["p"], cols["o"]
-        idx = np.nonzero(s == sid)[0] if len(s) else []
+        idx = self._subject_rows(sid, s) if len(s) else []
         if preds is not None and len(idx):
             pids = [self.terms.lookup(x) for x in preds]
             pids_arr = np.array([x for x in pids if x is not None], dtype=p.dtype)
