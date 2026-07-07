@@ -152,3 +152,40 @@ def browser_activity_status() -> dict[str, Any]:
     from packages.atanor_browser.activity_journal import status
 
     return status()
+
+
+# ── session orchestration (the native shell drives these) ─────────────────────
+_SESSION = None
+
+
+def _session():
+    global _SESSION
+    if _SESSION is None:
+        from packages.atanor_browser.browser_session import BrowserSession
+
+        _SESSION = BrowserSession()
+    return _SESSION
+
+
+@router.post("/session/tab")
+def browser_open_tab(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    return _session().open_tab(url=str(body.get("url") or ""))
+
+
+@router.post("/session/navigate")
+def browser_navigate(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    return _session().navigate(
+        str(body.get("tab_id") or ""), str(body.get("url") or ""),
+        title=str(body.get("title") or ""),
+        dom_text=body.get("html"),
+        contribute_content=bool(body.get("contribute_content")))
+
+
+@router.post("/session/close")
+def browser_close_tab(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    return _session().close_tab(str(body.get("tab_id") or ""))
+
+
+@router.get("/session/state")
+def browser_session_state() -> dict[str, Any]:
+    return _session().state()
