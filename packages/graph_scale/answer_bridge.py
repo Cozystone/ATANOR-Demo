@@ -198,6 +198,35 @@ def _try_open_composition(query: str, store: Any) -> dict[str, Any] | None:
     return None
 
 
+def _strip_generic_source(text: str) -> str:
+    """Remove the placeholder '(출처: 큐레이션 지식그래프)' tail — real link
+    citations replace it."""
+    return re.sub(r"\s*\((?:출처|source)[^)]*\)\s*$", "", text).rstrip()
+
+
+def _cite_sources(store: Any, subject: str, facts_used: list[tuple[str, str, str]],
+                  language: str) -> dict[str, Any]:
+    """Resolve the real provenance of the facts the answer used. Returns a citation
+    suffix (with URLs when the source is a live link) and a structured source list
+    for the certificate. Legacy-tier facts cite the curated corpus by name."""
+    try:
+        rows = store.facts_with_sources(subject, limit=20)
+    except Exception:
+        rows = []
+    used = {(p, o) for _s, p, o in facts_used}
+    seen: dict[str, str] = {}
+    for (_s, p, o, name, url) in rows:
+        if (p, o) in used and name not in seen:
+            seen[name] = url
+    if not seen:
+        tail = " (출처: 큐레이션 지식그래프)" if language == "ko" else " (source: curated knowledge graph)"
+        return {"suffix": tail, "sources": []}
+    sources = [{"name": n, "url": u} for n, u in seen.items()]
+    label = "출처" if language == "ko" else "sources"
+    parts = [f"{n}({u})" if u else n for n, u in seen.items()]
+    return {"suffix": f" ({label}: " + " · ".join(parts) + ")", "sources": sources}
+
+
 def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | None:
     """Look up a stored fact that answers the query. Returns {answer, reasoning_certificate,
     confidence} or None when the store can't answer it (empty store, no subject match, or
@@ -315,9 +344,15 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
             except Exception:
                 composed = None
             if composed is not None:
+                # 링크 근거 (owner directive): cite the ACTUAL sources of the facts
+                # used, not a generic '지식그래프'. Real URLs where they exist.
+                cited = _cite_sources(store, s, composed.facts_used, language)
+                answer = _strip_generic_source(composed.answer) + cited["suffix"]
+                cert = composed.certificate()
+                cert["sources"] = cited["sources"]
                 return {
-                    "answer": composed.answer,
-                    "reasoning_certificate": composed.certificate(),
+                    "answer": answer,
+                    "reasoning_certificate": cert,
                     "confidence": 0.88,
                     "answer_kind": "grounded_composition",
                 }
@@ -331,7 +366,9 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
             else:  # unknown predicate: generic frame with correct topic particle
                 pred_ko = next((cues[0] for name, cues in _RELATION_CUES.items() if name == p), p)
                 body = f"{display_s}의 {_ko_topic(pred_ko)} {o}입니다."
-            answer = f"{body} (출처: 큐레이션 지식그래프)"
+            # 링크 근거 even on the single-fact path — cite where this fact came from
+            cited = _cite_sources(store, s, [(s, p, o)], language)
+            answer = f"{body}{cited['suffix']}"
         else:
             # reuse the composer's clean single-fact English frames — the generic
             # 'The {p} of {s} is {o}' turned is_a into 'The is a of concerto is …'
@@ -339,7 +376,8 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
 
             frame = _EN_LEAD.get(p)
             body = frame.format(s=display_s, o=o) if frame else f"{display_s}: {o}"
-            answer = f"{body}. (source: curated knowledge graph)"
+            cited = _cite_sources(store, s, [(s, p, o)], "en")
+            answer = f"{body}{cited['suffix']}"
         return {
             "answer": answer,
             "reasoning_certificate": {

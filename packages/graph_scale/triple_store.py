@@ -118,6 +118,7 @@ class TripleStore:
         self._buf_s: list[int] = []
         self._buf_p: list[int] = []
         self._buf_o: list[int] = []
+        self._buf_src: list[int] = []
         self._seen: set[int] = set()          # dedupe hash of (s,p,o)
         self._count = self._read_count()
         try:
@@ -152,9 +153,68 @@ class TripleStore:
         # 21-bit-ish mix; exact within int range for de-dup within a run
         return (s * 1_000_003 + p) * 1_000_003 + o
 
-    def add(self, subject: str, predicate: str, obj: str) -> bool:
+    # ---- provenance registry: every fact knows WHERE it came from -----------------
+    # 링크 근거 (owner directive): answers must cite real links, not '지식그래프'.
+    # Row-level int id -> a small registry line 'name|url_pattern'. Patterns may hold
+    # {s}, resolved with the row's subject (per-entity DBpedia/wiktionary links without
+    # interning millions of URL strings). id 0 = the pre-provenance legacy tier.
+
+    def _sources(self) -> list[str]:
+        if not hasattr(self, "_src_list"):
+            path = self.root / "sources.txt"
+            self._src_list = ["curated:legacy|"]
+            if path.exists():
+                lines = [ln.rstrip("\n") for ln in path.open(encoding="utf-8") if ln.strip()]
+                if lines:
+                    self._src_list = lines
+            self._src_ids = {line: i for i, line in enumerate(self._src_list)}
+        return self._src_list
+
+    def intern_source(self, name: str, url_pattern: str = "") -> int:
+        line = f"{name}|{url_pattern}"
+        self._sources()
+        i = self._src_ids.get(line)
+        if i is None:
+            i = len(self._src_list)
+            self._src_list.append(line)
+            self._src_ids[line] = i
+            # the registry is tiny — rewrite whole (keeps line order == ids)
+            (self.root / "sources.txt").write_text(
+                "\n".join(self._src_list) + "\n", encoding="utf-8")
+        return i
+
+    def source_of(self, row_src_id: int, subject: str) -> tuple[str, str]:
+        """(name, resolved_url) for a row's source id."""
+        srcs = self._sources()
+        line = srcs[row_src_id] if 0 <= row_src_id < len(srcs) else srcs[0]
+        name, _, pattern = line.partition("|")
+        import urllib.parse as _up
+        url = pattern.replace("{s}", _up.quote(subject.replace(" ", "_"))) if pattern else ""
+        return name, url
+
+    def _backfill_src(self) -> None:
+        """src.col must have EXACTLY one int32 per existing (s) row, or every source
+        id is shifted. Rows written before provenance existed are the legacy tier
+        (id 0). Pads/creates src.col to match s.col length, then it stays in lockstep."""
+        src_path = self.root / "src.col"
+        s_path = self.root / "s.col"
+        if not s_path.exists():
+            return
+        s_rows = s_path.stat().st_size // 4
+        src_rows = (src_path.stat().st_size // 4) if src_path.exists() else 0
+        missing = s_rows - src_rows
+        if missing <= 0:
+            return
+        block = bytes(4 * 1_000_000)  # zero => legacy tier
+        with src_path.open("ab") as fh:
+            remaining = missing * 4
+            while remaining > 0:
+                fh.write(block[: min(len(block), remaining)])
+                remaining -= len(block)
+
+    def add(self, subject: str, predicate: str, obj: str, source: int | None = None) -> bool:
         """Intern the three terms and buffer the triple. Returns True if it was NEW
-        (deduped). Flushes to disk automatically every _CHUNK triples."""
+        (deduped). `source` is an intern_source() id. Flushes every _CHUNK triples."""
         s = self.terms.intern(subject)
         p = self.terms.intern(predicate)
         o = self.terms.intern(obj)
@@ -166,17 +226,19 @@ class TripleStore:
         self._buf_s.append(s)
         self._buf_p.append(p)
         self._buf_o.append(o)
+        self._buf_src.append(int(source or 0))
         self._count += 1
         if len(self._buf_s) >= _CHUNK:
             self.flush()
         return True
 
-    def bulk_ingest(self, triples: Iterable[tuple[str, str, str]]) -> dict[str, int]:
+    def bulk_ingest(self, triples: Iterable[tuple[str, str, str]],
+                    source: int | None = None) -> dict[str, int]:
         """Ingest an iterable of (s, p, o) triples at high throughput. Returns counts."""
         added = seen = 0
         for s, p, o in triples:
             if s and p and o:
-                if self.add(s, p, o):
+                if self.add(s, p, o, source=source):
                     added += 1
                 else:
                     seen += 1
@@ -196,13 +258,15 @@ class TripleStore:
         self.terms.flush()
         # append raw little-endian int32 columns (one file per column)
         self._meta_count_written = self._count
-        for name, buf in (("s", self._buf_s), ("p", self._buf_p), ("o", self._buf_o)):
+        self._backfill_src()
+        for name, buf in (("s", self._buf_s), ("p", self._buf_p), ("o", self._buf_o),
+                          ("src", self._buf_src)):
             with (self.root / f"{name}.col").open("ab") as fh:
                 if _HAVE_NP:
                     fh.write(np.asarray(buf, dtype="<i4").tobytes())
                 else:
                     fh.write(struct.pack(f"<{len(buf)}i", *buf))
-        self._buf_s.clear(); self._buf_p.clear(); self._buf_o.clear()
+        self._buf_s.clear(); self._buf_p.clear(); self._buf_o.clear(); self._buf_src.clear()
         self._write_meta()
 
     def __len__(self) -> int:
@@ -374,6 +438,51 @@ class TripleStore:
         tomb = self._tombstones()
         return [f for f in self._facts_about_raw(subject, limit=limit, preds=preds)
                 if f not in tomb]
+
+    def facts_with_sources(self, subject: str, limit: int = 20,
+                           preds: tuple[str, ...] | None = None
+                           ) -> list[tuple[str, str, str, str, str]]:
+        """facts_about + per-row provenance: (s, p, o, source_name, source_url).
+        링크 근거: the answer layer cites these instead of a generic store name."""
+        tomb = self._tombstones()
+        self.flush()
+        sid = self.terms.lookup(subject)
+        if sid is None and subject != subject.lower():
+            subject = subject.lower()
+            sid = self.terms.lookup(subject)
+        if sid is None:
+            return []
+        cols = self.open_columns()
+        s_col, p, o = cols["s"], cols["p"], cols["o"]
+        src_path = self.root / "src.col"
+        src = None
+        if src_path.exists():
+            n = src_path.stat().st_size // 4
+            src = np.memmap(str(src_path), dtype="<i4", mode="r", shape=(n,)) if n else None
+        idx = self._subject_rows(sid, s_col) if len(s_col) else []
+        if preds is not None and len(idx):
+            pids = [self.terms.lookup(x) for x in preds]
+            pids_arr = np.array([x for x in pids if x is not None], dtype=p.dtype)
+            if len(pids_arr) == 0:
+                return []
+            kept: list[int] = []
+            for start in range(0, len(idx), 2048):
+                chunk = idx[start:start + 2048]
+                hits = chunk[np.isin(p[chunk], pids_arr)]
+                kept.extend(int(i) for i in hits)
+                if len(kept) >= limit:
+                    break
+            idx = kept
+        out: list[tuple[str, str, str, str, str]] = []
+        for i in list(idx)[:limit]:
+            i = int(i)
+            row = (subject, self.terms.term(int(p[i])), self.terms.term(int(o[i])))
+            if row in tomb:
+                continue
+            sid_row = int(src[i]) if src is not None and i < len(src) else 0
+            name, url = self.source_of(sid_row, subject)
+            out.append((*row, name, url))
+        return out
 
     def disk_bytes(self) -> int:
         total = 0
