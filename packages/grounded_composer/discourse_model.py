@@ -23,8 +23,12 @@ REPO = Path(__file__).resolve().parents[2]
 STATS_PATH = REPO / "data" / "grounded_composer" / "discourse_stats.json"
 
 # the closed, approved connective vocabulary (superset of the old fixed tuple).
-# Learning RANKS these from data; it cannot go outside the list.
-APPROVED_MARKERS = ("또한", "그리고", "한편", "이와 함께", "특히", "더불어", "아울러", "이어서")
+# Learning RANKS these from data; it cannot go outside the list. The rhetorical
+# classes (인과 그래서/이 때문에, 요약 즉/결국, 대조 하지만/그러나) are what turn
+# fact lists into 기승전결 — the owner's fluency directive.
+APPROVED_MARKERS = ("또한", "그리고", "한편", "이와 함께", "특히", "더불어", "아울러", "이어서",
+                    "그래서", "이 때문에", "즉", "결국", "하지만", "그러나", "예를 들어",
+                    "왜냐하면")
 
 _STATS: dict[str, Any] = {"freq": None, "mtime": 0.0}
 

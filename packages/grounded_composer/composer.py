@@ -20,12 +20,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-# identification first, then elaboration — the standard definitional discourse schema.
-_PRED_ORDER = ("defined_as", "is_a", "capital", "capital_of", "located_in", "country", "author")
+# identification first, then elaboration, then origin/agency, then consequence —
+# the 기승전결 arc of a definitional paragraph (owner directive: fluency comes from
+# LOGICAL-RELATION DIVERSITY × DISCOURSE PATTERNS, not from more fact tonnage).
+_PRED_ORDER = ("defined_as", "is_a", "상위개념", "capital", "capital_of", "located_in",
+               "country", "구성요소", "author", "저자", "설립자", "발견자", "최고경영자",
+               "설립", "원인", "결과")
 # closed connective whitelist (the ONLY non-template, non-fact tokens allowed).
 # The learned discourse model RANKS within this list from corpus statistics —
 # it chooses among approved tokens, it can never add one (testable closure).
-_CONNECTIVES = ("또한", "그리고", "한편", "이와 함께", "특히", "더불어", "아울러", "이어서")
+_CONNECTIVES = ("또한", "그리고", "한편", "이와 함께", "특히", "더불어", "아울러", "이어서",
+                "그래서", "이 때문에", "즉", "결국", "하지만", "그러나")
 # contrast/commonality connectives for the comparison schema — same closed-vocabulary rule
 _CONTRAST_CONNECTIVES = ("반면", "둘 다")
 # subject-dropped continuation frames: Korean elaboration reads naturally without
@@ -38,6 +43,17 @@ _KO_CONT: dict[str, str] = {
     "located_in": "{o}에 위치합니다",
     "country": "나라는 {o}입니다",
     "author": "저자는 {o}입니다",
+    # relation-diversity tranche: the new logical edges SPEAK — each mined or
+    # profiled relation has a voice, so richer graphs read as richer prose
+    "저자": "{o}이(가) 썼습니다",
+    "설립자": "{o}이(가) 세웠습니다",
+    "발견자": "{o}이(가) 발견했습니다",
+    "최고경영자": "최고경영자는 {o}입니다",
+    "설립": "{o}에 세워졌습니다",
+    "구성요소": "{o}(으)로 이루어져 있습니다",
+    "상위개념": "{o}의 일부입니다",
+    "원인": "{o} 때문에 생깁니다",
+    "결과": "{o}(으)로 이어집니다",
 }
 _KO_LEAD: dict[str, str] = {
     "defined_as": "{s_topic} {o}입니다",
@@ -47,6 +63,15 @@ _KO_LEAD: dict[str, str] = {
     "located_in": "{s_topic} {o}에 위치합니다",
     "country": "{s}의 나라는 {o}입니다",
     "author": "{s}의 저자는 {o}입니다",
+    "저자": "{s}의 저자는 {o}입니다",
+    "설립자": "{s_topic} {o}이(가) 세웠습니다",
+    "발견자": "{s_topic} {o}이(가) 발견했습니다",
+    "최고경영자": "{s}의 최고경영자는 {o}입니다",
+    "설립": "{s_topic} {o}에 세워졌습니다",
+    "구성요소": "{s_topic} {o}(으)로 이루어져 있습니다",
+    "상위개념": "{s_topic} {o}의 일부입니다",
+    "원인": "{s_topic} {o} 때문에 생깁니다",
+    "결과": "{s_topic} {o}(으)로 이어집니다",
 }
 
 
@@ -98,6 +123,27 @@ def _ko_topic_particle(label: str) -> str:
     from packages.lad_morphology import topic
 
     return topic(label)[len(label):]
+
+
+def _resolve_josa(sentence: str) -> str:
+    """Resolve 조사 placeholders the frames leave when the slot filler's final
+    syllable decides the particle: X이(가), X(으)로. LAD layer, data-driven."""
+    import re as _re
+
+    from packages.lad_morphology import has_batchim
+
+    def _iga(m: "_re.Match[str]") -> str:
+        w = m.group(1)
+        return w + ("이" if has_batchim(w[-1]) else "가")
+
+    def _euro(m: "_re.Match[str]") -> str:
+        w = m.group(1)
+        last = w[-1]
+        return w + ("로" if (not has_batchim(last)) or (ord(last) - 0xAC00) % 28 == 8 else "으로")
+
+    sentence = _re.sub(r"([가-힣A-Za-z0-9]+)이\(가\)", _iga, sentence)
+    sentence = _re.sub(r"([가-힣A-Za-z0-9]+)\(으\)로", _euro, sentence)
+    return sentence
 
 
 def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
@@ -155,7 +201,13 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
 
                     learned = pick_connective(len(connectives),
                                               connectives[-1] if connectives else None)
-                    if learned and learned in _CONNECTIVES:
+                    # generic elaboration may only take ADDITIVE markers — 그래서/
+                    # 하지만 on an unrelated fact pair is worse than mechanical.
+                    # Rhetorical semantics live INSIDE relation frames (원인 frame
+                    # says 때문에 itself), never as a free connective choice.
+                    _additive = ("또한", "그리고", "한편", "이와 함께", "특히",
+                                 "더불어", "아울러", "이어서")
+                    if learned and learned in _additive:
                         conn = learned
                 except Exception:
                     pass
@@ -165,6 +217,8 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
     if len(sentences) < 2:
         return None
     answer = " ".join(sentences) + source
+    if language == "ko":
+        answer = _resolve_josa(answer)
     return ComposedAnswer(answer=answer, facts_used=used, connectives_used=connectives)
 
 
