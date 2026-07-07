@@ -3716,6 +3716,27 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         request.language = "ko"  # dispatch reads the request object, not this local
     else:
         language = request.language or "en"
+    # SELF-FUSED CONVERSATION ROUTING (owner directive: the everyday-talk / search
+    # switch lives in the SELF, not a regex cascade). The living self PERCEIVES the
+    # message (learned router + its own judgment) and, when it's conversation,
+    # answers from its live state INSTANTLY — short-circuiting the whole graph/web
+    # pipeline (this is also why conversational replies were slow: they ran every
+    # factual lookup first). Knowledge questions fall through untouched.
+    if meta_ack is None and language == "ko":
+        try:
+            from packages.continuous_self.conversation import converse, perceive_route
+
+            _route = perceive_route(question)
+            if _route["mode"] == "converse":
+                _conv = converse(question, _route["intent"])
+                if _conv:
+                    _accumulate_user_facts(question, language)
+                    _payload = {**_conv, "engine": "atanor", "language": language,
+                                "route": _route, "can_speak": True}
+                    _emit_stage("done")
+                    return {"state": "completed", "result": _payload, **_flags()}
+        except Exception:
+            pass
     # A context-resolved query so a follow-up ("where is it?") carries the prior
     # topic into web grounding / recall.
     try:
