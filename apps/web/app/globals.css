@@ -4546,6 +4546,12 @@ p {
   font-weight: 700;
   letter-spacing: 0.18em;
 }
+/* the unified full build wears its own name — Ultimate, in purple (owner call) */
+.atanor-user-brand span[data-demo-badge="false"] {
+  color: #a78bfa;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
 
 /* ── DEMO HOME: GPT-style white chat that fills the content area to the RIGHT of
    the existing ATANOR sidebar (the frame stays). Replaces the orb on home. ──── */

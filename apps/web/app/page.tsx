@@ -6103,7 +6103,7 @@ function FullApp() {
               event.currentTarget.style.display = "none";
             }}
           />
-          <span data-demo-badge={demoView ? "true" : "false"}>{demoView ? "DEMO" : "0.1.2"}</span>
+          <span data-demo-badge={demoView ? "true" : "false"}>{demoView ? "DEMO" : "Ultimate"}</span>
         </div>
         <nav className="atanor-user-nav" aria-label="ATANOR sections">
           {visibleMainNav.map((item) => {
