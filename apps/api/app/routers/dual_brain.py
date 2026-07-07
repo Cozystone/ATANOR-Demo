@@ -4042,11 +4042,13 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Leave real abstentions and any answer that already reads procedurally alone.
     if howto_request and not concept_compare and isinstance(response.get("result"), dict):
         _ans = str(response["result"].get("answer") or "")
-        # a REAL procedure has enumerated steps — numbered lines, 단계, or a step verb
-        # sequence. '먼저,'/'다음' alone are synthesis discourse connectors ('먼저,
-        # 파이썬은 …언어입니다') and must NOT count as procedural, or the mashup slips
-        # through the guard (measured: 파이썬 설치 답이 정의 짜깁기로 통과).
-        _looks_procedural = bool(re.search(r"단계|절차|[①-⑩]|(?:^|\s)\d+\s*[.)]\s|설치하려면|실행하면", _ans))
+        # a REAL procedure has ENUMERATED steps — numbered lines, 단계별/순서, ordinal
+        # words. Bare '단계'/'절차'/'먼저' must NOT count: '먼저,' is a synthesis
+        # connector and '절차' matches '절차적 프로그래밍' (procedural programming),
+        # both of which slipped the mashup through the guard (measured on 파이썬 설치).
+        _looks_procedural = bool(re.search(
+            r"단계별|순서(?:대로|는|:)|차례(?:로|대로)|[①-⑩]|(?:^|\n)\s*\d+\s*[.)]|첫째|둘째|셋째",
+            _ans))
         # any non-procedural, non-abstention answer to a how-to is off-target here —
         # the local graph holds concept definitions, not step-by-step procedures, so a
         # definition OR a definition-mashup ('파이썬은 …언어입니다. …언어이다.') both miss
