@@ -1810,12 +1810,23 @@ def _continuous_worker() -> None:
                         _pii = _pii_scan(_kg2, max_rows=500_000)
                     except Exception:
                         _pii = {}
+                    # COMPACTION (self-refine stage 2): merge alias surface forms
+                    # to canonical — fewer nodes, identical knowledge. Completes
+                    # the flywheel (stage 1 sweep + stage 3 mint + stage 2 compact).
+                    _comp = {}
+                    try:
+                        from packages.graph_scale.compaction import compact as _compact
+
+                        _comp = _compact(_kg2, max_rows=500_000)
+                    except Exception:
+                        _comp = {}
                     with _CONT_LOCK:
                         _CONT["self_refine"] = {
                             "conflicts": _cres.get("conflicts", 0),
                             "resolved": _cres.get("resolved", 0),
                             "hyp_confirmed": _sres.get("confirmed", 0),
                             "pii_quarantined": _pii.get("quarantined", 0),
+                            "nodes_compacted": _comp.get("nodes_merged", 0),
                             "at": _time.time()}
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
