@@ -307,6 +307,14 @@ def work_submit(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
         registry.record_outcome(peer_id, bool(proof.get("verified")))
         if proof.get("verified") and not proof.get("empty"):
             ledger.mint(peer_id, BATCH_PRICE, batch_id, proof)
+        # MEASURED bench (2-4): Render grades nodes with a synthetic OctaneBench;
+        # we grade with REAL verified work — sentences/sec from claim to submit.
+        # EMA over batches so the tier reflects sustained capacity, and the
+        # priority-tier promotion path runs itself.
+        _dt = max(0.05, _time.time() - float(b.get("claimed_at") or _time.time()))
+        _rate = len(b.get("sentences") or []) / _dt
+        _prev = float(registry.register(peer_id).get("bench") or 0.0)
+        registry.set_bench(peer_id, round(0.7 * _prev + 0.3 * _rate, 2) if _prev else round(_rate, 2))
     except Exception:
         pass
     if not proof.get("verified"):

@@ -6721,6 +6721,10 @@ function FullApp() {
                   <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "남은 작업" : "Work left"}</small><br /><strong>{Number(brainLinkPool.queue_remaining ?? 0).toLocaleString()}</strong></span>
                   <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "처리한 작업" : "Done"}</small><br /><strong>{String(brainLinkPool.batches_completed ?? 0)}</strong></span>
                   <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "함께 쌓은 지식" : "Knowledge built"}</small><br /><strong>{(Number(brainLinkPool.store_concepts_total ?? 0) + Number(brainLinkPool.store_relations_total ?? 0)).toLocaleString()}</strong></span>
+                  {brainLinkPool.economy ? (<>
+                    <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "소각/발행 (BME)" : "Burned/Minted (BME)"}</small><br /><strong>{Number(brainLinkPool.economy?.equilibrium?.burned ?? 0).toLocaleString()} / {Number(brainLinkPool.economy?.equilibrium?.minted ?? 0).toLocaleString()}</strong></span>
+                    <span><small style={{ opacity: 0.7 }}>{language === "ko" ? "균형" : "Equilibrium"}</small><br /><strong>{Number(brainLinkPool.economy?.equilibrium?.equilibrium ?? 0).toLocaleString()}</strong></span>
+                  </>) : null}
                 </div>
                 <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                   {(Array.isArray(brainLinkPool.peers) ? brainLinkPool.peers : []).map((peer: AnyRecord) => (
@@ -6731,6 +6735,15 @@ function FullApp() {
                         {peer.online ? (language === "ko" ? "지금 참여 중" : "online") : (language === "ko" ? "쉬는 중" : "offline")}
                         {" · "}{language === "ko" ? "작업" : "done"} {String(peer.completed ?? 0)}
                         {" · "}{language === "ko" ? "지식 기여" : "contributed"} {(Number(peer.concepts ?? 0) + Number(peer.relations ?? 0)).toLocaleString()}
+                        {brainLinkPool.economy?.peers?.[String(peer.peer_id)] ? (
+                          <>{" · "}
+                            <span style={{ color: "#6366f1", fontWeight: 600 }}>
+                              {{ trusted: language === "ko" ? "신뢰" : "trusted", priority: language === "ko" ? "우선" : "priority", economy: language === "ko" ? "일반" : "economy" }[String(brainLinkPool.economy.peers[String(peer.peer_id)].tier)] ?? "일반"}
+                            </span>
+                            {" · "}{language === "ko" ? "크레딧" : "credits"} {Number(brainLinkPool.economy.peers[String(peer.peer_id)].credits ?? 0).toLocaleString()}
+                            {" · "}{language === "ko" ? "평판" : "rep"} {Number(brainLinkPool.economy.peers[String(peer.peer_id)].reputation ?? 0).toFixed(2)}
+                          </>
+                        ) : null}
                       </span>
                     </li>
                   ))}
