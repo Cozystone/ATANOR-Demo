@@ -43,6 +43,9 @@ def derive_user_model(events: list[dict[str, Any]] | None = None,
                       subject: str = "사용자") -> dict[str, Any]:
     """Aggregate the stores into an evidence-backed user model. Pass explicit
     lists for tests; default loads the real local stores."""
+    # live mode = no explicit inputs; only then pull the global browsing journal
+    # (so tests with explicit events stay isolated from the real journal file)
+    _live = events is None and brain_facts is None
     if events is None:
         events = _episodic_rows()
     if brain_facts is None:
@@ -120,11 +123,26 @@ def derive_user_model(events: list[dict[str, Any]] | None = None,
                 "source": "local_brain", "confidence": f.get("confidence"),
             })
 
+    # browsing interests (the AI browser's contribution): domains the user
+    # dwells on become derived interests — the browser deepens the user model.
+    browsing_interests = []
+    try:
+        from packages.atanor_browser.activity_journal import interests as _bi
+
+        for it in (_bi(limit=5) if _live else []):
+            browsing_interests.append(it)
+            preferences.append({
+                "value": it["domain"], "polarity": "positive",
+                "source": "browsing", "weight": it["weight"]})
+    except Exception:
+        browsing_interests = []
+
     return {
         "subject": subject,
         "possessions": possessions,
         "habits": habits,
         "preferences": preferences,
+        "browsing_interests": browsing_interests,
         "evidence_totals": {
             "episodic_events": len(mine),
             "brain_facts": len(brain_facts),

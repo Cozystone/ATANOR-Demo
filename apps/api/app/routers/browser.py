@@ -116,3 +116,39 @@ def browser_forget(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
 @router.get("/stats")
 def browser_stats() -> dict[str, Any]:
     return _ledger().stats()
+
+
+# ── personal activity journal (the AI browser's private brain graph) ──────────
+@router.post("/activity")
+def browser_activity(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
+    """Journal one browsing action into the PERSONAL brain graph (local only,
+    PII-gated). This is the private lane — distinct from /ingest (shared)."""
+    from packages.atanor_browser.activity_journal import record_activity
+
+    return record_activity(
+        kind=str(body.get("kind") or "visit"),
+        url=str(body.get("url") or ""), query=str(body.get("query") or ""),
+        title=str(body.get("title") or ""),
+        dwell_s=float(body.get("dwell_s") or 0.0))
+
+
+@router.get("/activity/recall")
+def browser_activity_recall(q: str = "", limit: int = 20) -> dict[str, Any]:
+    from packages.atanor_browser.activity_journal import recall
+
+    return {"history": recall(query=q, limit=limit)}
+
+
+@router.get("/activity/interests")
+def browser_activity_interests() -> dict[str, Any]:
+    from packages.atanor_browser.activity_journal import interests, revisits, sessions_summary
+
+    return {"interests": interests(), "revisits": revisits(),
+            "recent_sessions": sessions_summary()}
+
+
+@router.get("/activity/status")
+def browser_activity_status() -> dict[str, Any]:
+    from packages.atanor_browser.activity_journal import status
+
+    return status()
