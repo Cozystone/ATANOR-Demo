@@ -1783,6 +1783,22 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"policy_tune: {type(exc).__name__}"[:120]
+        # ENDOGENOUS CURRICULUM (Phase 3-4): before the drain, the value stack ranks
+        # measured gaps (flywheel failures × user model × selfhood curiosity × KG
+        # novelty) and pushes the winners into the same abstain queue — the mind
+        # deciding what to learn next from its own state, never from a topic table.
+        try:
+            _ce = int(os.getenv("ATANOR_CURRICULUM_EVERY", "90") or 90)
+            if _ce > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _ce == 0:
+                from packages.continuous_self.curriculum import enqueue_top as _cur_enqueue
+
+                _cr = _cur_enqueue(limit=3, log=lambda *_: None)
+                if _cr.get("pushed"):
+                    with _CONT_LOCK:
+                        _CONT["curriculum_pushed"] = _CONT.get("curriculum_pushed", 0) + _cr["pushed"]
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"curriculum_tick: {type(exc).__name__}"[:120]
         # Abstain-to-ingest DRAIN every K ticks: terms real users asked about but the
         # engine abstained on are fetched (Wikipedia summary), pass the conservative
         # definition extractor + curated judge, and land in the curated triple store —
