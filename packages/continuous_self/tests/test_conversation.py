@@ -21,12 +21,13 @@ def test_knowledge_questions_route_to_know():
         assert r["mode"] == "know", (q, r)
 
 
-def test_self_judgment_overrides_weak_router():
-    # the trained router mislabels these; the self corrects to converse
+def test_frame_overrides_weak_router():
+    # the trained router mislabels these (파이썬 좋아해 -> howto, 인생...-> definition);
+    # the query-frame grammar corrects them to conversation
     r = conv.perceive_route("파이썬 좋아해?")
-    assert r["why"] == "self_judgment" and r["intent"] == "preference"
+    assert r["why"] == "query_frame" and r["intent"] == "preference"
     r2 = conv.perceive_route("인생에서 가장 중요한 게 뭐야?")
-    assert r2["intent"] == "opinion"
+    assert r2["mode"] == "converse" and r2["intent"] == "opinion"
 
 
 def test_converse_generates_from_state_never_fabricates():

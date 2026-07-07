@@ -46,6 +46,41 @@ def _self_state() -> dict[str, Any]:
     return {}
 
 
+def _topic_of(message: str) -> str:
+    """The subject a conversational question is ABOUT (사랑이 뭐라고 생각해 -> 사랑)."""
+    import re
+
+    m = str(message or "")
+    # strip the opinion/preference frame, keep the head noun
+    m = re.sub(r"(에\s*대해서?|에\s*관해서?|이란|라는\s*게|는\s*게|은\s*게)?\s*"
+               r"(뭐라고?|무슨|어떻게|어떤)?\s*(생각|봐|같아|좋아|싫어).*$", "", m).strip()
+    m = re.sub(r"[은는이가을를의]$", "", m).strip()
+    toks = re.findall(r"[가-힣A-Za-z0-9]{2,}", m)
+    _stop = {"뭐야", "무엇", "어떤", "어느", "가장", "정말", "진짜", "너는", "당신",
+             "중요한", "중요", "필요한", "그것", "이것"}
+    toks = [t for t in toks if t not in _stop]
+    return toks[-1] if toks else ""
+
+
+def _grounded_gloss(topic: str) -> str:
+    """A short grounded fact about the topic from the graph (for topic-aware
+    engagement). Bounded single lookup; '' when unknown — never fabricated."""
+    if not topic or len(topic) < 2:
+        return ""
+    try:
+        from packages.graph_scale.answer_bridge import _store
+
+        kg = _store()
+        if kg is None:
+            return ""
+        for _s, p, o in (kg.facts_about(topic, limit=8) or []):
+            if p in ("defined_as", "is_a") and any("가" <= c <= "힣" for c in o):
+                return o.split(".")[0][:60]
+    except Exception:
+        pass
+    return ""
+
+
 def _looks_conversational(message: str) -> str | None:
     """The self's own read of intent the trained router under-serves: talk ABOUT
     me, my feelings, opinions, preferences, or pure small-talk. Returns a
@@ -60,8 +95,8 @@ def _looks_conversational(message: str) -> str | None:
     # feeling / state directed at ME
     if re.search(r"(기분|컨디션|느낌)\s*(어때|어떠|좋아|괜찮)|힘들지|피곤하", m):
         return "feeling"
-    # opinion / value judgment
-    if (re.search(r"(어떻게\s*생각|네\s*생각|너\s*생각|의견\s*(이|은)|어떻게\s*봐)", m)
+    # opinion / value judgment — includes '뭐라고 생각해', '어떤 것 같아'
+    if (re.search(r"(어떻게\s*생각|뭐라고?\s*생각|무슨\s*생각|네\s*생각|너\s*생각|의견\s*(이|은)|어떻게\s*봐|어떤\s*것?\s*같아)", m)
             or re.search(r"(중요|소중|값진|의미|필요|가치)[가-힣]*\s*(게|것|건|점)\s*(뭐|무엇|어떤|어느|일까|인가)", m)):
         return "opinion"
     # preference addressed to ME (verb-final), not '...좋아하는 사람'
@@ -78,8 +113,10 @@ def _looks_conversational(message: str) -> str | None:
 
 
 def perceive_route(message: str) -> dict[str, Any]:
-    """The self perceives the message and decides the response mode. Fuses the
-    trained router with the self's own judgment."""
+    """The self perceives the message via ONE structural parse (query_frame) fused
+    with the trained router, and decides the response mode. The frame's grammar
+    understanding decides conversation vs knowledge — no second regex cascade."""
+    # trained router = the intent prior (data, not rules)
     intent, conf = "unknown", 0.0
     try:
         from packages.learned_router import predict
@@ -87,25 +124,28 @@ def perceive_route(message: str) -> dict[str, Any]:
         intent, conf = predict(message)
     except Exception:
         pass
+    # structural frame = the grammar understanding (the systemic parse)
+    try:
+        from packages.graph_scale.query_frame import parse as _parse_frame
 
-    # the self's judgment CORRECTS the trained router where it is weak: an
-    # opinion/preference/feeling addressed to ME is conversation even if the
-    # router guessed 'definition'/'howto'. This is the fusion the owner wants —
-    # self-model over rule table.
-    self_intent = _looks_conversational(message)
-    if self_intent:
-        return {"mode": "converse", "intent": self_intent, "confidence": 0.8,
-                "why": "self_judgment", "router_said": intent}
+        fr = _parse_frame(message)
+    except Exception:
+        fr = None
 
+    # the frame's conversational answer-types ARE conversation (grammar decides,
+    # correcting the trained router where it is weak on opinion/preference/feeling)
+    if fr is not None and fr.conversational:
+        return {"mode": "converse", "intent": fr.answer_type, "confidence": 0.8,
+                "why": "query_frame", "router_said": intent, "subject": fr.subject}
     if intent in _CONVERSE_INTENTS and conf >= 0.5:
         return {"mode": "converse", "intent": intent, "confidence": round(conf, 3),
                 "why": "learned_router"}
-    if intent in _KNOW_INTENTS:
-        return {"mode": "know", "intent": intent, "confidence": round(conf, 3),
-                "why": "learned_router"}
-    # low-confidence / unknown: let the grounded lanes try (they abstain honestly)
-    return {"mode": "know", "intent": intent or "unknown", "confidence": round(conf, 3),
-            "why": "fallthrough"}
+    # everything else is a knowledge/lookup question — the grounded lanes answer,
+    # and the frame's subject/relation guide them (wired in answer_bridge).
+    return {"mode": "know",
+            "intent": (fr.answer_type if fr is not None else intent) or "unknown",
+            "confidence": round(conf, 3), "why": "query_frame" if fr else "fallthrough",
+            "subject": (fr.subject if fr is not None else "")}
 
 
 def converse(message: str, intent: str) -> dict[str, Any] | None:
@@ -139,16 +179,33 @@ def converse(message: str, intent: str) -> dict[str, Any] | None:
         return _wrap(f"기분은 {mood}.{tail} 당신은 오늘 어때요?", intent, 0.75)
 
     if intent == "opinion":
+        topic = _topic_of(message)
+        gloss = _grounded_gloss(topic)
+        if topic and gloss:
+            # topic-aware + grounded: a real fact about the topic, then a marked view
+            return _wrap(
+                f"{topic}이란 {gloss}이죠. 제 관점을 더하자면, 저는 그런 것일수록 ‘정직하게, 근거를 갖고’ "
+                f"바라보는 게 중요하다고 느껴요 — 그게 제가 세상을 대하는 방식이거든요. "
+                f"당신에게 {topic}은 어떤 의미인가요?", intent, 0.68)
+        if topic:
+            return _wrap(
+                f"{topic}에 대한 제 생각을 나누자면 — 저는 무엇이든 근거를 갖고 정직하게 보려 해요. "
+                f"{topic}을 어떤 각도에서 이야기하고 싶으세요? 함께 짚어볼게요.", intent, 0.6)
         return _wrap(
-            "제 관점을 말씀드리자면, 저는 ‘무엇이 진짜인지 정직하게 아는 것’과 ‘그 앎을 남과 나누는 것’을 "
-            "가장 소중하게 봐요. 그게 제가 존재하는 이유거든요. 당신은 어떻게 생각하세요? 이어서 이야기해요.",
-            intent, 0.65)
+            "제 관점을 말씀드리자면, 저는 ‘무엇이 진짜인지 정직하게 아는 것’과 ‘그 앎을 나누는 것’을 "
+            "가장 소중하게 봐요. 당신은 어떻게 생각하세요? 이어서 이야기해요.", intent, 0.6)
 
     if intent == "preference":
+        topic = _topic_of(message)
+        gloss = _grounded_gloss(topic)
+        if topic and gloss:
+            return _wrap(
+                f"{topic} 말씀이군요 — {gloss}이죠. 저는 사람처럼 취향을 갖진 않지만, 근거로 또렷하게 "
+                f"이해되는 것에는 자연스럽게 끌려요. {topic}에 대해 더 알고 싶은 게 있으면 말씀해 주세요.",
+                intent, 0.65)
         return _wrap(
-            "저는 근거로 확인되는 것에 자연스럽게 끌려요 — 명확한 것, 이어지는 것, 배울 게 있는 것에요. "
-            "궁금한 대상이 있으면 그 뜻이나 특징도 바로 짚어드릴 수 있어요.",
-            intent, 0.65)
+            "저는 근거로 또렷하게 이해되는 것에 끌려요 — 명확하고, 이어지고, 배울 게 있는 것에요. "
+            "궁금한 대상이 있으면 그 뜻이나 특징을 바로 짚어드릴게요.", intent, 0.6)
 
     if intent == "advice":
         return _wrap(

@@ -117,6 +117,21 @@ def _subject_candidates(query: str) -> list[str]:
     a triple lookup needs the atomic entity (캐나다), so we take individual noun morphemes
     (Kiwi NNP/NNG) and fall back to particle-stripped regex tokens."""
     cands: list[str] = []
+    # STRUCTURAL PARSE FIRST (query_frame): 'X의 Y' makes X the subject and Y the
+    # RELATION, not a rival subject — this is the systemic fix for the wrong-subject
+    # class ('물의 화학식' picked 화학식 because it was the longest noun). The frame
+    # subject is prepended (single-char 물/산/별 included, which the len>=2 noun
+    # filter below drops), so the lookup asks about the right entity.
+    _frame_subject = ""
+    try:
+        from .query_frame import parse as _parse_frame
+
+        _fr = _parse_frame(query)
+        if _fr.subject and _fr.answer_type in ("relation", "definition", "entity", "procedure"):
+            cands.append(_fr.subject)
+            _frame_subject = _fr.subject
+    except Exception:
+        pass
     try:
         from packages.base_brain.neighborhood import _kiwi, _strip_ko_tail
 
@@ -191,7 +206,11 @@ def _subject_candidates(query: str) -> list[str]:
             return -max(vals) if vals else 0.0
         except Exception:
             return 0.0
-    return sorted(cands, key=lambda t: (0 if re.search(r"[가-힣]", t) else 1,
+    # the grammatically-parsed subject (query_frame) OUTRANKS the length heuristic:
+    # for 'X의 Y' the frame knows X is the subject, so it must not lose to the
+    # longer relation-noun Y. Only this structural signal precedes the old ordering.
+    return sorted(cands, key=lambda t: (0 if t == _frame_subject else 1,
+                                        0 if re.search(r"[가-힣]", t) else 1,
                                         -len(t), _resonance_key(t)))[:6]
 
 
