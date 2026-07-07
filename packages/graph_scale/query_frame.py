@@ -88,12 +88,33 @@ def _clean(tok: str) -> str:
     return _JOSA_TAIL.sub("", tok.strip()).strip()
 
 
+# tokens that are verb/adjective predicates, never a subject noun ('만든', '만들었어')
+_VERBISH = re.compile(r"(었|았|였|겠|만든|만들|했|한다|된다|이야|에요|예요|어요|아요|"
+                      r"드는|하는|인가|랬|볼까|을까|ㄹ까)$")
+
+
 def _head_noun(span: str) -> str:
-    """The last content noun of a span, particle stripped, question-word skipped."""
+    """The last content noun of a span, particle stripped, question-word skipped.
+    Skips verb/predicate tokens so a trailing verb is never taken as the noun."""
     for tok in reversed(re.findall(r"[가-힣A-Za-z0-9]+", span)):
         base = _clean(tok)
-        if base and base not in _QWORDS and base not in _BOUND_NOUNS and len(base) >= 1:
+        if (base and base not in _QWORDS and base not in _BOUND_NOUNS
+                and not _VERBISH.search(base) and len(base) >= 1):
             return base
+    return ""
+
+
+def _fronted_topic(body: str) -> str:
+    """The topic/subject noun before the FIRST case particle (X는/이/을 …).
+    Korean questions are topic-fronted, so the subject is usually here, not the
+    trailing noun — this stops a verb/predicate ('세종대왕이 만든 것' -> 세종대왕,
+    '상대성이론을 누가 만들었어' -> 상대성이론, not the trailing verb)."""
+    m = re.search(r"([가-힣A-Za-z0-9]{2,20}?)(?:은|는|이|가|을|를)(?:\s|$)", body)
+    if m:
+        cand = _clean(m.group(1))
+        if (cand and cand not in _QWORDS and cand not in _BOUND_NOUNS
+                and not _VERBISH.search(cand)):
+            return cand
     return ""
 
 
@@ -153,6 +174,14 @@ def parse(question: str) -> QueryFrame:
         subj = _clean(m.group(1))
         rel_word = _clean(m.group(2))
         if subj and rel_word and rel_word not in _QWORDS:
+            # concept-genitive discriminator: 'X의 Y는 무엇인가' where Y is NOT a
+            # known relation word is a request to DEFINE the concept Y, not to
+            # fetch Y-of-X ('아인슈타인의 상대성이론은 무엇인가' -> define 상대성이론).
+            if (rel_word.lower() not in _RELATION_WORDS
+                    and re.search(r"(무엇|뭐야|뭐냐|뭔가|이란|란\b|뜻|정의|설명)", q)):
+                f.subject = rel_word
+                f.answer_type = "definition"
+                return f
             f.subject = subj
             f.relation = _RELATION_WORDS.get(rel_word.lower(), rel_word)
             f.answer_type = "relation"
@@ -182,7 +211,8 @@ def _definition_subject(q: str) -> str:
     body = re.sub(r"\s*(은|는|이|가)?\s*(뭐야|뭐|무엇|누구|누구야|이란|란|이라는|라는|알려줘|설명해|뜻이?\s*뭐).*$",
                   "", q).strip()
     body = body or q
-    return _head_noun(body)
+    # topic-fronted subject first ('세종대왕이 만든 것' -> 세종대왕), else last noun
+    return _fronted_topic(body) or _head_noun(body)
 
 
 def _opinion_topic(q: str) -> str:

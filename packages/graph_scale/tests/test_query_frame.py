@@ -41,3 +41,27 @@ def test_bound_noun_never_becomes_subject():
 def test_single_char_subject_survives():
     f = parse("물의 화학식은?")
     assert f.subject == "물"  # 1-char subject not dropped (the old bug)
+
+
+def test_wrong_referent_redteam_battery():
+    """Subjects the spear/shield red-team found query_frame extracting WRONG.
+    Fixed by (a) fronted-topic (no verb-stem subjects) + (b) concept-genitive
+    discriminator. Nested-genitive stays a documented residual (needs the graph)."""
+    from packages.graph_scale.query_frame import parse
+    fixed = [
+        ("세종대왕이 만든 것은?", "세종대왕"),        # was 'MISS -> 만든' (verb stem!)
+        ("상대성이론을 누가 만들었어?", "상대성이론"),  # was 'MISS -> 만들었어'
+        ("토마토는 과일이야 채소야?", "토마토"),        # was 'MISS -> 채소야'
+        ("아인슈타인의 상대성이론은 무엇인가?", "상대성이론"),  # concept-genitive
+        ("물의 화학식은?", "물"),                     # relation genitive still OK
+        ("피자를 맛있게 만드는 법", "피자"),            # procedure still OK
+    ]
+    for q, want in fixed:
+        assert parse(q).subject == want, (q, parse(q).subject)
+
+
+def test_no_verb_stem_is_ever_a_subject():
+    from packages.graph_scale.query_frame import parse, _VERBISH
+    for q in ("세종대왕이 만든 것은?", "상대성이론을 누가 만들었어?", "물은 어떻게 끓어?"):
+        subj = parse(q).subject
+        assert not _VERBISH.search(subj), (q, subj)
