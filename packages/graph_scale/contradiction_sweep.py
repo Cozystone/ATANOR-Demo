@@ -172,3 +172,76 @@ def sweep(store: Any, *, apply: bool = True,
     return {"functional_predicates": sum(1 for v in functionality.values() if v["functional"]),
             "conflicts": len(conflicts), "resolved": len(resolved),
             "queued_for_evidence": len(queued)}
+
+
+def find_taxonomic_noise(store: Any, max_rows: int = 2_000_000) -> list[dict[str, Any]]:
+    """Structurally impossible is_a edges — pure noise, not opinion:
+      * self-loop:  X is_a X
+      * mutual:     X is_a Y  AND  Y is_a X  (each can't be a KIND of the other)
+    Found by measurement (어버이 is_a 아버지 class). No rule table — the graph's
+    own is_a edges are checked against these two impossibilities."""
+    import numpy as np
+
+    cols = store.open_columns()
+    n = min(len(cols["s"]), max_rows)
+    if n == 0:
+        return []
+    p = np.asarray(cols["p"][:n])
+    pid = store.terms.lookup("is_a")
+    if pid is None:
+        return []
+    mask = p == pid
+    s = np.asarray(cols["s"][:n])[mask]
+    o = np.asarray(cols["o"][:n])[mask]
+    tomb = store._tombstones()
+    isa: set[tuple[int, int]] = set(zip(s.tolist(), o.tolist()))
+    noise: list[dict[str, Any]] = []
+    seen: set[tuple[int, int]] = set()
+    for si, oi in isa:
+        subj, obj = store.terms.term(int(si)), store.terms.term(int(oi))
+        if (subj, "is_a", obj) in tomb:
+            continue
+        if si == oi:
+            noise.append({"subject": subj, "object": obj, "kind": "self_loop"})
+        elif (oi, si) in isa and (oi, si) not in seen:
+            # a mutual is_a: keep the DIRECTION the graph supports more (which
+            # side's object also appears as another subject's genus = the real
+            # parent), else flag both for evidence. Here we just report the pair.
+            seen.add((si, oi))
+            noise.append({"subject": subj, "object": obj, "kind": "mutual_is_a",
+                          "reverse": store.terms.term(int(oi))})
+    return noise
+
+
+def sweep_taxonomy(store: Any, *, apply: bool = True,
+                   max_rows: int = 2_000_000) -> dict[str, Any]:
+    """Quarantine structurally-impossible is_a noise (self-loops always;
+    mutual is_a: the weaker-supported direction). Reversible, ledgered."""
+    noise = find_taxonomic_noise(store, max_rows=max_rows)
+    removed = 0
+    for item in noise:
+        if not apply:
+            continue
+        try:
+            if item["kind"] == "self_loop":
+                store.retract(item["subject"], "is_a", item["object"],
+                              reason="taxonomic_self_loop")
+                removed += 1
+            elif item["kind"] == "mutual_is_a":
+                # drop the direction whose subject has FEWER other facts (the
+                # thinner node is likelier the mis-extracted child)
+                a, b = item["subject"], item["object"]
+                fa = len(store.facts_about(a, limit=50) or [])
+                fb = len(store.facts_about(b, limit=50) or [])
+                drop_s, drop_o = (a, b) if fa <= fb else (b, a)
+                store.retract(drop_s, "is_a", drop_o, reason="taxonomic_mutual_is_a")
+                removed += 1
+        except Exception:
+            continue
+    if noise:
+        LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        with LEDGER.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                 "taxonomic_noise": len(noise), "removed": removed,
+                                 "items": noise[:50]}, ensure_ascii=False) + "\n")
+    return {"taxonomic_noise": len(noise), "removed": removed}

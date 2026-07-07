@@ -1798,6 +1798,14 @@ def _continuous_worker() -> None:
                 _kg2 = _kg_store2()
                 if _kg2 is not None:
                     _cres = _contra_sweep(_kg2, max_rows=500_000)
+                    # stage 1b: quarantine structurally-impossible is_a noise
+                    # (self-loops, mutual is_a) — a class the value sweep misses.
+                    try:
+                        from packages.graph_scale.contradiction_sweep import sweep_taxonomy as _tax_sweep
+
+                        _tax = _tax_sweep(_kg2, max_rows=500_000)
+                    except Exception:
+                        _tax = {}
                     _hyp_mint(store=_kg2, k_terms=40)
                     _hyp_investigate(limit=2)
                     _sres = _hyp_settle(store=_kg2)
@@ -1827,6 +1835,7 @@ def _continuous_worker() -> None:
                             "hyp_confirmed": _sres.get("confirmed", 0),
                             "pii_quarantined": _pii.get("quarantined", 0),
                             "nodes_compacted": _comp.get("nodes_merged", 0),
+                            "taxonomic_noise_removed": _tax.get("removed", 0),
                             "at": _time.time()}
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
