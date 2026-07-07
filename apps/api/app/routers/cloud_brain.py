@@ -1783,6 +1783,33 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"policy_tune: {type(exc).__name__}"[:120]
+        # SELF-REFINEMENT ticks (자가정제 1+3단계): contradiction sweep quarantines
+        # trust-lopsided conflicts on measured-functional predicates (ties feed the
+        # learner); the hypothesis loop mints cross-domain QUESTIONS and settles the
+        # ones gated evidence later confirmed. Both bounded; neither invents facts.
+        try:
+            _se = int(os.getenv("ATANOR_SELF_REFINE_EVERY", "240") or 240)
+            if _se > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _se == 0:
+                from packages.graph_scale.answer_bridge import _store as _kg_store2
+                from packages.graph_scale.contradiction_sweep import sweep as _contra_sweep
+                from packages.graph_scale.hypothesis_minter import (
+                    investigate as _hyp_investigate, mint as _hyp_mint, settle as _hyp_settle)
+
+                _kg2 = _kg_store2()
+                if _kg2 is not None:
+                    _cres = _contra_sweep(_kg2, max_rows=500_000)
+                    _hyp_mint(store=_kg2, k_terms=40)
+                    _hyp_investigate(limit=2)
+                    _sres = _hyp_settle(store=_kg2)
+                    with _CONT_LOCK:
+                        _CONT["self_refine"] = {
+                            "conflicts": _cres.get("conflicts", 0),
+                            "resolved": _cres.get("resolved", 0),
+                            "hyp_confirmed": _sres.get("confirmed", 0),
+                            "at": _time.time()}
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"self_refine_tick: {type(exc).__name__}"[:120]
         # ENDOGENOUS CURRICULUM (Phase 3-4): before the drain, the value stack ranks
         # measured gaps (flywheel failures × user model × selfhood curiosity × KG
         # novelty) and pushes the winners into the same abstain queue — the mind
