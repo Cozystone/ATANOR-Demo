@@ -3750,6 +3750,10 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Media: if the question references a VIDEO (YouTube) or IMAGE (path/URL), READ it
     # (transcript / OCR) and answer from that — explicit user intent, so high priority.
     media_answer = _media_grounded_answer(question, language) if not self_state else None
+    # Phase 4-2: '어떻게 생겼어' recalls the MEASURED visual memory and re-renders
+    # it as particles (recall as imagination, never playback).
+    visual_answer = (_visual_recall_answer(question, language)
+                     if not (self_state or media_answer) else None)
     # Self-model is no longer a curated answer table (that was rule-based). Identity
     # is a reference-resolution ROUTE → the GRAPH realizes the answer: an identity
     # question is answered from the "atanor" concept via answer_with_base_brain
@@ -3998,6 +4002,17 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         if re.search(r"어떻게\s*작동|어떻게\s*동작|어떤\s*원리|작동\s*원리|how do you work", question, re.IGNORECASE):
             result["render_iframe"] = {"url": "/interference",
                                        "title": "위상 홀로그래모픽 간섭 — 작동 원리"}
+
+    # Visual-memory recall (Phase 4-2) — the measured signature answers the look
+    # question and the /recall page re-renders it as particles.
+    if visual_answer and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = visual_answer["answer"]
+        result["reasoning_certificate"] = visual_answer["reasoning_certificate"]
+        result["confidence"] = visual_answer["confidence"]
+        result["answer_kind"] = visual_answer["answer_kind"]
+        result["render_iframe"] = visual_answer["render_iframe"]
+        result["can_speak"] = True
 
     # Media-grounded answer (read a video transcript / image OCR) — authoritative; the
     # user explicitly pointed at media to read.
@@ -4544,6 +4559,112 @@ _SELF_REF_KO = ("너", "네", "니", "당신", "atanor", "아타노르", "자기
 # counterpart by default — Korean drops the pronoun. When the cue is about
 # thought/mood AND the question names no other subject, the 2nd person is implicit.
 _INNER_STATE_KO = ("무슨 생각", "기분 어때", "기분이 어때")
+
+
+_VISUAL_LOOK_RE = re.compile(
+    r"(?P<subj>[가-힣A-Za-z0-9·\s]{1,24}?)(?P<part>[은는이가])?\s+(?:어떻게\s*생겼|모습\s*이?\s*어때|무슨\s*색(?:깔)?\s*이?[야에]?)")
+_VISUAL_SELF = {"너", "당신", "네", "니", "atanor", "아타노르"}
+
+_COLOR_NAMES_KO = [
+    ((0.85, 0.15, 0.15), "붉은"), ((0.9, 0.55, 0.1), "주황빛"), ((0.9, 0.85, 0.2), "노란"),
+    ((0.2, 0.7, 0.25), "초록빛"), ((0.15, 0.65, 0.65), "청록빛"), ((0.2, 0.35, 0.85), "푸른"),
+    ((0.55, 0.25, 0.75), "보랏빛"), ((0.9, 0.6, 0.7), "분홍빛"), ((0.5, 0.33, 0.2), "갈색의"),
+    ((0.55, 0.55, 0.55), "잿빛의"), ((0.08, 0.08, 0.08), "어두운"), ((0.95, 0.95, 0.95), "흰"),
+]
+
+
+def _color_name_ko(rgb: list[float]) -> str:
+    """Nearest Korean color word for a MEASURED rgb — rendering data into words,
+    not inventing knowledge."""
+    best, name = 10.0, "무채색의"
+    for (r, g, b), n in _COLOR_NAMES_KO:
+        d = (r - rgb[0]) ** 2 + (g - rgb[1]) ** 2 + (b - rgb[2]) ** 2
+        if d < best:
+            best, name = d, n
+    return name
+
+
+def _visual_recall_answer(question: str, language: str) -> dict[str, Any] | None:
+    """Phase 4-2: '어떻게 생겼어' answers from the MEASURED visual memory (color
+    bands/palette/texture from real photos) and re-renders it as particles —
+    recall as imagination, never playback. Unknown + unlearnable -> None."""
+    if language != "ko":
+        return None
+    m = _VISUAL_LOOK_RE.search(str(question or ""))
+    if not m:
+        return None
+    base = re.sub(r"\s+", " ", m.group("subj")).strip()
+    part = m.group("part") or ""
+    # MAXIMAL-MATCH first (chronic wrong-referent fix): '고양이 어떻게 생겼어'
+    # is 고양이(cat), not 고양+이 — 이/가 endings are genuinely ambiguous between
+    # noun-final syllable and subject particle, so try the longer reading first.
+    candidates = [base + part, base] if part in ("이", "가") else [base]
+    candidates = [c for c in candidates
+                  if c and c.lower() not in _VISUAL_SELF and len(c) >= 2]
+    if not candidates:
+        return None
+    scene = None
+    subj = candidates[0]
+    try:
+        from packages.perception import learn_visual, recall_scene
+
+        for cand in candidates:
+            scene = recall_scene(cand)
+            if scene is None:
+                learn_visual(cand, log=lambda *_: None)  # bounded on-miss learn
+                scene = recall_scene(cand)
+            if scene:
+                subj = cand
+                break
+    except Exception:
+        return None
+    if not scene or not scene.get("bands"):
+        return None
+    from urllib.parse import quote
+
+    bands = scene["bands"]
+    palette = scene.get("palette") or []
+    top_name = _color_name_ko(bands[0])
+    bottom_name = _color_name_ko(bands[-1])
+    accents = []
+    for p in palette[:2]:
+        n = _color_name_ko(p)
+        if n not in (top_name, bottom_name) and n not in accents:
+            accents.append(n)
+    lum = float(scene.get("luminance") or 0.5)
+    tone = "밝은" if lum > 0.6 else ("어두운" if lum < 0.35 else "중간 밝기의")
+    texture = "결이 많은" if float(scene.get("drift") or 0) > 0.5 else "매끈한"
+    accent_txt = (" " + "·".join(accents) + " 색이 포인트로 섞입니다." ) if accents else ""
+    n_img = int(scene.get("measured_from") or 0)
+    try:
+        from packages.lad_morphology import topic as _josa_topic
+
+        subj_topic = _josa_topic(subj)
+    except Exception:
+        subj_topic = f"{subj}은(는)"
+    answer = (
+        f"실제 사진 {n_img}장을 측정한 기억으로는, {subj_topic} 위쪽이 {top_name} 톤, "
+        f"아래쪽이 {bottom_name} 톤인 {tone} {texture} 모습이에요.{accent_txt} "
+        f"지금 그 시그니처에서 파티클로 다시 그려볼게요 — 재생이 아니라 기억에서의 재구성입니다."
+    )
+    return {
+        "answer": answer,
+        "answer_kind": "visual_memory_recall",
+        "confidence": 0.8,
+        "render_iframe": {"url": f"/recall?concept={quote(subj)}",
+                          "title": f"{subj} — 시각 기억 재현"},
+        "reasoning_certificate": {
+            "derivation_kind": "visual_signature_recall",
+            "anchor_concept": {"id": subj, "label": subj, "match": "visual_memory"},
+            "steps": [{"type": "measurement", "source": s, "fact": "photo signature"}
+                      for s in (scene.get("sources") or [])[:3]],
+            "evidence_concepts": [subj],
+            "confidence": 0.8,
+            "confidence_basis": f"measured_from_{n_img}_photos",
+            "guarantees": {"external_llm": False, "fabricated_facts": False,
+                           "playback": False, "reconstruction_from_signature": True},
+        },
+    }
 
 
 _USER_KNOWLEDGE_KO = ("나에 대해", "나에 대해서", "내가 누군지", "나를 얼마나 알",
