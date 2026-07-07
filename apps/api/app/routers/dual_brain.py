@@ -3860,7 +3860,7 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     howto_request = False
     if not (self_state or self_knowledge or recall or creative_decline) and not request.web_search:
         howto_request = bool(
-            re.search(r"(하는|하는)\s*(법|방법)\b|\b방법(을|좀|\s*알려|이\s*뭐)|하려면\s*어떻게|어떻게\s*하(면|는|나요|죠|지)|how\s+(to|do\s+i)\b", question, re.IGNORECASE)
+            re.search(r"[가-힣]+는\s*(법|방법)\b|\b방법(을|좀|\s*알려|이\s*뭐)|하려면\s*어떻게|어떻게\s*하(면|는|나요|죠|지)|how\s+(to|do\s+i)\b", question, re.IGNORECASE)
         )
 
     # FALSE-PREMISE gate: a question that ASSERTS an agent-made-object relation
@@ -4300,16 +4300,37 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         _res0 = response["result"]
         if _answer_is_abstention(str(_res0.get("answer") or "")):
             _rp0, _rc0 = _router_predict(question)
-            if _rc0 >= 0.6 and _rp0 in ("chatter", "social", "greeting") and language == "ko":
-                _res0["answer"] = "네, 듣고 있어요. 편하게 이어가 주세요 — 궁금한 게 생기면 뭐든 물어보시고요."
-                _res0["answer_kind"] = "learned_router_conversational"
+            # PROMOTION (Phase 1-1, gate measured: 36/40=90% on unseen phrasings,
+            # all misses low-confidence): the learned router is the DECIDER for
+            # the whole gap space — every intent class the rule lanes missed gets
+            # its honest response shape. KNOWLEDGE intents (definition/relation/
+            # temporal/…) stay with the honest abstain: a router names the
+            # question's SHAPE, never conjures the answer. Regex lanes remain the
+            # high-precision first layer (soft policy — quality only goes up).
+            _GAP_RESPONSES = {
+                "chatter": "네, 듣고 있어요. 편하게 이어가 주세요 — 궁금한 게 생기면 뭐든 물어보시고요.",
+                "social": "네 :) 함께해서 좋아요. 필요할 때 언제든 불러주세요.",
+                "greeting": "안녕하세요! 무엇이든 편하게 물어보세요.",
+                "howto": ("그 절차를 단계별로 알려드리려면 확인된 근거가 필요한데, 지금 로컬 그래프에는 "
+                          "단계별 근거가 없어요 — 지어내지 않을게요. 웹 검색을 켜 주시면 찾아볼 수 있어요."),
+                "creative": ("저는 근거에서 답을 짓는 그래프 기반 엔진이라, 창작은 하지 않아요 — "
+                             "지어내지 않는 것이 제 원칙이거든요. 뜻·유래·관계라면 정확히 도와드릴 수 있어요."),
+                "realtime": ("실시간으로 변하는 정보는 확인 가능한 근거 없이는 답하지 않아요. "
+                             "웹 검색을 켜 주시면 지금 값을 찾아볼 수 있어요."),
+                "meta_language": "네, 알겠습니다. 어떤 내용을 다시 말씀드릴까요?",
+                "false_premise": ("그 전제를 뒷받침하는 확인된 근거가 없어서, 그 위에서는 답을 짓지 "
+                                  "않을게요. 사실관계가 확실한 부분부터 여쭤봐 주시면 정확히 답할 수 있어요."),
+            }
+            if _rc0 >= 0.6 and _rp0 in _GAP_RESPONSES and language == "ko":
+                _res0["answer"] = _GAP_RESPONSES[_rp0]
+                _res0["answer_kind"] = f"learned_router_{_rp0}"
                 _res0["confidence"] = round(float(_rc0), 2)
                 _res0["reasoning_certificate"] = {
-                    "derivation_kind": "learned_router_rescue",
+                    "derivation_kind": "learned_router_decision",
                     "anchor_concept": None,
                     "steps": [{"type": "learned_intent", "fact": f"{_rp0} ({_rc0:.2f})"}],
                     "evidence_concepts": [], "confidence": round(float(_rc0), 2),
-                    "confidence_basis": "trained_intent_classifier",
+                    "confidence_basis": "trained_intent_classifier_gap_decider",
                     "guarantees": {"external_llm": False, "fabricated_facts": False, "web_used": False},
                 }
     # FLYWHEEL: log every real turn (question, answer, lane) plus the learned
