@@ -185,6 +185,23 @@ def _definition_sentences(term: str, extract: str) -> list[str]:
     return [s for s in sents[:3] if term in s or tl in s.lower()]
 
 
+_UMS_CACHE: dict[str, Any] = {}
+
+
+def _urimalsaem_module():
+    """scripts/ is not a package — load the drain module by path, once."""
+    if "m" not in _UMS_CACHE:
+        import importlib.util
+        from pathlib import Path as _P
+
+        path = _P(__file__).resolve().parents[2] / "scripts" / "urimalsaem_drain.py"
+        spec = importlib.util.spec_from_file_location("urimalsaem_drain", str(path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _UMS_CACHE["m"] = mod
+    return _UMS_CACHE["m"]
+
+
 def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, int]:
     """Process up to `limit` pending terms. Returns counters; never raises (each term's
     failure is recorded on the queue and skipped)."""
@@ -200,17 +217,30 @@ def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, 
         sentences: list[str] = []
         candidates: list[tuple[str, str, str]] = []
         saw_disambig = False
-        # PRIMARY: the search API (hard rule — never wikipedia-centric). Same
+        # PRIMARY for Korean: 우리말샘 (the national dictionary — curated
+        # lexicography beats any web snippet; exact-headword gate inside).
+        # This is the lane that resolved the whole blocked Sino-Korean class.
+        if lang == "ko":
+            try:
+                _ums = _urimalsaem_module()
+                defs = _ums.definitions(term, _ums._key())
+                candidates = [(term, "defined_as", d) for d in defs]
+                if candidates:
+                    log(f"  {term}: 우리말샘 lane -> {len(candidates)} definition(s)")
+            except Exception:
+                candidates = []
+        # then the search API cascade (hard rule — never wikipedia-centric). Same
         # conservative extractor + subject-relevance + judge gate downstream.
-        try:
-            sentences = _tavily_definitions(term)
-        except Exception:
-            sentences = []
-        candidates = [t for s in sentences if (t := extract_definition_triple(s))]
-        tl0 = term.lower()
-        candidates = [c for c in candidates if tl0 in c[0].lower() or c[0].lower() in tl0]
-        if candidates:
-            log(f"  {term}: search-api lane -> {len(candidates)} candidate(s)")
+        if not candidates:
+            try:
+                sentences = _tavily_definitions(term)
+            except Exception:
+                sentences = []
+            candidates = [t for s in sentences if (t := extract_definition_triple(s))]
+            tl0 = term.lower()
+            candidates = [c for c in candidates if tl0 in c[0].lower() or c[0].lower() in tl0]
+            if candidates:
+                log(f"  {term}: search-api lane -> {len(candidates)} candidate(s)")
         # wiki lanes: OPT-IN ONLY (ATANOR_ALLOW_WIKI=1); the default drain skips them
         for host in ((f"{lang}.wikipedia.org", f"{lang}.wiktionary.org") if (_wiki_allowed() and not candidates) else ()):
             try:

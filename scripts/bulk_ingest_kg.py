@@ -10,6 +10,7 @@ Sources:
   --source tsv        <file>   lines of  subject<TAB>predicate<TAB>object
   --source nt         <file>   N-Triples (RDF)  <s> <p> <o> .
   --source conceptnet <file>   ConceptNet CSV assertions (/a/[...]  /r/Rel  /c/en/subj  /c/en/obj ...)
+  --source dbpedia    <file>   DBpedia instance-types / labels release file (.ttl.bz2)
   --source wikidata   --limit N   live SPARQL pull (real, curated) — proves quality
   --benchmark N                synthetic realistic stream — proves throughput
 
@@ -98,6 +99,26 @@ _CN_REL: dict[str, str] = {
     "MotivatedByGoal": "motivated_by",
     "SymbolOf": "symbol_of",
 }
+
+
+def _dbpedia(path: Path) -> Iterator[tuple[str, str, str]]:
+    """DBpedia release files (line-based turtle): instance-types -> is_a with the
+    entity name made SPEAKABLE (URI underscores become spaces, so '알베르트 아인슈타인'
+    and 'Albert Einstein' are real query subjects, not URI fragments); rdfs:label ->
+    SYMMETRIC alias (the ko<->en encyclopedic bridge). owl:Thing is vacuous — dropped."""
+    for s_, p_, o_ in _nt(path):
+        subj = s_.replace("_", " ").strip()
+        if not subj or len(subj) > 60:
+            continue
+        if p_ in ("type", "22-rdf-syntax-ns#type"):
+            obj = o_.replace("_", " ").strip()
+            if obj and obj not in ("Thing", "owl#Thing", "Agent") and len(obj) <= 60:
+                yield subj, "is_a", obj
+        elif p_ in ("label", "rdf-schema#label"):
+            label = o_.strip()
+            if label and label != subj and len(label) <= 60:
+                yield subj, "alias", label
+                yield label, "alias", subj
 
 
 def _conceptnet(path: Path) -> Iterator[tuple[str, str, str]]:
@@ -218,7 +239,7 @@ def _synthetic(n: int) -> Iterator[tuple[str, str, str]]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default=None, choices=[
-        "tsv", "nt", "conceptnet", "wikidata",
+        "tsv", "nt", "conceptnet", "wikidata", "dbpedia",
         "wiktionary", "sentences", "oscar", "tatoeba-alias"])
     ap.add_argument("file", nargs="?")
     ap.add_argument("--links", help="Tatoeba links.csv (for --source tatoeba-alias)")
@@ -251,6 +272,8 @@ def main() -> int:
         gen, label = _nt(Path(args.file)), f"nt:{args.file}"
     elif args.source == "conceptnet" and args.file:
         gen, label = _conceptnet(Path(args.file)), f"conceptnet:{args.file}"
+    elif args.source == "dbpedia" and args.file:
+        gen, label = _dbpedia(Path(args.file)), f"dbpedia:{args.file}"
     elif args.source == "wiktionary" and args.file:
         gen, label = _wiktionary(Path(args.file)), f"wiktionary:{args.file}"
     elif args.source == "sentences" and args.file:
