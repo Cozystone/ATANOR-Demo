@@ -18,4 +18,13 @@ a single coordinator's disk/CPU saturates; beyond that you run more coordinators
 
 from .sharded_store import ShardedContributedStore
 
-__all__ = ["ShardedContributedStore"]
+__all__ = ["ShardedContributedStore", "ProcessShardedStore"]
+
+
+def __getattr__(name: str):
+    # lazy: importing the process variant must not spawn anything at import time
+    if name == "ProcessShardedStore":
+        from .process_sharded_store import ProcessShardedStore
+
+        return ProcessShardedStore
+    raise AttributeError(name)

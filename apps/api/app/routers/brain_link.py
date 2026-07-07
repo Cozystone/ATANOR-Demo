@@ -82,8 +82,22 @@ def _get_sharded_store() -> Any:
                     shards = max(1, int(os.getenv("ATANOR_CONTRIB_SHARDS", "1")))
                 except Exception:
                     shards = 1
+                # Phase 2-5: ATANOR_CONTRIB_PROC_SHARDS >= 2 switches to DEDICATED
+                # WORKER PROCESSES (true multicore merge; measured x2.15 at 4 procs,
+                # 774->1665 decomp/sec). Row-level concept-key routing keeps de-dup
+                # exact in both modes. Default 0 = threaded store (unchanged).
+                try:
+                    proc_shards = int(os.getenv("ATANOR_CONTRIB_PROC_SHARDS", "0"))
+                except Exception:
+                    proc_shards = 0
                 _CONTRIB_STORE_ROOT_SHARDED.parent.mkdir(parents=True, exist_ok=True)
-                _SHARDED_STORE = ShardedContributedStore(_CONTRIB_STORE_ROOT_SHARDED, shards=shards)
+                if proc_shards >= 2:
+                    from packages.brain_link_pool import ProcessShardedStore
+
+                    _SHARDED_STORE = ProcessShardedStore(
+                        _CONTRIB_STORE_ROOT_SHARDED, shards=proc_shards)
+                else:
+                    _SHARDED_STORE = ShardedContributedStore(_CONTRIB_STORE_ROOT_SHARDED, shards=shards)
     return _SHARDED_STORE
 
 
