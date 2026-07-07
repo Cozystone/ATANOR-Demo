@@ -177,7 +177,22 @@ def _subject_candidates(query: str) -> list[str]:
                     cands.append(st)
     # proper/longer nouns first (캐나다 before 수도); a subject is usually the entity
     # name. Hangul content outranks stray latin tokens in a mixed-script question.
-    return sorted(cands, key=lambda t: (0 if re.search(r"[가-힣]", t) else 1, -len(t)))[:6]
+    # PHASE-SPACE referent signal (Phase 1-2, conservative): among candidates tied
+    # on script and length, prefer the one whose trained phase vector resonates
+    # with the question's OTHER terms — the learned geometry breaks ties the
+    # string rules can't see. Third key only: it can never override the primary
+    # ordering the batteries validated.
+    def _resonance_key(t: str) -> float:
+        try:
+            from .phase_space import resonance
+
+            others = [c for c in cands if c != t]
+            vals = [r for c in others if (r := resonance(t, c)) is not None]
+            return -max(vals) if vals else 0.0
+        except Exception:
+            return 0.0
+    return sorted(cands, key=lambda t: (0 if re.search(r"[가-힣]", t) else 1,
+                                        -len(t), _resonance_key(t)))[:6]
 
 
 # predicate -> Korean surface template. Keeps derived edges (capital_of, located_in) reading
