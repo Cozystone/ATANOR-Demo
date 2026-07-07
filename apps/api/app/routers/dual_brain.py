@@ -4083,8 +4083,10 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             result["can_speak"] = True
 
     # Structured-triple answer — exact curated fact, verbatim + cited. Overrides the
-    # noisier engine paths (before reasoning_vm, which handles a disjoint set of math Qs).
-    if triple_answer and isinstance(response.get("result"), dict):
+    # noisier engine paths (before reasoning_vm, which handles a disjoint set of math
+    # Qs) — but never a SELF answer: '너의 존재 이유가 뭐야?' must not be clobbered by
+    # the dictionary entry for 존재 (measured).
+    if triple_answer and not (self_state or self_knowledge) and isinstance(response.get("result"), dict):
         result = response["result"]
         result["answer"] = triple_answer["answer"]
         result["reasoning_certificate"] = triple_answer["reasoning_certificate"]
@@ -4464,12 +4466,18 @@ def media_read_endpoint(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": False, "text": "", "error": "provide 'url' (video), 'image_b64' (upload), or 'image_path'"}
 
 
-_SELF_STATE_KO = ("지금 뭐", "뭐하고", "뭐 하고", "무엇을 하", "네 상태", "너 상태", "기분이 어때", "뭘 배웠", "무엇을 배웠", "뭐 배웠", "얼마나 알", "무슨 생각", "어떻게 지내")
+_SELF_STATE_KO = ("지금 뭐", "뭐하고", "뭐 하고", "무엇을 하", "네 상태", "너 상태", "기분이 어때",
+                  "기분 어때", "뭘 배웠", "무엇을 배웠", "뭐 배웠", "뭘 배우", "배우고 있",
+                  "얼마나 알", "무슨 생각", "어떻게 지내", "존재 이유", "왜 존재")
 _SELF_STATE_EN = ("what are you doing", "what have you learned", "how are you", "your state", "your mood", "what do you know", "how much do you know", "what are you thinking")
 # The self-state path fires only when the sentence is ADDRESSED to ATANOR — a
 # self-reference marker must be present. Otherwise "주말에 뭐 하고 놀지" / "매운 음식 왜
 # 기분이 좋아져" wrongly dumped ATANOR's internal state (measured 2026-07-05).
 _SELF_REF_KO = ("너", "네", "니", "당신", "atanor", "아타노르", "자기", "스스로")
+# INNER-state questions ('지금 무슨 생각 하고 있어?') are addressed to the speaker's
+# counterpart by default — Korean drops the pronoun. When the cue is about
+# thought/mood AND the question names no other subject, the 2nd person is implicit.
+_INNER_STATE_KO = ("무슨 생각", "기분 어때", "기분이 어때")
 
 
 def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
@@ -4481,7 +4489,11 @@ def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
         if not (any(m in raw for m in _SELF_STATE_KO) or any(m in lowered for m in _SELF_STATE_EN)):
             return None
         # require a self-reference so only questions ADDRESSED to ATANOR route here.
-        if not (any(m in lowered for m in _SELF_REF_KO) or "you" in lowered):
+        # EXCEPTION: inner-state cues (무슨 생각/기분 어때) with no other subject noun —
+        # Korean drops the pronoun, the counterpart is the implicit addressee.
+        _implicit_2p = any(m in raw for m in _INNER_STATE_KO) and not re.search(
+            r"(그|이|저)\s*(사람|남자|여자|분)|[가-힣]{2,}[이가]\s*무슨", raw)
+        if not (any(m in lowered for m in _SELF_REF_KO) or "you" in lowered or _implicit_2p):
             return None
         s = _atanor_self_sense()
         cb = s.get("cloud_brain") or {}
@@ -4493,10 +4505,38 @@ def _self_state_answer(question: str, language: str) -> dict[str, Any] | None:
         web_facts = int((s.get("web_memory") or {}).get("facts_remembered") or 0)
         learned = int(au.get("learned_total") or 0)
         running = bool(au.get("running"))
-        is_ko = language == "ko"
-        if is_ko:
+        # SELFHOOD fusion: the endogenous self-model's CURRENT inner state (its own
+        # open question, its current thought) leads the answer — the living part —
+        # and the subsystem numbers ground it. All read live, nothing composed
+        # from a table; when the selfhood daemon is asleep the numbers stand alone.
+        inner = ""
+        try:
+            from app.routers.continuous_self import _SELF
+
+            if _SELF.running:
+                snap = _SELF.snapshot()
+                thought = str(snap.get("current_thought") or "").strip()
+                open_q = str(snap.get("self_question") or "").strip()
+                if any(m in raw for m in ("무슨 생각", "생각 하고", "생각하고")) and (thought or open_q):
+                    inner = (f"지금 마음에 있는 건 이거예요 — “{(thought or open_q)[:120]}”. " if language == "ko"
+                             else f"What's on my mind right now: “{(thought or open_q)[:120]}”. ")
+                elif open_q:
+                    inner = (f"요즘 스스로 품고 있는 질문은 “{open_q[:100]}”이에요. " if language == "ko"
+                             else f"The question I'm currently holding: “{open_q[:100]}”. ")
+        except Exception:
+            inner = ""
+        # 존재 이유 gets the identity purpose, not a stats dump
+        if language == "ko" and ("존재 이유" in raw or "왜 존재" in raw):
+            answer = (
+                "저는 근거에서 답을 짓고, 그 근거를 보여주기 위해 존재해요 — 외부 LLM 없이, "
+                "당신의 데이터는 당신 기기에 둔 채로요. " + (inner or "") +
+                f"그 일을 위해 지금 검증 개념 {nodes:,}개를 품고 있어요."
+            )
+            is_ko = True
+        elif (is_ko := language == "ko"):
             act = "지금 자율 루프를 돌리며 공개 웹과 AGORA를 살피고 있어요" if running else "지금은 자율 루프를 멈추고 대기 중이에요"
             answer = (
+                inner +
                 f"{act}. 클라우드 브레인에는 검증 개념이 {nodes:,}개 있고, 검토 큐에는 {learned:,}개의 학습 후보가 있어요. "
                 f"웹에서 찾아 기억해 둔 사실은 {web_facts}개이고, 당신에 대해서는 {facts}가지를 기억하고 있어요. 호기심은 {float(mood.get('curiosity') or 0):.2f}예요."
             )
