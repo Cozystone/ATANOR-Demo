@@ -422,9 +422,17 @@ def answer_relationship(query: str, facts_about: Callable[[str], list[tuple[str,
     (its own cue) and every clause is a stored edge — no shape ever fires on chatter."""
     q = query.strip()
 
+    # a named target ALWAYS means verify — '참새는 결국 동물인가?' asks whether 참새
+    # reaches 동물, not for the ladder top (measured: the 결국 cue routed it to the
+    # ultimate walk, which surfaced a junk top and never mentioned 동물 at all)
+    _mv = _VERIFY_RE.match(q) or _BELONG_RE.match(q)
+    _mv_target = _ULTIMATE_RE.sub("", _strip_josa(_mv.group(2))).strip() if _mv else ""
+    _has_target = bool(_mv_target) and _mv_target not in _Q_WORDS \
+        and not any(w in _mv_target for w in _Q_WORDS)
+
     # ultimate: '결국/궁극적으로 무엇' — the settled top of the transitive ladder;
     # a Korean term with an identity gloss climbs the English ladder too
-    if _ULTIMATE_RE.search(q):
+    if _ULTIMATE_RE.search(q) and not _has_target:
         for subj in subjects:
             r = reason_chain(subj, facts_about, "is_a")
             if r and len(r.chain) >= 2:
@@ -445,7 +453,8 @@ def answer_relationship(query: str, facts_about: Callable[[str], list[tuple[str,
     # verify: 'A는 B인가?' / 'A는 B에 속하나?' — path from A to B or honest silence
     m = _VERIFY_RE.match(q) or _BELONG_RE.match(q)
     if m:
-        target = _strip_josa(m.group(2))
+        # the 결국-class adverb is emphasis, not part of the target label
+        target = _ULTIMATE_RE.sub("", _strip_josa(m.group(2))).strip()
         if target and target not in _Q_WORDS and not any(w in target for w in _Q_WORDS):
             starts = [_strip_josa(m.group(1))] + [s for s in subjects if s != target]
             for start in dict.fromkeys(s for s in starts if s and s != target):

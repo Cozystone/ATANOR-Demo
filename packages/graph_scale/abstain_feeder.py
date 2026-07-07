@@ -215,13 +215,22 @@ def _learn_evidence(term: str, query: str, store: TripleStore,
             return None
     except Exception:
         pass
+    gained = 0
+    # structured attributes first (인구/면적/설립 …) — the profile half of a rich answer
+    try:
+        from .structured_profile import fetch_profile
+
+        gained += int(fetch_profile(term, store=store, log=log).get("stored", 0))
+    except Exception:
+        pass
     try:
         from .web_knowledge_drain import learn_from_question
 
         c = learn_from_question(query or f"{term}이란?", subject_hint=term, log=log)
-        return int(c.get("evidence", 0)) + int(c.get("stored", 0))
+        gained += int(c.get("evidence", 0)) + int(c.get("stored", 0))
     except Exception:
-        return 0
+        pass
+    return gained
 
 
 def drain(limit: int = 5, dry_run: bool = False, log: Any = print) -> dict[str, int]:

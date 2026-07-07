@@ -862,7 +862,9 @@ def _concept_names(concept: dict[str, Any]) -> list[str]:
 
 _IDENTITY_MARKERS_KO = (
     "너는 누구", "넌 누구", "너 누구", "네 정체", "자기소개", "너는 뭐야", "넌 뭐야", "당신은 누구",
-    "이름이 뭐", "이름이 뭐니", "이름 뭐", "이름은 뭐", "이름이 어떻게", "너 이름", "네 이름", "당신 이름", "당신의 이름",
+    # name markers MUST be anchored to a 2nd-person pronoun — bare '이름이 뭐' matched
+    # any third-party name question ('자동차 이름이 뭐야' -> identity misfire, measured)
+    "너 이름", "네 이름", "너의 이름", "당신 이름", "당신의 이름", "니 이름",
     # Self-reference resolution (NOT canned answers): these route the question to
     # the graph "atanor" concept; the answer is still realized from graph data.
     "너 뭐 할 수", "너 뭐할 수", "뭐 할 수 있어", "뭘 할 수 있", "무엇을 할 수 있", "너 뭐 하는", "넌 뭐 하는",

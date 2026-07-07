@@ -86,6 +86,17 @@ def _store():
         return None
 
 
+# English function/question words are never lookup subjects — 'what is 김치?' must
+# resolve to 김치, not to a dictionary entry for the word 'what' (measured failure)
+_EN_STOPWORDS = {
+    "what", "who", "whom", "whose", "where", "when", "why", "how", "which",
+    "is", "are", "was", "were", "am", "be", "been", "do", "does", "did",
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "with", "about",
+    "it", "its", "this", "that", "these", "those", "and", "or", "but",
+    "tell", "me", "please", "explain", "define", "mean", "meaning", "you", "your",
+}
+
+
 def _subject_candidates(query: str) -> list[str]:
     """INDIVIDUAL content nouns in the query, most-specific first — the possible subjects.
     Unlike neighbourhood retrieval (which JOINS compound nouns, 캐나다+수도 -> 캐나다수도),
@@ -99,6 +110,8 @@ def _subject_candidates(query: str) -> list[str]:
         if kw is not None:
             for tok in kw.tokenize(query):
                 if tok.tag in ("NNP", "NNG", "SL") and len(tok.form) >= 2:
+                    if tok.form.lower() in _EN_STOPWORDS:
+                        continue
                     if tok.form not in cands:
                         cands.append(tok.form)
     except Exception:
@@ -107,6 +120,8 @@ def _subject_candidates(query: str) -> list[str]:
         from packages.base_brain.neighborhood import _strip_ko_tail
 
         for t in re.findall(r"[가-힣A-Za-z0-9]{2,}", query):
+            if t.lower() in _EN_STOPWORDS:
+                continue
             st = _strip_ko_tail(t)
             if len(st) >= 2 and st not in cands:
                 cands.append(st)
@@ -127,8 +142,9 @@ def _subject_candidates(query: str) -> list[str]:
                 st = c[: -len(tail)]
                 if st not in cands:
                     cands.append(st)
-    # proper/longer nouns first (캐나다 before 수도); a subject is usually the entity name
-    return sorted(cands, key=lambda t: -len(t))[:6]
+    # proper/longer nouns first (캐나다 before 수도); a subject is usually the entity
+    # name. Hangul content outranks stray latin tokens in a mixed-script question.
+    return sorted(cands, key=lambda t: (0 if re.search(r"[가-힣]", t) else 1, -len(t)))[:6]
 
 
 # predicate -> Korean surface template. Keeps derived edges (capital_of, located_in) reading
@@ -159,6 +175,12 @@ def _wanted_predicates(query: str) -> set[str]:
     # substring list can't express — without it the precision gate would block
     # legitimate definition questions along with the chatter it exists to block
     if re.search(r"[가-힣a-z0-9)\"'](?:이?란|이라는 ?건?)\s*\??\s*$", q):
+        want |= {"defined_as", "is_a"}
+    # '~에 대해 알려줘 / ~에 대해 설명해줘 / tell me about ~' — an explicit request for
+    # a description of a named subject; definitional intent even without 뭐/이란. NOT a
+    # bare '알려줘' (that catches '설치하는 방법 알려줘', a how-to, and mislooks-up 설치).
+    if re.search(r"에\s*(?:대해|관해)\s*(?:설명|알려|말해|소개)|tell me about", q) \
+       and not re.search(r"방법|하는 ?법|어떻게", q):
         want |= {"defined_as", "is_a"}
     return want
 
@@ -296,6 +318,23 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     store = _store()
     if store is None or len(store) == 0:
         return None
+    # AGENTIVE premise gate: '세종대왕이 만든 자동차 이름이 뭐야?' asserts a relation
+    # (세종대왕 —made→ 자동차). Answering with the bare definition of 자동차 ignores
+    # the premise entirely (measured). Unless the store actually connects agent and
+    # head, this path abstains — an off-target answer is worse than honest silence.
+    m_ag = re.search(r"([가-힣A-Za-z0-9]{2,})[이가]\s*(만든|발명한|세운|창립한|지은|쓴|개발한)\s*"
+                     r"([가-힣A-Za-z0-9]{2,})", query)
+    if m_ag:
+        agent, head = m_ag.group(1), m_ag.group(3)
+        try:
+            connected = any(head in o or head in s
+                            for s, _p, o in store.facts_about(agent, limit=40)) or \
+                        any(agent in o or agent in s
+                            for s, _p, o in store.facts_about(head, limit=40))
+        except Exception:
+            connected = False
+        if not connected:
+            return None
     # P3 multi-hop chain reasoning, generalized: 결국/인가/속하나/수 있어/관계 questions
     # walk stored edges under the composition algebra (termination + no-cycle guaranteed)
     # and verbalize the actual chain. Runs BEFORE the want-gate because each chain shape
@@ -339,6 +378,30 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                      if re.search(r"[가-힣]", o) or p not in ("defined_as", "is_a")]
         if not facts:
             continue
+        # TRUNCATION collapse: 광합성 stored '…빛과 물' AND the full sentence it is a
+        # prefix of; first-wins served the fragment. Drop a definition that is a
+        # strict prefix of a longer one (same sense, just cut short). This must NOT
+        # reorder genuine homonyms — 사랑(감정) vs 사랑(사랑방) are not prefixes of each
+        # other, so both survive and curated order (common sense first) is preserved.
+        _defs = [o for (_s, p, o) in facts if p in ("defined_as", "is_a")]
+        _truncations = {o for o in _defs for o2 in _defs
+                        if o != o2 and o2.startswith(o) and re.search(r"[가-힣]", o2)}
+        if _truncations:
+            facts = [(s, p, o) for (s, p, o) in facts
+                     if p not in ("defined_as", "is_a") or o not in _truncations]
+        # a full DEFINITION outranks a bare taxonomy edge: '김치' has both defined_as
+        # ('소금에 절인 배추에…') and is_a ('고춧가루의 일종' — wrong), and first-wins
+        # served the taxonomy edge. Prefer defined_as-with-Korean, then is_a-with-Korean;
+        # NO length sort (that picked the 사랑방 homonym over 사랑=감정). Stable otherwise,
+        # so curated order keeps the common sense first WITHIN a predicate.
+        def _def_priority(f: tuple[str, str, str]) -> int:
+            s, p, o = f
+            if p == "defined_as":
+                return 0 if re.search(r"[가-힣]", o) else 2
+            if p == "is_a":
+                return 1 if re.search(r"[가-힣]", o) else 3
+            return 1  # relation facts interleave with is_a, both after real defs
+        facts = sorted(facts, key=_def_priority)
         # prefer a fact whose predicate matches the query's relation intent
         chosen = [(s, p, o) for (s, p, o) in facts
                   if (not want or p in want) and p not in ("alias", "sense")]
@@ -425,8 +488,17 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                 answer = _strip_generic_source(composed.answer) + cited["suffix"]
                 cert = composed.certificate()
                 cert["sources"] = cited["sources"]
-                # adaptive depth: open definitional questions get the attributed
-                # web-evidence section when the learner has gathered one
+                # adaptive depth: a structured attribute profile (인구/면적/설립 …) leads,
+                # then the attributed web-evidence section — the Copilot-style rich answer
+                # when the learner has gathered them, plain definition when it hasn't
+                try:
+                    from .structured_profile import profile_block
+
+                    prof = profile_block(store, s)
+                except Exception:
+                    prof = ""
+                if prof:
+                    answer = answer + "\n\n" + prof
                 ev_text, ev_sources = _evidence_section(store, s)
                 if ev_text:
                     answer = answer + "\n\n관련 근거:\n" + ev_text
@@ -463,6 +535,14 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         # a rich profile when the learner holds attributed evidence for the subject
         ev_sources = []
         if hop_from is None and (not want or (want & {"defined_as", "is_a"})):
+            try:
+                from .structured_profile import profile_block
+
+                prof = profile_block(store, s)
+            except Exception:
+                prof = ""
+            if prof:
+                answer = f"{answer}\n\n{prof}"
             ev_text, ev_sources = _evidence_section(store, s)
             if ev_text:
                 label = "관련 근거" if language == "ko" else "Related evidence"

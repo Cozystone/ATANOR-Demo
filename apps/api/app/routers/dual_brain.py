@@ -3617,11 +3617,90 @@ async def chat_atanor_stream(request: AtanorChatRequest) -> StreamingResponse:
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+_LANG_DIRECTIVE_KO = re.compile(
+    r"(한글|한국어|우리말)\s*로\s*(?:좀\s*)?(답|말|얘기|대답|설명|써|적|해)\S*")
+_LANG_DIRECTIVE_EN = re.compile(
+    r"(영어|영문)\s*로\s*(?:좀\s*)?(답|말|얘기|대답|설명|써|적|해)\S*"
+    r"|\b(?:answer|reply|respond|say\s+it|explain)\s+(?:it\s+)?in\s+english\b", re.IGNORECASE)
+_LANG_DIRECTIVE_TO_KO = re.compile(
+    r"\b(?:answer|reply|respond|say\s+it|explain)\s+(?:it\s+)?in\s+korean\b", re.IGNORECASE)
+
+
+def _language_directive(text: str) -> tuple[str | None, str]:
+    """Detect a language-switch META instruction ('한글로 답해줘', 'answer in English').
+    Returns (target_language, remaining_content). The remaining content is the message
+    minus the directive — empty when the whole message IS the directive (the reported
+    failure: '한글로 답해줘' was routed as a content question and got a dictionary
+    definition of the Korean alphabet)."""
+    t = (text or "").strip()
+    for lang, rx in (("ko", _LANG_DIRECTIVE_KO), ("en", _LANG_DIRECTIVE_EN),
+                     ("ko", _LANG_DIRECTIVE_TO_KO)):
+        m = rx.search(t)
+        if m:
+            rest = (t[:m.start()] + " " + t[m.end():]).strip(" \t,.?!~요")
+            return lang, rest
+    return None, t
+
+
+def _last_user_question(context: list[dict[str, Any]], current: str) -> str:
+    """Most recent user turn that is real content (not the directive itself) — the
+    question a bare '한글로 답해줘' asks to have re-answered."""
+    for turn in reversed(context or []):
+        if str(turn.get("role") or "").lower() != "user":
+            continue
+        content = re.sub(r"\s+", " ", str(turn.get("content") or turn.get("text") or "")).strip()
+        if not content or content == current:
+            continue
+        lang, rest = _language_directive(content)
+        if lang and not rest:
+            continue  # a previous directive is not a question either
+        return content
+    return ""
+
+
 @router.post("/api/chat/atanor")
 async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     _emit_stage("analyzing")  # real: parsing the question + resolving context
     question = request.question_text()
-    language = request.language or ("ko" if any("가" <= c <= "힣" for c in (question or "")) else "en")
+    # META-INSTRUCTION lane (owner-reported): an instruction about HOW to answer is a
+    # CONTROL message, never a content question. '한글로 답해줘' re-answers the previous
+    # question in Korean; with inline content ('수도가 어디야, 영어로 답해줘') the content
+    # part proceeds in the requested language.
+    meta_ack = None
+    _meta_lang, _meta_rest = _language_directive(question)
+    if _meta_lang:
+        request.language = _meta_lang
+        _target = _meta_rest or _last_user_question(request.conversation_context, question)
+        if _target:
+            question = _target
+            request.question, request.query, request.message = _target, None, None
+        else:
+            meta_ack = {
+                "answer": ("네, 한국어로 답할게요. 무엇이 궁금하세요?" if _meta_lang == "ko"
+                           else "Sure — I'll answer in English. What would you like to know?"),
+                "reasoning_certificate": {
+                    "derivation_kind": "conversation_control",
+                    "anchor_concept": None,
+                    "steps": [{"type": "control", "fact": f"language directive -> {_meta_lang}"}],
+                    "evidence_concepts": [], "confidence": 0.95,
+                    "confidence_basis": "meta_instruction_not_content",
+                    "guarantees": {"external_llm": False, "fabricated_facts": False, "web_used": False},
+                },
+                "confidence": 0.95,
+            }
+    # Language: an unambiguously-Korean question gets a Korean answer even when the UI
+    # hints language=en (measured: '넌 누구니' answered in English through the en hint).
+    # An explicit user directive (above) is the only thing that overrides the script.
+    # jamo-only input (ㅁㄴㅇㄹ, ㅋㅋ) is Korean too — the syllable-range check missed
+    # it and the abstain came back in English
+    _hangul = bool(re.search(r"[가-힣ㄱ-ㅎㅏ-ㅣ]", question or ""))
+    if _meta_lang:
+        language = _meta_lang
+    elif _hangul:
+        language = "ko"
+        request.language = "ko"  # dispatch reads the request object, not this local
+    else:
+        language = request.language or "en"
     # A context-resolved query so a follow-up ("where is it?") carries the prior
     # topic into web grounding / recall.
     try:
@@ -3640,6 +3719,11 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         from packages.graph_scale.answer_bridge import answer_from_triples
 
         triple_answer = answer_from_triples(question, language)
+        # follow-up context ('그럼 그 나라의 수도는?'): when the bare question can't
+        # resolve, retry with the context-resolved query so the prior topic (일본)
+        # carries into the lookup — the whole point of conversation context.
+        if triple_answer is None and web_query and web_query != question:
+            triple_answer = answer_from_triples(web_query, language)
     except Exception:  # pragma: no cover - never break chat
         triple_answer = None
     # "Living creature" sense: answer questions about ATANOR's own live state by
@@ -3657,15 +3741,21 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     self_knowledge = None
     # "자기소개", "자기 계발" etc. contain "자기" but are NOT about ATANOR — guard the
     # self-reference route against these common false triggers.
-    _false_self = bool(re.search(r"자기\s*소개|자기\s*계발|자기\s*관리|자기\s*개발", question))
-    if not self_state and not _false_self and (_is_identity_question(question) or _is_self_reference_question(question)):
+    _false_self = bool(re.search(r"자기\s*소개서|자기\s*계발|자기\s*관리|자기\s*개발", question))
+    # a short bare '자기소개 해봐/네 소개 좀' IS addressed to ATANOR — identity, not
+    # a question about self-introductions (자기소개서/계발/관리 stay excluded above)
+    _intro_request = (not _false_self and len(question.strip()) <= 20
+                      and bool(re.search(r"자기\s*소개|네\s*소개|너\s*소개|소개\s*좀|소개\s*해", question)))
+    if not self_state and not _false_self and (_is_identity_question(question) or _is_self_reference_question(question) or _intro_request):
         try:
             # Realize from the atanor concept. For an explicit identity marker use the
             # question as-is; for other self-reference questions ("너 LLM 써?", "너 한계
             # 가 뭐야") seed a canonical self-question so the graph identity path fires
             # (the enriched atanor concept states "외부 LLM 없이…", which honestly
             # answers the limitation question).
-            _seed = question if _is_identity_question(question) else "너는 누구야"
+            # only a 누구-shaped question is a usable seed; '자기소개 해봐' detected as
+            # identity still needs the canonical seed or the graph path never fires
+            _seed = question if re.search(r"누구|who\s+are", question, re.IGNORECASE) else "너는 누구야"
             _identity = answer_with_base_brain(_seed, language)
             if _identity and "ATANOR" in str(_identity.get("answer") or ""):
                 self_knowledge = {
@@ -3685,9 +3775,23 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
             re.search(r"(^|\s)(안녕|하이|헬로|반가|반갑|ㅎㅇ|잘\s*지내|좋은\s*(아침|저녁))", _gs)
             or re.search(r"\b(hi|hello|hey|yo|good\s+(morning|evening|afternoon))\b", _gs, re.IGNORECASE)
         )
-        if _is_greeting:
-            ans = ""
-            if not re.search(r"[A-Za-z]{3}", _gs):  # Korean greeting → Korean surface
+        # social closers ('고마워', '잘자', '수고했어') are conversation, not questions —
+        # the abstain boilerplate here reads as not understanding the conversation
+        _social = None
+        if not _is_greeting and len(_gs) <= 20:
+            if re.search(r"고마워|고맙|감사|thank", _gs, re.IGNORECASE):
+                _social = "천만에요! 도움이 됐다니 기뻐요." if language == "ko" else "You're welcome — glad it helped!"
+            elif re.search(r"잘\s*자|굿나잇|굿밤|good\s*night", _gs, re.IGNORECASE):
+                _social = "잘 자요. 내일 또 이야기해요." if language == "ko" else "Good night — talk tomorrow."
+            elif re.search(r"수고|고생\s*(했|많)", _gs):
+                _social = "감사합니다. 언제든 다시 불러주세요."
+            elif re.search(r"미안|죄송|sorry", _gs, re.IGNORECASE):
+                _social = "괜찮아요. 편하게 계속 물어보세요." if language == "ko" else "No worries at all — go ahead."
+            elif re.search(r"^(ㅋ+|ㅎ+|ㅠ+|ㅜ+|lol|haha)$", _gs, re.IGNORECASE):
+                _social = "네 :) 계속 들을게요." if language == "ko" else ":) I'm listening."
+        if _is_greeting or _social:
+            ans = _social or ""
+            if not ans and not re.search(r"[A-Za-z]{3}", _gs):  # Korean greeting → Korean surface
                 try:
                     from packages.cgsr.cgsr.asm_v0 import generate_surface
 
@@ -3745,6 +3849,39 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         howto_request = bool(
             re.search(r"(하는|하는)\s*(법|방법)\b|\b방법(을|좀|\s*알려|이\s*뭐)|하려면\s*어떻게|어떻게\s*하(면|는|나요|죠|지)|how\s+(to|do\s+i)\b", question, re.IGNORECASE)
         )
+
+    # FALSE-PREMISE gate: a question that ASSERTS an agent-made-object relation
+    # ('세종대왕이 만든 자동차 이름이 뭐야?') has no answer when the premise is false.
+    # The triple path abstains, but the base-brain neighborhood synthesis will still
+    # stitch two unrelated concepts into a bogus comparison ('이 둘은 …차이를 보입니다').
+    # If triples couldn't ground it, decline honestly rather than fabricate.
+    false_premise = None
+    if (not (self_state or self_knowledge or recall or creative_decline)
+            and triple_answer is None and not request.web_search):
+        _mfp = re.search(r"([가-힣A-Za-z0-9]{2,})[이가]\s*(만든|발명한|세운|창립한|지은|개발한)\s*"
+                         r"([가-힣A-Za-z0-9]{2,})", question)
+        if _mfp:
+            _agent, _obj = _mfp.group(1), _mfp.group(3)
+            try:
+                from packages.lad_morphology import object_ as _obj_particle
+                from packages.lad_morphology import subject as _subj_particle
+
+                _a = _subj_particle(_agent)  # 세종대왕이
+                _o = _obj_particle(_obj)     # 자동차를
+            except Exception:
+                _a, _o = _agent + "이", _obj + "를"
+            false_premise = {
+                "answer": (f"‘{_a} {_o} 만들었다’는 확인된 근거가 없어서, 그 전제 위에서는 "
+                           "답을 지어내지 않을게요. 사실관계가 확실한 대상이라면 정확히 "
+                           "알려드릴 수 있어요."),
+                "reasoning_certificate": {
+                    "derivation_kind": "false_premise_abstention",
+                    "anchor_concept": None, "steps": [], "evidence_concepts": [],
+                    "confidence": 0.8, "confidence_basis": "premise_relation_ungrounded",
+                    "guarantees": {"external_llm": False, "fabricated_facts": False, "web_used": False},
+                },
+                "confidence": 0.8,
+            }
 
     # Contrast / "A와 B의 차이" questions: the grounded-conversation router only
     # surfaces ONE side ("도커와 쿠버네티스 차이" → just 쿠버네티스). The base-brain
@@ -3860,6 +3997,25 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         result["answer_kind"] = "greeting"
         result["can_speak"] = True
 
+    # Meta-instruction with nothing to re-answer — acknowledge the control, never
+    # answer the words of the instruction as content.
+    if meta_ack and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = meta_ack["answer"]
+        result["reasoning_certificate"] = meta_ack["reasoning_certificate"]
+        result["confidence"] = meta_ack["confidence"]
+        result["answer_kind"] = "conversation_control"
+        result["can_speak"] = True
+
+    # False premise — decline honestly, never let base-brain fabricate a comparison.
+    if false_premise and isinstance(response.get("result"), dict):
+        result = response["result"]
+        result["answer"] = false_premise["answer"]
+        result["reasoning_certificate"] = false_premise["reasoning_certificate"]
+        result["confidence"] = false_premise["confidence"]
+        result["answer_kind"] = "false_premise_abstention"
+        result["can_speak"] = True
+
     # Creative request — honest decline (no generative model), never an off-target def.
     if creative_decline and isinstance(response.get("result"), dict):
         result = response["result"]
@@ -3886,9 +4042,15 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
     # Leave real abstentions and any answer that already reads procedurally alone.
     if howto_request and not concept_compare and isinstance(response.get("result"), dict):
         _ans = str(response["result"].get("answer") or "")
-        _looks_procedural = bool(re.search(r"단계|먼저|다음|절차|1\.|①|우선|이렇게|하려면", _ans))
-        _is_definition = bool(re.search(r"(입니다|이다|말한다|뜻한다)\.?\s*$", _ans)) or "이는 " in _ans
-        if _ans and not _answer_is_abstention(_ans) and _is_definition and not _looks_procedural:
+        # a REAL procedure has enumerated steps — numbered lines, 단계, or a step verb
+        # sequence. '먼저,'/'다음' alone are synthesis discourse connectors ('먼저,
+        # 파이썬은 …언어입니다') and must NOT count as procedural, or the mashup slips
+        # through the guard (measured: 파이썬 설치 답이 정의 짜깁기로 통과).
+        _looks_procedural = bool(re.search(r"단계|절차|[①-⑩]|(?:^|\s)\d+\s*[.)]\s|설치하려면|실행하면", _ans))
+        # any non-procedural, non-abstention answer to a how-to is off-target here —
+        # the local graph holds concept definitions, not step-by-step procedures, so a
+        # definition OR a definition-mashup ('파이썬은 …언어입니다. …언어이다.') both miss
+        if _ans and not _answer_is_abstention(_ans) and not _looks_procedural:
             result = response["result"]
             result["answer"] = (
                 "그 절차를 단계별로 알려드리려면 확인된 근거가 필요한데, 지금 로컬 그래프에는 그 방법에 대한 "
