@@ -271,6 +271,18 @@ def peer_challenge(peer_id: str) -> dict[str, Any]:
 def peer_register(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
     peer_id = str(body.get("peer_id") or f"peer-{uuid.uuid4().hex[:8]}")
     label = str(body.get("label") or peer_id)
+    # DoS ceiling (threat model §2): a pool-wide registration rate limit blunts a
+    # Sybil register storm (pairs with the PoW cost). Whoever floods hits it.
+    try:
+        from packages.brain_link_pool.rate_limiter import allow_registration
+
+        _rl = allow_registration()
+        if not _rl["allowed"]:
+            return {"ok": False, "peer_id": peer_id,
+                    "reason": "registration rate limit — try again shortly",
+                    "retry_after_s": _rl.get("retry_after_s")}
+    except Exception:
+        pass
     # Trust guard (threat model §5): a quarantined KEY is refused (reversible,
     # expiring — never a hardware curse); a supplied PoW nonce is verified to
     # make Sybil identity-farming expensive. Absent nonce = legacy path (still
@@ -312,6 +324,18 @@ def work_claim(peer_id: str, n: int = 25) -> dict[str, Any]:
     _seed_queue()
     _reclaim_stale()
     n = max(1, min(200, n))
+    # per-peer claim rate limit (threat model §2): an honest worker's natural
+    # bursts pass (token bucket), a runaway claim loop is throttled — fair, not
+    # punitive, and it never touches a peer's reputation.
+    try:
+        from packages.brain_link_pool.rate_limiter import allow_claim
+
+        _cl = allow_claim(peer_id)
+        if not _cl["allowed"]:
+            return {"batch_id": None, "sentences": [], "reason": "claim_rate_limited",
+                    "retry_after_s": _cl.get("retry_after_s")}
+    except Exception:
+        pass
     with _LOCK:
         if peer_id not in _POOL["peers"]:
             return {"batch_id": None, "sentences": [], "reason": "register_first"}
