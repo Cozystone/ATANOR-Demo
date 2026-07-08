@@ -181,3 +181,35 @@ def partition_report(store: Any, term: str) -> dict[str, Any]:
                        "size": c["size"], "sample": c["parents"][:6]}
                       for c in clusters[:8]],
     }
+
+
+# ---- STAGE 3: per-sense closure (the payoff of stages 1+2) ------------------
+def per_sense_closure_candidates(store: Any, term: str,
+                                 max_per_sense: int = 40) -> list[dict[str, Any]]:
+    """Sense-scoped 2-hop closure for ONE hub: within each sense cluster, the
+    trusted grandparents of the cluster's parents are sound is_a candidates for
+    `term` IN THAT SENSE — the closure that blind derivation got ~30% wrong is
+    now scoped to a single reading. PROPOSE-only (candidates carry their sense
+    and provenance; the evidence gates decide promotion, as everywhere)."""
+    from .sense_trust_filter import trusted_parents
+
+    out: list[dict[str, Any]] = []
+    existing = {o for _s, p, o in (store.facts_about(term, limit=400) or [])
+                if p == "is_a"}
+    for cluster in partition_parents(store, term):
+        if cluster["size"] < 2:
+            continue                       # a singleton sense has no 2-hop support
+        seen: set[str] = set()
+        for parent in cluster["parents"]:
+            for gp in trusted_parents(store, parent):
+                if gp and gp != term and gp not in existing and gp not in seen:
+                    seen.add(gp)
+                    out.append({"candidate": (term, "is_a", gp),
+                                "sense_id": cluster["sense_id"],
+                                "via": parent,
+                                "support": cluster["size"]})
+                    if len(seen) >= max_per_sense:
+                        break
+            if len(seen) >= max_per_sense:
+                break
+    return out
