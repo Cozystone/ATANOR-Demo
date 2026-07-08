@@ -43,6 +43,11 @@ SERVICES = [
         "port": 8010,
         "health": "http://127.0.0.1:8010/v1/models",
         "rss_limit_mb": 6144,          # torch models are heavy; higher ceiling
+        # real text->3D (tiny-SD image -> rembg cutout -> silhouette inflation).
+        # All deps verified installed; without this flag every unknown prompt
+        # ("피카츄") fell to a procedural hash-colored sphere (owner-reported
+        # pink blob).
+        "env": {"SPLATRA_SD": "1"},
         "cwd": r"C:\0.ASKIM ALL-VIN\26.SPLATRA",
         "cmd": [sys.executable, "-m", "uvicorn", "apps.plugin_api:app",
                 "--port", "8010"],
@@ -117,7 +122,8 @@ def restart(svc: dict) -> None:
     # service shells out to (nvidia-smi, docker stats, git ...) allocates a
     # fresh VISIBLE console — the terminal-flash storm on the owner's screen.
     flags = subprocess.CREATE_NEW_PROCESS_GROUP | NO_WINDOW
-    subprocess.Popen(svc["cmd"], cwd=svc["cwd"], creationflags=flags,
+    env = {**os.environ, **svc["env"]} if svc.get("env") else None
+    subprocess.Popen(svc["cmd"], cwd=svc["cwd"], creationflags=flags, env=env,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
