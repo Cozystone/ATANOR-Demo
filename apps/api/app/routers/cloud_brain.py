@@ -1654,6 +1654,16 @@ def _maybe_promote_pack(force: bool = False) -> dict[str, Any] | None:
             "source_store": Path(live_store).name if live_store else None,
             "store_concepts": size,
         }
+        # Owner requirement: the landing's browser-local mini pack updates
+        # whenever the engine's knowledge grows. Regenerate the artifact on the
+        # same tick that answers gain the new knowledge; deploying the landing
+        # (publishing) stays a manual step, but the artifact is always fresh.
+        try:
+            mini = importlib.import_module("scripts.build_mini_brain")
+            mini.main()
+            stamp["mini_pack_rebuilt"] = True
+        except (Exception, SystemExit):  # SystemExit: script raises when store missing
+            stamp["mini_pack_rebuilt"] = False
         with _CONT_LOCK:
             _CONT["promotion"] = stamp
             _CONT["_last_promoted_store_size"] = size
