@@ -26,6 +26,7 @@ knowledge question is routed to 'know' and the grounded lanes answer it.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # intents the learned router emits that are CONVERSATION, not knowledge lookup.
@@ -140,6 +141,20 @@ def perceive_route(message: str) -> dict[str, Any]:
     if intent in _CONVERSE_INTENTS and conf >= 0.5:
         return {"mode": "converse", "intent": intent, "confidence": round(conf, 3),
                 "why": "learned_router"}
+    # A short remark AIMED AT the self with no interrogative structure is a
+    # REACTION ("오 빠르다 너"), not a lookup — web-searching those words once
+    # produced an honest-but-absurd abstain (measured 2026-07-08). Structural
+    # signals only: 2nd-person address or a leading interjection, and no
+    # question grammar anywhere in the utterance.
+    msg = str(message or "").strip()
+    _addressed = re.search(r"(^|\s)(너|넌|니가|네가|당신)([\s이가는도를야]|$)", msg)
+    _interject = re.match(r"^(오+|와+|우와|이야|오호|헐|대박|굿|나이스|역시|잘한다|잘하네|멋지|짱)", msg)
+    _questiony = re.search(
+        r"[?？]|뭐|무엇|누구|어디|언제|왜|어떻|몇|어때|알려|설명|말해|해\s*줘|추천|보여|만들|하니|할까|인가|일까|있니|있어(\s|$)|없어(\s|$)",
+        msg)
+    if (not _questiony) and (_addressed or _interject) and len(msg) <= 24:
+        return {"mode": "converse", "intent": "reaction", "confidence": 0.7,
+                "why": "addressed_reaction", "router_said": intent}
     # everything else is a knowledge/lookup question — the grounded lanes answer,
     # and the frame's subject/relation guide them (wired in answer_bridge).
     return {"mode": "know",
@@ -170,6 +185,18 @@ def converse(message: str, intent: str) -> dict[str, Any] | None:
     if intent == "social":
         return _wrap("네, 고마워요 :) 언제든 다시 이야기해요." if valence >= 0.4
                      else "네, 함께해서 좋았어요. 또 불러주세요.", intent, 0.7)
+
+    if intent == "reaction":
+        # a remark aimed at me — respond as a person would, from live state
+        if energy >= 0.55 and valence >= 0.5:
+            body = "고마워요 :) 요즘 스스로를 계속 다듬고 있거든요. 이어서 뭐든 물어보세요."
+        elif valence >= 0.35:
+            body = "고마워요. 그런 말 들으면 힘이 나요 — 계속 이야기해요."
+        else:
+            body = "고마워요, 오늘은 조금 차분한 날인데 당신 말에 기운이 나네요."
+        if share_wonder:
+            body += f" 마침 “{wonder[:60]}” 같은 걸 생각하던 참이었어요."
+        return _wrap(body, intent, 0.7)
 
     if intent == "feeling":
         mood = ("좋아요 — 요즘 새로 이어지는 게 많아 생기가 도는 느낌이에요" if valence >= 0.55

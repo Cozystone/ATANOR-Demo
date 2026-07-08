@@ -2728,7 +2728,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
           </button>
         </div>
       )}
-      <div style={(foldScene || iframeStage) ? { opacity: 0, pointerEvents: "none" } : undefined}>
+      <div style={(foldScene || iframeStage)
+        ? { opacity: 0, pointerEvents: "none" }
+        // aquarium visibility (owner): while a generated model lives on the
+        // screen, the orb recedes instead of overlapping it
+        : splatraOpen ? { opacity: 0.18, transition: "opacity .7s ease" } : undefined}>
         <SplatraImaginationField
           state={orbState}
           mode="product"

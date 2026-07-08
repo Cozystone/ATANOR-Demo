@@ -37,11 +37,13 @@ void main(){
   vec4 t0 = texel(base), t1 = texel(base+1), t2 = texel(base+2), t3 = texel(base+3);
   vec3 home = t0.xyz; float opacity = t0.w; vec3 color = t1.xyz;
 
-  // assembly morph: scatter <-> home under one continuous Y-spin
-  float e = smoothstep(0.0, 1.0, uT); e = smoothstep(0.0, 1.0, e);
+  // assembly: pieces blow in like WIND (owner spec) — staggered per particle
+  // from one side, each settling into place under the continuous Y-spin
   vec3 h = hash3(home + 0.123);
-  vec3 dir = normalize(home + vec3(1e-4));
-  vec3 scatter = home + dir*(0.7 + 1.2*h.x) + (h - 0.5)*1.4;
+  float e = smoothstep(0.0, 1.0, clamp((uT - h.y*0.45) / 0.55, 0.0, 1.0));
+  e = e*e*(3.0-2.0*e);
+  vec3 wind = vec3(2.6 + 1.8*h.x, 0.9*(h.z-0.2), 1.4*(h.y-0.5));
+  vec3 scatter = home + wind + (h - 0.5)*1.6;
   vec3 pos = mix(scatter, home, e);
   float ca = cos(uSwirl), sa = sin(uSwirl);
   pos.xz = mat2(ca, -sa, sa, ca) * pos.xz;
@@ -50,10 +52,11 @@ void main(){
     float ff = 2.3, aA = uAnimAmp, ph = uAnimT;
     vec3 q = home*ff + vec3(ph*0.6, ph*0.5, ph*0.7);
     vec3 fl = vec3(sin(q.y)*cos(q.z), sin(q.z)*cos(q.x), sin(q.x)*cos(q.y));
-    fl.x += 0.5*sin(ph*0.30 + home.y*1.5);
-    fl.y += 0.5*cos(ph*0.27 + home.z*1.5);
-    fl.z += 0.5*sin(ph*0.33 + home.x*1.5);
-    pos += fl * (0.06 * aA);
+    fl.x += 0.25*sin(ph*0.30 + home.y*1.5);
+    fl.y += 0.25*cos(ph*0.27 + home.z*1.5);
+    fl.z += 0.25*sin(ph*0.33 + home.x*1.5);
+    // owner: the body read as WOBBLY — the flow is a faint shimmer, not a melt
+    pos += fl * (0.018 * aA);
   }
   if (uAnimMode == 11 && uNJ > 0) {   // learned rig: true FK, matrices from JS
     int bj = -1; float bd = 1e9; float bproj = 0.0;
@@ -100,7 +103,11 @@ void main(){
     }
   }
 
-  pos *= uModelScale;
+  // normalize EVERY generated model to the same framed size (피카츄는 예시 —
+  // this must hold for anything the generator emits): center + fit-scale are
+  // computed on upload, applied after posing so the rig math stays in
+  // home coordinates.
+  pos = (pos - uModelCenter) * uModelScale;
   vec4 cam = uView * vec4(pos,1.0);
   if (cam.z >= -0.05) { gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
   vec4 clip = uProj * cam;
@@ -193,7 +200,7 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link");
     gl.useProgram(prog);
     const U: Record<string, WebGLUniformLocation | null> = {};
-    ["uData","uTexW","uProj","uView","uFocal","uViewport","uT","uSizeScale","uModelScale","uSwirl",
+    ["uData","uTexW","uProj","uView","uFocal","uViewport","uT","uSizeScale","uModelScale","uModelCenter","uSwirl",
      "uAnimMode","uAnimT","uAnimAmp","uNJ","uJPos","uJOut","uJReach","uJRot","uJTrans",
      "uNEye","uEyes","uBlink","uFloorY"].forEach((u) => (U[u] = gl.getUniformLocation(prog, u)));
 
@@ -209,6 +216,7 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
     // ---- state -------------------------------------------------------------
     const TEXW = 2048;
     let COUNT = 0, homePos: Float32Array | null = null;
+    let modelCenter = [0, 0, 0], modelFit = 1;   // per-model normalize (any generator output frames the same)
     let order = new Uint32Array(0), depths = new Float32Array(0);
     const counts = new Uint32Array(65536);
     let lastSortKey = "";
@@ -348,6 +356,23 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
       modelFloorY = Infinity;
       for (let i = 0; i < n; i++) if (pos[3*i+1] < modelFloorY) modelFloorY = pos[3*i+1];
       if (!isFinite(modelFloorY)) modelFloorY = -1;
+      // Fit-normalize: the owner's pikachu filled the whole screen because the
+      // generator's coordinate scale is arbitrary. Center on the centroid and
+      // scale a ROBUST radius (mean-capped, so one stray splat can't shrink
+      // the body) to a fixed framed size — every model, same stage.
+      let cx = 0, cy = 0, cz = 0;
+      for (let i = 0; i < n; i++) { cx += pos[3*i]; cy += pos[3*i+1]; cz += pos[3*i+2]; }
+      const inv = 1 / (n || 1);
+      cx *= inv; cy *= inv; cz *= inv;
+      let rsum = 0, rmax = 0;
+      for (let i = 0; i < n; i++) {
+        const dx = pos[3*i]-cx, dy = pos[3*i+1]-cy, dz = pos[3*i+2]-cz;
+        const r = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        rsum += r; if (r > rmax) rmax = r;
+      }
+      const rFit = Math.min(rmax, (rsum * inv) * 2.6) || 1;
+      modelCenter = [cx, cy, cz];
+      modelFit = 1.15 / Math.max(0.2, rFit);
       const texH = Math.ceil(n*4 / TEXW);
       const tex = new Float32Array(TEXW * texH * 4);
       for (let i = 0; i < n; i++) {
@@ -441,7 +466,10 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
         if (animateIn) { anim.t = 0; tween(1, 1700);
           const aligned = Math.abs(swirl/(2*Math.PI) - Math.round(swirl/(2*Math.PI))) < 0.02;
           swirlTo(aligned ? swirl : Math.ceil(swirl/(2*Math.PI) - 1e-6) * 2*Math.PI, 1700);
-          if (baseDist != null) { camTo(yaw, pitch, baseDist, 1700); baseDist = null; } }
+          // normalized model sits at the origin — re-center and frame it so the
+          // camera can never start inside the body (the giant-pink-blur bug)
+          target[0] = 0; target[1] = 0; target[2] = 0;
+          camTo(yaw, pitch, baseDist != null ? baseDist : 3.4, 1700); baseDist = null; }
         fetchRig();
       } finally { loading = false; }
     }
@@ -533,8 +561,9 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
         gl.uniformMatrix4fv(U.uProj, false, proj); gl.uniformMatrix4fv(U.uView, false, view);
         gl.uniform2f(U.uFocal, proj[0]*0.5*w, proj[5]*0.5*h);
         gl.uniform2f(U.uViewport, w, h);
-        gl.uniform1f(U.uT, anim.t); gl.uniform1f(U.uSizeScale, 1.0);
-        gl.uniform1f(U.uModelScale, 1.0); gl.uniform1f(U.uSwirl, swirl);
+        gl.uniform1f(U.uT, anim.t); gl.uniform1f(U.uSizeScale, modelFit);
+        gl.uniform1f(U.uModelScale, modelFit); gl.uniform1f(U.uSwirl, swirl);
+        gl.uniform3f(U.uModelCenter, modelCenter[0], modelCenter[1], modelCenter[2]);
         av.amp += (av.target - av.amp)*0.06;
         if (av.amp < 0.004 && av.target === 0) av.mode = 0;
         gl.uniform1i(U.uAnimMode, av.mode); gl.uniform1f(U.uAnimT, now*0.001*av.speed); gl.uniform1f(U.uAnimAmp, av.amp);
