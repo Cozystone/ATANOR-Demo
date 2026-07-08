@@ -52,6 +52,17 @@ def _resonance(a: str, b: str) -> float | None:
 
 
 def _parents(store: Any, term: str, limit: int = 400) -> list[str]:
+    # STAGE 1 -> STAGE 2 pipeline: partition runs on TRUST-FILTERED parents, so
+    # the WordNet attractor batch (capital is_a Animal/class/…) is gone before
+    # clustering ever sees it. Falls back to raw parents if the filter errors.
+    try:
+        from .sense_trust_filter import trusted_parents
+
+        tp = trusted_parents(store, term)
+        if tp:
+            return tp[:limit]
+    except Exception:
+        pass
     out: list[str] = []
     try:
         for s, p, o in store.facts_about(term, limit=limit) or []:
