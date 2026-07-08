@@ -2610,6 +2610,37 @@ def _wiki_direct_entity_row(question: str) -> dict[str, Any] | None:
             if cand and cand not in seen:
                 seen.add(cand)
                 cands.append(cand)
+        # RELATION-VALUE extraction (X의 Y): the value of X's Y lives on X's OWN
+        # page ('물' summary: "화학식은 H2O이며 …"), so quote the X-page
+        # sentence(s) that name Y. Without this the backstop served the Y
+        # CONCEPT page — a different question — because the 1-char modifier 물
+        # never became a candidate (len>=2 term filter). Order: exact full
+        # title ("빛의 속도") first, then X-page relation sentences, then the
+        # generic candidates.
+        if _gen:
+            row = _wiki_rest_summary(cands[0], host)
+            if row:
+                return row
+            mod, tail = _gen.group(1), _gen.group(2)
+            # only when the tail is the COMPLETE asked attribute: a multiword
+            # tail ('태양의 중심 온도') truncates to its first word ('중심'), and
+            # quoting X-page sentences that merely contain that word is
+            # off-target (measured: quoted "태양계의 중심에…" for a temperature
+            # question). Content continuing after the capture => skip; the
+            # generic candidates keep the previous behavior.
+            _after = question[_gen.end(2):]
+            if re.match(r"\s+[가-힣A-Za-z0-9]", _after):
+                mod_row = None
+                _snip = ""
+            else:
+                mod_row = _wiki_rest_summary(mod, host)
+                _snip = str((mod_row or {}).get("snippet") or "")
+            if tail in _snip:
+                _hits = [s for s in re.split(r"(?<=[.!?다])\s+", _snip) if tail in s]
+                if _hits:
+                    return {**mod_row, "snippet": " ".join(_hits)[:400],
+                            "id": "wikipedia-direct-relation"}
+            cands = cands[1:]  # the full genitive title was already tried
         for term in cands[:4]:
             row = _wiki_rest_summary(term, host)
             if row:
