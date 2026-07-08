@@ -4,10 +4,14 @@
 # Everything binds to 127.0.0.1 — nothing is exposed off-machine.
 $ErrorActionPreference = "SilentlyContinue"
 
-wsl -u root -- bash -c @'
+# NOTE: this .ps1 is CRLF on disk, so the here-string body carries \r into every
+# line — bash then splits the qemu command at each \r ("-enable-kvm: command not
+# found"). Strip \r before handing the script to WSL bash. Also: pgrep -f would
+# match bash's own argv (the script text contains "qemu-system"), so use pidof.
+$vmScript = @'
 set -e
 ls /opt/novnc/vnc.html >/dev/null 2>&1 || git clone --depth 1 https://github.com/novnc/noVNC.git /opt/novnc
-pgrep -f qemu-system >/dev/null || {
+pidof qemu-system-x86_64 >/dev/null || {
   systemctl reset-failed atanor-gui 2>/dev/null || true
   systemd-run --unit=atanor-gui --collect /usr/bin/qemu-system-x86_64 \
     -enable-kvm -cpu host -m 4096 -smp 4 \
@@ -24,6 +28,8 @@ systemctl is-active atanor-novnc >/dev/null 2>&1 || {
 }
 echo ready
 '@
+$vmScript = $vmScript -replace "`r", ""
+wsl -u root -- bash -c $vmScript
 
 Start-Sleep -Seconds 3
 Start-Process "http://localhost:6080/vnc.html?host=localhost&port=5705&path=&autoconnect=true&resize=scale"
