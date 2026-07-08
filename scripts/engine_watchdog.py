@@ -59,6 +59,11 @@ SERVICES = [
 CHECK_EVERY_S = 30
 FAILS_TO_RESTART = 3
 HEALTH_TIMEOUT_S = 8
+# A TripoSR generation legitimately monopolizes splatra for 20-60s (GIL-heavy
+# torch), which reads as 2-3 failed probes — the watchdog was killing the
+# service MID-GENERATION (measured 2026-07-08 18:08/18:12). Busy is not dead:
+# services may declare a higher per-service fail budget.
+SERVICE_FAILS = {"splatra": 8}
 
 
 def log(msg: str) -> None:
@@ -158,7 +163,7 @@ def main() -> None:
                         reason = f"memory {mem:.0f}MB > {svc['rss_limit_mb']}MB"
             else:
                 fails[name] += 1
-                if fails[name] >= FAILS_TO_RESTART:
+                if fails[name] >= SERVICE_FAILS.get(name, FAILS_TO_RESTART):
                     reason = f"unhealthy x{fails[name]}"
             if reason:
                 log(f"{name}: RESTART ({reason})")
