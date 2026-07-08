@@ -2077,8 +2077,14 @@ def _first_sentences(text: str, *, max_chars: int = 360) -> str:
 def _store_web_fact(question: str, title: str, answer: str, url: str) -> None:
     """Retain a web-looked-up fact locally so re-asking is instant / offline-safe."""
     try:
+        from app.services.web_search import looks_like_natural_language
+
         subject = (title or question).strip()[:80]
-        if subject and answer:
+        # language gate on the ANSWER text: a garbled page (bot wall / lorem /
+        # broken encoding) must never be MEMORIZED — one poisoned fact re-serves
+        # forever on that topic. (Subjects are titles — titles legitimately lack
+        # function words, so only the value is gated.)
+        if subject and answer and looks_like_natural_language(answer):
             WEB_FACT_MEMORY.remember("knowledge", subject, answer, source="conversation", source_ref=f"web:{url}", confidence=0.7)
     except Exception:  # pragma: no cover
         pass
@@ -2091,6 +2097,12 @@ def _recall_web_fact(question: str) -> dict[str, Any] | None:
         if not hits:
             return None
         fact = hits[0]
+        # defend against ALREADY-poisoned stores: never serve a memorized fact
+        # whose text does not read as real language
+        from app.services.web_search import looks_like_natural_language
+
+        if not looks_like_natural_language(fact.value):
+            return None
         # require a real topic overlap so we don't surface an unrelated cached fact
         q_tokens = {t for t in re.split(r"\s+", re.sub(r"[?!.]", " ", question.lower())) if len(t) >= 3}
         s_tokens = {t for t in re.split(r"\s+", fact.subject.lower()) if len(t) >= 2}

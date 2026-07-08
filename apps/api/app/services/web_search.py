@@ -537,8 +537,48 @@ def _split_sentences(text: str) -> list[str]:
 _KO_PREDICATE = re.compile(r"(다|요|음|함|됨|이며|이고|이다|입니다|한다|된다|했다|였다|이었|로 알려|에 위치|에 본사)[.\s)\"']*$|(이다|입니다|한다|된다|했다|였다|이며|로 알려)")
 
 
+_COMMON_EN_WORDS = {
+    "the", "is", "a", "of", "and", "to", "in", "was", "for", "on", "with", "as",
+    "by", "at", "an", "it", "that", "are", "be", "from", "or", "this", "which",
+    "has", "had", "its", "not", "were", "but", "have", "he", "she", "they",
+}
+
+
+def _sentence_reads_as_language(s: str) -> bool:
+    if re.search(r"[가-힣぀-ヿ㐀-䶿一-鿿]", s):
+        return True
+    words = re.findall(r"[A-Za-z]+", s)
+    if len(words) < 6:
+        return True                      # too short to judge — don't block
+    window = [w.lower() for w in words[:60]]
+    hits = sum(1 for w in window if w in _COMMON_EN_WORDS)
+    return hits >= max(1, len(window) // 12)
+
+
+def looks_like_natural_language(text: str) -> bool:
+    """Data-quality gate: does this text read as REAL language (Korean/CJK, or
+    English with a plausible function-word ratio)? Pronounceable-nonsense pages
+    (bot walls, lorem generators, garbled encodings) once flowed through the web
+    path, got ANSWERED, then got MEMORIZED into web_fact_memory — poisoning every
+    later recall of that topic. Judged per-SENTENCE by majority: a poisoned text
+    can smuggle one Korean fragment (its own '(출처: …)' tail quoted the user's
+    Korean query) while every body sentence is nonsense — whole-text checks pass
+    it, a sentence majority does not. Gibberish has essentially zero common
+    English function words; real English can't avoid them; Hangul/CJK passes."""
+    t = (text or "").strip()
+    if len(t) < 8:
+        return True
+    sents = [s.strip() for s in re.split(r"(?<=[.!?다])\s+", t) if len(s.strip()) >= 20]
+    if not sents:
+        return _sentence_reads_as_language(t)
+    bad = sum(1 for s in sents if not _sentence_reads_as_language(s))
+    return bad * 2 <= len(sents)
+
+
 def _is_fluff_sentence(s: str) -> bool:
     if len(s) < 16 or len(s) > 320:
+        return True
+    if not looks_like_natural_language(s):   # gibberish never becomes evidence
         return True
     if any(m in s for m in _FLUFF_MARKERS):
         return True
