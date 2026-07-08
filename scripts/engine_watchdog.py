@@ -108,8 +108,11 @@ def restart(svc: dict) -> None:
                        capture_output=True, timeout=30, creationflags=NO_WINDOW)
         time.sleep(2)
     log(f"{svc['name']}: starting -> {' '.join(svc['cmd'])}")
-    flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-             | NO_WINDOW)
+    # CREATE_NO_WINDOW (a HIDDEN console the service's own children inherit),
+    # never DETACHED_PROCESS: detached means NO console, so every child the
+    # service shells out to (nvidia-smi, docker stats, git ...) allocates a
+    # fresh VISIBLE console — the terminal-flash storm on the owner's screen.
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | NO_WINDOW
     subprocess.Popen(svc["cmd"], cwd=svc["cwd"], creationflags=flags,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
