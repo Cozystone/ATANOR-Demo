@@ -1780,6 +1780,31 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"promote_tick: {type(exc).__name__}"[:120]
+        # DERIVATION lane every N ticks (the compounding learning path): materialize
+        # what the graph already ENTAILS (transitive is_a/located_in 2-hop closure +
+        # inverses) — real, sound, source-tagged `derived:*` connections, at store
+        # speed. The web lane finds NEW facts slowly; this compounds what they imply
+        # so the graph keeps growing by millions/day. Bounded per pass (measured
+        # RSS-flat) with a cursor that resumes the sweep; a store ceiling protects
+        # the memory cap; env-tunable, disable with ATANOR_DERIVE_EVERY=0.
+        try:
+            _de = int(os.getenv("ATANOR_DERIVE_EVERY", "8") or 8)
+            _ceiling = int(os.getenv("ATANOR_DERIVE_STORE_CEILING", "300000000") or 300_000_000)
+            if _de > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _de == 0:
+                _cap = int(os.getenv("ATANOR_DERIVE_MAX_NEW", "1000000") or 1_000_000)
+                _win = int(os.getenv("ATANOR_DERIVE_WINDOW", "1500000") or 1_500_000)
+                from packages.graph_scale.answer_bridge import _store as _astore
+                _s = _astore()
+                if _s is not None and len(_s) < _ceiling:
+                    _dres = _run_derivation(_cap, _win)
+                    with _CONT_LOCK:
+                        _CONT["derivation"] = {
+                            "last": {k: _dres.get(k) for k in ("derived", "rate_per_sec", "total")},
+                            "total_derived": _DERIVE_STATE["total_derived"],
+                            "runs": _DERIVE_STATE["runs"], "at": _time.time()}
+        except Exception as exc:  # pragma: no cover - never kill the loop
+            with _CONT_LOCK:
+                _CONT["last_error"] = f"derive_tick: {type(exc).__name__}"[:120]
         # Answer-policy SELF-TUNING every M ticks: the engine measures its own routing
         # quality on the labelled battery and moves the policy weights toward better —
         # never worse (the tuner only accepts accuracy improvements). This is the safe
