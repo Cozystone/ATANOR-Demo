@@ -132,6 +132,18 @@ def _subject_candidates(query: str) -> list[str]:
             _frame_subject = _fr.subject
     except Exception:
         pass
+    # GENITIVE compound ("만유인력의 법칙", "빛의 속도"): the full surface form
+    # is a real store/wiki title far more often than its bare head, and the
+    # head alone answers the WRONG referent (법칙 → 규범 정의, measured). Try
+    # the full form FIRST and never let the bare head stand alone as a subject.
+    _gen_tail = ""
+    _gen_full = ""
+    _gen_m = re.search(r"([가-힣A-Za-z0-9]{1,12})의\s+([가-힣A-Za-z0-9]{2,12}?)(?:[은는이가을를만]|\s|$)", query)
+    if _gen_m:
+        _gen_full = f"{_gen_m.group(1)}의 {_gen_m.group(2)}"
+        _gen_tail = _gen_m.group(2)
+        if _gen_full not in cands:
+            cands.insert(0, _gen_full)
     try:
         from packages.base_brain.neighborhood import _kiwi, _strip_ko_tail
 
@@ -172,7 +184,7 @@ def _subject_candidates(query: str) -> list[str]:
                 if tok.tag in ("NNP", "NNG", "SL") and len(tok.form) >= 2:
                     if tok.form.lower() in _EN_STOPWORDS:
                         continue
-                    if tok.form in run_tails:
+                    if tok.form in run_tails or (_gen_tail and tok.form == _gen_tail):
                         continue
                     # A noun followed by 하다 (XSV) is the PREDICATE of the
                     # request (설명해줘/요약해줘), never its subject — with
@@ -235,7 +247,13 @@ def _subject_candidates(query: str) -> list[str]:
     # the grammatically-parsed subject (query_frame) OUTRANKS the length heuristic:
     # for 'X의 Y' the frame knows X is the subject, so it must not lose to the
     # longer relation-noun Y. Only this structural signal precedes the old ordering.
-    return sorted(cands, key=lambda t: (0 if t == _frame_subject else 1,
+    # GENITIVE full form outranks everything and its bare head is PURGED — the
+    # head's standalone definition is the measured wrong-referent class
+    # (만유인력의 법칙 → 법칙=규범, 빛의 속도 → 속도 일반 정의).
+    if _gen_tail:
+        cands = [c for c in cands if c != _gen_tail]
+    return sorted(cands, key=lambda t: (0 if (_gen_full and t == _gen_full) else 1,
+                                        0 if t == _frame_subject else 1,
                                         0 if re.search(r"[가-힣]", t) else 1,
                                         -len(t), _resonance_key(t)))[:6]
 

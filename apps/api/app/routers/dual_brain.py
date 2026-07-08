@@ -2479,7 +2479,11 @@ def _media_grounded_answer(question: str, language: str) -> dict[str, Any] | Non
 # (뭐/무엇/누구/what/who) are definitions, not claims, so they are excluded.
 _CLAIM_KO = re.compile(r"^\s*(.+?)(?:은|는|이|가)\s+(.+)\s*(?:야|이야|인가요?|맞아요?|맞나요?|니|냐|나요)\s*\??\s*$")
 _CLAIM_EN = re.compile(r"^\s*(?:is|are|was|were)\s+(.+?)\s+(.+?)\s*\??\s*$", re.IGNORECASE)
-_WH_PRED = ("뭐", "무엇", "무슨", "누구", "어디", "언제", "어떻게", "왜", "what", "who", "where", "when", "why", "how")
+# quantity interrogatives included: "빛의 속도는 얼마야?" matched the X는 Y야?
+# claim shape, got claim-verified, failed, and the forced-empty rows SKIPPED the
+# find-harder backstop (measured — the honest-but-wrong 못찾았어요).
+_WH_PRED = ("뭐", "무엇", "무슨", "누구", "어디", "언제", "어떻게", "왜", "얼마", "몇", "얼마나",
+            "what", "who", "where", "when", "why", "how")
 
 
 def _parse_yes_no_claim(question: str, language: str) -> tuple[str, str] | None:
@@ -2595,6 +2599,13 @@ def _wiki_direct_entity_row(question: str) -> dict[str, Any] | None:
         host = _wiki_host_for_query(question)
         cands: list[str] = []
         seen: set[str] = set()
+        # The GENITIVE surface form is often the exact wiki title ("빛의 속도",
+        # "만유인력의 법칙") — term normalization strips 의 so the parts alone
+        # miss the page (measured: 빛의 속도 → honest-but-wrong "못 찾았어요").
+        _gen = re.search(r"([가-힣A-Za-z0-9]{1,12})의\s+([가-힣A-Za-z0-9]{2,12}?)(?:[은는이가을를만]|\s|$)", question)
+        if _gen:
+            cands.append(f"{_gen.group(1)}의 {_gen.group(2)}")
+            seen.add(cands[0])
         for cand in (" ".join(terms), max(terms, key=len), *terms):
             if cand and cand not in seen:
                 seen.add(cand)
@@ -2723,6 +2734,12 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         _core_terms = [t for t in _lookup_terms(_normalize_lookup_query(question)) if len(t) >= 2]
     except Exception:  # pragma: no cover - defensive
         _core_terms = []
+    # GENITIVE anchor ("빛의 속도"): the bare head must NOT anchor the result —
+    # the generic 속도 page carried the day while 빛의 속력 sat one backstop
+    # away (measured). Anchor on the full form / the modifier instead.
+    _gen_q = re.search(r"([가-힣A-Za-z0-9]{1,12})의\s+([가-힣A-Za-z0-9]{2,12}?)(?:[은는이가을를만]|\s|$)", question)
+    if _gen_q:
+        _core_terms = [f"{_gen_q.group(1)}의 {_gen_q.group(2)}", _gen_q.group(1)]
 
     def _on_topic(row: dict[str, Any]) -> bool:
         if not _core_terms:
@@ -2732,6 +2749,12 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
         # Title anchor is the strongest signal the page is *about* the entity.
         if any(term in title_l for term in _core_terms):
             return True
+        # GENITIVE queries trust ONLY the title anchor: a short modifier as a
+        # snippet substring is noise ('물의 화학식' anchored the 화학식 page
+        # through 화합'물'; '빛의 속도' anchored 광자 — measured). The direct
+        # exact-title backstop below finds the real page instead.
+        if _gen_q:
+            return False
         # Otherwise the term must lead the snippet AND the search counted a hit.
         return any(term in subject for term in _core_terms) and int(row.get("query_terms_matched") or 0) >= 1
 
