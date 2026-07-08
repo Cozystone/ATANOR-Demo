@@ -43,11 +43,13 @@ SERVICES = [
         "port": 8010,
         "health": "http://127.0.0.1:8010/v1/models",
         "rss_limit_mb": 6144,          # torch models are heavy; higher ceiling
-        # real text->3D (tiny-SD image -> rembg cutout -> silhouette inflation).
-        # All deps verified installed; without this flag every unknown prompt
-        # ("피카츄") fell to a procedural hash-colored sphere (owner-reported
-        # pink blob).
-        "env": {"SPLATRA_SD": "1"},
+        # real text->3D. Without these flags every unknown prompt ("피카츄")
+        # fell to a procedural hash-colored sphere (owner-reported pink blob).
+        # TRIPOSR = learned single-image 3D reconstruction (measured: warm
+        # ~6s / 170k gaussians on this GPU) — quality default; SD silhouette
+        # lift (~1s) remains the automatic fallback if TripoSR errors.
+        "env": {"SPLATRA_SD": "1", "SPLATRA_TRIPOSR": "1",
+                "SPLATRA_TRIPOSR_DIR": r"C:\Users\anseo\.cache\splatra\TripoSR"},
         "cwd": r"C:\0.ASKIM ALL-VIN\26.SPLATRA",
         "cmd": [sys.executable, "-m", "uvicorn", "apps.plugin_api:app",
                 "--port", "8010"],
