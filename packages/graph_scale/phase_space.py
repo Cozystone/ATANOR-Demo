@@ -43,12 +43,24 @@ CURRENT_PATH = SPACE_DIR / "current.json"
 
 
 def _artifact_paths() -> tuple[Path, Path, Path]:
+    """Newest space wins: the GPU trainer writes versioned files behind the
+    current.json pointer, while the CPU trainer writes the legacy fixed paths.
+    Compare mtimes so a fresh CPU train (tests, no-CUDA hosts) is never shadowed
+    by an older pointer — and vice versa."""
+    versioned = None
     try:
         if CURRENT_PATH.exists():
             c = json.loads(CURRENT_PATH.read_text(encoding="utf-8"))
-            return SPACE_DIR / c["phases"], SPACE_DIR / c["relations"], SPACE_DIR / c["terms"]
+            v = (SPACE_DIR / c["phases"], SPACE_DIR / c["relations"], SPACE_DIR / c["terms"])
+            if v[0].exists():
+                versioned = v
     except Exception:
         pass
+    if versioned and PHASES_PATH.exists():
+        return versioned if versioned[0].stat().st_mtime >= PHASES_PATH.stat().st_mtime \
+            else (PHASES_PATH, REL_PATH, TERMS_PATH)
+    if versioned:
+        return versioned
     return PHASES_PATH, REL_PATH, TERMS_PATH
 
 DIM = 8
