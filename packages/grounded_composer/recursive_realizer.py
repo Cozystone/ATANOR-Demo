@@ -51,6 +51,9 @@ _CLAUSE = {  # coordinated tail clauses — each carries its OWN full ending
     "인구": "인구는 {o}명입니다",
     "면적": "면적은 {o}입니다",
     "설립": "{o}에 세워졌습니다",
+    "통화": "통화는 {o}입니다",
+    "언어": "언어는 {o}입니다",
+    "대륙": "{o}에 속합니다",
 }
 _HEAD_PREDS = ("is_a", "defined_as")   # the head noun / identity slot
 
@@ -115,12 +118,17 @@ def realize(subject: str, facts: list[tuple[str, str, str]], *,
     head = None
     mods: list[tuple[str, str, str]] = []
     tail: list[tuple[str, str, str]] = []
+    # location is not identity: an is_a object that ALSO appears as this
+    # subject's located_in/country/대륙 object is a mislabeled place edge
+    # ("독일은 … 서유럽입니다" — measured) and may not serve as the head noun
+    _placed = {str(o) for _s, p, o in facts if p in ("located_in", "country", "대륙")}
     for s, p, o in facts:
         if not o or p in ("alias", "sense"):
             continue
         if (head is None and p in _HEAD_PREDS and len(str(o)) <= 60
                 and not re.search(r"\d", str(o)[:12])
-                and re.search(r"[가-힣]", str(o))):   # the head noun must speak Korean
+                and re.search(r"[가-힣]", str(o))     # the head noun must speak Korean
+                and str(o) not in _placed):           # location is not identity
             head = (s, p, str(o))
         elif (p in _PRENOMINAL and len(mods) < max_modifiers and len(str(o)) <= 40
                 and str(o) != subject):
@@ -137,6 +145,10 @@ def realize(subject: str, facts: list[tuple[str, str, str]], *,
     head_noun = head[2]
     if head[1] == "defined_as":
         head_noun = head_noun.split(".")[0].split(",")[0][:40]
+        # a dictionary gloss "…나라 이름"/"…의 명칭" names the WORD; as a head
+        # noun of the THING it must read "…나라" ("프랑스는 … 나라 이름입니다"
+        # would claim France is a name — measured)
+        head_noun = re.sub(r"\s*(이름|명칭)$", "", head_noun).strip() or head[2][:40]
 
     # prenominal stack, phase-coherent order when available (nearest to the
     # head noun last — Korean modifiers read outward-in)
@@ -158,13 +170,24 @@ def realize(subject: str, facts: list[tuple[str, str, str]], *,
     # (batchim heads read fine with 입니다 too — keep the simple copula)
     sentence = topic + " " + (modifier + " " if modifier else "") + head_noun + "입니다"
 
-    # one coordinated tail clause carries a leftover fact (…이며, 인구는 N명입니다)
+    # coordinated tail clauses (…이며, …이고, …입니다) — up to two leftovers
     if tail:
-        s, p, o = tail[0]
-        used.append((s, p, o))
-        cons.append(f"clause:{p}")
-        clause = _CLAUSE[p].format(o=o)
-        sentence = sentence[:-3] + "이며, " + clause
+        clauses = []
+        for s, p, o in tail[:2]:
+            used.append((s, p, o))
+            cons.append(f"clause:{p}")
+            clauses.append(_CLAUSE[p].format(o=o))
+        if len(clauses) == 2:
+            # the middle clause coordinates with -이고 (drop its own ending)
+            mid = clauses[0]
+            for _end in ("입니다", "습니다"):
+                if mid.endswith(_end):
+                    mid = mid[: -len(_end)]
+                    break
+            joined = mid + "이고, " + clauses[1]
+        else:
+            joined = clauses[0]
+        sentence = sentence[:-3] + "이며, " + joined
 
     depth = 1 + (1 if any("@embed" in c for c in cons) else 0)
     return Realization(text=sentence + ".", facts_used=used,

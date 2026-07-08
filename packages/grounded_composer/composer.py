@@ -176,6 +176,24 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
     ordered = deduped[:max_facts]
     if len(ordered) < 2:
         return None
+    # RECURSIVE REALIZATION FIRST (표현의 무한성): compose ONE novel embedded
+    # sentence from the facts (관형절 stacking + coordination) — content stays
+    # verbatim-grounded; the flat connective chain below remains the fallback
+    # whenever the realizer declines. Kill-switch: ATANOR_RECURSIVE_REALIZER=0.
+    try:
+        import os as _os
+
+        if language == "ko" and _os.getenv("ATANOR_RECURSIVE_REALIZER", "1") != "0":
+            from .recursive_realizer import realize
+
+            _r = realize(subject, ordered, max_modifiers=2)
+            if _r is not None and len(_r.facts_used) >= 3:
+                _ans = _r.text + source
+                return ComposedAnswer(answer=_resolve_josa(_ans),
+                                      facts_used=_r.facts_used,
+                                      connectives_used=_r.constructions)
+    except Exception:
+        pass
     # PHASE-COHERENT FLOW (softness in utterance, owner directive): keep the
     # identity lead first, then walk the remaining facts nearest-first in the
     # trained phase space so the discourse moves in a coherent path. Content is
