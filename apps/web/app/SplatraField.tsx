@@ -22,6 +22,7 @@ layout(location=1) in uint aIndex;
 uniform sampler2D uData; uniform int uTexW;
 uniform mat4 uProj, uView; uniform vec2 uFocal, uViewport;
 uniform float uT, uSizeScale, uModelScale, uSwirl;
+uniform vec3 uModelCenter;
 uniform int uAnimMode; uniform float uAnimT, uAnimAmp;
 uniform int uNJ;
 uniform vec3 uJPos[16]; uniform vec3 uJOut[16]; uniform float uJReach;

@@ -2731,8 +2731,11 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       <div style={(foldScene || iframeStage)
         ? { opacity: 0, pointerEvents: "none" }
         // aquarium visibility (owner): while a generated model lives on the
-        // screen, the orb recedes instead of overlapping it
-        : splatraOpen ? { opacity: 0.18, transition: "opacity .7s ease" } : undefined}>
+        // screen the orb YIELDS THE STAGE — it docks small to the bottom-right
+        // corner (cognitively stepping aside), not a ghost fade in place.
+        : splatraOpen ? { transform: "translate(36%, 30%) scale(0.32)", opacity: 0.85,
+                          transformOrigin: "center", transition: "transform .8s ease, opacity .8s ease",
+                          pointerEvents: "none" } : { transition: "transform .8s ease, opacity .8s ease" }}>
         <SplatraImaginationField
           state={orbState}
           mode="product"
