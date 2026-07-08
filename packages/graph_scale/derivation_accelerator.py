@@ -47,6 +47,13 @@ INVERSE = {"capital": "capital_of", "capital_of": "capital",
 
 _DEFAULT_MAX_NEW = 2_000_000      # cap derived edges per call (bounds the write)
 _DEFAULT_EDGE_WINDOW = 1_500_000  # cap stated edges scanned per call (bounds peak RAM)
+# A real taxonomic node has 1-2 direct parents (measured on the live graph:
+# is_a out-degree p50=1, p99=2). A tiny 0.45% tail has 8..1315 parents — noise
+# MAGNETS where mis-parsing dumped many unrelated genera onto one node ("jigsaw
+# is_a 1315 things"). Expanding a 2-hop join THROUGH such a middle explodes into
+# garbage and burns the edge budget. Skip middles above this degree — a MEASURED
+# discriminator (well above p99=2), not a rule table. Keeps growth clean + fast.
+_DEFAULT_MAX_MIDDLE_DEGREE = 8
 
 
 def _pack(a: "np.ndarray", b: "np.ndarray") -> "np.ndarray":
@@ -56,7 +63,8 @@ def _pack(a: "np.ndarray", b: "np.ndarray") -> "np.ndarray":
 
 def accelerate(store: Any, *, max_new: int = _DEFAULT_MAX_NEW,
                edge_window: int = _DEFAULT_EDGE_WINDOW,
-               cursor: int = 0, relations: tuple[str, ...] = TRANSITIVE) -> dict[str, Any]:
+               cursor: int = 0, relations: tuple[str, ...] = TRANSITIVE,
+               max_middle_degree: int = _DEFAULT_MAX_MIDDLE_DEGREE) -> dict[str, Any]:
     """Run ONE bounded derivation pass and write the new edges to the store.
 
     Reads a WINDOW of stated edges (bounded RAM), computes the sound 2-hop
@@ -94,7 +102,8 @@ def accelerate(store: Any, *, max_new: int = _DEFAULT_MAX_NEW,
             if not wmask.any():
                 continue
             # join the window's edges (x->y) against ALL edges (y->z)
-            x_new, z_new = _two_hop_join(sw[wmask], ow[wmask], fa, fo, max_new)
+            x_new, z_new = _two_hop_join(sw[wmask], ow[wmask], fa, fo, max_new,
+                                         max_middle_degree)
             if len(x_new):
                 derived_pairs.append((rel, x_new, z_new))
         # inverse edges (cheap, exact): b -inv-> a for each stated a -rel-> b in window
@@ -135,21 +144,45 @@ def accelerate(store: Any, *, max_new: int = _DEFAULT_MAX_NEW,
 
 def _two_hop_join(x_src: "np.ndarray", x_mid: "np.ndarray",
                   all_src: "np.ndarray", all_dst: "np.ndarray",
-                  max_new: int) -> tuple["np.ndarray", "np.ndarray"]:
+                  max_new: int, max_middle_degree: int = _DEFAULT_MAX_MIDDLE_DEGREE
+                  ) -> tuple["np.ndarray", "np.ndarray"]:
     """(x -> mid) joined with all (mid -> z) => new (x -> z). Bounded to max_new.
-    Filters self-loops and edges already stated in the full relation."""
+    Filters self-loops, edges already stated in the full relation, and — the
+    quality guard — expansion through a noise-magnet middle (out-degree above
+    max_middle_degree), so the closure stays clean instead of amplifying a
+    node like 'jigsaw is_a <1315 things>'."""
     if len(x_src) == 0 or len(all_src) == 0:
         return np.empty(0, np.int32), np.empty(0, np.int32)
     order = np.argsort(all_src, kind="stable")
     ss = all_src[order]; dd = all_dst[order]
     uniq, first = np.unique(ss, return_index=True)
     last = np.append(first[1:], len(ss))
+    deg = last - first                                    # out-degree per uniq source
+    # QUALITY GUARD (subject side): a polysemous/noise-magnet SUBJECT ('capital'
+    # carrying many unrelated is_a parents) explodes into garbage regardless of
+    # the middle. Drop window edges whose SUBJECT out-degree is above threshold —
+    # same measured discriminator as the middle guard.
+    if max_middle_degree > 0 and len(x_src):
+        xp = np.searchsorted(uniq, x_src)
+        xok = (xp < len(uniq)) & (uniq[np.clip(xp, 0, len(uniq) - 1)] == x_src)
+        xdeg = np.where(xok, deg[np.clip(xp, 0, len(uniq) - 1)], 0)
+        keep = xdeg <= max_middle_degree
+        x_src, x_mid = x_src[keep], x_mid[keep]
+        if len(x_src) == 0:
+            return np.empty(0, np.int32), np.empty(0, np.int32)
     pos = np.searchsorted(uniq, x_mid)
     valid = (pos < len(uniq)) & (uniq[np.clip(pos, 0, len(uniq) - 1)] == x_mid)
     if not valid.any():
         return np.empty(0, np.int32), np.empty(0, np.int32)
     idx = np.nonzero(valid)[0]
     counts = (last[pos[idx]] - first[pos[idx]]).astype(np.int64)
+    # QUALITY GUARD: drop expansion through noise-magnet middles (out-degree far
+    # above the p99=2 of real taxonomy). Measured discriminator, not a rule table.
+    if max_middle_degree > 0:
+        ok = counts <= max_middle_degree
+        idx, counts = idx[ok], counts[ok]
+        if len(idx) == 0:
+            return np.empty(0, np.int32), np.empty(0, np.int32)
     if counts.sum() > max_new:
         keep = np.cumsum(counts) <= max_new
         idx, counts = idx[keep], counts[keep]
