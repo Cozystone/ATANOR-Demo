@@ -8,6 +8,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 export type SplatraHandle = {
   animate: (style: string) => void;
+  gesture: (name: string) => void;      // wave etc. — moves ONE limb, no reload
   reload: () => void;
   disassemble: () => void;
 };
@@ -155,10 +156,12 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
   { className }, apiRef,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const engineRef = useRef<{ animate: (s: string) => void; reload: () => void; disassemble: () => void } | null>(null);
+  const engineRef = useRef<{ animate: (s: string) => void; gesture: (n: string) => void;
+                             reload: () => void; disassemble: () => void } | null>(null);
 
   useImperativeHandle(apiRef, () => ({
     animate: (s) => engineRef.current?.animate(s),
+    gesture: (n) => engineRef.current?.gesture(n),
     reload: () => engineRef.current?.reload(),
     disassemble: () => engineRef.current?.disassemble(),
   }));
@@ -216,6 +219,7 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
     const sw = { active: false, f: 0, t: 0, t0: 0, dur: 800 };
     const cam = { active: false, fy: 0, fp: 0, fd: 0, ty: 0, tp: 0, td: 0, t0: 0, dur: 1200 };
     const MOOD = { amp: 0.35, tempo: 0.8, jitter: 0.05, droop: 0.0 };
+    const gestureState = { chain: [] as number[], until: 0 };
     let lrig: any = null, parts: any = null, blink = 0, baseDist: number | null = null;
     const jDrives = new Float32Array(16), jRot = new Float32Array(144), jTrans = new Float32Array(48);
     const eyeVec = new Float32Array(16);
@@ -260,8 +264,26 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
     function computeFK(t: number) {
       for (let k = 0; k < 16; k++) { jRot.set(I9, k*9); jTrans.set([0,0,0], k*3); }
       if (!lrig) return;
-      for (let k = 0; k < lrig.n; k++) jDrives[k] =
-        MOOD.amp*Math.sin(MOOD.tempo*t + k*1.7) + MOOD.jitter*0.3*Math.sin(7.3*t + k*2.9) - MOOD.droop*0.35;
+      // 견고한 몸: idle sway is scaled by how far a joint sits from the body
+      // centre — core joints barely move (the clock face stays RIGID), only
+      // limb tips carry the life. A gesture overrides one chain, full drive.
+      const dmax = Math.max(...lrig.joints.map((j: number[]) =>
+        Math.hypot(j[0]-lrig.centroid[0], j[1]-lrig.centroid[1], j[2]-lrig.centroid[2]))) || 1;
+      const g = gestureState.until > performance.now() ? gestureState : null;
+      for (let k = 0; k < lrig.n; k++) {
+        const j = lrig.joints[k];
+        const dn = Math.hypot(j[0]-lrig.centroid[0], j[1]-lrig.centroid[1], j[2]-lrig.centroid[2]) / dmax;
+        const s = Math.min(1, Math.max(0, (dn - 0.35) / 0.4));
+        const distal = 0.06 + 0.94 * s * s * (3 - 2 * s);
+        if (g && g.chain.includes(k)) {
+          jDrives[k] = 1.05 * Math.sin(5.2*t + k*0.8);           // the wave
+        } else if (g) {
+          jDrives[k] = 0;                                        // rest holds still
+        } else {
+          jDrives[k] = distal * (MOOD.amp*Math.sin(MOOD.tempo*t + k*1.7)
+            + MOOD.jitter*0.3*Math.sin(7.3*t + k*2.9)) - MOOD.droop*0.35*distal;
+        }
+      }
       for (const chain of (lrig.chains || [])) {
         const Jw = chain.map((j: number) => lrig.joints[j].slice());
         let prev = lrig.centroid.slice();
@@ -430,10 +452,28 @@ const SplatraField = forwardRef<SplatraHandle, { className?: string }>(function 
 
     engineRef.current = {
       animate: (style: string) => {
+        // 아토 불변 계약: the machine's own character never melts or crumbles —
+        // material morphs are for demonstration OBJECTS only
+        if ((style === "water" || style === "soil") && lrig?.avatar) return;
         const m = ANIM[style] ?? (style === "stop" || style === "none" ? 0 : av.mode);
         if (m) { av.mode = m; av.target = 1;
           av.speed = style === "spin" ? 1.0 : style === "walk" ? 6.0 : 2.4; }
         else { av.target = 0; }
+      },
+      gesture: (name: string) => {
+        // move ONE limb on the EXISTING body — never regenerate for a greeting
+        if (!lrig || !lrig.chains?.length) return;
+        av.mode = 11; av.target = 1;
+        if (name === "wave") {
+          // the arm = chain reaching farthest sideways
+          let best = lrig.chains[0], score = -1;
+          for (const ch of lrig.chains) {
+            const sx = Math.max(...ch.map((j: number) => Math.abs(lrig.joints[j][0])));
+            if (sx > score) { score = sx; best = ch; }
+          }
+          gestureState.chain = best;
+          gestureState.until = performance.now() + 3200;
+        }
       },
       reload: () => { disassemble(); setTimeout(() => loadCartridge(true).catch(() => {}), 520); },
       disassemble,

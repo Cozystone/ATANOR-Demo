@@ -273,8 +273,15 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     // 패널이 스스로 떠오르고 명령이 그 자리에서 실행된다. 일반 질문은 그대로
     // 아래의 엔진 경로로 흐른다 (가로채기 없음).
     const splatraCmd = isDemo ? null : parse3DIntent(q);   // 파티클은 Ultimate 전용
-    if (splatraCmd) {
+    if (splatraCmd && (splatraCmd.kind !== "gesture" || fieldOpen)) {
       const koCmd = /[가-힣]/.test(q);
+      if (splatraCmd.kind === "gesture") {                 // 인사 = 팔만 흔든다
+        setInput("");
+        fieldRef.current?.gesture(splatraCmd.name);
+        setMessages((m) => [...m, { role: "user", text: q },
+          { role: "ai", text: describeCmd(splatraCmd, koCmd) }]);
+        return;
+      }
       setFieldOpen(true);
       setMessages((m) => [...m, { role: "user", text: q },
         { role: "ai", text: describeCmd(splatraCmd, koCmd) }]);
@@ -420,10 +427,6 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     { on: false, label: ko ? "내 개인 데이터 외부 전송" : "Send your private data out", note: ko ? "항상 차단" : "always blocked" },
   ];
 
-  const suggestions = ko
-    ? ["정사각형 한 변이 7이면 둘레는?", "엔비디아 창립자가 누구야?", "y = x^2 + 1 그려줘", "광합성이 뭐야?"]
-    : ["What is a black hole?", "Who founded Microsoft?", "What is 12 times 12?", "What is photosynthesis?"];
-
   return (
     <section className="atanor-demochat">
       <aside className="atanor-demochat-sessions">
@@ -505,11 +508,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
               <p className="atanor-demochat-interrupt-hint">
                 {ko ? "생각을 이어가는 중이에요 — 언제든 끼어들어 대화하세요." : "It's thinking — jump in anytime."}
               </p>
-              <div className="atanor-demochat-suggest">
-                {suggestions.map((s) => (
-                  <button key={s} onClick={() => setInput(s)}>{s}</button>
-                ))}
-              </div>
+              {/* sample-question chips removed by owner request */}
             </div>
           ) : (
             messages.map((m, i) => (
@@ -562,16 +561,8 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                           {openPaths.has(i) ? <AnswerPathScene cert={m.certFull as Record<string, unknown>} /> : null}
                         </div>
                       ) : null}
-                      {m.role === "ai" && Array.isArray(m.followUps) && m.followUps.length ? (
-                        <div className="atanor-demochat-followups">
-                          <span className="atanor-demochat-followups-label">{ko ? "관련해서 더 물어보기" : "Ask a related question"}</span>
-                          <div className="atanor-demochat-followups-chips">
-                            {m.followUps.map((f) => (
-                              <button key={f} type="button" disabled={busy} onClick={() => runQuery(f)}>{f}</button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
+                      {/* follow-up question chips removed by owner request — the
+                          suggested-questions row added noise under the composer */}
                     </>
                   )}
                 </div>

@@ -1514,8 +1514,10 @@ function splatraControlsForLayout(emotionControls: Record<string, any> | null, t
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
-  // 3D 파티클 필드 (Ultimate): 3D 의도가 잡히면 홈 위로 떠오른다
+  // 3D 파티클 필드 (Ultimate): 3D 의도가 잡히면 홈 위로 떠오른다.
+  // avatar 모드는 오브 자리(중앙)에 — 아토를 부르면 오브가 아토로 바뀌는 경험.
   const [splatraOpen, setSplatraOpen] = useState(false);
+  const [splatraMode, setSplatraMode] = useState<"avatar" | "object">("object");
   const splatraRef = useRef<SplatraHandle>(null);
   // Particle render budget. Draft = live slider thumb; applied = what the orb
   // actually rebuilds at (committed on release, since a rebuild is heavy).
@@ -2256,8 +2258,14 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     // 3D 공간 제어 (Ultimate 전용): 명백한 3D 의도는 파티클 필드로 — 아토 소환,
     // 생성, 몸짓, 재질. 일반 질문은 아래 언어 엔진 경로 그대로.
     const splatraCmd = isDemo ? null : parse3DIntent(trimmed);
-    if (splatraCmd) {
+    if (splatraCmd && (splatraCmd.kind !== "gesture" || splatraOpen)) {
       setMessage("");
+      if (splatraCmd.kind === "gesture") {           // 인사는 팔만 — 재생성 없음
+        splatraRef.current?.gesture(splatraCmd.name);
+        return;
+      }
+      if (splatraCmd.kind === "avatar") setSplatraMode("avatar");   // 오브 자리에
+      else if (!splatraOpen) setSplatraMode("object");
       setSplatraOpen(true);
       void (async () => {
         try {
@@ -2705,10 +2713,14 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       style={{ ...dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry), ["--orb-dodge-y" as string]: `${orbDodgeY}px` } as CSSProperties}
     >
       {splatraOpen && (
-        <div style={{ position: "fixed", right: 22, top: 86, width: 460, height: 380,
-                      zIndex: 80, borderRadius: 14, overflow: "hidden",
-                      background: "radial-gradient(ellipse at 50% 40%, #14171d 0%, #0a0b0e 75%)",
-                      border: "1px solid #26262c", boxShadow: "0 18px 50px rgba(0,0,0,.5)" }}>
+        <div style={splatraMode === "avatar"
+          ? { position: "fixed", left: "50%", top: "44%", transform: "translate(-50%,-50%)",
+              width: 560, height: 500, zIndex: 80, borderRadius: 18, overflow: "hidden",
+              background: "transparent" }
+          : { position: "fixed", right: 22, top: 86, width: 460, height: 380,
+              zIndex: 80, borderRadius: 14, overflow: "hidden",
+              background: "radial-gradient(ellipse at 50% 40%, #14171d 0%, #0a0b0e 75%)",
+              border: "1px solid #26262c", boxShadow: "0 18px 50px rgba(0,0,0,.5)" }}>
           <SplatraField ref={splatraRef} />
           <div style={{ position: "absolute", top: 8, left: 12, color: "#7a7a82",
                         fontSize: 11, letterSpacing: 1.4, pointerEvents: "none" }}>
