@@ -2318,6 +2318,10 @@ function FullApp() {
       : "en";
     setLanguage(initialLanguage);
     const requestedSection = params.get("section");
+    const requestedTrace = params.get("trace");
+    if (requestedTrace) {
+      setRequestedTraceLabels(requestedTrace.split(",").map((part) => part.trim()).filter(Boolean).slice(0, 8));
+    }
     const sectionIds: MainSectionId[] = ["home", "graph", "local", "cloud", "atlas", "congress", "agent-os", "autonomous", "selfhood", "live-scheduler", "memory-approval", "graphhub", "contribute", "chat", "settings"];
     if (requestedSection && sectionIds.includes(requestedSection as MainSectionId)) {
       const nextSection = requestedSection as MainSectionId;
@@ -4516,6 +4520,64 @@ function FullApp() {
     () => (mainSection === "cloud" ? appendCloudArrivals(userSceneGraph3D, cloudArrivals) : userSceneGraph3D),
     [mainSection, userSceneGraph3D, cloudArrivals],
   );
+
+  // ── 시냅스 추적 (owner spec): ?trace=<labels,…> replays an answer's reasoning
+  // path in the cloud graph — the camera flies node to node while the walked
+  // path lights up in order, so reading the labels IS reading the inference.
+  const [requestedTraceLabels, setRequestedTraceLabels] = useState<string[]>([]);
+  const [synapseTrace, setSynapseTrace] = useState<{ ids: string[]; labels: string[] } | null>(null);
+  const [synapseStep, setSynapseStep] = useState(0);
+  const [synapseFocus, setSynapseFocus] = useState<{ serial: number; id: string } | null>(null);
+  useEffect(() => {
+    if (!requestedTraceLabels.length) return;
+    const nodes = cloudSceneGraph3D?.nodes ?? [];
+    if (!nodes.length) return;
+    const norm = (value: string) => value.toLowerCase().replace(/\s+/g, "");
+    const ids: string[] = [];
+    const labels: string[] = [];
+    for (const raw of requestedTraceLabels) {
+      const target = norm(raw);
+      if (!target) continue;
+      const hit = nodes.find((node) => norm(String(node.label ?? "")) === target || norm(String(node.id ?? "")) === target)
+        ?? nodes.find((node) => norm(String(node.label ?? "")).includes(target));
+      if (hit && !ids.includes(String(hit.id))) {
+        ids.push(String(hit.id));
+        labels.push(String(hit.label || hit.id));
+      }
+    }
+    if (ids.length) {
+      setSynapseTrace({ ids, labels });
+      setSynapseStep(0);
+      setSynapseFocus({ serial: 1, id: ids[0] });
+      setRequestedTraceLabels([]); // resolved once — graph refreshes must not restart the replay
+    }
+  }, [requestedTraceLabels, cloudSceneGraph3D]);
+  useEffect(() => {
+    if (!synapseTrace || synapseTrace.ids.length < 2) return;
+    let step = 0;
+    const timer = window.setInterval(() => {
+      step += 1;
+      if (step >= synapseTrace.ids.length) {
+        window.clearInterval(timer);
+        return;
+      }
+      setSynapseStep(step);
+      setSynapseFocus({ serial: step + 1, id: synapseTrace.ids[step] });
+    }, 1600);
+    return () => window.clearInterval(timer);
+  }, [synapseTrace]);
+  const synapseTraceNodeIds = useMemo(
+    () => (synapseTrace ? synapseTrace.ids.slice(0, synapseStep + 1) : EMPTY_STRING_ARRAY),
+    [synapseTrace, synapseStep],
+  );
+  const synapseTraceEdgeKeys = useMemo(() => {
+    if (!synapseTrace) return EMPTY_STRING_ARRAY;
+    const keys: string[] = [];
+    for (let index = 0; index < synapseStep && index + 1 < synapseTrace.ids.length; index += 1) {
+      keys.push(`${synapseTrace.ids[index]}:${synapseTrace.ids[index + 1]}`);
+    }
+    return keys;
+  }, [synapseTrace, synapseStep]);
 
   // Fetch the SURFACE (construction / sentence) knowledge graph when its view is
   // selected in the Cloud Brain tab. Refresh periodically so newly-learned
@@ -6974,6 +7036,27 @@ function FullApp() {
             </div>
             <div className="atanor-user-graph-stage" data-presentation={graphPresentationMode} data-answering={usesStudioGraph && transcriptOpen}>
               {mainSection === "cloud" ? <LiveLearningPanel view={cloudGraphView} onViewChange={setCloudGraphView} /> : null}
+              {synapseTrace && mainSection === "cloud" ? (
+                <div style={{ position: "absolute", left: 16, bottom: 16, zIndex: 30, display: "flex", alignItems: "center", gap: 8,
+                              background: "rgba(10,11,14,.74)", border: "1px solid #26262c", borderRadius: 10, padding: "8px 12px" }}>
+                  <span style={{ fontSize: 10, letterSpacing: 1.2, color: "#8a8a92" }}>시냅스 추적</span>
+                  <span style={{ fontSize: 12, color: "#e8e8ec" }}>
+                    {synapseTrace.labels.map((label, index) => (
+                      <span key={`${label}-${index}`} style={{ opacity: index <= synapseStep ? 1 : 0.35, fontWeight: index === synapseStep ? 700 : 400 }}>
+                        {index ? " → " : ""}{label}
+                      </span>
+                    ))}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="end synapse trace"
+                    onClick={() => { setSynapseTrace(null); setSynapseFocus(null); }}
+                    style={{ background: "transparent", border: "none", color: "#8a8a92", cursor: "pointer", fontSize: 12, padding: 2 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : null}
               {isCloudViewerSection && !visibleGraph3D.nodes.length ? (
                 <CloudBrainSphereScene
                   edgeOpacity={graphEdgeOpacity}
@@ -6983,11 +7066,12 @@ function FullApp() {
               ) : visibleGraph3D.nodes.length ? (
                 <Rag3DScene
                   key={usesStudioGraph ? "atanor-home-studio-graph" : `atanor-${mainSection}-${graphPresentationMode}-sphere-graph`}
-                  activeEdgeKeys={showActivity ? activeSignalEdgeKeys : EMPTY_STRING_ARRAY}
-                  activeNodeIds={showActivity ? activeSignalNodeIds : EMPTY_STRING_ARRAY}
+                  activeEdgeKeys={synapseTrace ? synapseTraceEdgeKeys : showActivity ? activeSignalEdgeKeys : EMPTY_STRING_ARRAY}
+                  activeNodeIds={synapseTrace ? synapseTraceNodeIds : showActivity ? activeSignalNodeIds : EMPTY_STRING_ARRAY}
                   showActivity={showActivity}
                   graph={cloudShowsSurface ? surfaceSceneGraph3D : cloudSceneGraph3D}
                   control={rag3dControl}
+                  focusNode={synapseFocus}
                   preserveSourceCoordinates={usesStudioGraph || usesSphereGraph}
                   theme="dark"
                   visualState={ragVisualState}

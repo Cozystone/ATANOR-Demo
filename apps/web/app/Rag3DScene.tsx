@@ -81,6 +81,10 @@ type Rag3DSceneProps = {
   // glow) is hidden and the bloom pass is skipped for power efficiency. The engine
   // keeps running; this is purely a render gate.
   showActivity?: boolean;
+  // Synapse trace (owner spec): fly the camera to this node and center it —
+  // page-level sequencing walks a reasoning path node by node while the path
+  // lights up via activeNodeIds/activeEdgeKeys. serial re-fires the same id.
+  focusNode?: { serial: number; id: string } | null;
 };
 
 type VisibleEdge = Rag3DEdge & {
@@ -1663,6 +1667,7 @@ export default function Rag3DScene({
   edgeOpacity = 0.34,
   synapsesPerSecond = 0,
   showActivity = true,
+  focusNode = null,
 }: Rag3DSceneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const selectRef = useRef(onSelect);
@@ -1778,6 +1783,34 @@ export default function Rag3DScene({
       radius: viewportRadiusForCamera(camera),
     });
   }, [control]);
+
+  useEffect(() => {
+    if (!focusNode) return;
+    const state = sceneStateRef.current;
+    if (!state || !state.nodePositionArray) return;
+    const index = state.nodeIndexById.get(focusNode.id);
+    if (index === undefined) return;
+    const { camera, group } = state;
+    // Synapse zoom: park the camera on the ray THROUGH the node, looking at it,
+    // so the node centers on screen with no group-rotation math. Suspend the
+    // auto-camera while the trace plays (page sequencing re-fires per hop).
+    state.userCameraControlUntilFrame = state.frame + 1200;
+    const local = new THREE.Vector3(
+      state.nodePositionArray[index * 3],
+      state.nodePositionArray[index * 3 + 1],
+      state.nodePositionArray[index * 3 + 2],
+    );
+    group.updateMatrixWorld(true);
+    const world = local.applyMatrix4(group.matrixWorld);
+    const length = world.length();
+    if (length > 0.01) {
+      camera.position.copy(world.clone().multiplyScalar((length + 8.5) / length));
+    } else {
+      camera.position.set(world.x, world.y, world.z + 8.5);
+    }
+    camera.lookAt(world);
+    camera.updateProjectionMatrix();
+  }, [focusNode]);
 
   useEffect(() => {
     const host = hostRef.current;

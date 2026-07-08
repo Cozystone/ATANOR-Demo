@@ -60,6 +60,28 @@ function asUrl(s: unknown): string | null {
   return /^https?:\/\//.test(t) ? t : null;
 }
 
+/** The concept labels the answer actually walked, in order — anchor first,
+ * then subjects/objects parsed from chained-step facts ("대한민국: 수도=서울특별시"),
+ * then evidence concepts. Feeds the cloud graph's synapse-trace replay. */
+function traceHref(cert: Cert, anchorLabel: string): string {
+  const labels: string[] = [];
+  const push = (value: unknown) => {
+    const t = String(value ?? "").trim();
+    if (t && t.length <= 40 && !/^https?:/.test(t) && !labels.includes(t)) labels.push(t);
+  };
+  push(anchorLabel);
+  const steps = Array.isArray(cert.steps) ? (cert.steps as Array<Record<string, unknown>>) : [];
+  for (const step of steps) {
+    const m = /^([^:=]{1,30}):\s*([^=]{1,30})=(.{1,40})$/.exec(String(step.fact ?? "").trim());
+    if (m) {
+      push(m[1]);
+      push(m[3]);
+    }
+  }
+  for (const concept of (Array.isArray(cert.evidence_concepts) ? (cert.evidence_concepts as unknown[]) : [])) push(concept);
+  return `/?section=cloud${labels.length ? `&trace=${encodeURIComponent(labels.slice(0, 6).join(","))}` : ""}`;
+}
+
 export default function ThinkingTrace({ cert }: { cert: Cert }) {
   const [showGraph, setShowGraph] = useState(false);
   const kind = String(cert.derivation_kind ?? "");
@@ -81,7 +103,7 @@ export default function ThinkingTrace({ cert }: { cert: Cert }) {
           중심 개념&nbsp;
           <span style={{ color: INK, fontWeight: 600 }}>{String(anchor.label)}</span>
           &nbsp;·&nbsp;
-          <a href="/?section=cloud" style={{ color: ACC, textDecoration: "none" }}>그래프에서 보기 →</a>
+          <a href={traceHref(cert, String(anchor.label))} style={{ color: ACC, textDecoration: "none" }}>그래프에서 보기 →</a>
         </div>
       ) : null}
       {steps.length ? (
