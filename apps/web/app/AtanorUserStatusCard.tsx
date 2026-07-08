@@ -2713,22 +2713,17 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       style={{ ...dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry), ["--orb-dodge-y" as string]: `${orbDodgeY}px` } as CSSProperties}
     >
       {splatraOpen && (
-        <div style={splatraMode === "avatar"
-          ? { position: "fixed", left: "50%", top: "44%", transform: "translate(-50%,-50%)",
-              width: 560, height: 500, zIndex: 80, borderRadius: 18, overflow: "hidden",
-              background: "transparent" }
-          : { position: "fixed", right: 22, top: 86, width: 460, height: 380,
-              zIndex: 80, borderRadius: 14, overflow: "hidden",
-              background: "radial-gradient(ellipse at 50% 40%, #14171d 0%, #0a0b0e 75%)",
-              border: "1px solid #26262c", boxShadow: "0 18px 50px rgba(0,0,0,.5)" }}>
+        // AQUARIUM (owner directive): not a floating window — the orb's screen
+        // area ITSELF is the particle field. A full-bleed transparent layer over
+        // the dashboard (glass in front, 3D behind it), stopping above the
+        // composer like the fold scene does. No frame, no shadow, no chrome —
+        // the generated model simply exists in the room with the orb.
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 84,
+                      zIndex: 6, overflow: "hidden", background: "transparent" }}>
           <SplatraField ref={splatraRef} />
-          <div style={{ position: "absolute", top: 8, left: 12, color: "#7a7a82",
-                        fontSize: 11, letterSpacing: 1.4, pointerEvents: "none" }}>
-            PARTICLE FIELD
-          </div>
-          <button type="button" onClick={() => setSplatraOpen(false)} aria-label="close particle field"
-            style={{ position: "absolute", top: 6, right: 8, background: "transparent",
-                     border: "none", color: "#9a9aa0", cursor: "pointer", padding: 6, fontSize: 14 }}>
+          <button type="button" onClick={() => setSplatraOpen(false)} aria-label="dissolve particles"
+            style={{ position: "absolute", top: 10, right: 14, background: "transparent",
+                     border: "none", color: "#8a8a92", cursor: "pointer", padding: 6, fontSize: 13 }}>
             ✕
           </button>
         </div>

@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import AnswerExperimentSurface, { AnswerVisual } from "./AnswerExperimentSurface";
-import AnswerPathScene from "./AnswerPathScene";
+import ThinkingTrace from "./ThinkingTrace";
 import LivingMindPanel from "./LivingMindPanel";
 import PluginGallery, { PLUGIN_ICONS } from "./PluginGallery";
 import SplatraField, { SplatraHandle } from "./SplatraField";
@@ -96,15 +96,6 @@ function certSummary(cert: unknown): string | null {
     atanor_self_model_realized: "자기 모델 · 표면 실현 (질문에 맞춰 구성)",
   };
   return map[kind] || (kind ? kind.replace(/_/g, " ") : null);
-}
-
-/** P5-⑪: a certificate is worth drawing when it carries a real graph derivation
- * (an anchor + at least one relation hop). Thin/abstained/web certs get no toggle. */
-function hasDrawablePath(cert: Record<string, unknown> | null | undefined): boolean {
-  if (!cert || typeof cert !== "object") return false;
-  if (String(cert.derivation_kind || "") !== "ontology_graph_derivation") return false;
-  const steps = Array.isArray(cert.steps) ? (cert.steps as Record<string, unknown>[]) : [];
-  return steps.some((s) => String(s.type || "").startsWith("graph_relation"));
 }
 
 export default function DemoChat({ language }: { language: "ko" | "en" }) {
@@ -541,7 +532,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                       ) : null}
                       {m.visual ? <div className="atanor-demochat-visual"><AnswerExperimentSurface visual={m.visual} theme="light" /></div> : null}
                       {m.cert ? <div className="atanor-demochat-cert">🔒 {m.cert}</div> : null}
-                      {hasDrawablePath(m.certFull) ? (
+                      {m.certFull ? (
                         <div className="atanor-demochat-path">
                           <button
                             type="button"
@@ -556,9 +547,12 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
                               })
                             }
                           >
-                            {openPaths.has(i) ? "▾ 근거 경로 접기" : "▸ 근거 경로 보기 (시맨틱 줌)"}
+                            {openPaths.has(i) ? "▾ 사고과정 접기" : "▸ 사고과정 보기"}
                           </button>
-                          {openPaths.has(i) ? <AnswerPathScene cert={m.certFull as Record<string, unknown>} /> : null}
+                          {/* thinking-trace stream (owner directive): steps + reference
+                              links the way commercial AIs show reasoning — the graph
+                              scene lives behind a secondary toggle inside the trace */}
+                          {openPaths.has(i) ? <ThinkingTrace cert={m.certFull as Record<string, unknown>} /> : null}
                         </div>
                       ) : null}
                       {/* follow-up question chips removed by owner request — the
