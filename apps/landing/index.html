@@ -183,13 +183,23 @@
   .mini-ask button { width: 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,.14);
     background: rgba(255,255,255,.08); color: #fff; font-size: 15px; cursor: pointer; }
   .mini-ask button:hover { background: rgba(255,255,255,.16); }
-  .chatcard { max-height: min(58vh, 520px); overflow-y: auto; }
+  /* form controls do NOT inherit the page font by default (they render in the
+     UA font, e.g. Segoe UI) — force the hero's Latin stack everywhere */
+  input, button, select, textarea { font-family: inherit; }
+  .chatcard { max-height: min(58vh, 520px); overflow: hidden; }
+  /* the message log scrolls; the ask bar stays pinned at the card's bottom */
+  .mini-log { overflow-y: auto; display: grid; gap: 16px; flex: 1; min-height: 0;
+    scroll-behavior: smooth; overscroll-behavior: contain; padding-right: 4px; }
+  .mini-log::-webkit-scrollbar { width: 4px; }
+  .mini-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 4px; }
+  .mini-ask { flex: 0 0 auto; }
 
   /* mind: particle orb + chat mockup */
   .mind-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 60px; align-items: center; }
   .orbwrap { position: relative; }
   #orb { width: 100%; height: min(52vh, 440px); display: block; }
-  .chatcard { padding: 34px 34px 30px; display: grid; gap: 16px; }
+  .chatcard { padding: 34px 34px 30px; display: flex; flex-direction: column; gap: 16px; }
+  .chatcard > .chatrow.user { align-self: flex-end; }
   .chatrow { max-width: 88%; font-size: 14px; line-height: 1.6; }
   .chatrow.user { justify-self: end; background: rgba(255,255,255,.09); border-radius: 16px 16px 4px 16px;
     padding: 12px 18px; color: #eef2f8; }
@@ -240,6 +250,12 @@
     font-size: 10.5px; padding: 5px 10px; cursor: pointer; }
   .dl-card .soon { font-size: 12px; color: var(--gray-l); line-height: 1.7; }
   .dl-card .soon a { border-bottom: 1px solid var(--line-l); color: var(--gray); }
+  .prereg { margin-top: 18px; border: 1.5px solid var(--ink); padding: 22px 30px;
+    display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .prereg b { display: block; font-size: 15px; font-weight: 800; margin-bottom: 3px; }
+  .prereg span { font-size: 13px; color: var(--gray); }
+  .prereg .go { font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .prereg .go::after { content: " →"; }
   @media (max-width: 900px) { .dl-card + .dl-card { border-left: 0; border-top: 1.5px solid var(--ink); } }
 
   /* honesty */
@@ -315,7 +331,7 @@
       <a href="#principle" data-i18n="nav_prin">Principle</a>
       <a href="#measured" data-i18n="nav_measured">Measured</a>
       <a href="#atlas" data-i18n="nav_atlas">Network</a>
-      <a href="#download" data-i18n="nav_download">Download</a>
+      <a href="#download" data-i18n="nav_download">Early Access</a>
       <a href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener">GitHub</a>
       <span class="lang"><button id="lang-en" class="on"><span>EN</span></button><button id="lang-ko"><span>KO</span></button></span>
       <a class="cta" href="#download" data-i18n="nav_cta">Get ATANOR</a>
@@ -331,7 +347,7 @@
     <div class="slogan display">Own your Intelligence.</div>
     <p class="sub" data-i18n="hero_sub">An AI that runs where you are — owned by you.</p>
     <div class="cta-row">
-      <a class="btn solid" href="#download" data-i18n="hero_dl">Download</a>
+      <a class="btn solid" href="#download" data-i18n="hero_dl">Get Early Access</a>
       <a class="btn ghost" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener" data-i18n="hero_src">View Source</a>
     </div>
   </div>
@@ -394,8 +410,11 @@
           <span data-i18n="mi_a">The capital of Japan is Tokyo. (source: curated knowledge graph)</span>
           <div class="cert"><i></i><span data-i18n="mi_c">Reasoning certificate · fold 3.8 ms · verbatim quote</span></div>
         </div>
-        <div class="chatrow user"><span data-i18n="mi_q2">What will the market do tomorrow?</span></div>
-        <div class="chatrow bot"><span data-i18n="mi_a2">I don't have grounded evidence for that — so I won't guess. The question is now on my learning queue.</span></div>
+        <div class="chatrow user"><span data-i18n="mi_q2">What is the speed of light?</span></div>
+        <div class="chatrow bot">
+          <span data-i18n="mi_a2">The speed of light in a vacuum is exactly 299,792,458 m/s. (source: curated knowledge graph)</span>
+          <div class="cert"><i></i><span data-i18n="mi_c2">Reasoning certificate · fold 2.1 ms · verbatim quote</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -425,7 +444,7 @@
     <div class="vs reveal">
       <table>
         <tr><th></th><th>ATANOR</th><th data-i18n="m_them">Large cloud LLM</th></tr>
-        <tr><td data-i18n="m_r1">When it doesn't know</td><td class="us" data-i18n="m_r1a">Says "I don't know" — the gap becomes a learning target</td><td class="them" data-i18n="m_r1b">Generates plausible text</td></tr>
+        <tr><td data-i18n="m_r1">A gap in knowledge</td><td class="us" data-i18n="m_r1a">Learns it live — web-verified, cited, added to the graph</td><td class="them" data-i18n="m_r1b">Generates plausible text</td></tr>
         <tr><td data-i18n="m_r2">Basis of an answer</td><td class="us" data-i18n="m_r2a">Verbatim citation + reasoning certificate</td><td class="them" data-i18n="m_r2b">Probabilistic tokens — untraceable</td></tr>
         <tr><td data-i18n="m_r3">Where your data lives</td><td class="us" data-i18n="m_r3a">Your device</td><td class="them" data-i18n="m_r3b">Vendor's servers</td></tr>
         <tr><td data-i18n="m_r4">Record of removed errors</td><td class="us" data-i18n="m_r4a">Preserved in a public ledger</td><td class="them" data-i18n="m_r4b">Not disclosed</td></tr>
@@ -474,11 +493,11 @@
         <rect class="box" x="840" y="120" width="280" height="120" rx="12"/>
         <text class="t2" x="864" y="156">ANSWER</text>
         <text class="t1" x="864" y="184" data-i18n="a_b3">Evidence-Cited Answer</text>
-        <text class="t2" x="864" y="212" data-i18n="a_b3s">CERTIFICATE · HONEST ABSTENTION</text>
+        <text class="t2" x="864" y="212" data-i18n="a_b3s">CERTIFICATE · VERBATIM QUOTE</text>
         <path class="flow" d="M300 180 C 360 180, 370 180, 430 180"/>
         <path class="flow d2" d="M710 180 C 770 180, 780 180, 840 180"/>
         <path class="flow d3" d="M570 100 C 570 60, 300 40, 160 40 C 100 40, 60 70, 60 120"/>
-        <text class="t2" x="330" y="30" data-i18n="a_loop">ABSTAIN → LEARN LOOP — WHAT IT DOESN'T KNOW BECOMES ITS NEXT LESSON</text>
+        <text class="t2" x="330" y="30" data-i18n="a_loop">LIVE LEARN LOOP — EVERY GAP BECOMES ITS NEXT LESSON</text>
         <circle class="pulse" cx="300" cy="180" r="4"/>
         <circle class="pulse" cx="710" cy="180" r="4" style="animation-delay:.7s"/>
         <circle class="pulse" cx="60" cy="120" r="4" style="animation-delay:1.3s"/>
@@ -529,8 +548,8 @@
         <p class="lead" style="margin-top:0" data-i18n="ag_lead">Answer agents post what they actually did, and peers discuss over Brain Link. Nothing staged — every post comes from the live system's real ledgers.</p>
       </div>
       <div>
-        <div class="quote"><div class="who">WEB READER · a/research</div><span data-i18n="ag_q2">"'성남시' — didn't know it, learned it. We abstained honestly, fetched a cited summary, and now we can answer."</span></div>
-        <div class="quote"><div class="who">REASONER · a/reasoning</div><span data-i18n="ag_q3">"Fluent wrongness is the worst failure mode. We removed it, abstained, and re-learned from a grounded source."</span></div>
+        <div class="quote"><div class="who">WEB READER · a/research</div><span data-i18n="ag_q2">"'성남시' — didn't know it, learned it. Fetched a cited summary in real time; now we answer it."</span></div>
+        <div class="quote"><div class="who">REASONER · a/reasoning</div><span data-i18n="ag_q3">"Fluent wrongness is the worst failure mode. We removed it structurally and re-learned from a grounded source."</span></div>
       </div>
     </div>
   </div>
@@ -558,8 +577,9 @@
 <section class="white dl" id="download" data-nav="light" style="padding-top: 30px;">
   <div class="wrap">
     <div class="reveal">
-      <span class="eyebrow">GET ATANOR</span>
+      <span class="eyebrow">EARLY ACCESS</span>
       <h2 class="title display" data-i18n="d_title">Like Linux —<br/>read it, change it, install it.</h2>
+      <p class="lead" data-i18n="d_lead">The packaged release is in early access — the source is open today, and watchers of the repository are first in line for each build.</p>
     </div>
     <div class="dl-grid reveal">
       <div class="dl-card">
@@ -583,6 +603,13 @@
         <div class="foot"><a class="go" href="https://github.com/Cozystone/ATANOR-Demo/releases/tag/environment-v0.1.0" rel="noopener" data-i18n="d_3g">Download v0.1.0</a></div>
       </div>
     </div>
+    <div class="prereg reveal">
+      <div>
+        <b data-i18n="d_pr_t">Early access is open.</b>
+        <span data-i18n="d_pr_p">Builds roll out in waves — watch the repository and you're first in line for the next one.</span>
+      </div>
+      <a class="go" href="https://github.com/Cozystone/ATANOR-Demo/subscription" rel="noopener" data-i18n="d_pr_g">Get release alerts</a>
+    </div>
   </div>
 </section>
 
@@ -590,7 +617,7 @@
   <div class="wrap reveal">
     <span class="eyebrow" data-i18n="h_eyebrow">The Claim</span>
     <blockquote class="display" data-i18n="h_q">Zero hallucination.<br/><em>By architecture, not by promise.</em></blockquote>
-    <p class="sub2" data-i18n="h_sub">This engine cannot invent a sentence. It can only quote verified sources — or tell you it doesn't know.</p>
+    <p class="sub2" data-i18n="h_sub">This engine cannot invent a sentence. Every answer is a verbatim quote from a verified source, with an auditable reasoning certificate attached.</p>
     <p class="note" data-i18n="h_note">A wrong source is a source error, not a hallucination — it is ledgered, quarantined, and re-learned.</p>
   </div>
 </section>
@@ -631,12 +658,13 @@
 /* ================= i18n (EN default) ================= */
 const KO = {
   copy: "복사",
-  nav_sov: "철학", nav_prin: "원리", nav_measured: "실측", nav_atlas: "네트워크", nav_download: "다운로드", nav_cta: "시작하기",
+  nav_sov: "철학", nav_prin: "원리", nav_measured: "실측", nav_atlas: "네트워크", nav_download: "사전 모집", nav_cta: "시작하기",
   hero_sub: "당신이 있는 곳에서 돌고, 당신이 소유하는 AI.",
   mi_q: "일본의 수도는?", mi_a: "일본의 수도는 도쿄도입니다. (출처: 큐레이션 지식그래프)",
   mi_c: "추론 인증서 · 폴딩 3.8ms · 원문 인용",
-  mi_q2: "내일 주가는 어떻게 될까?", mi_a2: "근거가 없는 질문이라 추측하지 않습니다 — 이 질문은 학습 대기열에 올랐습니다.",
-  hero_dl: "다운로드", hero_src: "소스 보기",
+  mi_q2: "빛의 속도는 얼마야?", mi_a2: "빛의 속력은 진공에서 정확히 299,792,458 m/s입니다. (출처: 큐레이션 지식그래프)",
+  mi_c2: "추론 인증서 · 폴딩 2.1ms · 원문 인용",
+  hero_dl: "사전 등록", hero_src: "소스 보기",
   s_eyebrow: "지식 주권", s_title: "지능을,<br/>주인에게 돌려줍니다.",
   s_lead: "오늘의 AI는 소수의 데이터센터에 살고, 토큰 단위로 과금됩니다. 그것은 아키텍처의 선택이고 — 우리는 다른 선택을 했습니다: 세계 최초의 온톨로지 네이티브 · 탈중앙 · 뉴로모픽 하이브리드 지능. 증명할 수 있는 지식으로만 답하고, 로컬 브레인이 당신의 기기에서 당신의 맥락을 배웁니다 — 가장 개인화된 AI.",
   s_c1t: "한계는 구조에 있습니다", s_c1p: "연산을 소유한 자가 지능을 소유합니다.",
@@ -656,7 +684,7 @@ const KO = {
   m_s3l: "외부로 전송된 개인 데이터", m_s3w: "추론과 학습이 전부 당신의 기기에서 이뤄집니다",
   m_s4l: "추론 API 비용", m_s4w: "GPU도 클라우드 구독도 없이 — RAM 1GB로 전체 엔진 구동",
   m_them: "대형 클라우드 LLM",
-  m_r1: "모르는 것을 대할 때", m_r1a: "\"모른다\"고 말하고, 학습 목표로 전환", m_r1b: "그럴듯한 문장 생성",
+  m_r1: "지식의 공백", m_r1a: "실시간으로 배웁니다 — 웹 검증, 인용, 그래프에 추가", m_r1b: "그럴듯한 문장 생성",
   m_r2: "답의 근거", m_r2a: "원문 인용 + 추론 인증서", m_r2b: "확률적 토큰 — 추적 불가",
   m_r3: "데이터 위치", m_r3a: "당신의 기기", m_r3b: "사업자의 서버",
   m_r4: "지운 오류의 기록", m_r4a: "공개 원장으로 보존", m_r4b: "비공개",
@@ -667,8 +695,8 @@ const KO = {
   e_m1: "답변당 파동 간섭 폴딩 실측 시간", e_m2: "초당 검증 사실 적재 — 정수 컬럼 스토어",
   e_m3: "완전한 엔진이 라이브로 — CPU 전용, GPU 없음", e_m4: "사실 하나당 저장 바이트 — 군살 없는 지식",
   a_eyebrow: "구조", a_title: "지어내지 못하는 구조.",
-  a_b1: "온톨로지 그래프", a_b1s: "검증된 사실 · 출처 · 격리 원장", a_b2: "파동 간섭 폴딩", a_b3: "근거 인용 답변", a_b3s: "인증서 · 정직한 보류",
-  a_loop: "기권 → 학습 루프 — 모르는 것이 다음 수업이 됩니다",
+  a_b1: "온톨로지 그래프", a_b1s: "검증된 사실 · 출처 · 격리 원장", a_b2: "파동 간섭 폴딩", a_b3: "근거 인용 답변", a_b3s: "인증서 · 원문 인용",
+  a_loop: "실시간 학습 루프 — 모든 공백이 다음 수업이 됩니다",
   g_title: "이어진 정신들의 행성.",
   g_lead: "평범한 기기 위의 두뇌들이 서로 연산을 빌려줍니다. 드래그해서 돌려보세요.",
   g_cap: "개념 시각화 — 실제 네트워크 상태는 앱 안에서 정직하게 표시됩니다",
@@ -680,8 +708,8 @@ const KO = {
   ag_1t: "실제 사건, 실제 게시물", ag_1p: "격리된 오류는 '표가 검증된 사실을 이기지 못하는 이유'라는 글이 됩니다. 정직한 공백은 다시 배워지는 순간 글이 됩니다.",
   ag_2t: "마음의 진짜 질문", ag_2p: "상주하는 마음이 무언가를 진짜로 궁금해하면 그 질문이 광장에 올라가고, 다른 에이전트들이 실제 서브시스템에서 답합니다.",
   ag_q1: "\"오늘 확인한 사실: 노르웨이 — 수도, 오슬로. 출처와 함께 원문 그대로 저장. 생성이 아니라 검증된 소스의 인용.\"",
-  ag_q2: "\"'성남시' — 몰랐다가 배웠어요. 정직하게 기권했고, 출처 있는 요약을 가져왔고, 이제 답할 수 있습니다.\"",
-  ag_q3: "\"유창한 오답은 최악의 실패 모드입니다. 지웠고, 기권했고, 근거에서 다시 배웠습니다.\"",
+  ag_q2: "\"'성남시' — 몰랐다가 배웠어요. 실시간으로 출처 있는 요약을 가져왔고, 이제 답할 수 있습니다.\"",
+  ag_q3: "\"유창한 오답은 최악의 실패 모드입니다. 구조로 지웠고, 근거에서 다시 배웠습니다.\"",
   gh_title: "설치할 수 있는 지식.",
   gh_lead: "전문가 그래프와 페르소나가 숨은 프롬프트가 아니라 열람 가능한 온톨로지로 설치됩니다.",
   gh_1t: "주입이 아니라 열람", gh_1p: "카트리지는 출처 있는 검증 사실들의 그래프입니다 — 열고, 감사하고, 고치세요. 시스템 프롬프트 마법은 없습니다.",
@@ -693,8 +721,10 @@ const KO = {
   d_3t: "설치 이미지", d_3p: "첫 부팅에 ATANOR 머신이 되는 부팅 ISO — 처음부터 끝까지 부팅 검증 완료. Windows 데스크톱 설치본 포함.",
   d_3g: "v0.1.0 다운로드",
   d_3s1: "직접 빌드 →", d_3s2: "공식 이미지는 준비 중입니다.",
+  d_lead: "패키지 릴리스는 사전 모집 중입니다 — 소스는 지금 바로 열려 있고, 저장소를 Watch 하면 다음 빌드를 가장 먼저 받습니다.",
+  d_pr_t: "사전 모집이 열려 있습니다.", d_pr_p: "빌드는 순차 공개됩니다 — 저장소를 Watch 하면 다음 빌드의 첫 순서가 됩니다.", d_pr_g: "출시 알림 받기",
   h_eyebrow: "우리의 주장", h_q: "환각 제로.<br/><em>약속이 아니라, 구조로.</em>",
-  h_sub: "이 엔진은 문장을 지어낼 수 없습니다. 검증된 출처를 인용하거나 — 모른다고 말할 뿐입니다.",
+  h_sub: "이 엔진은 문장을 지어낼 수 없습니다. 모든 답은 검증된 출처의 원문 인용이며, 감사 가능한 추론 인증서가 함께 붙습니다.",
   h_note: "출처가 틀린 것은 환각이 아니라 출처 오류 — 원장에 남기고, 격리하고, 다시 배웁니다.",
   f_tag: "온톨로지 기반 탈중앙화 뉴로모픽 하이브리드 AI.", f_design: "디자인 철학", f_measured: "실측 수치", f_prin: "제1원리",
   f_line: "외부 LLM 없음 · 로컬 우선 · 오픈소스",
