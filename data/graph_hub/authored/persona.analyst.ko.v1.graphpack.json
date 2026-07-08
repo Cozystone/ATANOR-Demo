@@ -86,8 +86,8 @@
     "type": "free"
   },
   "metadata": {
-    "checksum": "ab1da209cf069021c9b1b2e98a40ceb24d6113cc559c2bf3ad5e4aba9b08a5cd",
-    "created_at": "2026-07-01T02:12:10Z",
+    "checksum": "80c1c16bf03b463f5b7ae7e678e11463fb907599ede1e19d685ea33185ff4b95",
+    "created_at": "2026-07-01T10:56:15Z",
     "language": [
       "ko",
       "en"
@@ -100,7 +100,7 @@
       "analyst",
       "ko"
     ],
-    "updated_at": "2026-07-01T02:12:10Z"
+    "updated_at": "2026-07-01T10:56:15Z"
   },
   "name": "냉철한 분석가 페르소나",
   "permissions": {

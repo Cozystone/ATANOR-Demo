@@ -143,8 +143,8 @@
     "type": "free"
   },
   "metadata": {
-    "checksum": "5889e076bc460b24a5c846cf97f1dd1df3f6be1128797189d7751f74b27ad730",
-    "created_at": "2026-07-01T01:35:23Z",
+    "checksum": "8004ece6a23f7756d693efccc700e032fd0ab59d8df09cb248a766a3f4462f70",
+    "created_at": "2026-07-01T10:56:15Z",
     "language": [
       "ko",
       "en"
@@ -157,7 +157,7 @@
       "teacher",
       "ko"
     ],
-    "updated_at": "2026-07-01T01:35:23Z"
+    "updated_at": "2026-07-01T10:56:15Z"
   },
   "name": "소크라테스식 교사 페르소나",
   "permissions": {

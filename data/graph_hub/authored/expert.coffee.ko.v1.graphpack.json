@@ -202,8 +202,8 @@
     "type": "free"
   },
   "metadata": {
-    "checksum": "8eef090726d7ea8988787f1d2a9eaa895e2417cc0170a6773267d5cdc24c87b4",
-    "created_at": "2026-07-01T01:35:23Z",
+    "checksum": "6dff826fc69fe62fb77f89b16ac63beb9d7a2af75415463a78b296a96006f0d9",
+    "created_at": "2026-07-01T10:56:14Z",
     "language": [
       "ko",
       "en"
@@ -216,7 +216,7 @@
       "niche",
       "ko"
     ],
-    "updated_at": "2026-07-01T01:35:23Z"
+    "updated_at": "2026-07-01T10:56:14Z"
   },
   "name": "커피 전문 그래프",
   "permissions": {

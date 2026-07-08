@@ -56,3 +56,9 @@ data/cleaned/
 data/rejected/
 data/metadata/
 apps/landing/.vercel
+
+# live runtime state (self-model, voice loop, local brain) - never commit
+/runtime/
+# orchestration mailbox traffic (protocol docs ARE committed)
+/orchestration/requests/
+/orchestration/responses/

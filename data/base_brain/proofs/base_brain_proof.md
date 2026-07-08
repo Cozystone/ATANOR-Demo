@@ -1,8 +1,8 @@
 # ATANOR Base Brain Pack v0 Proof
 
 - Status: PASS
-- Semantic concepts: 36
-- Semantic relations: 44
+- Semantic concepts: 58
+- Semantic relations: 80
 - Surface constructions: 16
 - Benchmark prompts: 10
 - Useful answers: 10
@@ -26,10 +26,10 @@
 - no need for future cloud/contributor growth
 
 ## Example: Korean
-쿠버네티스는 여러 서버에 흩어진 컨테이너를 자동으로 배포하고, 다시 살리고, 필요한 만큼 늘리도록 돕는 운영 관리 시스템입니다. 쿠버네티스는 컨테이너 오케스트레이션 시스템의 한 종류입니다. 쿠버네티스는 컨테이너 관리를 맡습니다. 정리하면, 질문의 핵심은 쿠버네티스가 어떤 역할을 맡고 어떤 관계 속에서 쓰이는지를 보는 것입니다.
+쿠버네티스는 여러 서버에 흩어진 컨테이너를 자동으로 배포하고, 상태를 확인하며, 필요하면 다시 띄우거나 복구해 주는 오픈소스 운영 플랫폼입니다. 이는 컨테이너 오케스트레이션 시스템의 한 종류입니다. 또한 컨테이너를 관리합니다. 또한 소프트웨어 배포를 가능하게 합니다.
 
 ## Example: English
-Kubernetes is a system for deploying, scaling, and operating containers across machines. Kubernetes is a kind of container orchestration system. Kubernetes manages container. In short, the useful way to understand Kubernetes is by its role and relationships.
+Kubernetes deploys, scales, and operates containers across machines. It is a kind of container orchestration system, manages a container, and enables software deployment. A container orchestration system, in turn, is used for software deployment.
 
 ## Unsupported Question
-현재 Base Brain Pack만으로는 이 질문에 필요한 실시간 근거가 부족합니다. 날씨, 최신 가격, 지역 정보처럼 변하는 정보는 외부 문맥이나 향후 확장된 그래프가 필요합니다.
+현재 기본 지식만으로는 이 질문에 필요한 최신 또는 실시간 근거가 부족합니다. 날씨, 주가, 최신 인물 정보처럼 변하는 내용은 별도의 확인 가능한 근거가 필요합니다.

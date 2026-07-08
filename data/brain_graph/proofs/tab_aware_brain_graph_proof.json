@@ -1,6 +1,6 @@
 {
   "proof_id": "tab_aware_brain_graph_proof",
-  "generated_at": "2026-06-16T05:59:08Z",
+  "generated_at": "2026-07-01T04:48:19Z",
   "passed": true,
   "checks": {
     "local_view_has_no_semantic_cloud_nodes": true,
@@ -11,10 +11,10 @@
     "overlay_local_write_false": true
   },
   "local_graph_summary": {
-    "rendered_nodes": 94,
-    "rendered_edges": 92,
+    "rendered_nodes": 116,
+    "rendered_edges": 134,
     "layers": {
-      "local_base": 36,
+      "local_base": 58,
       "seed": 58
     },
     "missing": [
@@ -29,13 +29,10 @@
     ]
   },
   "cloud_graph_summary": {
-    "rendered_nodes": 56,
-    "rendered_edges": 44,
+    "rendered_nodes": 500,
+    "rendered_edges": 208,
     "layers": {
-      "semantic_cloud": 5,
-      "cloud_attached": 25,
-      "contributor": 1,
-      "working_memory_cloud": 25
+      "semantic_cloud": 500
     },
     "missing": [
       {

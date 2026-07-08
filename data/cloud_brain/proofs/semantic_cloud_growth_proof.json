@@ -1,26 +1,111 @@
 {
   "after": {
     "concepts": 5,
+    "count_source": "shard_index_plus_main_store",
+    "created_at": "2026-07-07T10:30:45Z",
+    "data_provenance_label": "semantic_cloud_read_model",
+    "edge_count": 4,
     "evidence": 2,
     "external_llm_used": false,
     "external_sllm_used": false,
     "global_cloud_claim": false,
+    "graph_unavailable_reason": null,
+    "implicit_candidate_pairs": 10,
+    "index_version": 1,
     "last_growth_run": {
       "concepts_created": 0,
       "concepts_merged": 5,
-      "evidence_added": 1,
+      "evidence_added": 0,
       "relations_created": 0,
       "relations_strengthened": 4,
-      "run_id": "scg_e1f5d8abe7c09f17fd",
+      "run_id": "scg_ce19a3ae3b0ddc5b89",
       "sentences_processed": 1
     },
     "local_brain_write": false,
+    "main_store_concepts": 5,
+    "main_store_relations": 4,
+    "node_count": 5,
     "old_mirror_snapshot_used_as_live_cloud": false,
+    "performance": {
+      "cache_hit": true,
+      "chunk_load_ms": 0.0,
+      "full_store_scan": false,
+      "index_rebuild_during_request": false,
+      "payload_build_ms": 0.0,
+      "payload_bytes": 0,
+      "sample_load_ms": 0.0,
+      "serialization_ms": 0.0,
+      "status_cache_ms": 0.307,
+      "total_ms": 0.309
+    },
     "proof_store_only": true,
-    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "provenance_summary": {
+      "autonomous_growth": {
+        "active": false,
+        "concepts": 0,
+        "frontier_sources_added": 0,
+        "relations": 0
+      },
+      "manual_sample_ingest": {
+        "concepts": 5,
+        "relations": 4
+      },
+      "mirror_snapshot": {
+        "used_as_live_cloud": false
+      },
+      "semantic_cloud_proof_store": {
+        "concepts": 5,
+        "evidence": 2,
+        "relations": 4
+      }
+    },
+    "read_model_available": true,
+    "read_model_stale": false,
     "relations": 4,
+    "sample_or_proof_data_visible": true,
+    "self_growth_active": false,
+    "shard_concepts": 0,
+    "shard_relations": 0,
+    "stale": false,
     "store_backend": "local_semantic_proof_store",
-    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "store_signature": {
+      "concepts": {
+        "exists": true,
+        "mtime_ns": 1783420245414034600,
+        "size": 3784
+      },
+      "evidence": {
+        "exists": true,
+        "mtime_ns": 1783420245378509500,
+        "size": 832
+      },
+      "feeder_state": {
+        "exists": false,
+        "mtime_ns": 0,
+        "size": 0
+      },
+      "relations": {
+        "exists": true,
+        "mtime_ns": 1783420245439015500,
+        "size": 2615
+      },
+      "shard_index": {
+        "exists": false,
+        "mtime_ns": 0,
+        "size": 0
+      },
+      "shards": {
+        "count": 0,
+        "latest_mtime_ns": 0,
+        "size": 0
+      }
+    },
+    "web_seed_discovered_sources_added": 0,
+    "web_seed_feeder_active": false,
+    "web_seed_feeder_status": "disabled",
+    "web_seed_semantic_ingested": 0
   },
   "attach": {
     "attached_edges": 4,
@@ -31,18 +116,67 @@
   },
   "before": {
     "concepts": 0,
+    "created_at": "2026-07-07T10:30:45Z",
+    "data_provenance_label": "semantic_cloud_read_model",
+    "edge_count": 0,
     "evidence": 0,
     "external_llm_used": false,
     "external_sllm_used": false,
     "global_cloud_claim": false,
+    "graph_unavailable_reason": "cloud_read_model_missing",
+    "implicit_candidate_pairs": 0,
+    "index_version": 1,
     "last_growth_run": null,
     "local_brain_write": false,
+    "node_count": 0,
     "old_mirror_snapshot_used_as_live_cloud": false,
+    "performance": {
+      "cache_hit": false,
+      "chunk_load_ms": 0.0,
+      "full_store_scan": false,
+      "index_rebuild_during_request": false,
+      "payload_build_ms": 0.0,
+      "payload_bytes": 0,
+      "sample_load_ms": 0.0,
+      "serialization_ms": 0.0,
+      "status_cache_ms": 0.433,
+      "total_ms": 0.436
+    },
     "proof_store_only": true,
-    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "provenance_summary": {
+      "autonomous_growth": {
+        "active": false,
+        "concepts": 0,
+        "frontier_sources_added": 0,
+        "relations": 0
+      },
+      "manual_sample_ingest": {
+        "concepts": 0,
+        "relations": 0
+      },
+      "mirror_snapshot": {
+        "used_as_live_cloud": false
+      },
+      "semantic_cloud_proof_store": {
+        "concepts": 0,
+        "evidence": 0,
+        "relations": 0
+      }
+    },
+    "read_model_available": false,
+    "read_model_stale": true,
     "relations": 0,
+    "sample_or_proof_data_visible": false,
+    "self_growth_active": false,
+    "stale": true,
     "store_backend": "local_semantic_proof_store",
-    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+    "store_signature": {},
+    "web_seed_discovered_sources_added": 0,
+    "web_seed_feeder_active": false,
+    "web_seed_feeder_status": "disabled",
+    "web_seed_semantic_ingested": 0
   },
   "checks": {
     "attach_temporary_nodes": true,
@@ -79,16 +213,31 @@
       "local_brain_write": false,
       "proof_store_only": true
     },
+    "read_model": {
+      "performance": {
+        "full_store_scan": true,
+        "index_rebuild_during_request": false,
+        "total_ms": 43.302
+      },
+      "rebuilt": true
+    },
     "relations_created": 0,
     "relations_strengthened": 4,
     "run_id": "scg_ce19a3ae3b0ddc5b89",
     "sentences_processed": 1,
     "status": {
       "concepts": 5,
+      "count_source": "shard_index_plus_main_store",
+      "created_at": "2026-07-07T10:30:45Z",
+      "data_provenance_label": "semantic_cloud_read_model",
+      "edge_count": 4,
       "evidence": 1,
       "external_llm_used": false,
       "external_sllm_used": false,
       "global_cloud_claim": false,
+      "graph_unavailable_reason": null,
+      "implicit_candidate_pairs": 10,
+      "index_version": 1,
       "last_growth_run": {
         "concepts_created": 5,
         "concepts_merged": 0,
@@ -99,14 +248,92 @@
         "sentences_processed": 1
       },
       "local_brain_write": false,
+      "main_store_concepts": 5,
+      "main_store_relations": 4,
+      "node_count": 5,
       "old_mirror_snapshot_used_as_live_cloud": false,
+      "performance": {
+        "cache_hit": true,
+        "chunk_load_ms": 0.0,
+        "full_store_scan": false,
+        "index_rebuild_during_request": false,
+        "payload_build_ms": 0.0,
+        "payload_bytes": 0,
+        "sample_load_ms": 0.0,
+        "serialization_ms": 0.0,
+        "status_cache_ms": 7.236,
+        "total_ms": 7.239
+      },
       "proof_store_only": true,
-      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "provenance_summary": {
+        "autonomous_growth": {
+          "active": false,
+          "concepts": 0,
+          "frontier_sources_added": 0,
+          "relations": 0
+        },
+        "manual_sample_ingest": {
+          "concepts": 5,
+          "relations": 4
+        },
+        "mirror_snapshot": {
+          "used_as_live_cloud": false
+        },
+        "semantic_cloud_proof_store": {
+          "concepts": 5,
+          "evidence": 1,
+          "relations": 4
+        }
+      },
+      "read_model_available": true,
+      "read_model_stale": false,
       "relations": 4,
+      "sample_or_proof_data_visible": true,
+      "self_growth_active": false,
+      "shard_concepts": 0,
+      "shard_relations": 0,
+      "stale": false,
       "store_backend": "local_semantic_proof_store",
-      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "store_signature": {
+        "concepts": {
+          "exists": true,
+          "mtime_ns": 1783420245303747700,
+          "size": 3154
+        },
+        "evidence": {
+          "exists": true,
+          "mtime_ns": 1783420245161567900,
+          "size": 416
+        },
+        "feeder_state": {
+          "exists": false,
+          "mtime_ns": 0,
+          "size": 0
+        },
+        "relations": {
+          "exists": true,
+          "mtime_ns": 1783420245332441800,
+          "size": 2311
+        },
+        "shard_index": {
+          "exists": false,
+          "mtime_ns": 0,
+          "size": 0
+        },
+        "shards": {
+          "count": 0,
+          "latest_mtime_ns": 0,
+          "size": 0
+        }
+      },
+      "web_seed_discovered_sources_added": 0,
+      "web_seed_feeder_active": false,
+      "web_seed_feeder_status": "disabled",
+      "web_seed_semantic_ingested": 0
     },
-    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
   "english_alias_ingest": {
     "concepts_created": 0,
@@ -119,16 +346,31 @@
       "local_brain_write": false,
       "proof_store_only": true
     },
+    "read_model": {
+      "performance": {
+        "full_store_scan": true,
+        "index_rebuild_during_request": false,
+        "total_ms": 46.829
+      },
+      "rebuilt": true
+    },
     "relations_created": 0,
     "relations_strengthened": 4,
     "run_id": "scg_e1f5d8abe7c09f17fd",
     "sentences_processed": 1,
     "status": {
       "concepts": 5,
+      "count_source": "shard_index_plus_main_store",
+      "created_at": "2026-07-07T10:30:45Z",
+      "data_provenance_label": "semantic_cloud_read_model",
+      "edge_count": 4,
       "evidence": 2,
       "external_llm_used": false,
       "external_sllm_used": false,
       "global_cloud_claim": false,
+      "graph_unavailable_reason": null,
+      "implicit_candidate_pairs": 10,
+      "index_version": 1,
       "last_growth_run": {
         "concepts_created": 0,
         "concepts_merged": 5,
@@ -139,14 +381,92 @@
         "sentences_processed": 1
       },
       "local_brain_write": false,
+      "main_store_concepts": 5,
+      "main_store_relations": 4,
+      "node_count": 5,
       "old_mirror_snapshot_used_as_live_cloud": false,
+      "performance": {
+        "cache_hit": true,
+        "chunk_load_ms": 0.0,
+        "full_store_scan": false,
+        "index_rebuild_during_request": false,
+        "payload_build_ms": 0.0,
+        "payload_bytes": 0,
+        "sample_load_ms": 0.0,
+        "serialization_ms": 0.0,
+        "status_cache_ms": 6.891,
+        "total_ms": 6.893
+      },
       "proof_store_only": true,
-      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "provenance_summary": {
+        "autonomous_growth": {
+          "active": false,
+          "concepts": 0,
+          "frontier_sources_added": 0,
+          "relations": 0
+        },
+        "manual_sample_ingest": {
+          "concepts": 5,
+          "relations": 4
+        },
+        "mirror_snapshot": {
+          "used_as_live_cloud": false
+        },
+        "semantic_cloud_proof_store": {
+          "concepts": 5,
+          "evidence": 2,
+          "relations": 4
+        }
+      },
+      "read_model_available": true,
+      "read_model_stale": false,
       "relations": 4,
+      "sample_or_proof_data_visible": true,
+      "self_growth_active": false,
+      "shard_concepts": 0,
+      "shard_relations": 0,
+      "stale": false,
       "store_backend": "local_semantic_proof_store",
-      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "store_signature": {
+        "concepts": {
+          "exists": true,
+          "mtime_ns": 1783420245414034600,
+          "size": 3784
+        },
+        "evidence": {
+          "exists": true,
+          "mtime_ns": 1783420245378509500,
+          "size": 832
+        },
+        "feeder_state": {
+          "exists": false,
+          "mtime_ns": 0,
+          "size": 0
+        },
+        "relations": {
+          "exists": true,
+          "mtime_ns": 1783420245439015500,
+          "size": 2615
+        },
+        "shard_index": {
+          "exists": false,
+          "mtime_ns": 0,
+          "size": 0
+        },
+        "shards": {
+          "count": 0,
+          "latest_mtime_ns": 0,
+          "size": 0
+        }
+      },
+      "web_seed_discovered_sources_added": 0,
+      "web_seed_feeder_active": false,
+      "web_seed_feeder_status": "disabled",
+      "web_seed_semantic_ingested": 0
     },
-    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
   "first_ingest": {
     "concepts_created": 5,
@@ -159,28 +479,121 @@
       "local_brain_write": false,
       "proof_store_only": true
     },
+    "read_model": {
+      "performance": {
+        "full_store_scan": true,
+        "index_rebuild_during_request": false,
+        "total_ms": 44.097
+      },
+      "rebuilt": true
+    },
     "relations_created": 4,
     "relations_strengthened": 0,
     "run_id": "scg_ce19a3ae3b0ddc5b89",
     "sentences_processed": 1,
     "status": {
       "concepts": 5,
+      "count_source": "shard_index_plus_main_store",
+      "created_at": "2026-07-07T10:30:45Z",
+      "data_provenance_label": "semantic_cloud_read_model",
+      "edge_count": 4,
       "evidence": 1,
       "external_llm_used": false,
       "external_sllm_used": false,
       "global_cloud_claim": false,
+      "graph_unavailable_reason": null,
+      "implicit_candidate_pairs": 10,
+      "index_version": 1,
       "last_growth_run": null,
       "local_brain_write": false,
+      "main_store_concepts": 5,
+      "main_store_relations": 4,
+      "node_count": 5,
       "old_mirror_snapshot_used_as_live_cloud": false,
+      "performance": {
+        "cache_hit": true,
+        "chunk_load_ms": 0.0,
+        "full_store_scan": false,
+        "index_rebuild_during_request": false,
+        "payload_build_ms": 0.0,
+        "payload_bytes": 0,
+        "sample_load_ms": 0.0,
+        "serialization_ms": 0.0,
+        "status_cache_ms": 6.678,
+        "total_ms": 6.681
+      },
       "proof_store_only": true,
-      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "proof_store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "provenance_summary": {
+        "autonomous_growth": {
+          "active": false,
+          "concepts": 0,
+          "frontier_sources_added": 0,
+          "relations": 0
+        },
+        "manual_sample_ingest": {
+          "concepts": 5,
+          "relations": 4
+        },
+        "mirror_snapshot": {
+          "used_as_live_cloud": false
+        },
+        "semantic_cloud_proof_store": {
+          "concepts": 5,
+          "evidence": 1,
+          "relations": 4
+        }
+      },
+      "read_model_available": true,
+      "read_model_stale": false,
       "relations": 4,
+      "sample_or_proof_data_visible": true,
+      "self_growth_active": false,
+      "shard_concepts": 0,
+      "shard_relations": 0,
+      "stale": false,
       "store_backend": "local_semantic_proof_store",
-      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+      "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store",
+      "store_signature": {
+        "concepts": {
+          "exists": true,
+          "mtime_ns": 1783420245194229000,
+          "size": 3149
+        },
+        "evidence": {
+          "exists": true,
+          "mtime_ns": 1783420245161567900,
+          "size": 416
+        },
+        "feeder_state": {
+          "exists": false,
+          "mtime_ns": 0,
+          "size": 0
+        },
+        "relations": {
+          "exists": true,
+          "mtime_ns": 1783420245221974500,
+          "size": 2316
+        },
+        "shard_index": {
+          "exists": false,
+          "mtime_ns": 0,
+          "size": 0
+        },
+        "shards": {
+          "count": 0,
+          "latest_mtime_ns": 0,
+          "size": 0
+        }
+      },
+      "web_seed_discovered_sources_added": 0,
+      "web_seed_feeder_active": false,
+      "web_seed_feeder_status": "disabled",
+      "web_seed_semantic_ingested": 0
     },
-    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-375\\test_semantic_growth_proof_pas0\\cloud\\store"
+    "store_path": "C:\\Users\\anseo\\AppData\\Local\\Temp\\pytest-of-anseo\\pytest-2225\\test_semantic_growth_proof_pas0\\cloud\\store"
   },
-  "generated_at": "2026-06-16T05:59:05Z",
+  "generated_at": "2026-07-07T10:30:45Z",
   "graph": {
     "edges": 4,
     "nodes": 5,

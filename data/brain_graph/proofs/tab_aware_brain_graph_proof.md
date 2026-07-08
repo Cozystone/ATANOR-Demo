@@ -1,6 +1,6 @@
 # ATANOR Tab-Aware Brain Graph Proof
 
-- Generated: 2026-06-16T05:59:08Z
+- Generated: 2026-07-01T04:48:19Z
 - Result: PASS
 
 ## Checks
