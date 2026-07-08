@@ -333,8 +333,9 @@ def _is_knowledge_query(query: str) -> bool:
 # ("고양이가 왜 물어?" -> "고양이는 …포유류이다") is the systemic confident-wrong class. The
 # shape decides whether the definition path may fire at all.
 _SHAPE_PERSONAL = re.compile(r"피곤|우울|번아웃|힘들|외로|슬프|배고프|잠이\s*안|집중이\s*안|불안|스트레스|지쳐|짜증|막막")
+_SHAPE_RECOMMEND = re.compile(r"추천|골라\s*줘|뽑아\s*줘|어떤\s*걸\s*(들을|볼|살|먹을)|recommend")
 _SHAPE_ADVICE = re.compile(
-    r"어떻게\s*(해|하면|해야|하지|할까|하나|시작|극복|연습|결정)|어떡|어떻해|하려면|되려면|방법|팁|추천|"
+    r"어떻게\s*(해|하면|해야|하지|할까|하나|시작|극복|연습|결정)|어떡|어떻해|하려면|되려면|방법|팁|"
     r"시작해야|뭐부터|어디부터|무엇부터|어떤\s*걸|골라|"
     r"(게|건|것이|편이)\s*(맞|나아|낫|좋|유리|괜찮|이득)|"       # "…게 나아?/좋아?/유리해?"
     r"(뭐가|무엇이|어느\s*(게|것|쪽)|어떤\s*게)\s*(나아|낫|좋|유리|맞|괜찮)|"  # "뭐가 유리해?"
@@ -357,6 +358,11 @@ def _question_shape(query: str) -> str:
     q = str(query or "")
     if _SHAPE_PERSONAL.search(q):
         return "personal"
+    # recommendation is NOT generic advice: the right behavior is to ground on
+    # what we know about the topic (or the user's own taste data), never a
+    # "everyone is different" abstain — owner directive 2026-07-08
+    if _SHAPE_RECOMMEND.search(q):
+        return "recommendation"
     if _SHAPE_ADVICE.search(q):
         return "advice"
     if _SHAPE_OPINION.search(q):
@@ -383,6 +389,8 @@ def _shape_engage(shape: str, language: str) -> str:
                     if ko else "This is a judgement call — rather than assert an opinion, I'd rather bring grounded evidence. Turn on web search and I'll gather it."),
         "personal": ("많이 힘드셨겠어요. 저는 지어내서 조언하진 않지만, 원하시면 웹에서 도움이 될 만한 근거 있는 방법들을 찾아 정리해 드릴게요 — 웹 검색을 켜 보세요."
                      if ko else "That sounds hard. I won't make up advice, but if you turn on web search I'll gather grounded, helpful suggestions for you."),
+        "recommendation": ("아직 이 주제에 대한 지식과 취향 데이터가 부족해서 바로 골라 드리긴 어려워요. 웹 검색을 켜 주시면 널리 알려진 것들부터 정리해 드리고, 대화가 쌓이면 취향에 맞춰 드릴게요."
+                           if ko else "I don't yet have enough knowledge or taste data on this to pick well. Turn on web search and I'll start from the widely known ones — and I'll learn your taste as we talk."),
     }
     return table.get(shape, table["advice"])
 
@@ -723,6 +731,10 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
 
     strong = [item for item in context if float(item.get("match_score") or 0.0) > 0]
     if not strong:
+        # Same owner directive as the precision gate below: recommendation
+        # questions get the honest-and-useful engage copy, never a cold abstain.
+        if _question_shape(query) == "recommendation":
+            return _shape_engage("recommendation", language), False
         return (
             "지금 확인된 근거가 부족해서 단정하기 어렵습니다. 주제나 참고 문장을 조금 더 주면 그 범위 안에서 설명할 수 있습니다."
             if language == "ko"
@@ -806,6 +818,13 @@ def _compose_answer(query: str, context: list[dict[str, Any]], language: str, au
     # clarify/other and previously bypassed this gate, which let a large promoted
     # graph answer confidently-wrong. Comparisons handled above; identity excepted.
     if not _named_in_query(query, primary) and not _is_identity_question(query):
+        # A recommendation question must never end in a cold abstain (owner
+        # directive 2026-07-08): with local taste/graph knowledge we recommend
+        # from it (the fall-through below handles that when the concept IS
+        # named); without it, we say so AND point at what would ground it,
+        # instead of "근거 부족" full stop.
+        if _question_shape(query) == "recommendation":
+            return _shape_engage("recommendation", language), False
         return (
             "지금 확인된 근거가 부족해서 단정하기 어렵습니다. 주제나 참고 문장을 조금 더 주면 그 범위 안에서 설명할 수 있습니다."
             if language == "ko"

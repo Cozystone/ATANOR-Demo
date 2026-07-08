@@ -44,29 +44,46 @@ export async function proxyJson(path: string, init?: RequestInit) {
   // client carries its own timeout and the alternate companions are usually absent.
   const PER_TRY_MS = Number(process.env.ATANOR_PROXY_TIMEOUT_MS ?? 45000);
 
+  // Restart resilience: the engine watchdog may be mid-restart (memory-ceiling
+  // recycle takes ~5-15s). A connection REFUSED during that window used to
+  // surface as "엔진이 응답을 만들지 못했어요" — for the person, a dead product.
+  // So refused/reset connections get a short wait-and-retry before giving up:
+  // the restart window becomes a slower answer, not a failure.
+  const RETRY_ROUNDS = 3;
+  const RETRY_WAIT_MS = 4000;
+
   let lastError: unknown = null;
-  for (const baseUrl of bases) {
-    if (!baseUrl) continue;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PER_TRY_MS);
-    try {
-      const response = await fetch(`${baseUrl}${path}`, {
-        ...init,
-        cache: "no-store",
-        signal: ctrl.signal,
-      });
-      if (response.status === 404 || response.status === 405) {
-        continue;
+  for (let round = 0; round < RETRY_ROUNDS; round++) {
+    for (const baseUrl of bases) {
+      if (!baseUrl) continue;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), PER_TRY_MS);
+      try {
+        const response = await fetch(`${baseUrl}${path}`, {
+          ...init,
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        if (response.status === 404 || response.status === 405) {
+          continue;
+        }
+        return {
+          body: await response.json(),
+          status: response.status,
+        };
+      } catch (error) {
+        lastError = error;
+      } finally {
+        clearTimeout(timer);
       }
-      return {
-        body: await response.json(),
-        status: response.status,
-      };
-    } catch (error) {
-      lastError = error;
-    } finally {
-      clearTimeout(timer);
     }
+    const msg = String((lastError as Error)?.message ?? lastError ?? "");
+    const cause = String((lastError as { cause?: unknown })?.cause ?? "");
+    const transient = /ECONNREFUSED|ECONNRESET|fetch failed|socket hang up|UND_ERR/i;
+    if (!(transient.test(msg) || transient.test(cause)) || round === RETRY_ROUNDS - 1) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, RETRY_WAIT_MS));
   }
   if (lastError) {
     throw lastError;
