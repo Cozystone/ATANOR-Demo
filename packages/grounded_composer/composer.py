@@ -176,6 +176,16 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
     ordered = deduped[:max_facts]
     if len(ordered) < 2:
         return None
+    # PHASE-COHERENT FLOW (softness in utterance, owner directive): keep the
+    # identity lead first, then walk the remaining facts nearest-first in the
+    # trained phase space so the discourse moves in a coherent path. Content is
+    # untouched — only ORDER changes; degrades to static order without a space.
+    try:
+        from .phase_flow import flow_order
+
+        ordered = [ordered[0]] + flow_order(ordered[0], ordered[1:])
+    except Exception:
+        pass
 
     sentences: list[str] = []
     connectives: list[str] = []
@@ -209,6 +219,20 @@ def compose_from_facts(subject: str, facts: list[tuple[str, str, str]],
                                  "더불어", "아울러", "이어서")
                     if learned and learned in _additive:
                         conn = learned
+                except Exception:
+                    pass
+                # phase-distance connective (closed vocabulary only): objects
+                # NEAR in the trained space continue the thread (또한/그리고);
+                # FAR objects mark the topic shift (한편). No phases => the
+                # positional/learned choice above stands.
+                try:
+                    from .phase_flow import connective_hint
+
+                    _hint = connective_hint(used[-1][2], o)
+                    if _hint == "near" and conn == "한편":
+                        conn = "또한"
+                    elif _hint == "far":
+                        conn = "한편"
                 except Exception:
                     pass
             connectives.append(conn)
