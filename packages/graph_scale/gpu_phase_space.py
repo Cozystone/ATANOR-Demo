@@ -65,16 +65,18 @@ def _save_artifacts(theta_np: "np.ndarray", rel_np: "np.ndarray", terms_payload:
 
 def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 30,
                           lr: float = 0.5, batch: int = 65_536, min_degree: int = 3,
-                          min_edges: int = 1000, seed: int = 3,
-                          on_locked: Any = None,
+                          min_edges: int = 1000, seed: int = 3, dim: int = DIM,
+                          save: bool = True, on_locked: Any = None,
                           log: Any = print) -> dict[str, Any]:
     """Margin-ranking phase training on CUDA (numpy fallback = delegate to the
-    CPU trainer). Saves the shared artifacts + returns the honest held-out eval."""
+    CPU trainer). Saves the shared artifacts + returns the honest held-out eval.
+    save=False runs a pure benchmark (dim sweeps) without touching the live space."""
     if not (_HAVE_TORCH and torch.cuda.is_available()):
         from .phase_space import train_phase_space
         log("  (no CUDA — delegating to the CPU trainer)")
         return train_phase_space(store, max_edges=min(max_edges, 1_500_000), epochs=epochs,
-                                 lr=lr, min_degree=min_degree, min_edges=min_edges, seed=seed, log=log)
+                                 lr=lr, min_degree=min_degree, min_edges=min_edges, seed=seed,
+                                 dim=dim, log=log)
     dev = "cuda"
     t_start = time.time()
     rng = np.random.default_rng(seed)
@@ -104,8 +106,8 @@ def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 
     n_t, n_p = len(tids), len(pids)
 
     g = torch.Generator(device=dev).manual_seed(seed)
-    theta = (torch.rand((n_t, DIM), generator=g, device=dev) * 2 * torch.pi)
-    rel = (torch.rand((n_p, DIM), generator=g, device=dev) * 2 * torch.pi)
+    theta = (torch.rand((n_t, dim), generator=g, device=dev) * 2 * torch.pi)
+    rel = (torch.rand((n_p, dim), generator=g, device=dev) * 2 * torch.pi)
     TR = torch.from_numpy(tr_np).to(dev)
     repel_at = 4.0
     for ep in range(epochs):
@@ -148,12 +150,13 @@ def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 
     theta = torch.remainder(theta, 2 * torch.pi)
     theta_np = theta.detach().cpu().numpy().astype(np.float32)
     rel_np = rel.detach().cpu().numpy().astype(np.float32)
-    _save_artifacts(theta_np, rel_np,
-                    json.dumps({"terms": [terms[t] for t in tids],
-                                "preds": [store.terms.term(int(p)) for p in pids]},
-                               ensure_ascii=False),
-                    on_locked=on_locked, log=log)
-    _SPACE["phases"] = None  # force consumers to reload the new space
+    if save:
+        _save_artifacts(theta_np, rel_np,
+                        json.dumps({"terms": [terms[t] for t in tids],
+                                    "preds": [store.terms.term(int(p)) for p in pids]},
+                                   ensure_ascii=False),
+                        on_locked=on_locked, log=log)
+        _SPACE["phases"] = None  # force consumers to reload the new space
     # honest eval, identical protocol to the CPU trainer (held-out, 200 candidates)
     hits, ranks = 0, []
     sample = hold[rng.permutation(len(hold))[:500]]
@@ -166,5 +169,5 @@ def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 
         if rank <= 10:
             hits += 1
     return {"edges": len(edges), "terms": n_t, "hits_at_10": hits / max(1, len(sample)),
-            "mean_rank": float(np.mean(ranks)), "candidates": 201,
-            "seconds": round(time.time() - t_start, 1), "device": dev}
+            "mean_rank": float(np.mean(ranks)), "candidates": 201, "dim": dim,
+            "saved": bool(save), "seconds": round(time.time() - t_start, 1), "device": dev}

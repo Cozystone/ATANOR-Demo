@@ -121,7 +121,7 @@ def extract_edges(store: Any, max_edges: int = 1_500_000) -> tuple[list[tuple[in
 def train_phase_space(store: Any, max_edges: int = 1_500_000, epochs: int = 30,
                       lr: float = 0.5, margin: float = 2.0, batch: int = 4096,
                       min_degree: int = 3, min_edges: int = 1000, seed: int = 3,
-                      log: Any = print) -> dict[str, Any]:
+                      dim: int = DIM, log: Any = print) -> dict[str, Any]:
     """Train phases by margin ranking with corrupted negatives (the standard KG
     recipe). Saves the space + returns an honest held-out link-prediction eval.
 
@@ -158,8 +158,8 @@ def train_phase_space(store: Any, max_edges: int = 1_500_000, epochs: int = 30,
     cut = min(max(1000, len(E) // 50), max(1, len(E) // 10))
     hold, tr = E[:cut], E[cut:]
     n_t = len(tids)
-    theta = rng.uniform(0, 2 * np.pi, size=(n_t, DIM)).astype(np.float32)
-    rel = rng.uniform(0, 2 * np.pi, size=(len(pids), DIM)).astype(np.float32)
+    theta = rng.uniform(0, 2 * np.pi, size=(n_t, dim)).astype(np.float32)
+    rel = rng.uniform(0, 2 * np.pi, size=(len(pids), dim)).astype(np.float32)
     # Two hard-won lessons are baked in here (both MEASURED on this graph):
     # 1. COUNT-NORMALIZED batch updates. Raw np.add.at accumulation let a hub
     #    predicate (is_a = 64% of edges) receive ~200 radians of pulls per batch
