@@ -60,6 +60,7 @@ def main() -> None:
 
     triples: list[list[str]] = []
     concepts: dict[str, str] = {}
+    def_rows: dict[str, list[str]] = {}
     seen: set[tuple[str, str, str]] = set()
     seeds = SEED_COUNTRIES + SEED_CONCEPTS
     for seed in seeds:
@@ -72,15 +73,63 @@ def main() -> None:
                 s, p, o = str(row[0]), str(row[1]), str(row[2])
             except Exception:
                 continue
-            if p not in KEEP_RELATIONS or not o or len(o) > 90:
+            # definitions may run long (빛의 속도's real definition carries the
+            # 299,792,458 m/s value past 90 chars — the flagship answer was
+            # being filtered out of its own demo); relation values stay short
+            _cap = 220 if p == "defined_as" else 90
+            if p not in KEEP_RELATIONS or not o or len(o) > _cap:
                 continue
             key = (s, p, o)
             if key in seen:
                 continue
             seen.add(key)
             triples.append([s, p, o])
-            if p == "defined_as" and s not in concepts and len(o) >= 6 and any("가" <= ch <= "힣" for ch in o):
-                concepts[s] = o
+            # collect Korean definitions per subject; the pick happens after the
+            # scan (curated order first, truncated prefixes skipped) — longest-
+            # wins is WRONG here, it hands 물 to the rare '무렵' grammar sense
+            # (the same polysemy trap the bridge fixed: curated order carries
+            # the common sense first)
+            if p == "defined_as" and len(o) >= 6 and any("가" <= ch <= "힣" for ch in o):
+                def_rows.setdefault(s, []).append(o)
+
+    # pick each subject's definition: CURATED ORDER (common sense first), but a
+    # definition that is a strict prefix of a later, longer one is a truncation
+    # fragment ('물' -> "자연계에 강" vs "자연계에 강, 호수, 바다…") — skip it
+    for s, defs in def_rows.items():
+        chosen = None
+        for d in defs:
+            if any(d != d2 and d2.startswith(d) for d2 in defs):
+                continue  # truncated prefix of a fuller sentence
+            chosen = d
+            break
+        concepts[s] = chosen or defs[0]
+
+    # web-verified facts the engine LEARNED (web_fact_memory carries the source
+    # URL for each) — this is how compound physics like 빛의 속력 reaches the
+    # mini: those answers were always web-lane, never local-store rows, so the
+    # pack must carry the engine's verified web memory or the landing's own
+    # showcase question ('빛의 속도는?') would shrug in the visitor's hands.
+    try:
+        wfm = json.loads((ROOT / "runtime" / "local_brain" / "web_fact_memory.json")
+                         .read_text(encoding="utf-8"))
+        items = wfm if isinstance(wfm, list) else wfm.get("facts") or list(wfm.values())
+        for x in items:
+            subj = str(x.get("subject") or "").strip()
+            val = str(x.get("value") or "").strip()
+            if (subj and 2 <= len(subj) <= 24 and val and len(val) >= 20
+                    and any("가" <= ch <= "힣" for ch in val) and subj not in concepts):
+                # long web memories keep their FIRST sentences up to ~240 chars —
+                # verbatim head, never a rewrite (빛의 속력 runs 367 chars)
+                if len(val) > 240:
+                    cut = val[:240]
+                    dot = cut.rfind(". ")
+                    val = (cut[: dot + 1] if dot >= 60 else cut).strip()
+                concepts[subj] = val
+                # surface aliases: 빛의 속력 must answer 빛의 속도 too
+                if subj == "빛의 속력":
+                    concepts.setdefault("빛의 속도", val)
+    except Exception:
+        pass
 
     # curated demo concept descriptions (the same pack the demo answers use)
     try:

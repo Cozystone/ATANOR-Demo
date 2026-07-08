@@ -3,7 +3,13 @@
    store by scripts/build_mini_brain.py; answering is deterministic graph lookup
    in this file. GPU 0, server 0 after page load, no LLM — the product claim,
    demonstrated literally in the visitor's own browser tab.
-   Rebuilt automatically on every answer-pack promotion tick; redeploy ships it. */
+
+   v3 (owner-measured failures fixed): the parser is no longer position-regex.
+   It runs the full engine's pipeline in miniature — ENTITY SPOTTING anywhere in
+   the utterance (longest pack-name match, token-prefix tolerant, filler-proof),
+   RELATION SPOTTING anywhere, REVERSE edges (서울의 수도는? -> 서울특별시는
+   대한민국의 수도), and a DISCOURSE STATE: the last entity carries, so a bare
+   follow-up like '인구는?' resolves against it. Context, not rules. */
 (function () {
   "use strict";
 
@@ -12,31 +18,97 @@
     return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0 ? a : b;
   };
   var norm = function (s) { return String(s || "").replace(/\s+/g, " ").trim(); };
-  var stripJosa = function (w) { return w.replace(/(이란|이라는|란|라는|은|는|이|가|을|를)$/, ""); };
+  var stripJosa = function (w) {
+    return w.replace(/(이란|이라는|란|라는|은|는|이|가|을|를|의|도|만|에서|에는|에|와|과|랑)$/, "");
+  };
   var uiLang = function () { try { return typeof LANG !== "undefined" ? LANG : "ko"; } catch (e) { return "ko"; } };
+  // leading discourse fillers ("오 서울의 수도는?" — measured live) and trailing chatter
+  var stripFillers = function (s) {
+    return s.replace(/^\s*(오|아|어|음+|흠+|와|헐|그럼|그러면|근데|그런데|혹시|자|저기|아니)\s+/g, "")
+            .replace(/[?？!.…~ㅋㅎㅠㅜ]+$/g, "").trim();
+  };
+
+  // relation keywords -> pack predicate; spotted ANYWHERE in the utterance
+  var REL_WORDS = {
+    "수도": "capital", "인구": "인구", "면적": "면적",
+    "뜻": "defined_as", "정의": "defined_as", "의미": "defined_as",
+    "종류": "is_a", "위치": "located_in", "어디": "located_in",
+    "나라": "__country_of__", "국가": "__country_of__",
+  };
 
   function buildIndex(pack) {
-    var names = {}, bySubj = {}, relByKo = {};
+    var names = {}, bySubj = {}, relByKo = {}, capitalOf = {};
     Object.keys(pack.concepts || {}).forEach(function (label) {
       names[label.replace(/\s+/g, "")] = label;
     });
     (pack.triples || []).forEach(function (t) {
-      var s = t[0];
+      var s = t[0], rel = t[1], o = t[2];
       names[s.replace(/\s+/g, "")] = s;
       (bySubj[s] = bySubj[s] || []).push(t);
+      // REVERSE edge: the capital city points back to its country, so
+      // '서울의 수도는?' can answer '서울특별시는 대한민국의 수도' instead of shrugging
+      if (rel === "capital" || rel === "수도") {
+        capitalOf[o.replace(/\s+/g, "")] = { city: o, country: s };
+        names[o.replace(/\s+/g, "")] = o;
+      }
     });
     Object.keys(pack.rel_ko || {}).forEach(function (rel) {
       relByKo[pack.rel_ko[rel]] = rel;
     });
+    // longest-first name list for containment spotting (skip 1-char names and
+    // names that ARE relation words — '수도' must never be spotted as an entity)
+    var nameKeys = Object.keys(names).filter(function (k) {
+      return k.length >= 2 && !(k in REL_WORDS);
+    }).sort(function (a, b) { return b.length - a.length; });
     pack._names = names; pack._bySubj = bySubj; pack._relByKo = relByKo;
+    pack._capitalOf = capitalOf; pack._nameKeys = nameKeys;
     return pack;
   }
 
-  function resolveEntity(pack, name) {
-    var n = norm(name).replace(/\s+/g, "");
-    if (pack._names[n]) return pack._names[n];
-    var s = stripJosa(norm(name)).replace(/\s+/g, "");
-    return pack._names[s] || null;
+  /* ---- engine-style spotting: find the entity and the relation ANYWHERE ---- */
+  function spotEntity(pack, q) {
+    var flat = q.replace(/\s+/g, "");
+    // 1) longest pack name contained in the utterance
+    for (var i = 0; i < pack._nameKeys.length; i++) {
+      var k = pack._nameKeys[i];
+      if (flat.indexOf(k) !== -1) return pack._names[k];
+    }
+    // 2) token-prefix: a josa-stripped token that PREFIXES a pack name
+    //    ('서울' -> 서울특별시). Longest token first; name with shortest
+    //    completion wins (closest surface form).
+    var toks = q.split(/\s+/).map(stripJosa).filter(function (t) { return t.length >= 2; })
+                .sort(function (a, b) { return b.length - a.length; });
+    for (var j = 0; j < toks.length; j++) {
+      var best = null;
+      for (var i2 = pack._nameKeys.length - 1; i2 >= 0; i2--) { // shortest names first
+        var k2 = pack._nameKeys[i2];
+        if (k2.indexOf(toks[j]) === 0) { best = pack._names[k2]; break; }
+      }
+      if (best) return best;
+    }
+    // 3) exact whole-token match — the only safe route for 1-char concepts
+    //    ('물이 뭐야?' -> token 물): never substring, token identity only
+    var toks1 = q.split(/\s+/).map(stripJosa);
+    for (var j2 = 0; j2 < toks1.length; j2++) {
+      if (toks1[j2] && pack._names[toks1[j2]] && !(toks1[j2] in REL_WORDS)) {
+        return pack._names[toks1[j2]];
+      }
+    }
+    return null;
+  }
+
+  function spotRelation(q) {
+    var flat = q.replace(/\s+/g, "");
+    var hit = null, hitPos = -1, wh = null;
+    Object.keys(REL_WORDS).forEach(function (w) {
+      var p = flat.lastIndexOf(w);
+      if (p < 0) return;
+      // '어디' is a QUESTION WORD — it names a relation only when no real
+      // relation word is present ('수도가 어디야?'의 관계는 수도, 어디가 아님)
+      if (w === "어디") { wh = REL_WORDS[w]; return; }
+      if (p > hitPos) { hitPos = p; hit = REL_WORDS[w]; }
+    });
+    return hit || wh;
   }
 
   function renderFact(pack, s, t) {
@@ -50,20 +122,57 @@
     return s + "의 " + relKo + josa(relKo, "은", "는") + " " + o + "입니다.";
   }
 
-  /* ---- conversational lane: the mini meets greetings and meta questions
-     head-on instead of routing them to the fact lookup. These are dialogue
-     moves, not knowledge claims — nothing here asserts a fact. ---- */
+  function lookupRelation(pack, subj, rel) {
+    var rows = pack._bySubj[subj] || [];
+    for (var i = 0; i < rows.length; i++) {
+      var t = rows[i];
+      if (t[1] === rel || ((pack.rel_ko || {})[t[1]] || t[1]) === rel) {
+        return renderFact(pack, subj, t);
+      }
+    }
+    return null;
+  }
+
+  function lookupDefinition(pack, subj) {
+    var desc = (pack.concepts || {})[subj];
+    if (desc) {
+      // a web-memory definition often opens with its own TOPIC ("빛의 속력(…)은
+      // 진공에서…") — prepending ours would read "빛의 속도는 빛의 속력은…".
+      // Serve verbatim only when the opening topic (the phrase before '(' or a
+      // topic marker) is essentially the subject itself: same 2-char prefix AND
+      // similar length. '커피나무의 열매를…' must still get '커피는 ' prepended.
+      var m = desc.match(/^([가-힣A-Za-z0-9·\s]{2,20}?)(\(|은\s|는\s)/);
+      if (m) {
+        var topic = m[1].trim();
+        var sflat = subj.replace(/\s+/g, "");
+        var tflat = topic.replace(/\s+/g, "");
+        if (tflat.slice(0, 2) === sflat.slice(0, 2) &&
+            Math.abs(tflat.length - sflat.length) <= 3) {
+          return desc + (/[.다]$/.test(desc) ? "" : "입니다.");
+        }
+      }
+      return subj + josa(subj, "은", "는") + " " + desc + (/[.다]$/.test(desc) ? "" : "입니다.");
+    }
+    var rows = pack._bySubj[subj] || [];
+    for (var j = 0; j < rows.length; j++) {
+      if (rows[j][1] === "defined_as" || rows[j][1] === "is_a") {
+        return renderFact(pack, subj, rows[j]);
+      }
+    }
+    return null;
+  }
+
+  /* ---- conversational lane (dialogue moves, not knowledge claims) ---- */
   function converse(pack, qRaw) {
     var t0 = performance.now();
     var q = norm(qRaw).toLowerCase().replace(/[?？!.~…]+$/, "");
     var facts = (pack.counts || {}).triples || 0;
-    // reply in the asker's language: Hangul input gets Korean even on the EN page
     var en = uiLang() === "en" && !/[가-힣]/.test(qRaw);
     var text = null;
     if (/^(안녕|안녕하세요|안녕하신가요|안녕하십니까|하이|헬로|반가워|반갑습니다|ㅎㅇ|hi|hello|hey|yo)$/.test(q)) {
       text = en
-        ? "Hi! I'm a miniature ATANOR running entirely inside this browser tab — " + facts + " verified facts, zero server calls. Try 일본의 수도는? or 커피가 뭐야?"
-        : "안녕하세요! 저는 이 브라우저 탭 안에서 통째로 도는 미니 ATANOR예요 — 검증 사실 " + facts + "개, 서버 호출 0. ‘일본의 수도는?’, ‘커피가 뭐야?’처럼 물어보세요.";
+        ? "Hi! I'm a miniature ATANOR running entirely inside this browser tab — " + facts + " verified facts, zero server calls. Try 일본의 수도는? — then just 인구는? (I keep context)."
+        : "안녕하세요! 저는 이 브라우저 탭 안에서 통째로 도는 미니 ATANOR예요 — 검증 사실 " + facts + "개, 서버 호출 0. ‘일본의 수도는?’ 물어보시고, 이어서 ‘인구는?’처럼 짧게 물어도 맥락을 기억해요.";
     } else if (/(고마워|고맙습니다|감사합니다|감사해요|감사|땡큐|thank you|thanks|thx)/.test(q)) {
       text = en
         ? "You're welcome — every answer here is a verbatim quote from the verified graph, so ask away."
@@ -74,81 +183,67 @@
         : "저는 ATANOR의 축소판이에요. 전체 엔진과 같은 그래프 네이티브 구조를 33KB 지식팩에 담아 이 탭에서 바로 답합니다 — GPU 0, 서버 0. 전체 ATANOR는 실시간 웹 검증과 학습 루프로 이어집니다.";
     } else if (/(뭘 물어|뭘 알아|무엇을 알아|뭐 알아|뭐 할 수 있|뭘 할 수 있|할 수 있는 게|기능이 뭐|what can you|what do you know)/.test(q)) {
       text = en
-        ? "This mini pack covers world capitals, populations and areas, plus concept definitions (coffee, gravity, the speed of light…). Ask in Korean — e.g. 대한민국의 인구는? The full ATANOR goes far beyond the pack with live web verification."
-        : "이 미니 팩에는 세계 나라들의 수도·인구·면적과 개념 정의(커피, 중력, 빛의 속도…)가 들어 있어요. ‘대한민국의 인구는?’처럼 물어보세요. 전체 ATANOR는 실시간 웹 검증으로 팩 너머까지 답합니다.";
+        ? "This mini pack covers world capitals, populations and areas, plus concept definitions (coffee, gravity, the speed of light…). Ask in Korean — and follow up with just 인구는?, I keep context."
+        : "이 미니 팩에는 세계 나라들의 수도·인구·면적과 개념 정의(커피, 중력, 빛의 속도…)가 들어 있어요. ‘대한민국의 인구는?’처럼 묻고, 이어서 ‘면적은?’처럼 짧게 물어도 돼요 — 맥락을 기억합니다.";
     }
     if (text) return { text: text, ms: performance.now() - t0, grounded: false, kind: "chat" };
     return null;
   }
 
+  /* ---- the mini engine: spot -> resolve -> traverse -> remember ---- */
+  var CTX = { entity: null };   // discourse state: the last resolved entity
+
   function answer(pack, qRaw) {
     var t0 = performance.now();
-    var q = norm(qRaw).replace(/[?？!.…]+$/, "");
-    if (!q) return null;
+    var q0 = norm(qRaw);
+    if (!q0) return null;
     var chat = converse(pack, qRaw);
     if (chat) return chat;
-    // the pack's labels are Korean; meet English input with a guide, not a shrug
-    if (!/[가-힣]/.test(q)) {
+    if (!/[가-힣]/.test(q0)) {
       return {
         text: uiLang() === "en"
-          ? "The pack in this tab holds Korean-labeled facts — try 일본의 수도는? or 커피가 뭐야? The full ATANOR answers multilingual questions with live web verification."
+          ? "The pack in this tab holds Korean-labeled facts — try 일본의 수도는? The full ATANOR answers multilingual questions with live web verification."
           : "이 탭의 팩은 한국어 라벨 사실을 담고 있어요 — ‘일본의 수도는?’처럼 물어보세요. 전체 ATANOR는 다국어 질문을 실시간 웹 검증으로 답합니다.",
         ms: performance.now() - t0, grounded: false, kind: "chat",
       };
     }
-    var m = q.match(/^(.+?)의\s*(.+)$/);
-    if (m) {
-      var subj = resolveEntity(pack, m[1]);
-      var relWord = stripJosa(norm(m[2]
-        .replace(/(는|은|이|가)?\s*(뭐야|뭔가요|무엇인가요|무엇이야|무엇|얼마야|얼마|얼마나 돼|어디야|어디|알려줘|궁금해)?$/, "")));
-      if (subj && relWord) {
-        var rel = pack._relByKo[relWord] || relWord;
-        var rows = pack._bySubj[subj] || [];
-        for (var i = 0; i < rows.length; i++) {
-          var t = rows[i];
-          if (t[1] === rel || ((pack.rel_ko || {})[t[1]] || t[1]) === relWord) {
-            return { text: renderFact(pack, subj, t), ms: performance.now() - t0, grounded: true };
-          }
+    var q = stripFillers(q0);
+    var entity = spotEntity(pack, q);
+    var rel = spotRelation(q);
+    var usedContext = false;
+
+    // follow-up: relation with no entity rides the discourse state ('인구는?')
+    if (!entity && rel && CTX.entity) { entity = CTX.entity; usedContext = true; }
+
+    var text = null;
+    if (entity && rel) {
+      if (rel === "capital" || rel === "__country_of__") {
+        // REVERSE edge first when the entity is itself a capital city:
+        // '서울의 수도는?' / '서울은 어느 나라?' -> 서울특별시는 대한민국의 수도
+        var rev = pack._capitalOf[entity.replace(/\s+/g, "")];
+        if (rev) {
+          text = rev.city + josa(rev.city, "은", "는") + " " + rev.country + "의 수도입니다.";
+        } else if (rel === "capital") {
+          text = lookupRelation(pack, entity, "capital");
         }
+      } else {
+        text = lookupRelation(pack, entity, rel);
+      }
+      if (!text) text = lookupDefinition(pack, entity);  // relation missing: fall to identity
+    } else if (entity) {
+      text = lookupDefinition(pack, entity);
+      if (!text) {
+        var rev2 = pack._capitalOf[entity.replace(/\s+/g, "")];
+        if (rev2) text = rev2.city + josa(rev2.city, "은", "는") + " " + rev2.country + "의 수도입니다.";
       }
     }
-    // "일본 수도", "대한민국 인구" — the genitive marker is often dropped in speech
-    m = q.match(/^(.+?)[\s,]+(수도|인구|면적)[은는이가]?\s*(?:뭐야|어디야|얼마야|얼마)?$/);
-    if (m) {
-      var subjB = resolveEntity(pack, m[1]);
-      if (subjB) {
-        var relB = pack._relByKo[m[2]] || m[2];
-        var rowsB = pack._bySubj[subjB] || [];
-        for (var b = 0; b < rowsB.length; b++) {
-          if (rowsB[b][1] === relB || ((pack.rel_ko || {})[rowsB[b][1]] || rowsB[b][1]) === m[2]) {
-            return { text: renderFact(pack, subjB, rowsB[b]), ms: performance.now() - t0, grounded: true };
-          }
-        }
-      }
+
+    if (text) {
+      CTX.entity = entity;   // remember for the next turn
+      return { text: text, ms: performance.now() - t0, grounded: true, context: usedContext };
     }
-    m = q.match(/^(.+?)(?:이|가|은|는)?\s*(?:뭐야|뭔가요|무엇인가요|무엇이야|무엇|누구야|누구|란|이란|알려줘|설명해줘)?$/);
-    if (m) {
-      var subj2 = resolveEntity(pack, m[1]);
-      if (subj2) {
-        var desc = (pack.concepts || {})[subj2];
-        if (desc) {
-          return { text: subj2 + josa(subj2, "은", "는") + " " + desc + (/[.다]$/.test(desc) ? "" : "입니다."),
-                   ms: performance.now() - t0, grounded: true };
-        }
-        var rows2 = pack._bySubj[subj2] || [];
-        for (var j = 0; j < rows2.length; j++) {
-          if (rows2[j][1] === "defined_as" || rows2[j][1] === "is_a") {
-            return { text: renderFact(pack, subj2, rows2[j]), ms: performance.now() - t0, grounded: true };
-          }
-        }
-      }
-    }
-    // outside the pack: point forward to what works, and to the full engine —
-    // the mini's scope is the pack; the architecture's answer is the learn loop
     return {
-      text: uiLang() === "en"
-        ? "That one lives beyond this tab's " + (((pack.counts || {}).triples) || 0) + "-fact mini pack — the full ATANOR takes it from here with live web verification, and what it learns joins the graph. In this tab, try 일본의 수도는? or 중력이 뭐야?"
-        : "그 주제는 이 탭의 미니 팩(" + (((pack.counts || {}).triples) || 0) + "개 검증 사실) 너머에 있어요 — 전체 ATANOR는 여기서부터 실시간 웹 검증으로 이어 답하고, 배운 것은 그래프에 남습니다. 이 탭에서는 ‘일본의 수도는?’, ‘중력이 뭐야?’를 바로 답해요.",
+      text: "그 주제는 이 탭의 미니 팩(" + (((pack.counts || {}).triples) || 0) + "개 검증 사실) 너머에 있어요 — 전체 ATANOR는 여기서부터 실시간 웹 검증으로 이어 답하고, 배운 것은 그래프에 남습니다. 이 탭에서는 ‘일본의 수도는?’을 묻고 이어서 ‘인구는?’처럼 짧게 물어도 답해요.",
       ms: performance.now() - t0, grounded: false, kind: "redirect",
     };
   }
@@ -156,8 +251,10 @@
   function certLabel(r) {
     var en = uiLang() === "en";
     if (r.grounded) {
-      return en ? "mini pack lookup " + r.ms.toFixed(2) + " ms · GPU 0 · server calls 0"
-                : "미니 지식팩 조회 " + r.ms.toFixed(2) + " ms · GPU 0 · 서버 호출 0";
+      var base = en ? "mini pack lookup " + r.ms.toFixed(2) + " ms · GPU 0 · server calls 0"
+                    : "미니 지식팩 조회 " + r.ms.toFixed(2) + " ms · GPU 0 · 서버 호출 0";
+      if (r.context) base += en ? " · context carried" : " · 맥락 유지";
+      return base;
     }
     if (r.kind === "chat") {
       return en ? "dialogue · in-browser · server calls 0"
@@ -171,7 +268,6 @@
   function initUI(pack) {
     var card = document.querySelector(".chatcard");
     if (!card) return;
-    // messages live in a scrollable log; the ask bar stays pinned at the bottom
     var log = document.createElement("div");
     log.className = "mini-log";
     while (card.firstChild) log.appendChild(card.firstChild);
@@ -217,5 +313,6 @@
     .catch(function () { /* pack missing: the static mock stays as-is */ });
 
   // expose for tests
-  window.MiniAtanor = { buildIndex: buildIndex, answer: answer, converse: converse };
+  window.MiniAtanor = { buildIndex: buildIndex, answer: answer, converse: converse,
+                        spotEntity: spotEntity, spotRelation: spotRelation };
 })();
