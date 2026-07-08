@@ -3870,6 +3870,25 @@ def _last_user_question(context: list[dict[str, Any]], current: str) -> str:
 
 @router.post("/api/chat/atanor")
 async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
+    response = await _chat_atanor_impl(request)
+    # VOICE (owner audit 2026-07-08): several live exits (the converse shortcut,
+    # introspection, the triple-store lane) skipped the voice_output attachment,
+    # so voice-mode replies were silent — measured: voice_output=None on 안녕
+    # AND on 수도. One chokepoint attaches it to every answer that lacks one.
+    try:
+        result = response.get("result") if isinstance(response, dict) else None
+        if isinstance(result, dict) and result.get("answer") and result.get("voice_output") is None:
+            lang = str(result.get("language") or request.language or "ko")
+            answer_text = str(result.get("answer") or "")
+            result["voice_output"] = _attach_voice_runtime_metadata(
+                _voice_runtime_snapshot_with_local_audio(answer_text, lang), answer_text, lang)
+            result.setdefault("can_speak", True)
+    except Exception:  # voice must never break the answer
+        pass
+    return response
+
+
+async def _chat_atanor_impl(request: AtanorChatRequest) -> dict[str, Any]:
     _emit_stage("analyzing")  # real: parsing the question + resolving context
     question = request.question_text()
     # META-INSTRUCTION lane (owner-reported): an instruction about HOW to answer is a
