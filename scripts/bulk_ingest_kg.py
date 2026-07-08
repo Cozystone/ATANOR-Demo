@@ -290,7 +290,10 @@ def main() -> int:
     if args.progress and not args.benchmark:
         gen = _progress(gen, args.progress)
     t0 = time.time()
-    r = store.bulk_ingest(gen)
+    # provenance: every bulk row carries its dump source (링크 근거 doctrine) —
+    # this also makes a batch identifiable (and rollbackable) by source id
+    src_id = store.intern_source(label.split(":", 1)[0] + ":bulk", "")
+    r = store.bulk_ingest(gen, source=src_id)
     dt = max(1e-9, time.time() - t0)
     rate = r["added"] / dt
     print(json.dumps({
