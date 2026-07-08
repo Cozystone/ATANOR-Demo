@@ -4561,7 +4561,21 @@ async def _chat_atanor_impl(request: AtanorChatRequest) -> dict[str, Any]:
     if request.web_search and not (self_state or media_answer or self_knowledge or comparison or chained or recall or reasoning_vm) and isinstance(response.get("result"), dict):
         result = response["result"]
         ans = str(result.get("answer") or "")
-        if not ans or _answer_is_abstention(ans):
+        # QUESTION-TYPE AGREEMENT, outermost: an UNLABELED default-lane answer
+        # to 'X의 Y…' that LEADS with the tail concept Y is answering a
+        # different question (measured: 물의 화학식 → the 화학식 page
+        # definition via graph resonance, no certificate, so no earlier gate
+        # saw it). Treat it as no-answer; the rescue extracts X-page relation
+        # sentences instead. Labeled answers (any answer_kind) are exempt —
+        # their own lanes already enforce agreement.
+        _gen_q2 = re.search(r"([가-힣A-Za-z0-9]{1,12})의\s+([가-힣A-Za-z0-9]{2,12}?)"
+                            r"(?:[은는이가을를만]|\s|$)", question)
+        _tail_led = bool(
+            _gen_q2 and not result.get("answer_kind")
+            and not re.match(r"\s+[가-힣A-Za-z0-9]", question[_gen_q2.end(2):])
+            and ans.replace(" ", "").startswith(_gen_q2.group(2))
+            and not ans.replace(" ", "").startswith(_gen_q2.group(1)))
+        if not ans or _answer_is_abstention(ans) or _tail_led:
             _emit_stage("web_grounding")  # real: local answer was thin, hitting the web
             rescue = await _web_grounded_rescue(web_query, language)
             # Experience ledger: the rescue OUTCOME is measured evidence about the routing
@@ -4582,8 +4596,14 @@ async def _chat_atanor_impl(request: AtanorChatRequest) -> dict[str, Any]:
             # answered ABOUT 물, not DEFINE 화학식. If the web answer's own subject
             # is the RELATION word (it opens '화학식(...)은 …' — defining the
             # relation), it is the wrong page — refuse it honestly rather than
-            # pasting the definition of the relation.
-            if (rescue and _frame_relation_word and not rescue.get("web_unreachable")):
+            # pasting the definition of the relation. EXCEPT when the source page
+            # IS the anchor entity's own page: a sentence from the 물 page that
+            # opens '화학식은 H2O이며 …' is the relation VALUE, not a definition
+            # of the relation (the entity-page extraction backstop produces
+            # exactly this shape — measured, it was being refused here).
+            if (rescue and _frame_relation_word and not rescue.get("web_unreachable")
+                    and str(rescue.get("source_title") or "").strip()
+                        != str(_frame_anchor or "").strip()):
                 _head = str(rescue.get("answer") or "")[:len(_frame_relation_word) + 2]
                 if _head.startswith(_frame_relation_word):
                     rescue = None
