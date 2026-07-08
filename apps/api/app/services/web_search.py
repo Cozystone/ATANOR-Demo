@@ -592,6 +592,14 @@ def _is_fluff_sentence(s: str) -> bool:
     # family-tree run-on); require some verb/copula signal for Hangul-heavy sentences.
     if re.search(r"[가-힣]", s) and not _KO_PREDICATE.search(s):
         return True
+    # Truncated fragments: an unbalanced quote/bracket means the sentence was cut
+    # mid-way by an upstream extract limit — a fragment like «…용어는 가장 최근에
+    # "평화.» must never be composed into an answer. (ASCII ' is skipped: apostrophes.)
+    for _o, _c in (("(", ")"), ("[", "]"), ("“", "”"), ("‘", "’"), ("《", "》"), ("「", "」"), ("«", "»")):
+        if s.count(_o) != s.count(_c):
+            return True
+    if s.count('"') % 2 == 1:
+        return True
     return False
 
 

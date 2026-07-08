@@ -1533,6 +1533,143 @@ def _clean_graph_count_payload(
     return {"state": "completed", "result": payload, **_flags()}
 
 
+def _recent_learning_payload(
+    request: AtanorChatRequest,
+    *,
+    question: str,
+    language: str,
+) -> dict[str, Any]:
+    """'가장 최근에 배운/들어온 지식' is INTROSPECTION: it must be answered from
+    the real learning ledger (the continuous learner's live counters — what was
+    actually read, accepted, linked), never by concept lookup or a web search
+    about the words 'recent knowledge'."""
+    metrics: dict[str, Any] = {}
+    try:
+        from .cloud_brain import cloud_brain_continuous_metrics
+
+        metrics = cloud_brain_continuous_metrics() or {}
+    except Exception:
+        metrics = {}
+    running = bool(metrics.get("running"))
+    titles: list[str] = []
+    for t in metrics.get("last_titles") or []:
+        t = str(t).strip()
+        if t and t not in titles:
+            titles.append(t)
+
+    def _label_ok(side: str) -> bool:
+        s = side.strip()
+        if re.search(r"[가-힣]", s):
+            return len(s) >= 2
+        # English closed-class function words are not knowledge labels
+        return len(s) >= 4 and s.lower() not in {
+            "this", "that", "with", "from", "have", "been", "what", "when",
+            "your", "they", "there", "which", "will", "into", "than",
+        }
+
+    links: list[str] = []
+    for pair in metrics.get("relation_recent") or []:
+        sides = [p.strip() for p in str(pair).split("↔")]
+        if len(sides) == 2 and all(_label_ok(s) for s in sides):
+            link = f"{sides[0]}–{sides[1]}"
+            if link not in links:
+                links.append(link)
+        if len(links) >= 3:
+            break
+    fed = int(metrics.get("sentences_fed") or 0)
+    accepted = int(metrics.get("sentences_accepted") or 0)
+    concepts_added = int(metrics.get("concepts_added") or 0)
+    surface_added = int(metrics.get("surface_added") or 0)
+    uptime_min = max(1, int(float(metrics.get("uptime_seconds") or 0) // 60))
+    source = str(metrics.get("source") or "")
+    src_ko = "위키백과 공개 문서" if "wikipedia" in source else ("웹 검색 결과" if source else "공개 웹")
+    src_en = "public Wikipedia articles" if "wikipedia" in source else ("web search results" if source else "the public web")
+    is_ko = language == "ko"
+    if metrics and (running or fed):
+        parts: list[str] = []
+        if is_ko:
+            if titles:
+                parts.append(f"방금 전까지 {src_ko}에서 ‘{'’, ‘'.join(titles[:3])}’ 문서를 읽고 있었어요.")
+            parts.append(
+                f"이번 가동 {uptime_min}분 동안 문장 {fed}개를 읽어 {accepted}개를 지식 후보로 받아들였고, "
+                f"새 개념 {concepts_added}개와 표현 패턴 {surface_added}개가 들어왔어요."
+            )
+            if links:
+                parts.append("새로 이어진 연결로는 " + ", ".join(links) + " 같은 것들이 있어요.")
+            parts.append("들어온 지식은 바로 정답에 쓰이지 않고, 출처·중복·모순 검증 게이트를 통과해야 승격됩니다.")
+        else:
+            if titles:
+                parts.append(f"Until a moment ago I was reading {src_en}: “{'”, “'.join(titles[:3])}”.")
+            parts.append(
+                f"In the last {uptime_min} minutes of this run I read {fed} sentences, accepted {accepted} as "
+                f"knowledge candidates, and took in {concepts_added} new concepts and {surface_added} surface patterns."
+            )
+            if links:
+                parts.append("Recently formed links include " + ", ".join(links) + ".")
+            parts.append("New knowledge is quarantined until it passes the source/duplication/contradiction gates.")
+        answer = " ".join(parts)
+        confidence = 0.9
+    elif is_ko:
+        answer = (
+            "지금은 상시 학습기가 잠시 멈춰 있어서 이 순간 들어오는 새 지식은 없어요. "
+            "학습기가 도는 동안에는 공개 문서를 읽어 문장 단위로 받아들이고, 검증 게이트를 통과한 것만 지식 그래프에 승격돼요."
+        )
+        confidence = 0.6
+    else:
+        answer = (
+            "The continuous learner is paused right now, so nothing new is coming in at this moment. "
+            "While it runs, it reads public documents sentence by sentence and only gate-verified items are promoted."
+        )
+        confidence = 0.6
+    compact_trace = {
+        "local_coverage": "learning_ledger_introspection",
+        "learning_ledger": {
+            "running": running,
+            "last_titles": titles[:5],
+            "recent_links": links,
+            "sentences_fed": fed,
+            "sentences_accepted": accepted,
+            "concepts_added": concepts_added,
+            "surface_added": surface_added,
+            "uptime_seconds": metrics.get("uptime_seconds"),
+            "source": source,
+        },
+        "semantic_cloud_graph": {"attached_nodes": 0, "evidence_docs": 0},
+        "surface_graph": {"construction_families": ["direct_ledger_answer"], "discourse_moves": ["direct_answer"]},
+        "q_cortex": {"used": False, "real_quantum_hardware_used": False},
+        "working_memory": {"temporary_context": False, "local_brain_write": False},
+        "confidence": "high" if confidence >= 0.85 else "medium",
+    }
+    payload = {
+        "answer": answer,
+        "language": language,
+        "confidence": confidence,
+        "default_trace_visible": False,
+        "trace": compact_trace if request.include_trace or request.mode in {"trace", "research"} else None,
+        "compact_trace": compact_trace,
+        "research_trace": {"learning_ledger": compact_trace["learning_ledger"]} if request.mode == "research" else None,
+        "evidence_docs": [],
+        "surface_plan": {
+            "plan_id": None,
+            "intent": "recent_learning_introspection",
+            "construction_families": ["direct_ledger_answer"],
+            "q_cortex_used": False,
+            "q_cortex_run_id": None,
+        },
+        "answer_engine": {
+            "name": "ATANOR Learning Ledger",
+            "semantic_plane": "continuous learner live counters",
+            "surface_plane": "Direct ledger answer",
+            "external_llm": False,
+            "external_sllm": False,
+            "local_brain_write": False,
+            "trace_hidden_by_default": True,
+        },
+        **_flags(),
+    }
+    return {"state": "completed", "result": payload, **_flags()}
+
+
 def _is_graph_count_question(question: str) -> bool:
     lowered = question.lower()
     count_terms = ("몇개", "몇 개", "개수", "총 개", "count", "how many", "number of")
@@ -2070,8 +2207,17 @@ def _first_sentences(text: str, *, max_chars: int = 360) -> str:
     if len(text) <= max_chars:
         return text
     cut = text[:max_chars]
-    last = max(cut.rfind(". "), cut.rfind(". "), cut.rfind("다. "))
-    return (cut[: last + 1] if last > 60 else cut).strip()
+    # Cut on a COMPLETE sentence boundary only. Returning the raw slice leaked
+    # mid-sentence fragments into answers (…용어는 가장 최근에 "평화.) — a
+    # truncated tail reads as gibberish and smuggles unbalanced quotes.
+    last = max(cut.rfind(". "), cut.rfind("다. "), cut.rfind("요. "),
+               cut.rfind("! "), cut.rfind("? "), cut.rfind(".” "))
+    if last > 40:
+        return cut[: last + 1].strip()
+    space = cut.rfind(" ")
+    if space > 40:
+        return cut[:space].rstrip(" ,·;:—-“\"'‘(") + " …"
+    return cut.strip()
 
 
 def _store_web_fact(question: str, title: str, answer: str, url: str) -> None:
@@ -2776,9 +2922,18 @@ def _graft_web_nodes_to_cloud_brain(results: list[dict[str, Any]], language: str
 
 def _is_recent_learning_question(question: str) -> bool:
     lower = question.lower()
-    return any(token in question for token in ("최근 학습", "최근 배운", "학습한 개념", "새로 배운")) or (
-        "recent" in lower and any(token in lower for token in ("learn", "concept", "memory"))
-    )
+    if any(token in question for token in ("최근 학습", "최근 배운", "학습한 개념", "새로 배운")):
+        return True
+    # Structural detection: recency marker + knowledge-intake verb + knowledge noun
+    # ("가장 최근에 너한테 들어온 새 지식을 알려줘" matched none of the fixed tokens
+    # above and leaked to WEB SEARCH, answering with a random peace-index page).
+    if (
+        re.search(r"최근|방금|오늘|요즘|마지막", question)
+        and re.search(r"배우|배운|배웠|학습|들어온|들어왔|익힌|익혔|알게\s*된|읽은|읽었", question)
+        and re.search(r"지식|정보|내용|개념|문서|사실|것|거|뭐|뭘|무엇", question)
+    ):
+        return True
+    return "recent" in lower and any(token in lower for token in ("learn", "concept", "memory", "knowledge"))
 
 
 def _safe_public_concept_label(row: dict[str, Any]) -> str:
@@ -3728,6 +3883,13 @@ async def chat_atanor(request: AtanorChatRequest) -> dict[str, Any]:
         request.language = "ko"  # dispatch reads the request object, not this local
     else:
         language = request.language or "en"
+    # LEARNING INTROSPECTION ("가장 최근에 들어온 새 지식은?") answers from the
+    # live learning ledger — real titles read, sentences accepted, links formed.
+    # It must short-circuit BEFORE retrieval: a web search about the words
+    # "최근 새 지식" once pasted a random peace-index page (measured 2026-07-08).
+    if meta_ack is None and _is_recent_learning_question(question):
+        _emit_stage("done")
+        return _recent_learning_payload(request, question=question, language=language)
     # SELF-FUSED CONVERSATION ROUTING (owner directive: the everyday-talk / search
     # switch lives in the SELF, not a regex cascade). The living self PERCEIVES the
     # message (learned router + its own judgment) and, when it's conversation,
@@ -5188,6 +5350,17 @@ async def _chat_atanor_dispatch(request: AtanorChatRequest) -> dict[str, Any]:
     if _clean_graph_count_question(question) or _is_graph_count_question(question):
         response = _attach_three_core_trace(
             _clean_graph_count_payload(request, question=question, language=language),
+            request=request,
+            three_core_trace=three_core_trace,
+        )
+        _emit_conversation_result_events(response)
+        return response
+    if _is_recent_learning_question(question):
+        # Introspection answers from the live learning ledger and must not fall
+        # through to retrieval — a web search about the WORDS "최근 새 지식"
+        # once answered with a random peace-index page (measured 2026-07-08).
+        response = _attach_three_core_trace(
+            _recent_learning_payload(request, question=question, language=language),
             request=request,
             three_core_trace=three_core_trace,
         )

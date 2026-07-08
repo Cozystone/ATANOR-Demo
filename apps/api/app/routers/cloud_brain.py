@@ -1667,7 +1667,10 @@ def _maybe_promote_pack(force: bool = False) -> dict[str, Any] | None:
 def _continuous_worker() -> None:
     hosts = ("en.wikipedia.org", "ko.wikipedia.org")
     hi = 0
-    _learn_interval = float(os.getenv("ATANOR_LEARN_INTERVAL_SEC", "60") or 60)
+    # 20s default (was 60): the owner's fluency gap is graph SIZE, so the always-on
+    # learner paces 3x faster — still one polite public fetch per tick (proper UA,
+    # backoff on errors) and bounded by the same acceptance gates.
+    _learn_interval = float(os.getenv("ATANOR_LEARN_INTERVAL_SEC", "20") or 20)
     _daily_cap = int(os.getenv("ATANOR_LEARN_DAILY_CAP", "800") or 800)
     _day = _time.strftime("%Y-%m-%d")
     _used_today = 0
