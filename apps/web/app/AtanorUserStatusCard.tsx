@@ -4,6 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import type { CSSProperties } from "react";
 import { Mic, Send } from "lucide-react";
 import HologramVoiceOrb, { HologramVoiceOrbState, ORB_BENCHMARK_MAX_PARTICLES } from "./HologramVoiceOrb";
+import SplatraField, { SplatraHandle } from "./SplatraField";
+import { isDemo } from "./lib/profile";
+import { parse3DIntent } from "./splatraIntent";
 import AnswerExperimentSurface, { AnswerVisual } from "./AnswerExperimentSurface";
 import SplatraImaginationField from "./SplatraImaginationField";
 import PhaseHolographicFoldScene, { type FoldScene } from "./PhaseHolographicFoldScene";
@@ -1511,6 +1514,9 @@ function splatraControlsForLayout(emotionControls: Record<string, any> | null, t
 export default function AtanorUserStatusCard({ language, onMessageSubmit }: AtanorUserStatusCardProps) {
   const [message, setMessage] = useState("");
   const [orbState, setOrbState] = useState<HologramVoiceOrbState>("idle");
+  // 3D 파티클 필드 (Ultimate): 3D 의도가 잡히면 홈 위로 떠오른다
+  const [splatraOpen, setSplatraOpen] = useState(false);
+  const splatraRef = useRef<SplatraHandle>(null);
   // Particle render budget. Draft = live slider thumb; applied = what the orb
   // actually rebuilds at (committed on release, since a rebuild is heavy).
   const [orbDensityDraft, setOrbDensityDraft] = useState(1);
@@ -2247,6 +2253,31 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
     event.preventDefault();
     const trimmed = message.trim();
     if (!trimmed) return;
+    // 3D 공간 제어 (Ultimate 전용): 명백한 3D 의도는 파티클 필드로 — 아토 소환,
+    // 생성, 몸짓, 재질. 일반 질문은 아래 언어 엔진 경로 그대로.
+    const splatraCmd = isDemo ? null : parse3DIntent(trimmed);
+    if (splatraCmd) {
+      setMessage("");
+      setSplatraOpen(true);
+      void (async () => {
+        try {
+          if (splatraCmd.kind === "avatar") {
+            await fetch("/api/splatra/v1/avatar", { method: "POST",
+              headers: { "Content-Type": "application/json" }, body: "{}" });
+            splatraRef.current?.reload();
+          } else if (splatraCmd.kind === "generate") {
+            splatraRef.current?.disassemble();
+            await fetch("/api/splatra/v1/chat", { method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: splatraCmd.prompt }) });
+            splatraRef.current?.reload();
+          } else if (splatraCmd.kind === "anim") splatraRef.current?.animate(splatraCmd.style);
+          else if (splatraCmd.kind === "stop") splatraRef.current?.animate("stop");
+          else if (splatraCmd.kind === "reset") splatraRef.current?.animate("flow");
+        } catch { /* particle engine offline: panel stays empty */ }
+      })();
+      return;
+    }
     setFoldScene(null); // clear any prior fold; a fold request re-attaches it
     setAnswerVisual(null); // clear any prior figure/formula; re-attached if present
 
@@ -2542,6 +2573,7 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
   return (
     <section
       ref={dashboardRef}
+      data-splatra-open={splatraOpen ? "true" : "false"}
       className="atanor-ai-dashboard"
       data-answer-card={answerVisual && !foldScene && !iframeStage ? "true" : "false"}
       aria-label={language === "ko" ? "ATANOR \uC785\uC790 \uBCF8\uCCB4" : "ATANOR particle body"}
@@ -2672,6 +2704,23 @@ export default function AtanorUserStatusCard({ language, onMessageSubmit }: Atan
       data-text-layout-reference={TEXT_LAYOUT_REFERENCE}
       style={{ ...dashboardRuntimeLayoutVars(sceneChoreography, stageLayout, layoutTelemetry), ["--orb-dodge-y" as string]: `${orbDodgeY}px` } as CSSProperties}
     >
+      {splatraOpen && (
+        <div style={{ position: "fixed", right: 22, top: 86, width: 460, height: 380,
+                      zIndex: 80, borderRadius: 14, overflow: "hidden",
+                      background: "radial-gradient(ellipse at 50% 40%, #14171d 0%, #0a0b0e 75%)",
+                      border: "1px solid #26262c", boxShadow: "0 18px 50px rgba(0,0,0,.5)" }}>
+          <SplatraField ref={splatraRef} />
+          <div style={{ position: "absolute", top: 8, left: 12, color: "#7a7a82",
+                        fontSize: 11, letterSpacing: 1.4, pointerEvents: "none" }}>
+            PARTICLE FIELD
+          </div>
+          <button type="button" onClick={() => setSplatraOpen(false)} aria-label="close particle field"
+            style={{ position: "absolute", top: 6, right: 8, background: "transparent",
+                     border: "none", color: "#9a9aa0", cursor: "pointer", padding: 6, fontSize: 14 }}>
+            ✕
+          </button>
+        </div>
+      )}
       <div style={(foldScene || iframeStage) ? { opacity: 0, pointerEvents: "none" } : undefined}>
         <SplatraImaginationField
           state={orbState}
