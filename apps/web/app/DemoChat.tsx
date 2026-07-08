@@ -21,6 +21,8 @@ import AnswerExperimentSurface, { AnswerVisual } from "./AnswerExperimentSurface
 import AnswerPathScene from "./AnswerPathScene";
 import LivingMindPanel from "./LivingMindPanel";
 import PluginGallery, { PLUGIN_ICONS } from "./PluginGallery";
+import SplatraField, { SplatraHandle } from "./SplatraField";
+import { describeCmd, parse3DIntent } from "./splatraIntent";
 
 type MenuPlugin = { id: string; name: string; icon: string; composer: { slash: string } };
 
@@ -109,6 +111,9 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // 3D 파티클 패널: 3D 의도가 잡히면 스스로 떠오른다 (SPLATRA 네이티브 엔진)
+  const [fieldOpen, setFieldOpen] = useState(false);
+  const fieldRef = useRef<SplatraHandle>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentId, setCurrentId] = useState<string>(() => `s-${Date.now()}`);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -263,6 +268,34 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     q = q.trim();
     if (!q || busy) return;
     setInput("");
+    // 3D 공간 제어: 명백한 3D 의도는 언어 엔진 대신 파티클 엔진으로 — 파티클
+    // 패널이 스스로 떠오르고 명령이 그 자리에서 실행된다. 일반 질문은 그대로
+    // 아래의 엔진 경로로 흐른다 (가로채기 없음).
+    const splatraCmd = parse3DIntent(q);
+    if (splatraCmd) {
+      const koCmd = /[가-힣]/.test(q);
+      setFieldOpen(true);
+      setMessages((m) => [...m, { role: "user", text: q },
+        { role: "ai", text: describeCmd(splatraCmd, koCmd) }]);
+      void (async () => {
+        try {
+          if (splatraCmd.kind === "avatar") {
+            await fetch("/api/splatra/v1/avatar", { method: "POST",
+              headers: { "Content-Type": "application/json" }, body: "{}" });
+            fieldRef.current?.reload();
+          } else if (splatraCmd.kind === "generate") {
+            fieldRef.current?.disassemble();
+            await fetch("/api/splatra/v1/chat", { method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: splatraCmd.prompt }) });
+            fieldRef.current?.reload();
+          } else if (splatraCmd.kind === "anim") fieldRef.current?.animate(splatraCmd.style);
+          else if (splatraCmd.kind === "stop") fieldRef.current?.animate("stop");
+          else if (splatraCmd.kind === "reset") fieldRef.current?.animate("flow");
+        } catch { /* engine offline — the panel shows an empty field */ }
+      })();
+      return;
+    }
     setBusy(true);
     closePanels();
     const lang = /[가-힣]/.test(q) ? "ko" : "en";
@@ -439,6 +472,23 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
       </aside>
 
       <div className="atanor-demochat-main">
+        {fieldOpen && (
+          <div style={{ position: "absolute", right: 18, top: 16, width: 460, height: 380,
+                        zIndex: 40, borderRadius: 14, overflow: "hidden",
+                        background: "radial-gradient(ellipse at 50% 40%, #14171d 0%, #0a0b0e 75%)",
+                        border: "1px solid #26262c", boxShadow: "0 18px 50px rgba(0,0,0,.45)" }}>
+            <SplatraField ref={fieldRef} />
+            <div style={{ position: "absolute", top: 8, left: 12, color: "#7a7a82",
+                          fontSize: 11, letterSpacing: 1.4, pointerEvents: "none" }}>
+              PARTICLE FIELD
+            </div>
+            <button type="button" onClick={() => setFieldOpen(false)} aria-label="close 3d"
+              style={{ position: "absolute", top: 6, right: 6, background: "transparent",
+                       border: "none", color: "#9a9aa0", cursor: "pointer", padding: 6 }}>
+              <X size={14} strokeWidth={2} />
+            </button>
+          </div>
+        )}
         <PluginGallery
           open={galleryOpen}
           onClose={() => setGalleryOpen(false)}
