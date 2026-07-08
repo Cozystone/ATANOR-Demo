@@ -143,25 +143,51 @@ def _subject_candidates(query: str) -> list[str]:
             # hallucination). Join runs of ≥2 adjacent NNG/NNP into the maximal
             # compound and try it before its parts (sort by length keeps it first).
             run: list[str] = []
+            run_tails: set[str] = set()
+
+            def _flush(r: list[str]) -> None:
+                if len(r) < 2:
+                    return
+                variants = ["".join(r), " ".join(r)]  # 인공지능 AND 해리 포터
+                if len(r) == 2:
+                    variants.append("의 ".join(r))  # 피타고라스의 정리 (store/wiki title form)
+                for comp in variants:
+                    if comp not in cands:
+                        cands.append(comp)
+                # A compound's TAIL fragment must never become a standalone
+                # subject: when the compound misses the store, looking up the
+                # bare head answers the wrong referent ('피타고라스 정리' ->
+                # 정리(정돈), measured). The first member stays a candidate —
+                # it is at least the right topic.
+                run_tails.update(r[1:])
+
             for tok in toks:
                 if tok.tag in ("NNP", "NNG") and tok.form.lower() not in _EN_STOPWORDS:
                     run.append(tok.form)
                 else:
-                    if len(run) >= 2:
-                        for comp in ("".join(run), " ".join(run)):  # 인공지능 AND 해리 포터
-                            if comp not in cands:
-                                cands.append(comp)
+                    _flush(run)
                     run = []
-            if len(run) >= 2:
-                for comp in ("".join(run), " ".join(run)):
-                    if comp not in cands:
-                        cands.append(comp)
-            for tok in toks:
+            _flush(run)
+            for _i, tok in enumerate(toks):
                 if tok.tag in ("NNP", "NNG", "SL") and len(tok.form) >= 2:
                     if tok.form.lower() in _EN_STOPWORDS:
                         continue
+                    if tok.form in run_tails:
+                        continue
+                    # A noun followed by 하다 (XSV) is the PREDICATE of the
+                    # request (설명해줘/요약해줘), never its subject — with
+                    # everything else missing it used to become the answered
+                    # concept ('피타고라스 정리를 설명해줘' -> '설명' 정의).
+                    if _i + 1 < len(toks) and toks[_i + 1].tag == "XSV":
+                        continue
                     if tok.form not in cands:
                         cands.append(tok.form)
+            # The frame parse runs BEFORE tokenization and can pick the bare
+            # head of an adjacent-noun compound as subject (피타고라스 '정리')
+            # — since it sits first in cands, the store answers the wrong
+            # referent before the compound variants are even tried. Demote it.
+            if _frame_subject and _frame_subject in run_tails and _frame_subject in cands:
+                cands.remove(_frame_subject)
     except Exception:
         pass
     if not cands:

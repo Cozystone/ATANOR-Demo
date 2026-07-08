@@ -29,7 +29,11 @@ SERVICES = [
         "name": "atanor-engine",
         "port": 8502,
         "health": "http://127.0.0.1:8502/health",
-        "rss_limit_mb": 4096,          # 8 GB was the death; restart at 4 GB
+        # BASE footprint is ~5.2-6.2GB now (488k triple store + full stack) —
+        # a 4GB cap put the engine in a permanent 60s kill-restart loop that
+        # read as "random deaths" (measured 2026-07-08, data/watchdog.log).
+        # Cap must sit well above base but still catch a true runaway.
+        "rss_limit_mb": 12288,
         "cwd": HERE,
         "cmd": [sys.executable, "-m", "uvicorn", "app.main:app",
                 "--host", "127.0.0.1", "--port", "8502", "--app-dir", "apps/api"],

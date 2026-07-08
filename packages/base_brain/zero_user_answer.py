@@ -899,19 +899,55 @@ _IDENTITY_MARKERS_EN = (
 
 def _is_identity_question(query: str) -> bool:
     q = re.sub(r"\s+", " ", query.lower()).strip(" ?!.")
-    return any(m in query for m in _IDENTITY_MARKERS_KO) or any(m in q for m in _IDENTITY_MARKERS_EN)
+    if any(m in query for m in _IDENTITY_MARKERS_KO) or any(m in q for m in _IDENTITY_MARKERS_EN):
+        return True
+    # Self-state questions ("넌 의식을 가지고 있니?", "너도 감정을 느껴?") are
+    # identity, not knowledge lookup — they were abstaining or dumping a wiki
+    # page on the mental-state NOUN. Requires a 2nd-person pronoun so plain
+    # definitional questions ("의식이란 뭐야?") still route to the graph.
+    return bool(
+        re.search(r"넌|너는|너도|너의|너한테|네가|니가|당신은|당신도|are you|do you", q)
+        and re.search(r"의식|자의식|자아|감정|마음|느끼|느낌|살아|생명|conscious|sentient|feel|alive", q)
+    )
+
+
+def _is_compound_head(text: str, start: int) -> bool:
+    """True when the name match at `start` is only the HEAD of a larger noun
+    phrase, so defining the bare head answers the wrong referent — the class
+    behind "빛의 속도"→속도 일반 정의, "피타고라스 정리"→정리(정돈), "책의
+    내용을 요약해줘"→'내용' 개념 참사. Two signals: a genitive modifier
+    (…의 <head>) or a bare Hangul noun modifier (<noun> <head>). Korean
+    adnominal endings (좋은/모든/어떤/살) all close with a ㄴ/ㄹ 받침, so a
+    preceding token WITHOUT one is a noun compounding with the head, not an
+    adjective describing it."""
+    if start == 0 or text[start - 1] != " ":
+        return False
+    prev = re.search(r"([가-힣a-z0-9]+)$", text[:start - 1])
+    if not prev:
+        return False
+    token = prev.group(1)
+    if token.endswith("의"):
+        return True
+    if len(token) < 2 or not re.match(r"[가-힣]+$", token):
+        return False
+    final = (ord(token[-1]) - 0xAC00) % 28
+    return final not in (4, 8)  # ㄴ/ㄹ 받침 = adnominal/relativizer ending
 
 
 def _named_in_query(query: str, concept: dict[str, Any]) -> bool:
     """True when the query actually names the concept. The ASCII-boundary
     lookarounds give English word boundaries ("api" is not matched inside
     "capital") while still allowing a Korean particle to follow a Latin name
-    ("GraphRAG가") and any Hangul-name substring ("로컬 브레인이")."""
+    ("GraphRAG가") and any Hangul-name substring ("로컬 브레인이").
+    A match that is only the head of a bigger compound does NOT count
+    (see _is_compound_head) — falling through lets web rescue answer the
+    full phrase instead of confidently defining the wrong bare head."""
     query_lower = query.lower()
     for name in _concept_names(concept):
         pattern = r"(?<![A-Za-z0-9])" + re.escape(name.lower().replace("_", " ")) + r"(?![A-Za-z0-9])"
-        if re.search(pattern, query_lower):
-            return True
+        for m in re.finditer(pattern, query_lower):
+            if not _is_compound_head(query_lower, m.start()):
+                return True
     return False
 
 
