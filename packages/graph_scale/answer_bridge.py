@@ -251,7 +251,12 @@ def _subject_candidates(query: str) -> list[str]:
     # head's standalone definition is the measured wrong-referent class
     # (만유인력의 법칙 → 법칙=규범, 빛의 속도 → 속도 일반 정의).
     if _gen_tail:
-        cands = [c for c in cands if c != _gen_tail]
+        # purge the bare tail AND its josa-stripped form: a one-syllable tail
+        # captures its josa under the {2,12} minimum ('홍건적의 난이' -> tail
+        # '난이'), so bare '난' slipped the purge and answered with the suffix
+        # sense of 난 (measured after the DBpedia ingest added the compound)
+        _tail_bare = re.sub(r"[은는이가을를만]$", "", _gen_tail)
+        cands = [c for c in cands if c != _gen_tail and c != _tail_bare]
     return sorted(cands, key=lambda t: (0 if (_gen_full and t == _gen_full) else 1,
                                         0 if t == _frame_subject else 1,
                                         0 if re.search(r"[가-힣]", t) else 1,
