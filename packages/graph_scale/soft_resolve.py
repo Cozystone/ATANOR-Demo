@@ -23,11 +23,21 @@ from .phase_space import neighbors as _phase_neighbors
 
 
 def _is_a_parents(store: Any, term: str, limit: int = 24) -> set[str]:
+    """The term's stated type parents, CLOSED OVER TYPE ALIASES: the Korean and
+    DBpedia scrapes label the same type differently (동물 vs Animal — measured:
+    they partition disjoint entity sets, so co-occurrence can't bridge them).
+    The reviewed type_alignment alias edges are that bridge; expanding parents
+    one alias hop lets a 동물-typed term and an Animal-typed term verify as
+    type-compatible."""
     out: set[str] = set()
     try:
         for s, p, o in store.facts_about(term, limit=limit) or []:
             if p in ("is_a", "instance_of", "subclass_of"):
                 out.add(str(o))
+        for parent in list(out):
+            for s, p, o in store.facts_about(parent, limit=12) or []:
+                if p == "alias" and o:
+                    out.add(str(o))
     except Exception:
         pass
     return out
