@@ -34,6 +34,22 @@ SPACE_DIR = REPO / "data" / "graph_scale" / "phase_space"
 PHASES_PATH = SPACE_DIR / "phases.npy"
 REL_PATH = SPACE_DIR / "relations.npy"
 TERMS_PATH = SPACE_DIR / "terms.json"
+# Windows lock escape hatch: every reader mmaps phases.npy (mmap_mode='r'), and
+# a mapped file cannot be reopened for write — so a retrain could never save
+# while the engine (or any importer) was alive. Trainers therefore write
+# VERSIONED artifact files and flip this small pointer; readers resolve through
+# it. The legacy fixed paths remain the fallback for old spaces.
+CURRENT_PATH = SPACE_DIR / "current.json"
+
+
+def _artifact_paths() -> tuple[Path, Path, Path]:
+    try:
+        if CURRENT_PATH.exists():
+            c = json.loads(CURRENT_PATH.read_text(encoding="utf-8"))
+            return SPACE_DIR / c["phases"], SPACE_DIR / c["relations"], SPACE_DIR / c["terms"]
+    except Exception:
+        pass
+    return PHASES_PATH, REL_PATH, TERMS_PATH
 
 DIM = 8
 # entity-valued predicates only: the object is a NODE (김치 is_a 음식), never a
@@ -200,15 +216,16 @@ def train_phase_space(store: Any, max_edges: int = 1_500_000, epochs: int = 30,
 
 def _load() -> bool:
     try:
-        if not PHASES_PATH.exists():
+        phases_path, _rel_path, terms_path = _artifact_paths()
+        if not phases_path.exists():
             return False
-        mtime = PHASES_PATH.stat().st_mtime
-        if _SPACE["phases"] is None or _SPACE["mtime"] != mtime:
-            _SPACE["phases"] = np.load(PHASES_PATH, mmap_mode="r")
-            data = json.loads(TERMS_PATH.read_text(encoding="utf-8"))
+        key = f"{phases_path.name}:{phases_path.stat().st_mtime}"
+        if _SPACE["phases"] is None or _SPACE["mtime"] != key:
+            _SPACE["phases"] = np.load(phases_path, mmap_mode="r")
+            data = json.loads(terms_path.read_text(encoding="utf-8"))
             _SPACE["terms"] = data["terms"]
             _SPACE["idx"] = {t: i for i, t in enumerate(data["terms"])}
-            _SPACE["mtime"] = mtime
+            _SPACE["mtime"] = key
         return True
     except Exception:
         return False
