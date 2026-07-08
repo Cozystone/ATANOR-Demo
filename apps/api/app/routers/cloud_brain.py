@@ -2016,6 +2016,48 @@ def cloud_brain_promote_pack() -> dict[str, Any]:
     return {"promoted": bool(stamp), "promotion": stamp}
 
 
+_DERIVE_LOCK = _threading.Lock()
+_DERIVE_STATE: dict[str, Any] = {"cursor": 0, "total_derived": 0, "runs": 0, "last": None}
+
+
+def _run_derivation(max_new: int, edge_window: int) -> dict[str, Any]:
+    """The COMPOUNDING learning lane: the web lane adds new FACTS slowly; this
+    lane materializes what the graph already ENTAILS (transitive is_a/located_in
+    2-hop closure + inverses) at ~3/4-million edges/sec. Every edge is sound
+    (follows from two stated edges) and source-tagged `derived:*` — real new
+    connections, never fabricated. Bounded per call so it never spikes the
+    engine's memory; a cursor resumes the sweep across calls."""
+    from packages.graph_scale.answer_bridge import _store as _answer_store
+    from packages.graph_scale.derivation_accelerator import accelerate
+
+    store = _answer_store()
+    if store is None:
+        return {"derived": 0, "error": "store_unavailable"}
+    with _DERIVE_LOCK:  # serialize writers to the append-only store
+        cur = int(_DERIVE_STATE["cursor"])
+        res = accelerate(store, max_new=max_new, edge_window=edge_window, cursor=cur)
+        if not res.get("error"):
+            _DERIVE_STATE["cursor"] = int(res.get("next_cursor") or 0)
+            _DERIVE_STATE["total_derived"] += int(res.get("derived") or 0)
+            _DERIVE_STATE["runs"] += 1
+            _DERIVE_STATE["last"] = res
+    return res
+
+
+@router.post("/learning/derive")
+def cloud_brain_derive(max_new: int = 1_000_000, edge_window: int = 1_000_000) -> dict[str, Any]:
+    """Run ONE bounded truth-preserving derivation sweep on the live answer graph
+    and report the rate. Caps keep the engine memory-safe; call repeatedly (the
+    cursor resumes) to sweep the whole graph. This is the honest mass-growth lane:
+    the graph grows from its own structure, every edge logically entailed."""
+    max_new = max(1, min(int(max_new), 5_000_000))
+    edge_window = max(1, min(int(edge_window), 3_000_000))
+    res = _run_derivation(max_new, edge_window)
+    return {"derivation": res, "cumulative": {
+        "total_derived": _DERIVE_STATE["total_derived"], "runs": _DERIVE_STATE["runs"],
+        "cursor": _DERIVE_STATE["cursor"]}}
+
+
 @router.get("/surface-graph/status")
 def cloud_brain_surface_graph_status() -> dict[str, Any]:
     semantic = get_semantic_cloud_growth_status()
