@@ -1780,15 +1780,18 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"promote_tick: {type(exc).__name__}"[:120]
-        # DERIVATION lane every N ticks (the compounding learning path): materialize
-        # what the graph already ENTAILS (transitive is_a/located_in 2-hop closure +
-        # inverses) — real, sound, source-tagged `derived:*` connections, at store
-        # speed. The web lane finds NEW facts slowly; this compounds what they imply
-        # so the graph keeps growing by millions/day. Bounded per pass (measured
-        # RSS-flat) with a cursor that resumes the sweep; a store ceiling protects
-        # the memory cap; env-tunable, disable with ATANOR_DERIVE_EVERY=0.
+        # DERIVATION lane (OFF by default — honest finding 2026-07-08): the 2-hop
+        # closure is SOUND (each edge follows from two stated edges), but the live
+        # base graph carries polysemy collisions (which 'Paris'/'Oxford'?) and
+        # DBpedia category mislabels ('song is_a Award'), so a blind closure of it
+        # is ~30% wrong regardless of relation — measured. Adding 30%-wrong edges
+        # to the CURATED answer graph violates truth>coverage even though they are
+        # `derived:*` tagged and answer-gated. So this stays a MANUAL capability
+        # (POST /learning/derive, scripts/derivation_accelerator.py) for demos and
+        # for use AFTER a taxonomy/sense cleanup of the base. Enable the always-on
+        # lane only on a cleaned base with ATANOR_DERIVE_EVERY>0.
         try:
-            _de = int(os.getenv("ATANOR_DERIVE_EVERY", "8") or 8)
+            _de = int(os.getenv("ATANOR_DERIVE_EVERY", "0") or 0)
             _ceiling = int(os.getenv("ATANOR_DERIVE_STORE_CEILING", "300000000") or 300_000_000)
             if _de > 0 and _CONT.get("ticks", 0) and _CONT["ticks"] % _de == 0:
                 _cap = int(os.getenv("ATANOR_DERIVE_MAX_NEW", "1000000") or 1_000_000)
