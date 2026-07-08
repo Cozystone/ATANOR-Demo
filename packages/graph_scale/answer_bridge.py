@@ -526,6 +526,21 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     # or a relation (이란/뭐/수도/저자/…), never on conversation.
     if not want:
         return None
+    # QUESTION-TYPE AGREEMENT (measured: '물의 화학식은 뭐야?' answered with a
+    # dictionary definition of 물 — wrong sense, wrong relation, full confidence).
+    # A genitive relation ask (X의 Y…) asks for the VALUE of relation Y on X.
+    # Unless Y is itself a definition word, a definition of bare X does not
+    # answer it — same premise-respect rule as the agentive gate above: an
+    # off-target answer is worse than honest silence (the web lane or the
+    # ingest queue picks the real question up).
+    _gen_mod = _gen_rel = ""
+    _gen_ask = re.search(r"([가-힣A-Za-z0-9]{1,12})의\s+([가-힣A-Za-z0-9]{2,12}?)"
+                         r"(?:[은는이가을를만]|\s|$)", query)
+    # 'X의 뜻/정의/의미' asks for X's definition — that IS the definitional
+    # intent, not a relation ask (checked on the query itself: the capture's
+    # {2,12} minimum would swallow a one-syllable tail's josa, '뜻이')
+    if _gen_ask and not re.search(r"의\s*(?:뜻|정의|의미)(?:[은는이가을를]|\s|$)", query):
+        _gen_mod, _gen_rel = _gen_ask.group(1), _gen_ask.group(2)
     for subj in _subject_candidates(query):
         facts = store.facts_about(subj, limit=12)
         if language == "ko" and re.search(r"[가-힣]", subj):
@@ -560,9 +575,22 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
 
             _defs_now = [o for (_s, p, o) in facts if p in ("defined_as", "is_a")]
             if len(_defs_now) >= 2:
-                _senses = induce_senses(subj, definitions=_defs_now)
-                if len(_senses) > 1:
-                    facts = sense_filtered_facts(subj, query, facts, senses=_senses)
+                # the sense filter needs CONTEXT to resolve a sense; a bare
+                # definitional ask ('물이 뭐야?') carries none, and letting the
+                # filter guess handed the majority CLUSTER the win — 물 answered
+                # as the rare bound-noun '무렵' because its two grammar-note
+                # senses clustered together and outvoted the common water sense
+                # (measured). Enforce the documented no-signal contract at the
+                # call site: no content tokens beyond the subject => curated
+                # order stands (common sense first).
+                _ctx = query.replace(subj, "")
+                _ctx = re.sub(r"뭐야|뭔가요|무엇인가요|무엇이야|무엇|뜻|정의|의미|이란|"
+                              r"라는|알려줘|설명해줘|궁금해", "", _ctx)
+                _ctx = re.sub(r"[은는이가을를의란\s?？!.,~…]", "", _ctx)
+                if len(_ctx) >= 2:
+                    _senses = induce_senses(subj, definitions=_defs_now)
+                    if len(_senses) > 1:
+                        facts = sense_filtered_facts(subj, query, facts, senses=_senses)
         except Exception:
             pass
         # a full DEFINITION outranks a bare taxonomy edge: '김치' has both defined_as
@@ -581,6 +609,17 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
         # prefer a fact whose predicate matches the query's relation intent
         chosen = [(s, p, o) for (s, p, o) in facts
                   if (not want or p in want) and p not in ("alias", "sense")]
+        if _gen_rel and subj == _gen_mod:
+            # bare-modifier subject under a relation ask: only rows that speak to
+            # the asked relation qualify (predicate names it, or maps to it via
+            # the relation-cue table). No qualifying row => this subject cannot
+            # answer the question; the sense/alias/evidence fallbacks are all
+            # off-target here, so move on instead of letting them speak.
+            _tail_want = _wanted_predicates(_gen_rel) - {"defined_as", "is_a"}
+            chosen = [(s, p, o) for (s, p, o) in chosen
+                      if _gen_rel in p or p in _tail_want]
+            if not chosen:
+                continue
         hop_from = None
         if not chosen:
             # multi-SENSE term (disambiguation asserted may-refer-to): enumerate the
