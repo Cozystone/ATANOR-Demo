@@ -1913,8 +1913,20 @@ def _continuous_worker() -> None:
         except Exception as exc:  # pragma: no cover - never kill the loop
             with _CONT_LOCK:
                 _CONT["last_error"] = f"flywheel_tick: {type(exc).__name__}"[:120]
-        # Pace to respect the search-API free tier (default 60s; ATANOR_LEARN_INTERVAL_SEC).
-        _time.sleep(_learn_interval)
+        # Pace = base interval x metabolic pace (OpenLife budget metabolism):
+        # the learner reads its own resource wallet and slows down under memory
+        # pressure BEFORE the watchdog would have to recycle the process.
+        _pace = 1.0
+        try:
+            from packages.continuous_self.metabolism import metabolic_state as _met_state
+
+            _met = _met_state()
+            _pace = float(_met.get("pace_multiplier") or 1.0)
+            with _CONT_LOCK:
+                _CONT["metabolism"] = _met
+        except Exception:
+            pass
+        _time.sleep(_learn_interval * _pace)
 
 
 @router.post("/learning/continuous/start")
@@ -1960,6 +1972,7 @@ def cloud_brain_continuous_metrics() -> dict[str, Any]:
         "relation_checks_total": rel.get("checks", 0),
         "relations_linked": rel.get("linked", 0),
         "relation_recent": rel.get("recent", []),
+        "metabolism": snap.get("metabolism"),
         "firehose_per_second": fh.get("per_second", 0.0),
         "firehose_processed": fh.get("processed", 0),
         "firehose_unique": fh.get("unique", 0),

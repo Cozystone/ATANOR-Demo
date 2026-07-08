@@ -177,10 +177,35 @@ class ConsensusLedger:
     # ---------- promotion ----------
     def promotable(self) -> list[tuple[str, dict[str, Any]]]:
         """Consensus counts VOICES (distinct provenance sources), not sentences —
-        one website saying something twice is still one voice (Sybil cap ⑧)."""
-        return [(k, v) for k, v in self._agg.items()
-                if k not in self._promoted
-                and len(v.get("voices") or v["sources"]) >= self.min_sources]
+        one website saying something twice is still one voice (Sybil cap ⑧).
+
+        VARIABLE-k (protective skepticism): the bar is not fixed. When the
+        ledger itself holds a SUBSTANTIAL rival claim (same subject+relation,
+        a different object that also reached min_sources), the claim class is
+        measured-contested and every variant needs one voice more than the
+        base. Data-derived contention, no topic tables; non-exclusive
+        predicates (서울 is_a 도시 AND 수도) still promote — both sides just
+        need the higher bar. Downstream, the contradiction sweep still owns
+        exclusive-predicate conflicts."""
+        def _n(v: dict[str, Any]) -> int:
+            return len(v.get("voices") or v["sources"])
+
+        contested: dict[tuple[str, str], int] = {}
+        for v in self._agg.values():
+            sp = (str(v.get("source_label") or "").strip().lower(),
+                  str((v.get("row") or {}).get("relation") or ""))
+            if _n(v) >= self.min_sources:
+                contested[sp] = contested.get(sp, 0) + 1
+        out: list[tuple[str, dict[str, Any]]] = []
+        for k, v in self._agg.items():
+            if k in self._promoted:
+                continue
+            sp = (str(v.get("source_label") or "").strip().lower(),
+                  str((v.get("row") or {}).get("relation") or ""))
+            required = self.min_sources + (1 if contested.get(sp, 0) >= 2 else 0)
+            if _n(v) >= required:
+                out.append((k, v))
+        return out
 
     def promote_into(self, store: Any) -> PromotionResult:
         """Write consensus-confirmed relations into the verified candidate store.

@@ -603,6 +603,21 @@ def _is_fluff_sentence(s: str) -> bool:
     return False
 
 
+def retrieval_budget(query: str) -> dict[str, Any]:
+    """Proportional retrieval: scale search effort to the question's complexity
+    instead of one fixed depth. A short entity/fact lookup reads a few results;
+    an open question (요약/비교/왜/어떻게…) or a long multi-part query earns a
+    wider sweep and a fuller composition. Structural signals only."""
+    q = str(query or "")
+    open_marker = bool(re.search(
+        r"요약|설명해|비교|정리해|자세히|역사|과정|차이|추천|어떻게|왜\b|원리|장단점|영향|전망"
+        r"|explain|compare|summar|history|why|how", q, re.IGNORECASE))
+    content_tokens = len(re.findall(r"[가-힣A-Za-z0-9]{2,}", q))
+    if open_marker or content_tokens >= 6:
+        return {"top_k": 8, "max_supporting": 4, "deep": True}
+    return {"top_k": 3, "max_supporting": 2, "deep": False}
+
+
 def compose_web_answer(query: str, rows: list[dict[str, Any]], *, language: str = "ko", max_supporting: int = 4) -> dict[str, Any] | None:
     """Turn retrieved results into an ORGANIZED answer instead of pasting a raw snippet:
     split the top results into clean sentences, then EXTRACTIVELY select + arrange a

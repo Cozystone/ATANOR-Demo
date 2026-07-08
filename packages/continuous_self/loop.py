@@ -72,6 +72,17 @@ class ContinuousSelf:
             obs = self.obs_provider()
         except Exception:  # a flaky sensor must never end the life
             obs = Observation()
+        try:
+            # Budget metabolism (OpenLife principle): the body's real resource
+            # wallet is part of every perception step — cortisol's
+            # resource_pressure is measured, not defaulted. A provider that
+            # already set a value wins.
+            if not getattr(obs, "resource_pressure", 0.0):
+                from .metabolism import metabolic_state
+
+                obs.resource_pressure = float(metabolic_state()["pressure"])
+        except Exception:
+            pass
         with self._lock:
             evolve(self.state, obs)
             # The inward turn — ENDOGENOUS: introspective pressure (built each evolve

@@ -2614,11 +2614,15 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     retrieval-augmented grounding — the answer IS the retrieved evidence,
     attributed; no LLM, no fabrication. Returns None if nothing relevant."""
     try:
-        from app.services.web_search import search_web, wikipedia_search
+        from app.services.web_search import retrieval_budget, search_web, wikipedia_search
 
-        payload = await search_web(question, 5)
+        # Proportional retrieval: a bare fact lookup reads 3 results, an open
+        # question earns a wider sweep — effort scales with the question.
+        _budget = retrieval_budget(question)
+        payload = await search_web(question, _budget["top_k"])
     except Exception:  # pragma: no cover - network/optional
         payload = None
+        _budget = {"top_k": 5, "max_supporting": 4, "deep": True}
     provider = str((payload or {}).get("provider") or "")
     rows_available = list((payload or {}).get("results") or [])
     is_ko = language == "ko"
@@ -2628,7 +2632,7 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     # declaring the web unreachable. This is what makes the answer reflect search.
     if provider in ("", "static") or not rows_available:
         try:
-            wiki_rows = await asyncio.to_thread(wikipedia_search, question, 5)
+            wiki_rows = await asyncio.to_thread(wikipedia_search, question, _budget["top_k"])
         except Exception:  # pragma: no cover - network/optional
             wiki_rows = []
         if not wiki_rows:
@@ -2877,7 +2881,8 @@ async def _web_grounded_rescue(question: str, language: str) -> dict[str, Any] |
     try:
         from app.services.web_search import compose_web_answer
 
-        _composed = compose_web_answer(question, rows, language=language)
+        _composed = compose_web_answer(question, rows, language=language,
+                                       max_supporting=int(_budget.get("max_supporting") or 4))
     except Exception:  # pragma: no cover - composition must never break the answer
         _composed = None
     answer = (_composed or {}).get("answer") or _first_sentences(str(best.get("snippet") or ""), max_chars=420)
