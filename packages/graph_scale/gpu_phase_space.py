@@ -109,7 +109,12 @@ def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 
     theta = (torch.rand((n_t, dim), generator=g, device=dev) * 2 * torch.pi)
     rel = (torch.rand((n_p, dim), generator=g, device=dev) * 2 * torch.pi)
     TR = torch.from_numpy(tr_np).to(dev)
-    repel_at = 4.0
+    # repel threshold must scale with dimension: the |sin| distance ranges
+    # [0, dim] and random pairs sit near dim/2 — a constant 4.0 (tuned at
+    # dim=8) never fires at dim>=32, the repel term goes silent, and quality
+    # COLLAPSES with dimension (measured in the dim sweep: 0.96 @8 -> 0.28
+    # @64). dim/2 restores the same relative geometry at every width.
+    repel_at = dim / 2.0
     for ep in range(epochs):
         perm = torch.randperm(len(TR), generator=g, device=dev)
         TR = TR[perm]

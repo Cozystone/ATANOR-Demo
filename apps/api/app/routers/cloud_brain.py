@@ -2086,6 +2086,24 @@ def cloud_brain_derive(max_new: int = 1_000_000, edge_window: int = 1_000_000) -
         "cursor": _DERIVE_STATE["cursor"]}}
 
 
+@router.get("/graph/soft-context")
+def cloud_brain_soft_context(term: str, k: int = 5) -> dict[str, Any]:
+    """Softness-gap bridge, read-only: phase-space PROPOSALS for `term`, each
+    VERIFIED type-compatible by the symbolic graph (shared stated is_a parent).
+    Suggestions only — nothing here asserts a fact about `term`."""
+    from packages.graph_scale.answer_bridge import _store as _astore
+    from packages.graph_scale.soft_resolve import soft_context_line, typed_soft_match
+
+    store = _astore()
+    if store is None:
+        return {"term": term, "matches": [], "error": "store_unavailable"}
+    matches = typed_soft_match(store, term, k=max(1, min(int(k), 20)))
+    line = soft_context_line(store, term)
+    return {"term": term, "matches": matches,
+            "suggestion": (line or {}).get("text"),
+            "verified_by": "shared stated is_a parent (symbolic gate over phase proposals)"}
+
+
 @router.get("/surface-graph/status")
 def cloud_brain_surface_graph_status() -> dict[str, Any]:
     semantic = get_semantic_cloud_growth_status()
