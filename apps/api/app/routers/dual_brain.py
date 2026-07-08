@@ -2239,7 +2239,22 @@ def _store_web_fact(question: str, title: str, answer: str, url: str) -> None:
 def _recall_web_fact(question: str) -> dict[str, Any] | None:
     """Return a previously looked-up web fact relevant to the question, if any."""
     try:
-        hits = WEB_FACT_MEMORY.recall(question, limit=1)
+        hits = WEB_FACT_MEMORY.recall(question, limit=4)
+        # QUESTION-TYPE AGREEMENT (same rule as the answer bridge): 'X의 Y…'
+        # asks for X's Y. A memorized fact about the bare TAIL CONCEPT (subject
+        # Y — e.g. the 화학식 page definition) answers a different question and
+        # kept outranking the on-target 물→"화학식은 H2O…" fact sitting right
+        # next to it in the store (measured). Only X-anchored subjects serve.
+        _gen = re.search(r"([가-힣A-Za-z0-9]{1,12})의\s+([가-힣A-Za-z0-9]{2,12}?)"
+                         r"(?:[은는이가을를만]|\s|$)", question)
+        _gen_anchored = False
+        if _gen and hits:
+            _mod, _tail = _gen.group(1), _gen.group(2)
+            hits = [h for h in hits
+                    if h.subject.strip() != _tail
+                    and (_mod in h.subject or h.subject.strip() in _mod
+                         or h.subject.strip() == f"{_mod}의 {_tail}")]
+            _gen_anchored = bool(hits)
         if not hits:
             return None
         fact = hits[0]
@@ -2249,10 +2264,12 @@ def _recall_web_fact(question: str) -> dict[str, Any] | None:
 
         if not looks_like_natural_language(fact.value):
             return None
-        # require a real topic overlap so we don't surface an unrelated cached fact
+        # require a real topic overlap so we don't surface an unrelated cached
+        # fact — except when the genitive anchor already proved the topic (a
+        # short subject like 물 has no >=2-char token and would false-fail here)
         q_tokens = {t for t in re.split(r"\s+", re.sub(r"[?!.]", " ", question.lower())) if len(t) >= 3}
         s_tokens = {t for t in re.split(r"\s+", fact.subject.lower()) if len(t) >= 2}
-        if not (q_tokens & s_tokens):
+        if not (q_tokens & s_tokens) and not _gen_anchored:
             return None
         url = fact.source_ref[4:] if fact.source_ref.startswith("web:") else ""
         return {
