@@ -22,6 +22,7 @@ import AnswerPathScene from "./AnswerPathScene";
 import LivingMindPanel from "./LivingMindPanel";
 import PluginGallery, { PLUGIN_ICONS } from "./PluginGallery";
 import SplatraField, { SplatraHandle } from "./SplatraField";
+import { isDemo } from "./lib/profile";
 import { describeCmd, parse3DIntent } from "./splatraIntent";
 
 type MenuPlugin = { id: string; name: string; icon: string; composer: { slash: string } };
@@ -271,7 +272,7 @@ export default function DemoChat({ language }: { language: "ko" | "en" }) {
     // 3D 공간 제어: 명백한 3D 의도는 언어 엔진 대신 파티클 엔진으로 — 파티클
     // 패널이 스스로 떠오르고 명령이 그 자리에서 실행된다. 일반 질문은 그대로
     // 아래의 엔진 경로로 흐른다 (가로채기 없음).
-    const splatraCmd = parse3DIntent(q);
+    const splatraCmd = isDemo ? null : parse3DIntent(q);   // 파티클은 Ultimate 전용
     if (splatraCmd) {
       const koCmd = /[가-힣]/.test(q);
       setFieldOpen(true);
