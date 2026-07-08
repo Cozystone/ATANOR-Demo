@@ -148,7 +148,9 @@ def realize(subject: str, facts: list[tuple[str, str, str]], *,
         # a dictionary gloss "…나라 이름"/"…의 명칭" names the WORD; as a head
         # noun of the THING it must read "…나라" ("프랑스는 … 나라 이름입니다"
         # would claim France is a name — measured)
-        head_noun = re.sub(r"\s*(이름|명칭)$", "", head_noun).strip() or head[2][:40]
+        # strip ONLY the measured "…나라 이름" gloss pattern — a blanket strip
+        # broke "공식 명칭" down to a dangling "공식" (measured live)
+        head_noun = re.sub(r"(?<=나라)\s*(이름|명칭)$", "", head_noun).strip() or head[2][:40]
 
     # prenominal stack, phase-coherent order when available (nearest to the
     # head noun last — Korean modifiers read outward-in)

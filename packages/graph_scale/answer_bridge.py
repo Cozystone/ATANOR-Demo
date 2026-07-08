@@ -699,10 +699,34 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
                 from packages.grounded_composer import compose_from_facts
                 from packages.grounded_composer.composer import compose_narrative
 
+                # FUSION of the two infinities (owner directive): `facts` here
+                # have already passed the TRUTH side (sense filter, truncation
+                # collapse, Korean-gloss gate above), so the EXPRESSION side —
+                # the recursive realizer — composes on sense-clean input, with
+                # the store as lookup so 관형절 embedding runs live. Falls to
+                # the 기승전결 narrative, then the flat chain, when it declines.
+                composed = None
+                try:
+                    import os as _os
+
+                    if language == "ko" and _os.getenv("ATANOR_RECURSIVE_REALIZER", "1") != "0":
+                        from packages.grounded_composer.composer import ComposedAnswer, _resolve_josa
+                        from packages.grounded_composer.recursive_realizer import realize
+
+                        _r = realize(s, facts, max_modifiers=2, embed_depth=1,
+                                     lookup=lambda t: store.facts_about(t, limit=10))
+                        if _r is not None and len(_r.facts_used) >= 3:
+                            composed = ComposedAnswer(
+                                answer=_resolve_josa(_r.text) + " (출처: 큐레이션 지식그래프)",
+                                facts_used=_r.facts_used,
+                                connectives_used=_r.constructions)
+                except Exception:
+                    composed = None
                 # 뼈+살 v3: the multi-paragraph 기승전결 narrative when at least
                 # two paragraph groups have material; single paragraph otherwise
                 # (adaptive depth — never padded)
-                composed = compose_narrative(s, facts, language=language) \
+                composed = composed \
+                    or compose_narrative(s, facts, language=language) \
                     or compose_from_facts(s, facts, language=language)
             except Exception:
                 composed = None
