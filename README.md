@@ -1,39 +1,87 @@
 <div align="center">
 
-<img src="apps/landing/assets/atanor-logo-square.png" alt="ATANOR" width="96" />
+<img src="apps/landing/assets/atanor-logo-square.png" alt="ATANOR Logo" width="120"/>
 
 # ATANOR
 
-### Own your Intelligence.
+**출처를 증명하며 답하는, 거대언어모델 없는 그래프 네이티브 AI**
+</br>
+<em>A graph-native AI that answers without a large language model — every fact stored with its source, every answer synthesized from verified knowledge.</em>
 
-**A graph-native AI that answers without a large language model —
-every fact stored with its source, every answer synthesized from verified knowledge.**
+<br/>
 
-[![Website](https://img.shields.io/badge/ATANOR-atanor--liard.vercel.app-0a0a0a?style=for-the-badge)](https://atanor-liard.vercel.app)
-[![Early Access](https://img.shields.io/badge/Early%20Access-Reserve%20a%20spot-d2521f?style=for-the-badge)](https://atanor-liard.vercel.app/#download)
+<a href="https://atanor-liard.vercel.app" target="_blank"><img src="https://img.shields.io/badge/🌐_Website-atanor--liard.vercel.app-0a0a0a?style=for-the-badge" alt="Website"/></a>
+<a href="https://atanor-liard.vercel.app/#download" target="_blank"><img src="https://img.shields.io/badge/⚡_Early_Access-Reserve_a_spot-d2521f?style=for-the-badge" alt="Early Access"/></a>
+<a href="https://atanor-liard.vercel.app" target="_blank"><img src="https://img.shields.io/badge/▶_Live_Mini_Demo-in--browser,_no_server-1a936f?style=for-the-badge" alt="Live Demo"/></a>
 
-[![License](https://img.shields.io/badge/license-Source--Available-black)](LICENSE)
-![No LLM](https://img.shields.io/badge/inference-No%20LLM-1a936f)
-![Local First](https://img.shields.io/badge/memory-local--first-006a9f)
-![Knowledge Graph](https://img.shields.io/badge/knowledge-~25.9M%20triples-4a4a4a)
+<br/><br/>
 
-*[한국어 소개는 아래에 있습니다 ↓](#한국어-소개)*
+[![GitHub Stars](https://img.shields.io/github/stars/Cozystone/ATANOR-Demo?style=flat-square&color=DAA520)](https://github.com/Cozystone/ATANOR-Demo/stargazers)
+[![GitHub Watchers](https://img.shields.io/github/watchers/Cozystone/ATANOR-Demo?style=flat-square)](https://github.com/Cozystone/ATANOR-Demo/watchers)
+[![GitHub Forks](https://img.shields.io/github/forks/Cozystone/ATANOR-Demo?style=flat-square)](https://github.com/Cozystone/ATANOR-Demo/network)
+[![License](https://img.shields.io/badge/license-Source--Available-black?style=flat-square)](LICENSE)
+[![No LLM](https://img.shields.io/badge/inference-No%20LLM-1a936f?style=flat-square)](#-how-it-works)
+[![Knowledge](https://img.shields.io/badge/graph-~25.9M%20triples-006a9f?style=flat-square)](#-measured-honestly)
+
+[English](#-overview) | [한국어](#-한국어-소개)
 
 </div>
 
 ---
 
-## What is this?
+## ⚡ Overview
 
 Most AI compresses knowledge into opaque model weights and generates answers
 probabilistically — fluent, but unable to prove where a single claim came from.
 
-ATANOR takes the other road. Knowledge lives in an **explicit knowledge graph**
+**ATANOR takes the other road.** Knowledge lives in an explicit knowledge graph
 (int-columnar triple store, ~25.9M source-tagged triples). A self-trained
-**phase-space embedding** (RotatE-style, 64-dim, no pretrained weights)
-*proposes* soft matches; the **symbolic graph verifies** every proposal; a
-**recursive syntactic realizer** composes the answer from verified facts only —
-so a sentence can be novel while every fact in it is a stored, cited one.
+phase-space embedding *proposes* soft matches; the symbolic graph *verifies*
+every proposal; a recursive syntactic realizer *composes* the answer from
+verified facts only — so a sentence can be **novel** while every fact in it is
+a **stored, cited** one. If there is no grounds for an answer, ATANOR says so
+instead of inventing one.
+
+> **The design law that runs through every subsystem:**
+> propose fast (embeddings, GPU), promote only through verification (evidence, symbols).
+
+### Our Vision
+
+We are not chasing the smartest model. We are building the **most trustworthy
+and the lightest** one — an AI whose every answer is auditable, whose private
+memory stays on your machine, and that scales through a peer network instead of
+a data center.
+
+- **Verifiable** — every answer carries its sources and a reasoning certificate.
+- **Local-first** — private memory never leaves your device by default.
+- **No-LLM, low-energy** — answers run on CPU; there is no model to download.
+- **Decentralized** — Brain Link shards the graph across peers, verify-by-recompute.
+
+## 🌐 Live Demo
+
+Visit **[atanor-liard.vercel.app](https://atanor-liard.vercel.app)** — the landing page
+runs a **mini ATANOR entirely inside your browser**: it answers from a curated
+knowledge pack with zero server calls, and for anything beyond the pack it
+verifies live against the open web (browser → Wikipedia, still no ATANOR
+server), quoting the source with a link — or abstaining honestly if nothing
+anchors the question.
+
+## 📸 Screenshots
+
+<div align="center">
+<table>
+<tr>
+<td><img src="docs/media/atanor-graph-workspace.png" alt="Graph-native workspace" width="100%"/><br/><sub><b>Graph-native workspace</b> — the active reasoning surface</sub></td>
+<td><img src="docs/media/graph-hub-polished.png" alt="Graph Hub" width="100%"/><br/><sub><b>Graph Hub</b> — attach knowledge cartridges read-only</sub></td>
+</tr>
+<tr>
+<td><img src="docs/media/atanor-cloud-atlas.png" alt="Cloud Atlas" width="100%"/><br/><sub><b>Cloud Atlas</b> — the shared, verified public graph</sub></td>
+<td><img src="docs/media/brain-link-polished.png" alt="Brain Link" width="100%"/><br/><sub><b>Brain Link</b> — peer-to-peer distributed compute</sub></td>
+</tr>
+</table>
+</div>
+
+## 🧠 How It Works
 
 ```mermaid
 flowchart LR
@@ -45,19 +93,15 @@ flowchart LR
     C --> A[Answer + sources +<br/>reasoning certificate]
 ```
 
-The design law that runs through every subsystem:
-**propose fast (embeddings, GPU), promote only through verification (evidence, symbols).**
-If there is no grounds for an answer, ATANOR says so instead of inventing one.
+| Layer | What it does |
+|---|---|
+| **Triple store** (`packages/graph_scale`) | int-columnar s/p/o/src columns = a COO sparse tensor; append-only, tombstone-reversible, every triple source-tagged |
+| **Phase space** | self-trained RotatE-style 64-dim embedding — *proposes* nearby concepts, GPU-mirrored (606 MB / 0.25 s for the whole graph) |
+| **Symbolic verify** | a proposal survives only if it shares a stated type with the query — soft never becomes truth |
+| **Recursive realizer** (`packages/grounded_composer`) | a closed grammar × verified facts → unlimited novel sentences, with a one-line safety proof: output ⊆ closure(grammar ∪ facts) |
+| **Brain Link** (`packages/brain_link_pool`) | concept-key sharding + verify-by-recompute + HMAC transport — the trillion-edge plan |
 
-## Try it now
-
-- **[atanor-liard.vercel.app](https://atanor-liard.vercel.app)** — the landing page runs a
-  **mini ATANOR entirely in your browser**: entity spotting, discourse context, and
-  graph lookups over a curated pack, no server round-trip for the demo brain.
-- **[Reserve early access](https://atanor-liard.vercel.app/#download)** — one email,
-  stored on our own machine (no third-party form service), used only for release mail.
-
-## Measured, honestly
+## 📊 Measured, honestly
 
 All numbers are self-measured on our own batteries and reproducible from this
 repository; comparisons to LLM figures use public leaderboards with different
@@ -66,18 +110,38 @@ test sets, so treat those as directional.
 | What | Measured | Note |
 |---|---|---|
 | Sealed-holdout grounded QA | **92%**, zero fabrication | wrong answers trace to wrong *sources*, not invention |
-| Honesty battery | 94% | knows-what-it-doesn't-know |
+| Honesty battery | 94% | knows what it doesn't know |
 | Multi-hop composition | 75%, zero hallucination | compositional algebra over stated edges |
 | Knowledge store | ~25.9M triples | every triple carries a source tag |
-| Ingest | 0.96M rows/s (3.0M turbo lane) | single machine |
-| Inference GPU | **none** | answers run on CPU; GPU is used for *learning* only |
+| Ingest | 0.96M rows/s (3.0M turbo) | single machine |
+| Inference GPU | **none** | answers run on CPU; GPU is for *learning* only |
 | Model weights | **0 GB** | there is no language model to download |
 
-**Honest boundaries:** coverage is narrower than frontier LLMs; arithmetic and
-open-ended creativity are not where graph density helps; uncached facts need
-the (optional) web-learning lane. These are design trade-offs, not bugs.
+> **Honest boundaries:** coverage is narrower than frontier LLMs; arithmetic and
+> open-ended creativity are not where graph density helps; uncached facts need
+> the (optional) web-learning lane. These are design trade-offs, stated plainly.
 
-## What's inside
+## 🚀 Quick Start
+
+**Prerequisites:** Python 3.11+, Node.js 18+.
+
+```bash
+# 1) engine
+pip install -r requirements.txt
+uvicorn app.main:app --app-dir apps/api --port 8502
+
+# 2) web workspace
+npm install && npm run dev          # → http://localhost:3000
+
+# 3) tests
+python -m pytest packages/graph_scale packages/grounded_composer -q --import-mode=importlib
+```
+
+The engine boots with a seed graph; the learning loops grow it from sourced web
+evidence behind consensus gates — the **candidate ↔ verified** separation means
+new knowledge can never silently overwrite verified knowledge.
+
+## 🗂️ Repository Map
 
 ```
 apps/
@@ -85,81 +149,55 @@ apps/
   web/          Next.js workspace UI
   landing/      the public landing page + in-browser mini ATANOR
 packages/
-  graph_scale/       int-columnar triple store, GPU mirror, phase space,
-                     sense trust filter + sense registry (word-sense repair)
-  grounded_composer/ recursive syntactic realizer — infinite expression,
-                     finite verified truth (output ⊆ closure(grammar ∪ facts))
-  brain_link_pool/   distributed tensor sharding — concept-key routing,
-                     verify-by-recompute, HMAC peer transport (trillion-edge plan)
+  graph_scale/       triple store, GPU mirror, phase space, sense repair
+  grounded_composer/ recursive syntactic realizer
+  brain_link_pool/   distributed tensor sharding (concept-key + verify-by-recompute)
   cgsr/, answer_quality/, cloud_brain/ ...
 deploy/         Docker package for the always-on cloud brain
 docs/           architecture contracts, measurements, tech compendium
 ```
 
-Recent engineering highlights:
+## 📄 License
 
-- **Recursive realizer** — a closed grammar layer (relative clauses,
-  coordination, endings) recursively composed with verified facts generates
-  unlimited novel sentences with a one-line safety proof: the output is a
-  closure of grammar plus stored fact strings.
-- **Word-sense repair line** — a trust filter separates true polysemy from
-  batch parse noise using provenance + structural fingerprints (a hub's 490
-  "parents" reduced to 64 real ones), then partitions survivors into senses
-  and serves them through a versioned sense registry.
-- **Brain Link sharding** — the store's columns are a COO sparse tensor;
-  concept-key routing keeps a concept's whole adjacency on one peer, and every
-  peer claim is verified by independent recomputation — a lying peer is caught,
-  never trusted. Cross-process transport with HMAC-signed requests works today.
-
-## Run it locally
-
-```bash
-# engine (Python 3.11+)
-pip install -r requirements.txt
-uvicorn app.main:app --app-dir apps/api --port 8502
-
-# web workspace
-npm install && npm run dev   # → http://localhost:3000
-
-# tests
-python -m pytest packages/graph_scale packages/grounded_composer -q --import-mode=importlib
-```
-
-The engine boots with a seed graph; the learning loops grow it from sourced
-web evidence behind consensus gates (candidate ↔ verified separation — new
-knowledge can never silently overwrite verified knowledge).
-
-## License
-
-**Source-available, not open source.** Reading, running, personal evaluation
-and contributions are welcome. Commercial use, redistribution of the engine,
-and training ML systems on this code require written permission —
-see [LICENSE](LICENSE). For commercial licensing, open an issue.
+**Source-available, not open source.** Reading, running, personal evaluation and
+contributions are welcome. Commercial use, redistribution of the engine, and
+training ML systems on this code require written permission — see [LICENSE](LICENSE).
+For commercial licensing, open an issue.
 
 ---
 
-## 한국어 소개
+## 🇰🇷 한국어 소개
 
 **ATANOR(아타노르)** 는 거대언어모델 없이 답하는 그래프 네이티브 AI입니다.
 지식은 출처가 붙은 명시적 지식 그래프(~2,590만 트리플)에 쌓이고, 자체 훈련한
 위상 공간이 소프트 매칭을 *제안*하면 기호 그래프가 *검증*하고, 재귀 구문
 실현기가 **검증된 사실만으로** 문장을 합성합니다. 문장은 새롭지만, 그 안의
-사실은 전부 저장·인용된 것입니다. 근거가 없으면 지어내는 대신 없다고 말합니다.
-
-- **지금 써보기**: [atanor-liard.vercel.app](https://atanor-liard.vercel.app) —
-  랜딩 페이지에서 브라우저 안에서만 도는 미니 ATANOR와 대화할 수 있습니다.
-- **사전예약**: [등록하기](https://atanor-liard.vercel.app/#download) — 이메일
-  하나면 됩니다. 외부 폼 서비스 없이 자체 서버에만 저장됩니다.
-- **정직한 실측**: 봉인 홀드아웃 92%(날조 0), 정직성 94%, 멀티홉 75% —
-  전부 이 저장소에서 재현 가능한 자체 측정값입니다. 커버리지가 프런티어
-  LLM보다 좁은 것은 설계상의 트레이드오프로, 있는 그대로 공개합니다.
-- **라이선스**: 소스 열람은 가능하지만 오픈소스가 아닙니다 — 상업적 이용·
-  재배포·코드에 대한 AI 학습은 서면 허가가 필요합니다.
+사실은 전부 저장·인용된 것입니다. **근거가 없으면 지어내는 대신 없다고 말합니다.**
 
 <div align="center">
 
+<a href="https://atanor-liard.vercel.app" target="_blank"><img src="https://img.shields.io/badge/🌐_웹사이트-바로가기-0a0a0a?style=for-the-badge" alt="웹사이트"/></a>
+<a href="https://atanor-liard.vercel.app/#download" target="_blank"><img src="https://img.shields.io/badge/⚡_사전예약-등록하기-d2521f?style=for-the-badge" alt="사전예약"/></a>
+
+</div>
+
+- **지금 써보기** — [atanor-liard.vercel.app](https://atanor-liard.vercel.app) 랜딩
+  페이지에서 브라우저 안에서만 도는 미니 ATANOR와 대화할 수 있습니다. 팩 안의
+  질문은 서버 호출 0으로, 팩 밖의 질문은 브라우저가 직접 웹을 검증해 출처와 함께
+  답하고, 앵커할 문서가 없으면 정직하게 기권합니다.
+- **정직한 실측** — 봉인 홀드아웃 92%(날조 0), 정직성 94%, 멀티홉 75%. 전부 이
+  저장소에서 재현 가능한 자체 측정값입니다. 커버리지가 프런티어 LLM보다 좁은
+  것은 설계상의 트레이드오프로, 있는 그대로 공개합니다.
+- **왜 다른가** — ① 모든 답에 출처·추론 인증서 ② 개인 기억은 기기 안에(로컬-first)
+  ③ 추론에 GPU·모델 가중치 0 ④ Brain Link P2P로 조 단위 확장(검증-재계산).
+- **라이선스** — 소스 열람은 가능하지만 오픈소스가 아닙니다. 상업적 이용·재배포·
+  코드에 대한 AI 학습은 서면 허가가 필요합니다.
+
+<div align="center">
+<br/>
+
 **Own your Intelligence.**
 
-© 2026 Anseok Kim (Cozystone) · [Landing](https://atanor-liard.vercel.app) · [LICENSE](LICENSE)
+© 2026 Anseok Kim (Cozystone) · [Website](https://atanor-liard.vercel.app) · [LICENSE](LICENSE)
 
 </div>
