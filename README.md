@@ -1,336 +1,165 @@
+<div align="center">
+
+<img src="apps/landing/assets/atanor-logo-square.png" alt="ATANOR" width="96" />
+
 # ATANOR
 
-**A graph-native, local-first AI architecture for transparent memory, verifiable reasoning, and installable knowledge.**
+### Own your Intelligence.
 
-[![License](https://img.shields.io/badge/license-see%20LICENSE-black)](LICENSE)
-![Status](https://img.shields.io/badge/status-public%20alpha-ff6b35)
-![Local First](https://img.shields.io/badge/memory-local--first-1a936f)
-![Graph Native](https://img.shields.io/badge/architecture-graph--native-006a9f)
+**A graph-native AI that answers without a large language model —
+every fact stored with its source, every answer synthesized from verified knowledge.**
 
-ATANOR is an experimental AI system that treats knowledge as a living graph instead of hiding it inside opaque model weights. It separates private local memory from public cloud fragments, renders the active reasoning surface, and lets graph cartridges attach read-only into working memory.
+[![Website](https://img.shields.io/badge/ATANOR-atanor--liard.vercel.app-0a0a0a?style=for-the-badge)](https://atanor-liard.vercel.app)
+[![Early Access](https://img.shields.io/badge/Early%20Access-Reserve%20a%20spot-d2521f?style=for-the-badge)](https://atanor-liard.vercel.app/#download)
 
-![ATANOR graph-native workspace](docs/media/atanor-graph-workspace.png)
+[![License](https://img.shields.io/badge/license-Source--Available-black)](LICENSE)
+![No LLM](https://img.shields.io/badge/inference-No%20LLM-1a936f)
+![Local First](https://img.shields.io/badge/memory-local--first-006a9f)
+![Knowledge Graph](https://img.shields.io/badge/knowledge-~25.9M%20triples-4a4a4a)
 
-## Table Of Contents
+*[한국어 소개는 아래에 있습니다 ↓](#한국어-소개)*
 
-- [Why ATANOR Exists](#why-atanor-exists)
-- [What ATANOR Does Today](#what-atanor-does-today)
-- [How It Works](#how-it-works)
-- [Showcase Demo](#showcase-demo)
-- [Product Screenshots](#product-screenshots)
-- [Architecture In One Picture](#architecture-in-one-picture)
-- [Quickstart](#quickstart)
-- [Developer Commands](#developer-commands)
-- [Use Cases](#use-cases)
-- [Roadmap](#roadmap)
-- [FAQ](#faq)
-- [Honest Boundaries](#honest-boundaries)
+</div>
 
-## Why ATANOR Exists
+---
 
-Most AI products ask users to trust a remote black box. ATANOR explores a different direction:
+## What is this?
 
-- **Local Brain:** private memory stays on the user's machine.
-- **Cloud Brain:** public knowledge grows as content-addressed graph fragments.
-- **Graph Hub:** useful graph packs can be installed, audited, and attached read-only.
-- **Surface Brain:** answer quality and repair rules become reviewable artifacts.
-- **CORTEX-G2 / Q-Cortex:** planning, salience, and optimization are explicit subsystems.
-- **Proof-first development:** core claims are backed by tests and proof artifacts.
+Most AI compresses knowledge into opaque model weights and generates answers
+probabilistically — fluent, but unable to prove where a single claim came from.
 
-The goal is not to pretend that a small alpha system is a frontier LLM. The goal is to build the missing architecture around AI: memory that can be inspected, provenance that can be audited, and knowledge packages that can move without surrendering private data.
+ATANOR takes the other road. Knowledge lives in an **explicit knowledge graph**
+(int-columnar triple store, ~25.9M source-tagged triples). A self-trained
+**phase-space embedding** (RotatE-style, 64-dim, no pretrained weights)
+*proposes* soft matches; the **symbolic graph verifies** every proposal; a
+**recursive syntactic realizer** composes the answer from verified facts only —
+so a sentence can be novel while every fact in it is a stored, cited one.
 
-## What ATANOR Does Today
-
-ATANOR is already more than a static concept document. The current repository contains a working local web lab, API runtime, proof artifacts, and a cartridge-style graph package system.
-
-| Capability | Current state | What to inspect |
-| --- | --- | --- |
-| Local Brain | Local graph memory, retrieval, answer synthesis, proof fixtures | `packages/rag_engine`, `packages/base_brain` |
-| Cloud Brain | Public semantic fragment store and cloud attachment proofs | `packages/cloud_brain`, `data/cloud_brain/proofs` |
-| Brain Graph | Tab-aware graph projection for local, cloud, and unified views | `packages/brain_graph`, `apps/web/app/page.tsx` |
-| Graph Hub | Catalog, install, entitlement, sandbox attach, export, audit | `packages/graph_hub`, `data/graph_hub/catalog` |
-| Atlas | Privacy-safe regional relay visualization for future contributor nodes | `apps/web/app/AtlasGlobe3D.tsx`, `docs/ATANOR_ATLAS.md` |
-| Surface Brain | Reviewable repair rules and answer-quality feedback loops | `packages/surface_brain`, `packages/answer_quality` |
-| Q-Cortex / CORTEX-G2 | Planning, salience, activation, predictive loop prototypes | `packages/q_cortex`, `packages/cortex_g2` |
-| Desktop direction | Tauri sidecar and Windows distribution notes | `src-tauri`, `docs/DESKTOP_DISTRIBUTION_STRATEGY.md` |
-
-## How It Works
-
-ATANOR's workflow is designed around observable state instead of invisible prompt chains:
-
-1. **Seed the graph:** documents, public fragments, or base packs become concepts, relations, evidence, and provenance.
-2. **Keep private memory local:** Local Brain stores user/private graph state on the user's machine.
-3. **Attach public context safely:** Cloud Brain fragments and Graph Hub cartridges attach into working memory without silently writing into Local Brain.
-4. **Render the reasoning surface:** Brain Graph and the web workspace show which layer is active: local, cloud, unified, or cartridge.
-5. **Answer with evidence:** retrieval and answer-quality services keep answer context tied to traceable graph artifacts.
-6. **Repair through review:** Surface Brain turns failures and style corrections into reviewable repair candidates.
-7. **Package knowledge:** Graph Hub exports graph cartridges so knowledge can move as auditable structure, not only as prompts.
-
-This is the core difference: ATANOR does not only generate an answer. It builds and displays the memory surface that the answer came from.
-
-## What Is In This Repository
-
-| Layer | Purpose | Representative paths |
-| --- | --- | --- |
-| Web lab | Interactive ATANOR workspace, Graph Hub, Atlas, Cloud Brain panels | `apps/web` |
-| API runtime | FastAPI routers for graph, memory, cloud, repair, quality, Graph Hub | `apps/api` |
-| Local Brain | Local graph memory, retrieval, synthesis, alpha services | `packages/rag_engine`, `packages/knowledge_bakery` |
-| Cloud Brain | Semantic growth, cloud-attached nodes, contributor fragments | `packages/cloud_brain` |
-| Brain Graph | Tab-aware graph rendering and materialization | `packages/brain_graph` |
-| Base Brain | Seed/base knowledge packs and zero-user answer proof | `packages/base_brain` |
-| Graph Hub | Graph cartridge catalog, entitlement, install, attach, sandbox, audit | `packages/graph_hub` |
-| Surface Brain | Production rule review, repair queue, discourse/style graph | `packages/surface_brain` |
-| Q-Cortex | Planning, evidence, salience, and QUBO-style optimization | `packages/q_cortex` |
-| CORTEX-G2 | Activation, dream loop, predictive engine, verbalization routing | `packages/cortex_g2` |
-| Proofs | Public proof snapshots and sample catalog artifacts | `data/*/proofs`, `data/*/catalog` |
-| Infra | Cloudflare and AWS broker prototypes | `infra` |
-
-## Showcase Demo
-
-ATANOR also includes a synthetic public demo at `/demo`. It is intentionally mock-driven: the RAG question is fixed, the billion-scale graph is virtualized for presentation, and the forecast report is scripted to show the product narrative without touching private data or requiring the live API.
-
-Run the web workspace and open:
-
-```text
-http://127.0.0.1:3022/demo
+```mermaid
+flowchart LR
+    Q[Question] --> R[Learned intent router]
+    R --> G[(Knowledge graph<br/>~25.9M sourced triples)]
+    R --> P[Phase space<br/>soft proposals]
+    P -- verified against --> G
+    G --> C[Recursive realizer<br/>grammar × verified facts]
+    C --> A[Answer + sources +<br/>reasoning certificate]
 ```
 
-## Product Screenshots
+The design law that runs through every subsystem:
+**propose fast (embeddings, GPU), promote only through verification (evidence, symbols).**
+If there is no grounds for an answer, ATANOR says so instead of inventing one.
 
-### Graph-Native Workspace
+## Try it now
 
-The main workspace renders the active system as a navigable graph surface, with Local Brain, Cloud Brain, Atlas, Graph Hub, and control panels in one interface.
+- **[atanor-liard.vercel.app](https://atanor-liard.vercel.app)** — the landing page runs a
+  **mini ATANOR entirely in your browser**: entity spotting, discourse context, and
+  graph lookups over a curated pack, no server round-trip for the demo brain.
+- **[Reserve early access](https://atanor-liard.vercel.app/#download)** — one email,
+  stored on our own machine (no third-party form service), used only for release mail.
 
-![ATANOR workspace](docs/media/atanor-graph-workspace.png)
+## Measured, honestly
 
-### Graph Hub
+All numbers are self-measured on our own batteries and reproducible from this
+repository; comparisons to LLM figures use public leaderboards with different
+test sets, so treat those as directional.
 
-Graph Hub is not a prompt marketplace. It is a cartridge system for graph data: catalog, install, entitlement state, read-only attachment, export, and audit.
+| What | Measured | Note |
+|---|---|---|
+| Sealed-holdout grounded QA | **92%**, zero fabrication | wrong answers trace to wrong *sources*, not invention |
+| Honesty battery | 94% | knows-what-it-doesn't-know |
+| Multi-hop composition | 75%, zero hallucination | compositional algebra over stated edges |
+| Knowledge store | ~25.9M triples | every triple carries a source tag |
+| Ingest | 0.96M rows/s (3.0M turbo lane) | single machine |
+| Inference GPU | **none** | answers run on CPU; GPU is used for *learning* only |
+| Model weights | **0 GB** | there is no language model to download |
 
-![ATANOR Graph Hub](docs/media/atanor-graph-hub.png)
+**Honest boundaries:** coverage is narrower than frontier LLMs; arithmetic and
+open-ended creativity are not where graph density helps; uncached facts need
+the (optional) web-learning lane. These are design trade-offs, not bugs.
 
-### Cloud Brain / Atlas
+## What's inside
 
-Cloud Brain and Atlas visualize public graph-fragment state without claiming private local memory as shared cloud intelligence.
-
-![ATANOR Cloud Brain Atlas](docs/media/atanor-cloud-atlas.png)
-
-### Cloud Graph
-
-The Cloud Graph tab keeps public semantic fragments readable by giving the graph canvas priority and reducing layer diagnostics to a compact summary strip.
-
-![ATANOR Cloud Graph](docs/media/cloud-tab-compact-panel.png)
-
-## Architecture In One Picture
-
-```text
-Local documents / user input / public fragments
-        |
-        v
-Harvest + DataGate
-  clean, filter, deduplicate, gate
-        |
-        v
-Ontology + Base Brain
-  concepts, aliases, seed packs, surface packs
-        |
-        v
-Local Brain                     Cloud Brain
-private graph memory            public graph fragments
-SQLite / local traces           semantic proof store
-        |                       |
-        +----------+------------+
-                   v
-Working Memory Overlay
-temporary attachment, provenance, no silent local writes
-                   |
-                   v
-Brain Graph Renderer + Graph Hub
-tab-aware views, graph cartridges, audit trail
-                   |
-                   v
-Surface Brain + Q-Cortex + CORTEX-G2
-answer quality, repair review, salience, planning
+```
+apps/
+  api/          FastAPI engine (:8502) — answer lanes, learning loops, waitlist
+  web/          Next.js workspace UI
+  landing/      the public landing page + in-browser mini ATANOR
+packages/
+  graph_scale/       int-columnar triple store, GPU mirror, phase space,
+                     sense trust filter + sense registry (word-sense repair)
+  grounded_composer/ recursive syntactic realizer — infinite expression,
+                     finite verified truth (output ⊆ closure(grammar ∪ facts))
+  brain_link_pool/   distributed tensor sharding — concept-key routing,
+                     verify-by-recompute, HMAC peer transport (trillion-edge plan)
+  cgsr/, answer_quality/, cloud_brain/ ...
+deploy/         Docker package for the always-on cloud brain
+docs/           architecture contracts, measurements, tech compendium
 ```
 
-Read the fuller technical overview in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Recent engineering highlights:
 
-## Verified Alpha State
+- **Recursive realizer** — a closed grammar layer (relative clauses,
+  coordination, endings) recursively composed with verified facts generates
+  unlimited novel sentences with a one-line safety proof: the output is a
+  closure of grammar plus stored fact strings.
+- **Word-sense repair line** — a trust filter separates true polysemy from
+  batch parse noise using provenance + structural fingerprints (a hub's 490
+  "parents" reduced to 64 real ones), then partitions survivors into senses
+  and serves them through a versioned sense registry.
+- **Brain Link sharding** — the store's columns are a COO sparse tensor;
+  concept-key routing keeps a concept's whole adjacency on one peer, and every
+  peer claim is verified by independent recomputation — a lying peer is caught,
+  never trusted. Cross-process transport with HMAC-signed requests works today.
 
-Current publication validation:
+## Run it locally
 
-- `python -m pytest apps/api/tests packages/rag_engine/tests packages/cloud_brain/tests packages/seed_research/tests packages/cortex_g2/tests packages/q_cortex/tests packages/surface_brain/tests packages/answer_quality/tests packages/base_brain/tests packages/brain_graph/tests packages/graph_hub/tests -q`
-- `npm --workspace apps/web run build`
-- Browser smoke checks against the local ATANOR web workspace
-- Secret/path scan over staged publication files
+```bash
+# engine (Python 3.11+)
+pip install -r requirements.txt
+uvicorn app.main:app --app-dir apps/api --port 8502
 
-Key proof artifacts are committed under `data/*/proofs` and the sample Graph Hub catalog is committed under `data/graph_hub/catalog`.
+# web workspace
+npm install && npm run dev   # → http://localhost:3000
 
-## Quickstart
-
-### Prerequisites
-
-| Tool | Recommended version | Why it is needed |
-| --- | --- | --- |
-| Python | 3.11+ | FastAPI runtime and graph/proof packages |
-| Node.js | 20+ | Next.js web workspace |
-| npm | bundled with Node | workspace scripts |
-| PowerShell | Windows default | commands below are written for Windows |
-
-### Environment
-
-Copy the example environment file if you want to use local overrides:
-
-```powershell
-Copy-Item .env.example .env
+# tests
+python -m pytest packages/graph_scale packages/grounded_composer -q --import-mode=importlib
 ```
 
-The public alpha paths are designed to run without committing external API secrets. If you connect external LLMs, brokers, or cloud services, keep those values in `.env` only.
-
-### Install
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r apps/api/requirements.txt
-npm install
-```
-
-### Start The API
-
-```powershell
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8500 --app-dir apps/api
-```
-
-### Start The Web Workspace
-
-```powershell
-npm --workspace apps/web run dev -- --hostname 127.0.0.1 --port 3022
-```
-
-Open:
-
-```text
-http://127.0.0.1:3022/?lang=ko
-```
-
-## Developer Commands
-
-```powershell
-# Run the web production build
-npm --workspace apps/web run build
-
-# Run the publication test suite used for this release snapshot
-python -m pytest apps/api/tests packages/rag_engine/tests packages/cloud_brain/tests packages/seed_research/tests packages/cortex_g2/tests packages/q_cortex/tests packages/surface_brain/tests packages/answer_quality/tests packages/base_brain/tests packages/brain_graph/tests packages/graph_hub/tests -q
-
-# Run the release mock/scaffold risk gate; release blockers must stay at zero
-python scripts/audit_release_mock_risks.py
-
-# Run both API and web with the root convenience script
-npm run dev
-
-# Build the desktop sidecar prototype
-npm run desktop:sidecar
-```
-
-## Use Cases
-
-ATANOR is useful for teams and builders exploring AI systems where memory, provenance, and user ownership matter:
-
-- **Personal AI memory:** build an assistant whose private memory can be inspected, pruned, and repaired.
-- **Knowledge products:** ship domain expertise as graph cartridges rather than static prompt packs.
-- **Research workspaces:** visualize how local notes, public sources, and working context interact.
-- **Answer-quality loops:** turn bad answers into reviewable repair artifacts instead of hidden prompt edits.
-- **Privacy-preserving collaboration:** combine public graph fragments with private local context without collapsing the boundary.
-- **Agent substrate experiments:** test planning, salience, activation, and repair loops against explicit graph state.
-
-## Roadmap
-
-| Track | Next direction |
-| --- | --- |
-| Local Brain | Better import flows, pruning controls, graph diffing, and user-facing memory editing |
-| Graph Hub | Signed cartridges, stronger entitlement proofs, dependency metadata, and richer install UX |
-| Cloud Brain | Contributor-node broker hardening, fragment reputation, cost controls, and remote proof sync |
-| Atlas | Faster low-end rendering, relay status simulation, and clearer contributor privacy affordances |
-| Surface Brain | Human review queue, rule rollback UI, style graph versioning, and repair metrics |
-| Desktop | Tauri packaging, updater flow, Windows signing, and local sidecar reliability |
-| Documentation | More screenshots, walkthrough videos, API reference, and cartridge authoring guide |
-
-## FAQ
-
-### Is ATANOR a new LLM?
-
-No. ATANOR is an architecture around AI memory, retrieval, graph state, answer repair, and installable knowledge. It can work with models, but the core claim is about the substrate around the model.
-
-### Does Cloud Brain upload my private memory?
-
-No by default. The current architecture treats Cloud Brain as public graph fragments and contributor signals. Local Brain remains the private memory boundary.
-
-### Is Graph Hub a prompt marketplace?
-
-No. Graph Hub is a cartridge system for structured graph knowledge: catalog, install, attach, export, and audit.
-
-### Is this production-ready?
-
-Not yet. It is a public alpha research platform with working proofs, UI surfaces, and tests. The repo is public so the architecture can be inspected early.
-
-### Where should contributors start?
-
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), then inspect [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), `data/*/proofs`, and the Graph Hub package under `packages/graph_hub`.
-
-## Public Positioning
-
-ATANOR is for people who believe AI needs more than bigger prompts:
-
-- transparent memory instead of hidden state
-- local ownership instead of default data surrender
-- graph-native reasoning instead of one-shot text generation
-- installable knowledge instead of prompt packs
-- proof artifacts instead of hand-wavy architecture claims
-
-See [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md) for public launch copy, short posts, and messaging angles.
-
-## Project Links
-
-- Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Vision: [docs/VISION.md](docs/VISION.md)
-- Launch copy: [docs/LAUNCH_KIT.md](docs/LAUNCH_KIT.md)
-- Contributor guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Security notes: [SECURITY.md](SECURITY.md)
-- Atlas notes: [docs/ATANOR_ATLAS.md](docs/ATANOR_ATLAS.md)
-- Desktop strategy: [docs/DESKTOP_DISTRIBUTION_STRATEGY.md](docs/DESKTOP_DISTRIBUTION_STRATEGY.md)
-
-## Long-Term Vision
-
-ATANOR is a bet that personal AI will need a different substrate from today's chat-first products.
-
-The long-term vision is a workstation-native intelligence system where:
-
-- private memory can be owned, inspected, pruned, exported, and repaired by the user
-- public knowledge can circulate as graph fragments rather than opaque model checkpoints
-- useful expertise can ship as graph cartridges with auditable provenance
-- reasoning paths can be displayed as active graph state, not only as polished text
-- answer improvement can happen through reviewable repair loops instead of invisible prompt edits
-- local and cloud intelligence can cooperate without erasing the privacy boundary
-
-In that future, an AI system is not just a model endpoint. It is a living memory architecture: local where it must be private, networked where it can be public, and transparent enough to be corrected.
-
-Read the public vision in [docs/VISION.md](docs/VISION.md).
-
-## Honest Boundaries
-
-ATANOR is an alpha research platform. It does **not** currently claim:
-
-- GPT-level answer quality
-- a global web-scale Cloud Brain
-- production marketplace billing
-- production DRM or legal commercial licensing
-- perfect semantic parsing
-- private data sharing by default
-- external LLM/sLLM proof-path generation
-
-Those boundaries matter. The architecture is interesting precisely because it keeps private and public knowledge separate, observable, and testable.
+The engine boots with a seed graph; the learning loops grow it from sourced
+web evidence behind consensus gates (candidate ↔ verified separation — new
+knowledge can never silently overwrite verified knowledge).
 
 ## License
 
-See [LICENSE](LICENSE).
+**Source-available, not open source.** Reading, running, personal evaluation
+and contributions are welcome. Commercial use, redistribution of the engine,
+and training ML systems on this code require written permission —
+see [LICENSE](LICENSE). For commercial licensing, open an issue.
+
+---
+
+## 한국어 소개
+
+**ATANOR(아타노르)** 는 거대언어모델 없이 답하는 그래프 네이티브 AI입니다.
+지식은 출처가 붙은 명시적 지식 그래프(~2,590만 트리플)에 쌓이고, 자체 훈련한
+위상 공간이 소프트 매칭을 *제안*하면 기호 그래프가 *검증*하고, 재귀 구문
+실현기가 **검증된 사실만으로** 문장을 합성합니다. 문장은 새롭지만, 그 안의
+사실은 전부 저장·인용된 것입니다. 근거가 없으면 지어내는 대신 없다고 말합니다.
+
+- **지금 써보기**: [atanor-liard.vercel.app](https://atanor-liard.vercel.app) —
+  랜딩 페이지에서 브라우저 안에서만 도는 미니 ATANOR와 대화할 수 있습니다.
+- **사전예약**: [등록하기](https://atanor-liard.vercel.app/#download) — 이메일
+  하나면 됩니다. 외부 폼 서비스 없이 자체 서버에만 저장됩니다.
+- **정직한 실측**: 봉인 홀드아웃 92%(날조 0), 정직성 94%, 멀티홉 75% —
+  전부 이 저장소에서 재현 가능한 자체 측정값입니다. 커버리지가 프런티어
+  LLM보다 좁은 것은 설계상의 트레이드오프로, 있는 그대로 공개합니다.
+- **라이선스**: 소스 열람은 가능하지만 오픈소스가 아닙니다 — 상업적 이용·
+  재배포·코드에 대한 AI 학습은 서면 허가가 필요합니다.
+
+<div align="center">
+
+**Own your Intelligence.**
+
+© 2026 Anseok Kim (Cozystone) · [Landing](https://atanor-liard.vercel.app) · [LICENSE](LICENSE)
+
+</div>
