@@ -81,16 +81,40 @@ _KO_PATTERNS = [
 ]
 
 
-def _np_head(phrase: str) -> str:
-    """Reduce a noun phrase to a clean head: drop a leading article, trailing
-    punctuation, cap length, and reject pronouns/vacuous heads."""
+# finite/reporting verbs and clause markers — a clean noun phrase contains none.
+# Their presence means the regex swallowed a whole clause ('Amos reported that
+# the answer' -> the real subject is 'answer'), so we split and keep the tail.
+_CLAUSE = re.compile(r"\b(?:that|which|who|whom|where|when|while|because|since|"
+                     r"reported|reports|said|says|concluded|noted|notes|found|finds|"
+                     r"showed|shows|suggested|suggests|argued|argues|believes|"
+                     r"believe|thinks|think|claims|claim|observed|proposed|proposes|"
+                     r"is|are|was|were|has|have|had|will|would|can|could)\b",
+                     re.IGNORECASE)
+_MAX_WORDS = 5          # a real noun phrase head is short; longer = a swallowed clause
+
+
+def _np_head(phrase: str, *, is_subject: bool = False) -> str:
+    """Reduce a noun phrase to a clean head: for a subject, first split off any
+    trailing clause (keep the NP nearest the verb), then drop a leading article,
+    cap length/words, and reject pronouns, vacuous heads, and verb-bearing runs."""
     p = re.sub(r"\s+", " ", phrase).strip().strip(" ,.;:'\"()")
+    if is_subject:
+        # keep only the clause segment nearest the matched verb (the last one)
+        segs = _CLAUSE.split(p)
+        p = segs[-1].strip() if len(segs) > 1 else p
+    # drop a leading conjunction/adverb ('but overcoming...') then a leading article
+    p = re.sub(r"^(?:but|and|or|so|yet|however|thus|therefore|then|because|although|"
+               r"while|if|when)\s+", "", p, flags=re.I)
     p = re.sub(r"^(?:a|an|the|this|that|these|those|some|any)\s+", "", p, flags=re.I)
-    if not p or len(p) < 2 or len(p) > 40:
+    p = p.strip(" ,.;:'\"()")
+    if not p or len(p) < 2 or len(p) > 40 or len(p.split()) > _MAX_WORDS:
         return ""
     if p.lower() in _STOP or p.split()[-1].lower() in _STOP:
         return ""
     if not re.search(r"[A-Za-z가-힣]", p):
+        return ""
+    # a clean head must not still carry a finite verb (English)
+    if re.search(r"[A-Za-z]", p) and _CLAUSE.search(p):
         return ""
     return p
 
@@ -135,7 +159,7 @@ def extract_triples(sentence: str, lang: str = "en") -> list[dict[str, Any]]:
                     continue
             else:
                 predicate = pred
-            s, o = _np_head(m.group(sg)), _np_head(m.group(og))
+            s, o = _np_head(m.group(sg), is_subject=True), _np_head(m.group(og))
             if not s or not o or s.lower() == o.lower():
                 continue
             key = (s.lower(), predicate, o.lower())

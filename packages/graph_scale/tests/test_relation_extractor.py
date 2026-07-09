@@ -14,6 +14,17 @@ def test_english_definitional_and_hyponym():
     assert ("dogs", "is_a", "animals") in h
 
 
+def test_clause_swallowing_subject_is_trimmed_to_the_head():
+    from packages.graph_scale.relation_extractor import extract_triples
+    # the regex would grab 'Amos reported that the answer' as subject; the clause
+    # split must keep only 'answer' (the real NP nearest the verb)
+    t = {(x["s"], x["p"], x["o"]) for x in
+         extract_triples("Amos reported that the answer was a qualified yes.", "en")}
+    assert ("answer", "is_a", "qualified yes") in t
+    assert not any(x["s"].startswith("Amos reported") for x in
+                   extract_triples("Amos reported that the answer was a qualified yes.", "en"))
+
+
 def test_causal_verb_and_junk_rejected():
     from packages.graph_scale.relation_extractor import extract_triples
     v = {(x["s"], x["p"], x["o"]) for x in
