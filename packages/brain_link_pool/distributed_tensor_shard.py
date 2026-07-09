@@ -179,3 +179,77 @@ def plan_capacity(edges: int, vram_gb_per_peer: float = 16.0) -> dict[str, Any]:
             "note": "concept-key routing keeps a concept's adjacency on one peer; "
                     "a 2-hop closure fetches 2nd-hop neighbours from at most the "
                     "peers owning the frontier concepts."}
+
+
+# ---- STORAGE OFFLOAD: replicated shards + majority verification ------------
+# The coordinator holds NO copy of the columns. Each concept's adjacency lives
+# on R successor shards; a claim is trusted only when a MAJORITY of replicas
+# independently agree (byte equality — graph ops are exactly reproducible, so
+# honest replicas can only agree). A lying minority is outvoted and named for
+# peer_trust_guard.quarantine. This changes only WHO verifies — the routing
+# law and the pure-function job surface are identical to the local mode.
+
+def replica_owners(concept: str, shards: int, replicas: int = 3) -> list[int]:
+    """The R shards holding a concept's adjacency: its owner + successors."""
+    k = _shard_for_key(concept, shards)
+    return [(k + i) % shards for i in range(min(replicas, shards))]
+
+
+def partition_columns_replicated(s, p, o, terms: Any, shards: int,
+                                 replicas: int = 3) -> list[TensorShard]:
+    """Like partition_columns, but every subject's rows land on R shards."""
+    if not _HAVE_NP:
+        raise RuntimeError("numpy required")
+    s = np.asarray(s); p = np.asarray(p); o = np.asarray(o)
+    uniq, inv = np.unique(s, return_inverse=True)
+    base = np.array([_shard_for_key(terms.term(int(u)), shards) for u in uniq],
+                    dtype=np.int32)
+    out = []
+    for k in range(shards):
+        m = np.zeros(len(s), dtype=bool)
+        for r in range(min(replicas, shards)):
+            m |= (base[inv] == (k - r) % shards)
+        out.append(TensorShard(k, s[m], p[m], o[m]))
+    return out
+
+
+@dataclass
+class MajorityRouter:
+    """Coordinator WITHOUT authoritative columns: truth = replica majority."""
+    shards: list          # peer handles (TensorShard / RemoteShard duck-typed)
+    terms: Any
+    replicas: int = 3
+    stats: dict[str, int] = field(default_factory=lambda: {
+        "routed": 0, "agreed": 0, "outvoted_peers": 0, "no_majority": 0})
+
+    def degree(self, concept: str) -> int | None:
+        return self._op(concept, "degree_of")
+
+    def neighbors(self, concept: str) -> list[int] | None:
+        return self._op(concept, "out_neighbors")
+
+    def _op(self, concept: str, method: str):
+        cid = self.terms.lookup(concept)
+        if cid is None:
+            return None
+        owners = replica_owners(concept, len(self.shards), self.replicas)
+        claims = []
+        for k in owners:
+            try:
+                v = getattr(self.shards[k], method)(cid)
+                claims.append((k, tuple(v) if isinstance(v, list) else v))
+            except Exception:
+                continue
+        if not claims:
+            return None
+        from collections import Counter
+
+        val, n = Counter(c for _k, c in claims).most_common(1)[0]
+        if n * 2 <= len(claims):
+            self.stats["no_majority"] += 1
+            return None
+        liars = [k for k, c in claims if c != val]
+        self.stats["routed"] += 1
+        self.stats["agreed"] += 1
+        self.stats["outvoted_peers"] += len(liars)   # -> peer_trust quarantine
+        return list(val) if isinstance(val, tuple) else val
