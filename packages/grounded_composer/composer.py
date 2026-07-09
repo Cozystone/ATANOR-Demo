@@ -125,6 +125,27 @@ def _ko_topic_particle(label: str) -> str:
     return topic(label)[len(label):]
 
 
+# Korean plain-declarative sentence terminals: an object ending in one of these
+# is already a COMPLETE CLAUSE ("…에 위치한다"), not a noun identity, so it must
+# never be spliced into a "…는 {o}입니다" frame (would yield "…위치한다입니다").
+_CLAUSE_TERMINALS = ("다", "요", "음", "임", "됨", "네", "지", "라", "함")
+
+
+def _is_clause(text: str) -> bool:
+    """True when a stored object reads as a finished sentence rather than a noun
+    phrase — either it ends in a declarative terminal, or it carries its own
+    subject (a 은/는 topic particle before the tail) marking an embedded clause."""
+    t = (text or "").strip().rstrip(".。！!?？").strip()
+    if not t:
+        return False
+    if t.endswith(_CLAUSE_TERMINALS):
+        return True
+    # an object that already states its own subject ("대한민국은 … 나라") is a clause
+    import re as _re
+
+    return bool(_re.search(r"[가-힣]+[은는]\s", t))
+
+
 def _resolve_josa(sentence: str) -> str:
     """Resolve 조사 placeholders the frames leave when the slot filler's final
     syllable decides the particle: X이(가), X(으)로. LAD layer, data-driven."""
@@ -310,9 +331,13 @@ def compose_narrative(subject: str, facts: list[tuple[str, str, str]],
                 used.append((s, p, o))
     if len(paragraphs) < 2:
         return None
-    # ¶결: verbatim identity reuse — never new content
+    # ¶결: verbatim identity reuse — never new content. Only when the identity
+    # object is a NOUN we can wrap ("커피는 [음료]입니다"). A defined_as gloss that
+    # is itself a full clause ("대한민국은 …에 위치한다") can't be spliced into the
+    # frame — that produced the "위치한다입니다" defect and a doubled subject — so we
+    # drop ¶결 rather than emit broken Korean (the arc still reads without it).
     head = by_pred.get("defined_as") or by_pred.get("is_a")
-    if head:
+    if head and not _is_clause(head[2]):
         closer = f"즉, {subject + _ko_topic_particle(subject)} {head[2]}"
         closer += "의 일종입니다." if head[1] == "is_a" else "입니다."
         paragraphs.append(_resolve_josa(closer))
