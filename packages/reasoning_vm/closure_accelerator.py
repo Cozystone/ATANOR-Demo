@@ -520,3 +520,47 @@ def safe_closure_learn(store: Any, relation: str = "is_a", *, mode: str = "safe"
         "excision_sample": review.get("incisions", [])[:12],
         "candidates_sample": clean_pairs[:20],
     }
+
+
+# ---- persist the surgeon-clean candidates so growth is DURABLE, not ephemeral
+def persist_candidates(pairs: list[tuple[str, str]], relation: str = "is_a", *,
+                       ledger_dir: str | None = None) -> dict[str, Any]:
+    """Append surgeon-clean deductive candidates to a CANDIDATE LEDGER (JSONL),
+    deduped, provenance-tagged. This is why the graph didn't grow: the closure
+    ran but nothing was ever WRITTEN. The ledger is a candidate tier — separate
+    from the base store (no single-writer risk), reversible (delete the file),
+    and gated for production promotion. Returns added/skipped counts."""
+    import json
+    import time as _t
+    from pathlib import Path
+
+    root = Path(ledger_dir) if ledger_dir else (
+        Path(__file__).resolve().parents[2] / "data" / "cloud_brain" / "derived_candidates")
+    root.mkdir(parents=True, exist_ok=True)
+    ledger = root / f"{relation}_closure.jsonl"
+
+    existing: set[tuple[str, str]] = set()
+    if ledger.exists():
+        with ledger.open(encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    o = json.loads(line)
+                    existing.add((o["s"], o["o"]))
+                except Exception:
+                    continue
+    added = 0
+    ts = _t.strftime("%Y-%m-%dT%H:%M:%S")
+    with ledger.open("a", encoding="utf-8") as fh:
+        for s, o in pairs:
+            if (s, o) in existing:
+                continue
+            existing.add((s, o))
+            fh.write(json.dumps({"s": s, "p": relation, "o": o,
+                                 "src": f"derived:closure:{relation}:surgeon-reviewed",
+                                 "tier": "candidate", "at": ts}, ensure_ascii=False) + "\n")
+            added += 1
+    return {"ledger": str(ledger), "added": added,
+            "skipped_duplicate": len(pairs) - added,
+            "total_in_ledger": len(existing),
+            "tier": "candidate", "written_to_production": False,
+            "note": "durable clean deductive candidates; promote to production via the evidence gate"}
