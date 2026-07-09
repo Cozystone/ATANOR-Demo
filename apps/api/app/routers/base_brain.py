@@ -447,6 +447,23 @@ def base_brain_relation_extract(sentence: str, lang: str = "en") -> dict[str, An
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/autonomy/self-assess")
+def base_brain_autonomy_self_assess() -> dict[str, Any]:
+    """ATANOR's self-judged autonomy: its EARNED trust (from confirmed vs retired
+    predictions + graph health), the tier it recommends for itself, and — crucially
+    — the hard ceiling that never moves (irreversible / system-breaking / outward
+    actions always need an operator, at any trust). Read-only."""
+    try:
+        from packages.graph_scale.autonomy_self import HARD_CEILING, recommend_tier, trust_score
+
+        t = trust_score()
+        return {"available": True, "trust": t, "recommendation": recommend_tier(t["score"]),
+                "hard_ceiling": sorted(HARD_CEILING),
+                "note": "trust earns the reversible band; the ceiling requires an operator forever"}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/collective/board")
 def base_brain_collective_board() -> dict[str, Any]:
     """The AGORA review board: self-proposed code improvements + swarm tally + the
