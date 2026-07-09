@@ -148,6 +148,80 @@ def realize_ko(pred: dict[str, Any]) -> str:
     return "확인된 공식 근거는 없으나, 위상 기하학적 구조로 미루어 볼 때 " + body
 
 
+def investigate(limit: int = 5) -> int:
+    """Push unverified predicted hypotheses into the gated evidence queue as
+    questions — the prediction only ASKS; the web-evidence gates answer. The
+    kernel proposes a fact, the machine goes and checks it."""
+    try:
+        from . import abstain_queue
+    except Exception:
+        return 0
+    pushed = 0
+    for row in reversed(_rows()):
+        if row.get("status") != "unverified":
+            continue
+        if abstain_queue.record_abstain(row.get("question", "")):
+            pushed += 1
+        if pushed >= limit:
+            break
+    return pushed
+
+
+def _kg_has_edge(store: Any, s: str, p: str, o: str) -> bool:
+    try:
+        for a, b, c in store.facts_about(s, limit=80) or []:
+            if str(b) == p and str(c) == o:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _age_days(minted_at: str) -> float:
+    try:
+        t = time.strptime(minted_at, "%Y-%m-%dT%H:%M:%S")
+        return (time.time() - time.mktime(t)) / 86400.0
+    except Exception:
+        return 0.0
+
+
+def settle(store: Any = None, max_age_days: float = 14.0) -> dict[str, int]:
+    """Close the loop: a predicted hypothesis is CONFIRMED once the store holds
+    the exact edge (evidence arrived and passed every gate); stale unverified
+    ones RETIRE so guesses never accumulate. Nothing is promoted from here — a
+    prediction only becomes knowledge through the evidence path, like everything
+    else. Mirrors hypothesis_minter.settle."""
+    if store is None:
+        try:
+            from .answer_bridge import _store
+            store = _store()
+        except Exception:
+            return {"confirmed": 0, "retired": 0, "checked": 0}
+    if store is None:
+        return {"confirmed": 0, "retired": 0, "checked": 0}
+    rows = _rows()
+    confirmed = retired = checked = 0
+    changed = False
+    for row in rows:
+        if row.get("status") != "unverified":
+            continue
+        checked += 1
+        if _kg_has_edge(store, row.get("subject", ""), row.get("predicate", ""),
+                        row.get("object", "")):
+            row["status"] = "confirmed"
+            row["confirmed_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            confirmed += 1
+            changed = True
+        elif _age_days(row.get("minted_at", "")) > max_age_days:
+            row["status"] = "retired"
+            retired += 1
+            changed = True
+    if changed:
+        LEDGER.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+                          encoding="utf-8")
+    return {"confirmed": confirmed, "retired": retired, "checked": checked}
+
+
 def mint_predicted_fact(subject: str, store: Any = None, language: str = "ko"
                         ) -> dict[str, Any] | None:
     """The kernel: predict the top missing edge, MINT it as a labeled hypothesis

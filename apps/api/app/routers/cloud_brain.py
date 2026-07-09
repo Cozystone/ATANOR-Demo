@@ -1850,6 +1850,18 @@ def _continuous_worker() -> None:
                     _hyp_mint(store=_kg2, k_terms=40)
                     _hyp_investigate(limit=2)
                     _sres = _hyp_settle(store=_kg2)
+                    # PREDICTED-FACT loop: the next-fact kernel's hedged guesses
+                    # are pushed to the evidence queue and settled — a prediction
+                    # confirms once the store holds the exact edge; stale ones
+                    # retire so guesses never accumulate. Never promotes a fact.
+                    try:
+                        from packages.graph_scale.fact_prediction import (
+                            investigate as _pred_investigate, settle as _pred_settle)
+
+                        _pred_investigate(limit=2)
+                        _pred_settle(store=_kg2)
+                    except Exception:
+                        pass
                     # PII quarantine sweep (threat model §4): personal data that
                     # slipped past the ingest gate is retracted (reversible).
                     _pii = {}

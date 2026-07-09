@@ -70,3 +70,41 @@ def test_unknown_subject_yields_no_prediction(monkeypatch):
     from packages.graph_scale import fact_prediction as fp
     _inject(monkeypatch)
     assert fp.predict_missing_edges("존재하지않는것", store=_StubStore()) == []
+
+
+def test_settle_confirms_when_evidence_arrives_and_retires_stale(tmp_path, monkeypatch):
+    """The closed loop: a predicted hypothesis CONFIRMS once the store holds the
+    exact edge; a stale unverified one RETIRES. Never promotes from here."""
+    import json
+    from packages.graph_scale import fact_prediction as fp
+    ledger = tmp_path / "pred.jsonl"
+    rows = [
+        {"subject": "서울", "predicate": "is_a", "object": "도시", "status": "unverified",
+         "question": "q1", "minted_at": "2026-07-09T00:00:00"},           # will confirm
+        {"subject": "화성", "predicate": "is_a", "object": "행성", "status": "unverified",
+         "question": "q2", "minted_at": "2000-01-01T00:00:00"},           # stale -> retire
+    ]
+    ledger.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+                      encoding="utf-8")
+    monkeypatch.setattr(fp, "LEDGER", ledger)
+    store = _StubStore({"서울": [("서울", "is_a", "도시")]})   # evidence for row 1 only
+    out = fp.settle(store=store, max_age_days=14.0)
+    assert out["confirmed"] == 1 and out["retired"] == 1 and out["checked"] == 2
+    after = {r["subject"]: r["status"] for r in
+             [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines()]}
+    assert after["서울"] == "confirmed" and after["화성"] == "retired"
+
+
+def test_investigate_pushes_questions_to_evidence_queue(tmp_path, monkeypatch):
+    import json
+    from packages.graph_scale import fact_prediction as fp
+    from packages.graph_scale import abstain_queue
+    ledger = tmp_path / "pred.jsonl"
+    ledger.write_text(json.dumps({"subject": "서울", "predicate": "is_a", "object": "도시",
+                                  "status": "unverified", "question": "서울은 도시인가?",
+                                  "minted_at": "2026-07-09T00:00:00"}, ensure_ascii=False) + "\n",
+                      encoding="utf-8")
+    monkeypatch.setattr(fp, "LEDGER", ledger)
+    pushed = []
+    monkeypatch.setattr(abstain_queue, "record_abstain", lambda q: pushed.append(q) or [q])
+    assert fp.investigate(limit=5) == 1 and pushed == ["서울은 도시인가?"]
