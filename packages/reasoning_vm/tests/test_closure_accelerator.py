@@ -71,3 +71,22 @@ def test_cpu_gpu_agree_on_new_edge_count(tmp_path):
     # IDENTICAL edge count — only slower. Stability without changing the answer.
     small = ca._try_gpu_closure(si, oi, N, block=64)
     assert small[0] == gpu[0]
+
+
+def test_closure_learn_excludes_hubs_and_stays_candidate_only(tmp_path):
+    """The contamination guard: a polysemy HUB subject's mixed-sense is_a is
+    kept OUT of closure (else it propagates garbage), and nothing is written
+    to production — growth is gated candidates only."""
+    from packages.reasoning_vm.closure_accelerator import closure_learn
+    # 'capital' is a hub: many (>=12) is_a parents mixing senses; a clean chain
+    # seoul -> city -> settlement should still close.
+    tri = [("서울", "is_a", "도시"), ("도시", "is_a", "정착지")]
+    tri += [("capital", "is_a", f"junk{i}") for i in range(14)]   # hub
+    st = _Store(tmp_path, tri)
+    r = closure_learn(st, "is_a", attractor_indegree=999)
+    cand = {(a, b) for a, b in r["candidates"]}
+    assert ("서울", "is_a", "정착지") not in cand      # (it's stored as pair form)
+    assert ("서울", "정착지") in cand                  # clean non-hub chain closed
+    assert not any(a == "capital" for a, b in cand)    # hub kept out (no contamination)
+    assert r["written_to_production"] is False
+    assert r["hub_subjects_excluded"] is True

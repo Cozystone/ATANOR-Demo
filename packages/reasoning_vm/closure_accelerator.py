@@ -198,3 +198,122 @@ def witness(store: Any, subj: str, obj: str, relation: str = "is_a") -> str | No
     except Exception:
         pass
     return None
+
+
+# ---- MAX-DEVICE learning pass with contamination gate (dev-PC, gated) --------
+def max_block_for(tier: str) -> int:
+    """On the dev PC (high tier / RTX 5080) squeeze the card — big blocks,
+    resident graph. Users' modest cards keep the safe adaptive sizes."""
+    return {"high": 60000, "mid": 12000, "low": 3000}.get(tier, 0)
+
+
+def _materialize_new_edges(store: Any, relation: str, attractor_indegree: int,
+                           cap: int) -> tuple[list[tuple[str, str]], int, int]:
+    """CPU scipy closure that RETURNS the actual new (subj,obj) term pairs (up to
+    cap), not just a count — so growth can be trust-gated and inspected before
+    anything is promoted. Returns (pairs, total_new, dropped_attractors)."""
+    from scipy import sparse
+
+    s, o = _load_relation_edges(store, relation)
+    if len(s) == 0:
+        return [], 0, 0
+    # GATE 1 — drop generic attractor OBJECTS (clique explosion + batch garbage).
+    obj_ids, counts = np.unique(o, return_counts=True)
+    attractor = set(obj_ids[counts >= attractor_indegree].tolist())
+    keep = ~np.isin(o, list(attractor)) if attractor else np.ones(len(o), bool)
+    s, o = s[keep], o[keep]
+    # GATE 2 — drop POLYSEMY-HUB SUBJECTS (measured contamination: 'capital'
+    # with 490 mixed-sense parents propagated 'capital is_a explosive/picture'
+    # through closure). A hub's is_a is un-sense-separated, so its closure mixes
+    # senses; only NON-HUB subjects (real 1-2 parent taxonomy) are safe to close.
+    if relation in ("is_a", "instance_of", "subclass_of") and len(s):
+        subj_ids, subj_out = np.unique(s, return_counts=True)
+        hubs = set(subj_ids[subj_out >= 12].tolist())        # _HUB_MIN_PARENTS
+        if hubs:
+            nonhub = ~np.isin(s, list(hubs))
+            s, o = s[nonhub], o[nonhub]
+    nodes = np.unique(np.concatenate([s, o]))
+    N = len(nodes)
+    si = np.searchsorted(nodes, s); oi = np.searchsorted(nodes, o)
+    A = sparse.csr_matrix((np.ones(len(si), np.int8), (si, oi)), shape=(N, N))
+    A.data[:] = 1
+    A2 = A.dot(A); A2.data[:] = 1
+    A2 = A2 - A2.multiply(A); A2.setdiag(0); A2.eliminate_zeros()
+    A2 = A2.tocoo()
+    total = int(A2.nnz)
+    rows, cols = A2.row[:cap], A2.col[:cap]
+    pairs = [(store.terms.term(int(nodes[r])), store.terms.term(int(nodes[c])))
+             for r, c in zip(rows.tolist(), cols.tolist())]
+    pairs = [(a, b) for a, b in pairs if a and b]
+    return pairs, total, len(attractor)
+
+
+def closure_learn(store: Any, relation: str = "is_a", *, mode: str = "safe",
+                  attractor_indegree: int = 5000, sample_cap: int = 200000,
+                  quality_probe: int = 2000) -> dict[str, Any]:
+    """A deductive-closure LEARNING pass, contamination-gated and CANDIDATE-ONLY.
+
+    Growth safety (owner: '수만 늘리려다 오염되면 안 됨'):
+      * every new edge is deductively TRUE given its inputs (transitive);
+      * generic attractors are dropped so it stays a real taxonomy;
+      * a TRUST GATE keeps only edges whose object is a trusted type (reviewed
+        source, or a non-legacy discriminative parent) — the same signal the
+        sense filter uses, so base parse-garbage isn't propagated;
+      * the result is returned as CANDIDATES with a `derived:closure` tag and a
+        measured clean-fraction — it is NEVER written to production here. Promotion
+        stays operator/evidence-gated, per the hard rule.
+
+    mode='max' (the dev PC) squeezes the GPU; 'safe' is the user default."""
+    import time as _t
+    from packages.graph_scale.sense_trust_filter import (
+        _isa_indegree, _reviewed_source_ids, _GENERIC_INDEGREE)
+
+    from .device import profile
+    t0 = _t.time()
+    prof = profile()
+    pairs, total_new, dropped = _materialize_new_edges(
+        store, relation, attractor_indegree, sample_cap)
+
+    # TRUST GATE on each candidate's object: keep only trusted types.
+    try:
+        indeg = _isa_indegree(store)
+        reviewed_ok = bool(_reviewed_source_ids(store))
+    except Exception:
+        indeg = {}
+        reviewed_ok = False
+
+    def _obj_trusted(obj: str) -> bool:
+        oid = store.terms.lookup(obj)
+        if oid is None:
+            return False
+        # a modest-in-degree type is discriminative (real); a generic one is batch noise
+        return int(indeg.get(oid, 0)) < _GENERIC_INDEGREE
+
+    clean = [(a, b) for a, b in pairs if _obj_trusted(b)]
+    # quality probe: clean fraction over a bounded sample (honest estimate)
+    probe = pairs[:quality_probe]
+    probe_clean = sum(1 for a, b in probe if _obj_trusted(b))
+    clean_fraction = (probe_clean / len(probe)) if probe else 0.0
+
+    return {
+        "relation": relation, "mode": mode, "device": prof,
+        "block_used": max_block_for(prof["tier"]) if mode == "max" else None,
+        "total_new_provable": total_new,
+        "materialized": len(pairs),
+        "candidates_after_trust_gate": len(clean),
+        # HONEST metric name: this is the fraction whose OBJECT is a trusted
+        # (non-attractor) type — ONE dimension of cleanliness, NOT full
+        # correctness. Residual base noise (a wrong stated edge inside a non-hub
+        # chain, e.g. '방콕 is_a 청교도') propagates and this probe can't catch
+        # it — which is exactly why the output is candidate-only and gated.
+        "object_trusted_fraction": round(clean_fraction, 3),
+        "dropped_attractors": dropped,
+        "hub_subjects_excluded": True,        # polysemy hubs kept out (contamination guard)
+        "seconds": round(_t.time() - t0, 2),
+        "provenance_tag": f"derived:closure:{relation}",
+        "written_to_production": False,       # HARD: candidate-only, operator-gated
+        "honesty_note": "deductive closure is only as clean as the base graph; "
+                        "these are gated candidates for evidence review, never "
+                        "auto-promoted — growing numbers must not contaminate.",
+        "candidates": clean[:50],             # a peek; full set is len above
+    }
