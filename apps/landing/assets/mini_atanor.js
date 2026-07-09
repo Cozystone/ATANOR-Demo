@@ -22,10 +22,13 @@
     return w.replace(/(이란|이라는|란|라는|은|는|이|가|을|를|의|도|만|에서|에는|에|와|과|랑)$/, "");
   };
   var uiLang = function () { try { return typeof LANG !== "undefined" ? LANG : "ko"; } catch (e) { return "ko"; } };
-  // leading discourse fillers ("오 서울의 수도는?" — measured live) and trailing chatter
+  // leading discourse fillers, STACKED ('오 그럼 강남은?' — measured live), so
+  // strip repeatedly until stable; then trailing chatter
+  var FILLER = /^\s*(오|아|어|음+|흠+|와|헐|그래|그럼|그러면|근데|그런데|그리고|혹시|자|저기|아니|야|이제|음)\s+/;
   var stripFillers = function (s) {
-    return s.replace(/^\s*(오|아|어|음+|흠+|와|헐|그럼|그러면|근데|그런데|혹시|자|저기|아니)\s+/g, "")
-            .replace(/[?？!.…~ㅋㅎㅠㅜ]+$/g, "").trim();
+    var prev;
+    do { prev = s; s = s.replace(FILLER, ""); } while (s !== prev);
+    return s.replace(/[?？!.…~ㅋㅎㅠㅜ\s]+$/g, "").trim();
   };
 
   // relation keywords -> pack predicate; spotted ANYWHERE in the utterance
@@ -186,6 +189,12 @@
       text = en
         ? "This mini pack covers world capitals, populations and areas, plus concept definitions (coffee, gravity, the speed of light…). Ask in Korean — and follow up with just 인구는?, I keep context."
         : "이 미니 팩에는 세계 나라들의 수도·인구·면적과 개념 정의(커피, 중력, 빛의 속도…)가 들어 있어요. ‘대한민국의 인구는?’처럼 묻고, 이어서 ‘면적은?’처럼 짧게 물어도 돼요 — 맥락을 기억합니다.";
+    } else if (/(심심|재미(있|없)|재밌|놀자|놀아|뭐하|뭐 하|배고|졸려|졸린|피곤|힘들|외로|좋아 너|너 좋아|사랑해|보고싶|기분|어때|어떠|bored|let'?s play|i'?m (bored|tired|hungry))/.test(q)) {
+      // omni-engage in miniature: a feeling/chit-chat move is a DIALOGUE turn,
+      // never a knowledge claim — engage, then offer a door back to a question.
+      text = en
+        ? "Then let's put me to work — I answer from a verified graph in this tab, and reach the live web for anything beyond it. Ask me ‘일본의 수도는?’, or a definition like ‘커피가 뭐야?’."
+        : "그럼 저를 좀 부려보세요 — 이 탭에서 검증된 그래프로 답하고, 그 너머는 실시간 웹으로 확인해요. ‘일본의 수도는?’이나 ‘커피가 뭐야?’처럼 물어보세요.";
     }
     if (text) return { text: text, ms: performance.now() - t0, grounded: false, kind: "chat" };
     return null;
@@ -253,6 +262,10 @@
      must ANCHOR the question (title overlap gate) or we abstain honestly, and
      whatever we say is a VERBATIM quote from the source, linked. */
   var STOP_WORDS = /^(뭐야|뭐지|뭔데|뭐냐|무엇|누구야|누구지|누구|어디야|어디|언제|얼마야|얼마|왜|어떻게|알려줘|설명해줘|설명|말해줘|궁금해|대해|대해서|관해|에|는|은|이|가)$/;
+  // common ATTRIBUTE nouns: a bare '높이는?' follow-up means the DISCOURSE
+  // entity's attribute, not a new topic. A proper-noun token ('강남') is a new
+  // topic. Surface/discourse cue, not knowledge — kept as a small LAD list.
+  var ATTR_WORDS = /^(높이|무게|길이|넓이|면적|크기|색|색깔|색상|나이|키|가격|값|깊이|두께|온도|둘레|지름|반지름|무엇으로|재료|성분|위치|수도|인구|정의|뜻|의미)$/;
 
   function webSubject(q, entity, rel) {
     if (entity && !rel) return entity;             // pack entity, unknown property
@@ -293,53 +306,69 @@
     return null;
   }
 
-  function webRescue(pack, r) {
-    var subj = webSubject(r.q, r.entity, r.rel);
-    // a bare short follow-up ('높이는?') rides the discourse state as a property
-    var propWord = null;
-    if (r.rel) { for (var w in REL_WORDS) { if (REL_WORDS[w] === r.rel) { propWord = w; break; } } }
-    // a bare '높이는?' rides the discourse entity as a PROPERTY — but only a
-    // true bare follow-up: single leftover token, and no definition question
-    // word ('에펠탑이 뭐야?' asks WHAT 에펠탑 IS, never a property of the
-    // previous entity — measured live).
-    var isDefQ = /(뭐야|뭐지|뭔데|뭐냐|무엇|누구)/.test(r.q);
-    var leftover = r.q.split(/\s+/).map(stripJosa).filter(function (t) {
-      return t && !STOP_WORDS.test(t) && !(t in REL_WORDS);
-    });
-    if (!propWord && !isDefQ && CTX.entity && leftover.length === 1 &&
-        subj === leftover[0] && subj !== CTX.entity &&
-        subj.replace(/\s+/g, "").length <= 4) {
-      propWord = subj; subj = CTX.entity;
-    }
-    if (!subj) return Promise.reject(new Error("no-subject"));
-    var lookup = wikiSummary(subj).catch(function () {
+  function fetchPage(subj) {
+    return wikiSummary(subj).catch(function () {
       return wikiSearch(subj).then(function (t) {
         if (!t) throw new Error("not-found");
         return wikiSummary(t);
       });
     });
-    return lookup.then(function (page) {
-      var title = page && (page.title || ""), extract = page && (page.extract || "");
-      var url = page && page.content_urls && page.content_urls.desktop && page.content_urls.desktop.page;
-      if (!extract || !anchors(subj, title)) throw new Error("no-anchor");
-      var text, partial = false;
-      if (propWord) {
-        var sent = pickSentence(extract, propWord);
-        if (sent) { text = sent; }
-        else {
-          text = extract.split(/(?<=다\.)\s+/)[0];
-          partial = true;
-        }
-      } else {
-        var sents = extract.split(/(?<=다\.)\s+/);
-        text = sents.slice(0, 2).join(" ");
+  }
+
+  function renderPage(page, subj, propWord, t0) {
+    var title = page && (page.title || ""), extract = page && (page.extract || "");
+    var url = page && page.content_urls && page.content_urls.desktop && page.content_urls.desktop.page;
+    if (!extract || !anchors(subj, title)) return null;
+    var text, partial = false;
+    if (propWord) {
+      var sent = pickSentence(extract, propWord);
+      if (sent) text = sent;
+      else { text = extract.split(/(?<=다\.)\s+/)[0]; partial = true; }
+    } else {
+      text = extract.split(/(?<=다\.)\s+/).slice(0, 2).join(" ");
+    }
+    if (partial) text += " — 요약에 ‘" + propWord + "’ 항목은 없었어요. 원문에서 확인해 보세요.";
+    CTX.entity = title;
+    return { text: text, url: url, title: title,
+             ms: performance.now() - t0, grounded: true, web: true };
+  }
+
+  function webRescue(pack, r) {
+    // the relation, if the user named a known property word ('인구는?' -> 인구)
+    var propWord = null;
+    if (r.rel) { for (var w in REL_WORDS) { if (REL_WORDS[w] === r.rel) { propWord = w; break; } } }
+    var subj = webSubject(r.q, r.entity, r.rel);
+    // a bare attribute follow-up ('높이는?') -> the discourse entity's attribute
+    if (!propWord && !r.entity && CTX.entity && subj && ATTR_WORDS.test(subj) && subj !== CTX.entity) {
+      propWord = subj; subj = "";
+    }
+
+    // CASCADE (measured: '오 그럼 강남은' must look up 강남 as its OWN topic,
+    // not as a property of the previous entity):
+    //  1) a real relation word with no subject -> the discourse entity's property
+    //  2) a standalone subject token -> look it UP as a subject (new topic wins)
+    //  3) subject didn't anchor but we have context -> the token as a keyword
+    //     inside the context entity (this is where '높이는?' lands)
+    if (propWord && (!subj || subj === CTX.entity) && CTX.entity) {
+      return fetchPage(CTX.entity).then(function (p) {
+        var out = renderPage(p, CTX.entity, propWord, r.t0);
+        if (!out) throw new Error("no-anchor");
+        return out;
+      });
+    }
+    if (!subj) return Promise.reject(new Error("no-subject"));
+    return fetchPage(subj).then(function (p) {
+      var out = renderPage(p, subj, propWord, r.t0);
+      if (out) return out;
+      // subject didn't anchor: try it as a property of the discourse entity
+      if (CTX.entity && subj !== CTX.entity) {
+        return fetchPage(CTX.entity).then(function (p2) {
+          var out2 = renderPage(p2, CTX.entity, subj, r.t0);
+          if (!out2) throw new Error("no-anchor");
+          return out2;
+        });
       }
-      if (partial) {
-        text += " — 요약에 ‘" + propWord + "’ 항목은 없었어요. 원문에서 확인해 보세요.";
-      }
-      CTX.entity = title;                      // web entity carries context too
-      return { text: text, url: url, title: title,
-               ms: performance.now() - r.t0, grounded: true, web: true };
+      throw new Error("no-anchor");
     });
   }
 
