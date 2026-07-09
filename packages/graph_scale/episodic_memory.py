@@ -165,6 +165,66 @@ def _relative_ko(at: str, now: datetime) -> str:
     return f"{now.year - t.year}년 전 {t.month}월"
 
 
+def _age_days(at: str, now: datetime) -> float:
+    try:
+        t = datetime.strptime(at[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        return max(0.0, (now - t).total_seconds() / 86400.0)
+    except Exception:
+        return 0.0
+
+
+def consolidate(now: datetime | None = None, *, half_life_days: float = 30.0,
+                forget_floor: float = 0.05, min_forget_age_days: float = 7.0) -> dict[str, Any]:
+    """Background memory consolidation (osaurus's salience-scored 3-layer memory +
+    the brain's salience compression, done HONESTLY): a moment's SALIENCE — set by
+    behaviour and felt valence — governs how long it is REMEMBERED, decaying with
+    age (half-life). Trivial + old episodes are forgotten; meaningful ones persist.
+
+    HARD BOUNDARY: salience here compresses MEMORY (what to retain), never lowers
+    the bar for what the engine ASSERTS as true. Forgetting a dull moment is human;
+    asserting a guess because you're 'excited' is the LLM failure we refuse."""
+    now = now or _now()
+    rows = _rows()
+    survivors: list[dict[str, Any]] = []
+    forgotten = 0
+    for ep in rows:
+        age = _age_days(ep.get("at", ""), now)
+        sal = float(ep.get("salience", 0.5))
+        # vivid memories persist far longer: half-life scales with salience, so a
+        # 0.9 moment lasts ~years while a 0.08 glance fades in weeks (consolidation
+        # to long-term is salience-gated, as in the brain).
+        half_life_eff = max(1e-6, half_life_days) * (1.0 + 9.0 * sal)
+        eff = sal * (0.5 ** (age / half_life_eff))
+        if eff < forget_floor and age > min_forget_age_days:
+            forgotten += 1                     # dull and old -> let it fade
+            continue
+        survivors.append(ep)
+    # merge near-duplicates: same title, concept overlap, within a day (double-logged)
+    merged = 0
+    out: list[dict[str, Any]] = []
+    for ep in survivors:
+        hit = None
+        for prev in out:
+            if prev.get("title") == ep.get("title") and \
+               set(prev.get("concepts") or []) & set(ep.get("concepts") or []) and \
+               abs(_age_days(prev.get("at", ""), now) - _age_days(ep.get("at", ""), now)) < 1.0:
+                hit = prev
+                break
+        if hit:
+            hit["observations"] = (hit.get("observations") or []) + (ep.get("observations") or [])
+            hit["salience"] = max(float(hit.get("salience", 0)), float(ep.get("salience", 0)))
+            hit["concepts"] = sorted(set(hit.get("concepts") or []) | set(ep.get("concepts") or []))
+            merged += 1
+        else:
+            out.append(ep)
+    if forgotten or merged:
+        LEDGER.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in out) + "\n",
+                          encoding="utf-8")
+    return {"kept": len(out), "forgotten": forgotten, "merged": merged,
+            "note": "salience-weighted retention (behaviour/valence -> what to keep); "
+                    "never touches the truth threshold for assertions"}
+
+
 def recall(focus_concepts: list[str], *, cue_text: str = "", now: datetime | None = None,
            k: int = 3, min_overlap: int = 1) -> list[dict[str, Any]]:
     """Rank remembered episodes by concept overlap (primary), salience, and — only

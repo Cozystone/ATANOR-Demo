@@ -69,3 +69,31 @@ def test_recall_prefers_salient_over_merely_recent(tmp_path, monkeypatch):
     now = datetime(2027, 1, 10, tzinfo=timezone.utc)
     hits = em.recall(["자동차"], now=now, k=2)
     assert hits[0]["title"] == "인상깊은 모터쇼"   # salience outweighs the small recency edge
+
+
+def test_consolidation_forgets_trivial_old_keeps_salient(tmp_path, monkeypatch):
+    """osaurus-style salience consolidation: a dull old moment fades; a vivid one
+    persists. Salience governs MEMORY, not truth."""
+    from datetime import datetime, timezone
+    em = _reset(monkeypatch, tmp_path)
+    em.record_episode("스치듯 본 간판", ["간판"], at="2026-01-01T10:00:00", salience=0.08)
+    em.record_episode("인상깊은 모터쇼", ["자동차"], at="2026-01-01T10:00:00", salience=0.9)
+    now = datetime(2026, 7, 1, tzinfo=timezone.utc)   # ~6 months later
+    r = em.consolidate(now=now)
+    assert r["forgotten"] == 1 and r["kept"] == 1
+    titles = {e["title"] for e in em._rows()}
+    assert "인상깊은 모터쇼" in titles and "스치듯 본 간판" not in titles
+
+
+def test_consolidation_merges_double_logged_episode(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    em = _reset(monkeypatch, tmp_path)
+    a = em.record_episode("모터쇼", ["자동차"], at="2026-06-01T10:00:00", salience=0.8)
+    em.record_perception(a["episode_id"], "제네시스", dwell_seconds=20)
+    b = em.record_episode("모터쇼", ["자동차", "전시"], at="2026-06-01T10:30:00", salience=0.7)
+    em.record_perception(b["episode_id"], "BMW", dwell_seconds=15)
+    r = em.consolidate(now=datetime(2026, 6, 2, tzinfo=timezone.utc))
+    assert r["merged"] == 1 and r["kept"] == 1
+    ep = em._rows()[0]
+    labels = {o["label"] for o in ep["observations"]}
+    assert {"제네시스", "BMW"} <= labels          # both observations survive the merge

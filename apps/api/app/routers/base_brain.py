@@ -317,6 +317,20 @@ def base_brain_episode_perception(request: PerceptionRequest) -> dict[str, Any]:
         return {"recorded": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.post("/episode/consolidate")
+def base_brain_episode_consolidate() -> dict[str, Any]:
+    """Background memory consolidation (osaurus salience-scored memory + the brain's
+    salience compression): dull old episodes fade, vivid ones persist (half-life
+    scales with salience), double-logged moments merge. Salience governs MEMORY,
+    never the truth threshold for assertions."""
+    try:
+        from packages.graph_scale.episodic_memory import consolidate
+
+        return {"available": True, **consolidate()}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.post("/episode/complete")
 def base_brain_episode_complete(request: RecallRequest) -> dict[str, Any]:
     """Predictive interjection: from a vague '그때 그 우리 갔던…' + the concepts
