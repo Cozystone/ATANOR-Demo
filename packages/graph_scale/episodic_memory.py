@@ -125,14 +125,24 @@ def salience_from_behavior(dwell_seconds: float, *, revisits: int = 0,
 
 def record_perception(episode_id: str, label: str, *, modality: str = "vision",
                       dwell_seconds: float = 0.0, revisits: int = 0,
-                      gaze_ratio: float = 1.0, detail: dict[str, Any] | None = None) -> bool:
-    """The entry point a smart-glasses / camera stream calls: it reports WHAT was
-    seen and the BEHAVIOUR around it (dwell, revisits, gaze), and interest is
-    INFERRED here — the AI understands lingering as caring. The behavioural basis
-    is stored in detail so the salience is auditable, never a mind-reading claim."""
+                      gaze_ratio: float = 1.0, utterance: str = "",
+                      detail: dict[str, Any] | None = None) -> bool:
+    """The entry point a smart-glasses / camera / mic stream calls: it reports WHAT
+    was seen, the BEHAVIOUR around it (dwell, revisits, gaze), and WHAT WAS SAID
+    while looking. Interest MAGNITUDE is inferred from dwell; interest VALENCE from
+    the utterance — the same 20s dwell means admiration ('대박') or doubt ('되겠나')
+    depending on it. Both are stored (auditable), never a mind-reading claim."""
     sal = salience_from_behavior(dwell_seconds, revisits=revisits, gaze_ratio=gaze_ratio)
     basis = {"inferred_from": "behavior", "dwell_seconds": round(float(dwell_seconds), 1),
              "revisits": int(revisits), "gaze_ratio": round(float(gaze_ratio), 2)}
+    if utterance:
+        try:
+            from .subjective_context import interpret
+            sub = interpret(dwell_seconds, utterance)
+            basis.update({"stance": sub["stance"], "valence": sub["valence"],
+                          "read": sub["read"], "phrase": sub["phrase"], "cues": sub["cues"]})
+        except Exception:
+            pass
     basis.update(detail or {})
     return add_observation(episode_id, modality, label, salience=sal, detail=basis)
 
@@ -203,9 +213,12 @@ def complete(partial_text: str, focus_concepts: list[str], *,
                  key=lambda o: -float(o.get("salience", 0)))
     salient = obs[0] if obs and float(obs[0].get("salience", 0)) >= 0.6 else None
     if salient:
-        # be honest about WHY we think it mattered: behaviour (lingering) vs stated
-        behavioural = (salient.get("detail") or {}).get("inferred_from") == "behavior"
-        how = "한참 보셨던" if behavioural else "인상깊어하셨던"
+        # be honest about the SUBJECTIVE read: valence (from what was said while
+        # looking) picks the phrase — admiring vs skeptical vs neutral dwell —
+        # so we never mis-read '되겠나 이거' skepticism as '인상깊어하셨던'.
+        det = salient.get("detail") or {}
+        how = det.get("phrase") or ("한참 보셨던" if det.get("inferred_from") == "behavior"
+                                    else "인상깊어하셨던")
         text += f" 그때 {how} {salient['label']} 말하시려던 거죠?"
     # confidence rises with overlap + top salience; still a hypothesis
     conf = min(0.95, 0.4 + 0.15 * top.get("_overlap", 1)

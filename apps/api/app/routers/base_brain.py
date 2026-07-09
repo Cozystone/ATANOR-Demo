@@ -296,6 +296,7 @@ class PerceptionRequest(BaseModel):
     dwell_seconds: float = 0.0
     revisits: int = 0
     gaze_ratio: float = 1.0
+    utterance: str = ""
 
 
 @router.post("/episode/perception")
@@ -309,7 +310,7 @@ def base_brain_episode_perception(request: PerceptionRequest) -> dict[str, Any]:
 
         ok = record_perception(request.episode_id, request.label, modality=request.modality,
                                dwell_seconds=request.dwell_seconds, revisits=request.revisits,
-                               gaze_ratio=request.gaze_ratio)
+                               gaze_ratio=request.gaze_ratio, utterance=request.utterance)
         return {"recorded": ok, "inferred_salience": salience_from_behavior(
             request.dwell_seconds, revisits=request.revisits, gaze_ratio=request.gaze_ratio)}
     except Exception as exc:
