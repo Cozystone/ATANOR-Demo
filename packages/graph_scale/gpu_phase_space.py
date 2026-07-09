@@ -63,10 +63,35 @@ def _save_artifacts(theta_np: "np.ndarray", rel_np: "np.ndarray", terms_payload:
     log(f"  saved phase space v{ver} (pointer flipped)")
 
 
+def _clean_edges(store: Any, edges: list[tuple[int, int, int]], *,
+                 attractor_indeg: int = 5000, hub_outdeg: int = 12,
+                 log: Any = print) -> list[tuple[int, int, int]]:
+    """Train on TRUSTED structure, not noise — the geometry is only as good as its
+    edges. Drop the same contamination the closure/surgeon gates drop: generic
+    attractor objects (is_a in-degree ≥ threshold = WordNet-batch 'entity'-likes),
+    polysemy HUB subjects (is_a out-degree ≥ 12, un-sense-separated), and self-loops.
+    This is the fix for 'juke is_a cooperation' — garbage in was the whole problem."""
+    from collections import Counter
+    isa = store.terms.lookup("is_a")
+    o_indeg: Counter = Counter()
+    s_outdeg: Counter = Counter()
+    for s, p, o in edges:
+        if p == isa:
+            o_indeg[o] += 1
+            s_outdeg[s] += 1
+    attractors = {o for o, c in o_indeg.items() if c >= attractor_indeg}
+    hubs = {s for s, c in s_outdeg.items() if c >= hub_outdeg}
+    out = [(s, p, o) for s, p, o in edges
+           if s != o and not (p == isa and (o in attractors or s in hubs))]
+    log(f"  clean filter: {len(edges):,} -> {len(out):,} edges "
+        f"(dropped {len(attractors)} attractors, {len(hubs)} hubs)")
+    return out
+
+
 def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 30,
                           lr: float = 0.5, batch: int = 65_536, min_degree: int = 3,
                           min_edges: int = 1000, seed: int = 3, dim: int = DIM,
-                          save: bool = True, on_locked: Any = None,
+                          save: bool = True, clean: bool = False, on_locked: Any = None,
                           log: Any = print) -> dict[str, Any]:
     """Margin-ranking phase training on CUDA (numpy fallback = delegate to the
     CPU trainer). Saves the shared artifacts + returns the honest held-out eval.
@@ -95,6 +120,10 @@ def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 
     edges, terms = extract_edges(store, max_edges)
     if len(edges) < min_edges:
         return {"error": "too few entity edges", "edges": len(edges)}
+    if clean:
+        edges = _clean_edges(store, edges, log=log)
+        node_ids = {s for s, _p, _o in edges} | {o for _s, _p, o in edges}
+        terms = {t: n for t, n in terms.items() if t in node_ids} or terms
     # dense-core filter (same rationale as CPU: one observation cannot place a phase)
     from collections import Counter
     deg = Counter()
