@@ -234,14 +234,21 @@ def evaluate(query: str) -> ArithResult | None:
         expr_disp = re.sub(r"\s+", " ", core).strip()
         return _verified_expr(ArithResult(val, steps, "expression", expr_disp), core)
 
-    # squaring: "12의 제곱", "12^2"
-    m = re.search(rf"({_NUM})\s*\^\s*2", norm) or re.search(rf"({_NUM})\s*\^2", norm)
-    if m:
-        a = _to_int(m.group(1))
-        val, steps = _long_multiplication(a, a)
-        steps.insert(0, f"{a} squared = {a} × {a}")
-        val = a * a
-        return _verified(ArithResult(val, steps, "long_multiplication", f"{a}^2"))
+    # power: "12의 제곱"/"12^2" (n=2) and general "2^10" — bounded so the trace
+    # and value stay sane (no runaway giant integers).
+    mp = re.search(rf"({_NUM})\s*\^\s*(\d+)", norm)
+    if mp:
+        a, e = _to_int(mp.group(1)), int(mp.group(2))
+        if 0 <= e <= 64 and abs(a) <= 10 ** 7:
+            val = a ** e
+            if e == 2:
+                _, steps = _long_multiplication(a, a)
+                steps.insert(0, f"{a} squared = {a} × {a}")
+            elif e <= 8:
+                steps = [f"{a}^{e} = " + " × ".join([str(a)] * e) + f" = {val}"]
+            else:
+                steps = [f"{a}^{e} by repeated multiplication = {val}"]
+            return _verified(ArithResult(val, steps, "power", f"{a}^{e}"))
 
     m = re.search(rf"({_NUM})\s*([+\-*/])\s*({_NUM})", norm)
     if not m:
@@ -307,9 +314,9 @@ def _verified(res: "ArithResult", *, exact: bool = None) -> "ArithResult | None"
     propose→verify law as the rest of the engine, applied to numbers: the
     digit algorithm PROPOSES, exact integer arithmetic VERIFIES."""
     try:
-        sq = re.match(r"(-?\d+)\s*\^2$", res.expression)
-        if sq:
-            truth = int(sq.group(1)) ** 2
+        pw = re.match(r"(-?\d+)\s*\^\s*(\d+)$", res.expression)
+        if pw:
+            truth = int(pw.group(1)) ** int(pw.group(2))
         else:
             a_s, op, b_s = re.match(r"(-?\d+) ([+\-*/]) (-?\d+)", res.expression).groups()
             a, b = int(a_s), int(b_s)
