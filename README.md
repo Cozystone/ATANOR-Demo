@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="apps/landing/assets/atanor-logo-square.png" alt="ATANOR Logo" width="120"/>
-
-# ATANOR
+<img src="docs/media/atanor-readme-banner.png" alt="ATANOR" width="100%"/>
 
 **출처를 증명하며 답하는, 거대언어모델 없는 그래프 네이티브 AI**
 </br>
@@ -69,13 +67,15 @@ anchors the question.
 ## 📸 Screenshots
 
 <div align="center">
+
+<img src="docs/media/atanor-cloud-atlas.png" alt="ATANOR Atlas — the shared verified public graph" width="100%"/>
+<sub><b>Atlas</b> — the shared, verified public graph with a privacy-safe global relay view</sub>
+
+<br/><br/>
+
 <table>
 <tr>
-<td><img src="docs/media/atanor-graph-workspace.png" alt="Graph-native workspace" width="100%"/><br/><sub><b>Graph-native workspace</b> — the active reasoning surface</sub></td>
 <td><img src="docs/media/graph-hub-polished.png" alt="Graph Hub" width="100%"/><br/><sub><b>Graph Hub</b> — attach knowledge cartridges read-only</sub></td>
-</tr>
-<tr>
-<td><img src="docs/media/atanor-cloud-atlas.png" alt="Cloud Atlas" width="100%"/><br/><sub><b>Cloud Atlas</b> — the shared, verified public graph</sub></td>
 <td><img src="docs/media/brain-link-polished.png" alt="Brain Link" width="100%"/><br/><sub><b>Brain Link</b> — peer-to-peer distributed compute</sub></td>
 </tr>
 </table>
