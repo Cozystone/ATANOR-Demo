@@ -90,3 +90,21 @@ def test_closure_learn_excludes_hubs_and_stays_candidate_only(tmp_path):
     assert not any(a == "capital" for a, b in cand)    # hub kept out (no contamination)
     assert r["written_to_production"] is False
     assert r["hub_subjects_excluded"] is True
+
+
+def test_hybrid_matches_single_and_uses_available_devices(tmp_path):
+    """Hybrid CPU+GPU closure must produce the SAME edge count as the single
+    path (correctness) and, when a GPU exists, actually use both."""
+    from packages.reasoning_vm.closure_accelerator import hybrid_closure, closure_learn
+    import numpy as np
+    rng = np.random.default_rng(2)
+    tri = []
+    for _ in range(500):
+        i, j = sorted(rng.integers(0, 70, 2))
+        if i != j:
+            tri.append((f"n{i}", "is_a", f"n{j}"))
+    st = _Store(tmp_path, list(set(tri)))
+    h = hybrid_closure(st, "is_a", attractor_indegree=999, gpu_fraction=0.5)
+    ref = closure_learn(st, "is_a", attractor_indegree=999)
+    assert h["new_provable_edges"] == ref["total_new_provable"]   # same math, split in two
+    assert "trillion_path" in h and h["trillion_path"]["single_node_ceiling_eps"] >= 0

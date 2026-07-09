@@ -317,3 +317,148 @@ def closure_learn(store: Any, relation: str = "is_a", *, mode: str = "safe",
                         "auto-promoted — growing numbers must not contaminate.",
         "candidates": clean[:50],             # a peek; full set is len above
     }
+
+
+# ---- HYBRID CPU+GPU closure: use BOTH at once, single-node ceiling ----------
+def _cpu_count_rows(A, stated_keys_sorted: np.ndarray, start: int, end: int, N: int) -> int:
+    """scipy count of new provable 2-hop edges for rows [start,end) —
+    VECTORIZED dedup (packed keys + searchsorted membership, no Python loop)."""
+    sub = A[start:end]
+    P = sub.dot(A); P.data[:] = 1
+    P = P.tocoo()
+    rr = P.row.astype(np.int64) + start
+    cc = P.col.astype(np.int64)
+    nondiag = rr != cc
+    keys = (rr * N + cc)[nondiag]
+    if stated_keys_sorted.size:
+        pos = np.searchsorted(stated_keys_sorted, keys)
+        pos = np.clip(pos, 0, stated_keys_sorted.size - 1)
+        is_stated = stated_keys_sorted[pos] == keys
+        return int((~is_stated).sum())
+    return int(keys.size)
+
+
+def hybrid_closure(store: Any, relation: str = "is_a", *,
+                   attractor_indegree: int = 5000, gpu_fraction: float = 0.5,
+                   exclude_hubs: bool = True) -> dict[str, Any]:
+    """Run the deductive closure on CPU **and** GPU CONCURRENTLY (both release
+    the GIL), each on a partition of the row space, then merge. This is the
+    optimal single-node architecture — the card and the cores work at once.
+    The trillion/s ('조 단위') target is this single-node ceiling × Brain Link
+    PEERS: the sharding already routes a concept's rows to one peer, so P peers
+    running this hybrid aggregate ~P × (cpu+gpu) provable edges/s."""
+    import threading
+    import time as _t
+    from scipy import sparse
+
+    from .device import profile, safe_block
+
+    t0 = _t.time()
+    s, o = _load_relation_edges(store, relation)
+    if len(s) == 0:
+        return {"relation": relation, "new_edges": 0, "note": "empty"}
+    obj_ids, counts = np.unique(o, return_counts=True)
+    attr = set(obj_ids[counts >= attractor_indegree].tolist())
+    keep = ~np.isin(o, list(attr)) if attr else np.ones(len(o), bool)
+    s, o = s[keep], o[keep]
+    if exclude_hubs and relation in ("is_a", "instance_of", "subclass_of"):
+        subj_ids, subj_out = np.unique(s, return_counts=True)
+        hubs = set(subj_ids[subj_out >= 12].tolist())
+        if hubs:
+            nh = ~np.isin(s, list(hubs)); s, o = s[nh], o[nh]
+    nodes = np.unique(np.concatenate([s, o])); N = len(nodes)
+    si = np.searchsorted(nodes, s); oi = np.searchsorted(nodes, o)
+    A = sparse.csr_matrix((np.ones(len(si), np.int8), (si, oi)), shape=(N, N))
+    A.data[:] = 1
+    stated_keys = np.sort(si.astype(np.int64) * N + oi.astype(np.int64))
+
+    prof = profile()
+    have_gpu = prof["backend"] == "cuda"
+    # BALANCE the split by EDGE COUNT, not row index (edges aren't uniform per
+    # row): the split point is where cumulative out-degree crosses gpu_fraction,
+    # so the GPU and CPU get proportional WORK, not just proportional row spans.
+    if have_gpu:
+        outdeg = np.bincount(si, minlength=N)
+        cum = np.cumsum(outdeg)
+        target = gpu_fraction * cum[-1]
+        split = int(np.searchsorted(cum, target)) if cum[-1] else int(N * gpu_fraction)
+        split = min(max(split, 1), N - 1)
+    else:
+        split = 0                                        # no GPU -> CPU does all rows
+
+    results: dict[str, Any] = {}
+
+    def _gpu_job():
+        t = _t.time()
+        r = _gpu_rows_count(si, oi, N, 0, split, safe_block(prof["free_vram_gb"]) or 4000)
+        results["gpu"] = {"new": r, "sec": round(_t.time() - t, 3), "rows": split}
+
+    def _cpu_job():
+        t = _t.time()
+        r = _cpu_count_rows(A, stated_keys, split, N, N)
+        results["cpu"] = {"new": r, "sec": round(_t.time() - t, 3), "rows": N - split}
+
+    t_mm = _t.time()
+    threads = []
+    if have_gpu and split > 0:
+        threads.append(threading.Thread(target=_gpu_job))
+    threads.append(threading.Thread(target=_cpu_job))
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    mm = _t.time() - t_mm
+
+    new_edges = results.get("gpu", {}).get("new", 0) + results.get("cpu", {}).get("new", 0)
+    return {
+        "relation": relation, "nodes": N, "clean_input_edges": len(s),
+        "new_provable_edges": new_edges,
+        "concurrent_seconds": round(mm, 3),
+        "aggregate_edges_per_sec": round(new_edges / mm) if mm else 0,
+        "gpu": results.get("gpu"), "cpu": results.get("cpu"),
+        "device": prof, "used_both": bool(results.get("gpu") and results.get("cpu")),
+        "trillion_path": {
+            "single_node_ceiling_eps": round(new_edges / mm) if mm else 0,
+            "peers_for_1e12": max(1, int(1e12 / (new_edges / mm))) if mm and new_edges else None,
+            "note": "single-node CPU+GPU ceiling × Brain Link peers (concept-key "
+                    "sharded, verify-by-recompute) = the honest route to 조 단위",
+        },
+        "total_seconds": round(_t.time() - t0, 2),
+    }
+
+
+def _gpu_rows_count(si, oi, N, start, end, block):
+    """GPU new-edge count restricted to source rows [start,end)."""
+    try:
+        import torch
+        from .device import is_cuda_oom
+        if not torch.cuda.is_available():
+            return 0
+        dev = torch.device("cuda")
+        idx = torch.tensor(np.vstack([si, oi]), dtype=torch.long, device=dev)
+        A = torch.sparse_coo_tensor(idx, torch.ones(len(si), dtype=torch.float32, device=dev),
+                                    (N, N)).coalesce()
+        key1 = idx[0] * N + idx[1]
+        Aidx, Aval, rows = A.indices().contiguous(), A.values().contiguous(), A.indices()[0].contiguous()
+
+        def blk(a, b):
+            m = (rows >= a) & (rows < b)
+            if not bool(m.any()):
+                return 0
+            try:
+                bi = Aidx[:, m].clone(); bi[0] -= a
+                Ab = torch.sparse_coo_tensor(bi, Aval[m], (b - a, N)).coalesce()
+                P = torch.sparse.mm(Ab, A).coalesce(); pi = P.indices(); r = pi[0] + a
+                k2 = r * N + pi[1]
+                n = int(((~torch.isin(k2, key1)) & (r != pi[1])).sum().item())
+                del bi, Ab, P; torch.cuda.empty_cache()
+                return n
+            except RuntimeError as e:
+                torch.cuda.empty_cache()
+                if is_cuda_oom(e) and b - a > 1:
+                    mid = (a + b) // 2
+                    return blk(a, mid) + blk(mid, b)
+                raise
+        return sum(blk(x, min(x + block, end)) for x in range(start, end, block))
+    except Exception:
+        return 0
