@@ -425,6 +425,100 @@ def answer_from_triples(query: str, language: str = "ko") -> dict[str, Any] | No
     confidence} or None when the store can't answer it (empty store, no subject match, or
     the relation intent isn't present)."""
     ql = query.lower()
+
+    # ARITHMETIC REASONING VM (owner's 급선무: the infinity of MEANING): a number
+    # is DERIVED by rule, not stored, so '348 × 27' must never become a graph
+    # miss. Runs before every store lane; the derivation trace IS the reasoning
+    # certificate, and the value was independently re-checked vs exact integer
+    # arithmetic before we got here. Underivable -> falls through untouched.
+    try:
+        from packages.reasoning_vm.arithmetic import evaluate as _arith_eval
+        from packages.reasoning_vm.arithmetic import has_arithmetic_intent
+
+        if has_arithmetic_intent(query):
+            _ar = _arith_eval(query)
+            if _ar is not None:
+                _rem = getattr(_ar, "remainder", None)
+                _expr = (_ar.expression.replace("^2", "²")
+                         .replace("*", "×").replace("/", "÷"))
+                _tail = (f" 나머지 {_rem}" if _rem and language == "ko"
+                         else f" remainder {_rem}" if _rem else "")
+                return {
+                    "answer": f"{_expr} = {_ar.value}{_tail}.",
+                    "reasoning_certificate": {
+                        "derivation_kind": "arithmetic_" + _ar.method,
+                        "anchor_concept": {"label": _ar.expression},
+                        "steps": [{"type": "arithmetic_step", "fact": s}
+                                  for s in _ar.steps],
+                        "evidence_concepts": [],
+                        "confidence": 1.0,
+                        "confidence_basis": "derived by rule (digit/Peano algorithm), "
+                                            "independently re-checked vs exact integer arithmetic",
+                        "guarantees": {"external_llm": False, "fabricated_facts": False,
+                                       "inferred": True, "verified": True},
+                    },
+                    "confidence": 1.0,
+                    "answer_kind": "arithmetic_derivation",
+                }
+    except Exception:
+        pass
+
+    # DEDUCTIVE MEMBERSHIP (reasoning VM): 'A는 B(이)야?' — a closed yes/no that
+    # the graph may not STATE but can PROVE by transitive is_a. Tightly gated to
+    # the copula-question pattern so it never hijacks a normal wh-question; falls
+    # through untouched when it can't prove membership (never a guessed 'no').
+    try:
+        _mq = re.match(r"^\s*(\S+?)(?:은|는|이|가)\s+(\S+?)"
+                       r"(?:이야|야|인가요|인가|입니까|맞나요|맞아|이니|니)\s*\??\s*$", query)
+        if _mq and language == "ko":
+            from packages.reasoning_vm.deduction import answer_yes_no
+
+            _stripj = lambda w: re.sub(r"(은|는|이|가|을|를|의|도|만|와|과|랑)$", "", w)
+            _subj, _obj = _stripj(_mq.group(1)), _stripj(_mq.group(2))
+            st = _store()
+            if _subj and _obj and _subj != _obj and st is not None:
+                # gather a bounded 2-hop is_a neighborhood as the stated facts.
+                # TYPE-ALIAS BRIDGE: the store keys types in English (Settlement,
+                # ChemicalCompound) but Korean asks about Korean labels (도시,
+                # 액체); the reviewed alias edges connect them, so we add
+                # (parent is_a alias) — sound for membership since alias is type
+                # equivalence — letting the transitive proof reach the query word.
+                _stated: set[tuple[str, str, str]] = set()
+                _frontier = [_subj]
+                for _hop in range(3):
+                    _next: list[str] = []
+                    for _n in _frontier:
+                        for s, p, o in (st.facts_about(_n, limit=40) or []):
+                            o = str(o)
+                            if p in ("is_a", "instance_of", "subclass_of") and o:
+                                _stated.add((_n, "is_a", o))
+                                _next.append(o)
+                            elif p == "alias" and o:      # type-equivalence hop
+                                _stated.add((_n, "is_a", o))
+                                _next.append(o)
+                    _frontier = _next
+                _q = (_subj, "is_a", _obj)
+                _verdict = answer_yes_no(_stated, _q, max_depth=4)
+                if _verdict is not None:                       # proven true
+                    _basis = _verdict["basis"]
+                    return {
+                        "answer": f"네, {_subj}은(는) {_obj}입니다.",
+                        "reasoning_certificate": {
+                            "derivation_kind": "deductive_membership_" + _basis,
+                            "anchor_concept": {"label": _subj},
+                            "steps": [{"type": "deduction", "fact": str(_verdict["proof"])}],
+                            "evidence_concepts": [_subj, _obj],
+                            "confidence": 0.95,
+                            "confidence_basis": "proved by transitive is_a "
+                                                "(output ⊆ deductive closure of stated facts ∪ rules)",
+                            "guarantees": {"external_llm": False, "fabricated_facts": False,
+                                           "inferred": _basis == "derived", "verified": True},
+                        },
+                        "confidence": 0.95,
+                        "answer_kind": "deductive_membership",
+                    }
+    except Exception:
+        pass
     # 4D TEMPORAL lane (owner's true 4D: ontology + TIME AXIS — 4D-fluents
     # validity slices): a question that names a time resolves against recorded
     # intervals BEFORE the realtime guard. '2020년 대통령' and '지금 대통령' are
