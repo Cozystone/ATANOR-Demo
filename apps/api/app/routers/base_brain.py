@@ -447,6 +447,31 @@ def base_brain_relation_extract(sentence: str, lang: str = "en") -> dict[str, An
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/collective/board")
+def base_brain_collective_board() -> dict[str, Any]:
+    """The AGORA review board: self-proposed code improvements + swarm tally + the
+    three gate states (collective ∧ tests ∧ human). Read-only."""
+    try:
+        from packages.graph_scale.collective_improve import board, federation_manifest
+
+        return {"available": True, "board": board(),
+                "federation_ready": federation_manifest()["count"]}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
+@router.get("/collective/manifest")
+def base_brain_collective_manifest() -> dict[str, Any]:
+    """Improvements that passed ALL THREE gates — the list a human release applies
+    to every user's AI. Reports only; never auto-applies code."""
+    try:
+        from packages.graph_scale.collective_improve import federation_manifest
+
+        return {"available": True, **federation_manifest()}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/graph-regions")
 def base_brain_graph_regions() -> dict[str, Any]:
     """The region legend: every ingested source (book/paper/dataset) is its own
