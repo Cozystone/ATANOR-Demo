@@ -108,3 +108,23 @@ def test_hybrid_matches_single_and_uses_available_devices(tmp_path):
     ref = closure_learn(st, "is_a", attractor_indegree=999)
     assert h["new_provable_edges"] == ref["total_new_provable"]   # same math, split in two
     assert "trillion_path" in h and h["trillion_path"]["single_node_ceiling_eps"] >= 0
+
+
+def test_safe_closure_learn_surgeon_gates_contamination(tmp_path):
+    """The full safe cycle: derive -> surgeon excises type-disjoint -> gated
+    clean candidates, nothing to production."""
+    from packages.reasoning_vm.closure_accelerator import safe_closure_learn
+    # 방콕 is a PLACE (2 signals). A WRONG stated edge '도시 is_a 종교집단' makes
+    # the 2-hop closure DERIVE '방콕 is_a 종교집단' (PLACE vs GROUP) — the surgeon
+    # must excise it. A clean chain '서울 is_a 정착지' should survive.
+    tri = [("방콕", "is_a", "도시"), ("방콕", "is_a", "수도"),
+           ("도시", "is_a", "종교집단"),                     # the contaminating edge
+           ("서울", "is_a", "도시"), ("도시", "is_a", "정착지")]  # clean taxonomy
+    st = _Store(tmp_path, tri)
+    r = safe_closure_learn(st, "is_a", attractor_indegree=999)
+    assert r["written_to_production"] is False
+    assert r["surgeon_available"] is True
+    excised = {(i["subject"], i["object"]) for i in r["excision_sample"]}
+    clean = {(a, b) for a, b in r["candidates_sample"]}
+    assert ("방콕", "종교집단") in excised          # PLACE vs GROUP — cut
+    assert ("방콕", "종교집단") not in clean         # kept out of the clean set

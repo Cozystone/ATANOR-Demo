@@ -207,6 +207,25 @@ def base_brain_surgeon_review(request: dict) -> dict[str, Any]:
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/self-refine/safe-closure")
+def base_brain_safe_closure(relation: str = "is_a", sample_cap: int = 100000
+                            ) -> dict[str, Any]:
+    """The self-aware learning cycle, observable: deductive closure -> the
+    Surgeon reviews every candidate (vectorized) -> type-disjoint contamination
+    is excised -> clean CANDIDATES for the evidence gate. Read-only; nothing is
+    written to production. This is 'grow numbers without contaminating', live."""
+    try:
+        from packages.graph_scale.answer_bridge import _store
+        from packages.reasoning_vm.closure_accelerator import safe_closure_learn
+
+        r = safe_closure_learn(_store(), relation, mode="max",
+                               sample_cap=max(1000, min(sample_cap, 300000)))
+        r.pop("candidates_sample", None)
+        return r
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/visual-memory/{concept}")
 def base_brain_visual_recall(concept: str, learn: bool = False) -> dict[str, Any]:
     """Perceptual grounding v0: the measured visual signature of a concept
