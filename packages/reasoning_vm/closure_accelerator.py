@@ -342,12 +342,32 @@ def _cpu_count_rows(A, stated_keys_sorted: np.ndarray, start: int, end: int, N: 
     return int(keys.size)
 
 
+def _calibrate_gpu_fraction(si, oi, N, A, stated_keys, block) -> tuple[float, dict[str, Any]]:
+    """Measure each device's real throughput on a small probe and return the split
+    that makes them FINISH TOGETHER (neither idles). A fixed 0.5 makes the slower
+    device the bottleneck — at ~1M edges the CPU is ~5x the GPU, so 0.5 leaves the
+    CPU idle ~80% of the run. Balancing by measured rate is true collaboration."""
+    probe = int(min(N - 1, max(64, N // 20)))
+    tg = time.time()
+    _gpu_rows_count(si, oi, N, 0, probe, block)
+    gpu_rate = probe / max(time.time() - tg, 1e-6)
+    tc = time.time()
+    _cpu_count_rows(A, stated_keys, 0, probe, N)
+    cpu_rate = probe / max(time.time() - tc, 1e-6)
+    frac = gpu_rate / (gpu_rate + cpu_rate) if (gpu_rate + cpu_rate) > 0 else 0.5
+    frac = float(min(0.95, max(0.05, frac)))
+    return frac, {"gpu_rows_per_s": round(gpu_rate), "cpu_rows_per_s": round(cpu_rate),
+                  "probe_rows": probe, "balanced_gpu_fraction": round(frac, 3)}
+
+
 def hybrid_closure(store: Any, relation: str = "is_a", *,
-                   attractor_indegree: int = 5000, gpu_fraction: float = 0.5,
+                   attractor_indegree: int = 5000, gpu_fraction: float | str = 0.5,
                    exclude_hubs: bool = True) -> dict[str, Any]:
     """Run the deductive closure on CPU **and** GPU CONCURRENTLY (both release
-    the GIL), each on a partition of the row space, then merge. This is the
-    optimal single-node architecture — the card and the cores work at once.
+    the GIL), each on a DISJOINT partition of the row space, then merge — the card
+    and the cores work at once, never on the same rows. gpu_fraction='auto'
+    calibrates the split from MEASURED device throughput so both finish together
+    (no idling); a fixed float keeps the old fixed split.
     The trillion/s ('조 단위') target is this single-node ceiling × Brain Link
     PEERS: the sharding already routes a concept's rows to one peer, so P peers
     running this hybrid aggregate ~P × (cpu+gpu) provable edges/s."""
@@ -378,14 +398,22 @@ def hybrid_closure(store: Any, relation: str = "is_a", *,
 
     prof = profile()
     have_gpu = prof["backend"] == "cuda"
+    block = safe_block(prof["free_vram_gb"]) or 4000
+    calib: dict[str, Any] = {}
+    # 'auto' → measure each device's rate on a probe and balance so both finish
+    # together (no idling); else honour the caller's fixed fraction.
+    if have_gpu and gpu_fraction == "auto":
+        frac, calib = _calibrate_gpu_fraction(si, oi, N, A, stated_keys, block)
+    else:
+        frac = 0.5 if gpu_fraction == "auto" else float(gpu_fraction)
     # BALANCE the split by EDGE COUNT, not row index (edges aren't uniform per
-    # row): the split point is where cumulative out-degree crosses gpu_fraction,
+    # row): the split point is where cumulative out-degree crosses frac,
     # so the GPU and CPU get proportional WORK, not just proportional row spans.
     if have_gpu:
         outdeg = np.bincount(si, minlength=N)
         cum = np.cumsum(outdeg)
-        target = gpu_fraction * cum[-1]
-        split = int(np.searchsorted(cum, target)) if cum[-1] else int(N * gpu_fraction)
+        target = frac * cum[-1]
+        split = int(np.searchsorted(cum, target)) if cum[-1] else int(N * frac)
         split = min(max(split, 1), N - 1)
     else:
         split = 0                                        # no GPU -> CPU does all rows
@@ -394,7 +422,7 @@ def hybrid_closure(store: Any, relation: str = "is_a", *,
 
     def _gpu_job():
         t = _t.time()
-        r = _gpu_rows_count(si, oi, N, 0, split, safe_block(prof["free_vram_gb"]) or 4000)
+        r = _gpu_rows_count(si, oi, N, 0, split, block)
         results["gpu"] = {"new": r, "sec": round(_t.time() - t, 3), "rows": split}
 
     def _cpu_job():
@@ -420,6 +448,7 @@ def hybrid_closure(store: Any, relation: str = "is_a", *,
         "concurrent_seconds": round(mm, 3),
         "aggregate_edges_per_sec": round(new_edges / mm) if mm else 0,
         "gpu": results.get("gpu"), "cpu": results.get("cpu"),
+        "split_rows": split, "gpu_fraction_used": round(frac, 3), "load_balance": calib,
         "device": prof, "used_both": bool(results.get("gpu") and results.get("cpu")),
         "trillion_path": {
             "single_node_ceiling_eps": round(new_edges / mm) if mm else 0,

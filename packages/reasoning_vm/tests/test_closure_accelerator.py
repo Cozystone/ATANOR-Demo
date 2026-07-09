@@ -108,6 +108,11 @@ def test_hybrid_matches_single_and_uses_available_devices(tmp_path):
     ref = closure_learn(st, "is_a", attractor_indegree=999)
     assert h["new_provable_edges"] == ref["total_new_provable"]   # same math, split in two
     assert "trillion_path" in h and h["trillion_path"]["single_node_ceiling_eps"] >= 0
+    # AUTO load-balance: measured split must give the IDENTICAL edge count (only the
+    # CPU/GPU work division changes) and expose the balance decision.
+    ha = hybrid_closure(st, "is_a", attractor_indegree=999, gpu_fraction="auto")
+    assert ha["new_provable_edges"] == ref["total_new_provable"]
+    assert "load_balance" in ha and 0.0 <= ha["gpu_fraction_used"] <= 1.0
 
 
 def test_safe_closure_learn_surgeon_gates_contamination(tmp_path):
