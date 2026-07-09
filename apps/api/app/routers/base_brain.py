@@ -317,6 +317,28 @@ def base_brain_episode_perception(request: PerceptionRequest) -> dict[str, Any]:
         return {"recorded": False, "reason": f"{type(exc).__name__}"}
 
 
+class EnrichRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=200)
+    episode_id: str = ""
+    context: list[str] = Field(default_factory=list)
+
+
+@router.post("/episode/enrich")
+def base_brain_episode_enrich(request: EnrichRequest) -> dict[str, Any]:
+    """'그때 본 모델 정확히 뭐였지?' — fuse a faint remembered label (what the
+    glasses roughly recognized) with a LIVE web search to pin the exact identity
+    and surface an image or a SPLATRA render hint. Keeps remembered vs web-confirmed
+    separate; fabricates nothing when the web finds nothing."""
+    try:
+        from packages.graph_scale.memory_enrich import enrich, enrich_episode_observation
+
+        if request.episode_id:
+            return {"available": True, **enrich_episode_observation(request.episode_id, request.label)}
+        return {"available": True, **enrich(request.label, request.context)}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.post("/episode/consolidate")
 def base_brain_episode_consolidate() -> dict[str, Any]:
     """Background memory consolidation (osaurus salience-scored memory + the brain's
