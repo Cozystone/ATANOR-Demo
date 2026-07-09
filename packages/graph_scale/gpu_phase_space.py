@@ -78,6 +78,18 @@ def train_phase_space_gpu(store: Any, max_edges: int = 8_000_000, epochs: int = 
                                  lr=lr, min_degree=min_degree, min_edges=min_edges, seed=seed,
                                  dim=dim, log=log)
     dev = "cuda"
+    # LOW-END STABILITY (owner directive): cap the training batch to free VRAM
+    # so an RTX 4060 / older Quadro trains without OOM — smaller batch, same
+    # result, a little slower. Radeon / no-CUDA already delegated to CPU above.
+    try:
+        from packages.reasoning_vm.device import profile as _dev_profile
+
+        _free = float(_dev_profile().get("free_vram_gb", 0) or 0)
+        if 0 < _free < 6:
+            batch = min(batch, 16_384 if _free >= 3 else 8_192)
+            log(f"  (modest VRAM {_free:.1f}GB — batch capped to {batch} for stability)")
+    except Exception:
+        pass
     t_start = time.time()
     rng = np.random.default_rng(seed)
     edges, terms = extract_edges(store, max_edges)

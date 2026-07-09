@@ -67,3 +67,7 @@ def test_cpu_gpu_agree_on_new_edge_count(tmp_path):
     A2 = A.dot(A); A2.data[:] = 1
     A2 = A2 - A2.multiply(A); A2.setdiag(0); A2.eliminate_zeros()
     assert gpu[0] == int(A2.nnz)
+    # LOW-END INVARIANCE: a tiny block (a 2 GB card / old Quadro) must give the
+    # IDENTICAL edge count — only slower. Stability without changing the answer.
+    small = ca._try_gpu_closure(si, oi, N, block=64)
+    assert small[0] == gpu[0]

@@ -129,50 +129,60 @@ def accelerate_closure(store: Any, relation: str = "is_a", *,
     return res
 
 
-def _try_gpu_closure(si: np.ndarray, oi: np.ndarray, N: int, block: int = 8000):
-    """torch GPU deductive closure via ROW-CHUNKED sparse matmul: A[blk] @ A per
-    block so each SpGEMM output fits the device (cusparse SpGEMM fails on a
-    single huge output — measured; block=8000 completes with 0 failures on the
-    real is_a graph). A block that still overflows is skipped, not fatal.
-    Returns (new_edges, seconds, backend) or None. The provable edges are
-    identical to the CPU path — only the arithmetic moves."""
+def _try_gpu_closure(si: np.ndarray, oi: np.ndarray, N: int, block: int | None = None):
+    """torch GPU deductive closure via ROW-CHUNKED sparse matmul, sized to the
+    LOCAL card's free VRAM and resilient to OOM (a too-dense block is SUBDIVIDED
+    and retried, not skipped — so an RTX 4060 gets the same edge count as a
+    5080, just in smaller pieces). No CUDA (Radeon / Quadro-without-CUDA / no
+    GPU) returns None so the caller runs the identical CPU path.
+    Returns (new_edges, seconds, backend) or None."""
+    from .device import is_cuda_oom, profile, safe_block
+
     try:
         import torch
-        if not torch.cuda.is_available():
-            return None
+        prof = profile()
+        if prof["backend"] != "cuda":
+            return None                          # -> CPU path (Radeon/no-GPU)
+        if block is None:
+            block = safe_block(prof["free_vram_gb"]) or 4000
         dev = torch.device("cuda")
         idx = torch.tensor(np.vstack([si, oi]), dtype=torch.long, device=dev)
         vals = torch.ones(len(si), dtype=torch.float32, device=dev)
         A = torch.sparse_coo_tensor(idx, vals, (N, N)).coalesce()
-        key1 = (idx[0] * N + idx[1])            # stated-edge keys (for dedup)
-        torch.cuda.synchronize()
-        t = time.time()
-        new_edges = 0
-        rows = A.indices()[0].contiguous()
-        Aidx, Aval = A.indices().contiguous(), A.values().contiguous()
-        for start in range(0, N, block):
-            end = min(start + block, N)
+        key1 = (idx[0] * N + idx[1])
+        Aidx, Aval, rows = A.indices().contiguous(), A.values().contiguous(), A.indices()[0].contiguous()
+
+        def _count_block(start: int, end: int) -> int:
+            """Count new provable 2-hop edges for rows [start,end); on OOM,
+            split the row range in half and recurse (degrade, don't crash)."""
             rmask = (rows >= start) & (rows < end)
             if not bool(rmask.any()):
-                continue
+                return 0
             try:
-                bi = Aidx[:, rmask].clone()
-                bi[0] -= start
+                bi = Aidx[:, rmask].clone(); bi[0] -= start
                 Ablk = torch.sparse_coo_tensor(bi, Aval[rmask], (end - start, N)).coalesce()
                 P = torch.sparse.mm(Ablk, A).coalesce()
-                pi = P.indices()
-                r = pi[0] + start
+                pi = P.indices(); r = pi[0] + start
                 key2 = r * N + pi[1]
-                keep = (~torch.isin(key2, key1)) & (r != pi[1])
-                new_edges += int(keep.sum().item())
-                del bi, Ablk, P, pi, r, key2, keep
-            except RuntimeError:                   # a too-dense block: skip, not fatal
-                pass
-            torch.cuda.empty_cache()
+                n = int(((~torch.isin(key2, key1)) & (r != pi[1])).sum().item())
+                del bi, Ablk, P, pi, r, key2
+                torch.cuda.empty_cache()
+                return n
+            except RuntimeError as e:
+                torch.cuda.empty_cache()
+                if is_cuda_oom(e) and end - start > 1:
+                    mid = (start + end) // 2      # subdivide, retry both halves
+                    return _count_block(start, mid) + _count_block(mid, end)
+                raise
+
         torch.cuda.synchronize()
-        return new_edges, time.time() - t, "torch.cuda(row-chunked)"
+        t = time.time()
+        new_edges = sum(_count_block(s0, min(s0 + block, N))
+                        for s0 in range(0, N, block))
+        torch.cuda.synchronize()
+        return new_edges, time.time() - t, f"torch.cuda(adaptive/{prof['tier']})"
     except Exception:
-        return None
+        return None                              # any failure -> safe CPU path
 
 
 def witness(store: Any, subj: str, obj: str, relation: str = "is_a") -> str | None:
