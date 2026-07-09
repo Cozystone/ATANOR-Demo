@@ -27,3 +27,10 @@
 - 정직성 준수: "환각 0%"/"hallucination-free" 0건, 검증 불가 수치 미기재. "quotes its sources / reasoning record / 출처 없는 사실 안 지어냄"으로만. (참고: ops 실측 total_facts=25.9M은 공개 리포에서 검증 불가하므로 공개 문안에는 넣지 않음 — 데모+커밋된 proof 아티팩트로 대체.)
 - [승인 대기] 운영자 검토 필요: (1) 3종 초안 승인/수정, (2) **데모 GIF 녹화**(인간 게이트, README·X 공용 자산 1개로 커버), (3) repo description/homepage/topics 설정, (4) 승인 후 게시 순서 = launch_sequence(D-3 README 머지 → D-day Show HN → D+2 X).
 - 다음 조치: 운영자가 status를 approved로 바꾸면 dev 에이전트가 README 커밋 초안 준비.
+
+## 2026-07-09 10:05 — atanor-marketing (게시)
+- **첫 X 포스트 발행됨** (@ATANOR_AI): https://x.com/ATANOR_AI/status/2075023575057371151
+- angle=big-honest-bet(EN), 랜딩 링크 포함, 텍스트-only(이미지 업로드는 chrome MCP 허용목록 제약으로 차단 — 세션 첨부/연결폴더만 허용).
+- 운영자 승인("올려") 하에 최종 Post 클릭. 무인 발행 아님.
+- [관찰·전략] X가 **graduated access** 안내 표시 = 신규 계정 도달 제한. 계정 워밍업(팔로우·답글·참여) 필요. 바이럴 채널은 계정 숙성 후.
+- [미해결] 포스트 이미지 첨부 경로 = 세션 첨부만 허용. 자동 첨부하려면 미디어를 세션 공유 폴더에 두거나 og:image 카드에 의존.

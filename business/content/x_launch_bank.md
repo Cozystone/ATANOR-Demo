@@ -89,3 +89,38 @@ media: UI/atanor-dual-fusion-final-ko.png
 > 물어보세요. 인용한 출처를 보세요. 부숴보세요(빈틈이 정직함입니다).
 > https://atanor-liard.vercel.app
 media: UI/atanor-cloud-public-final-1600-real-ko.png
+
+---
+## ⚠️ 금지 클레임 (BINDING — 뱅크 전체 적용)
+> "Claude Opus급"/"GPT-4급"/"LLM과 동등" 성능 주장 금지. ATANOR는 LLM이 아니라
+> 출처 인용 그래프 AI다 — 개방형 생성·산술·창작은 LLM보다 약하다. 청중이 즉시
+> 테스트해서 반증하고, 브랜드의 핵심(정직)이 무너진다. 대신 **로컬 주권 + 다른 아키텍처**로
+> 후킹한다: "데이터센터·거대 GPU 없이, 당신 기기에서 도는 검증 가능한 AI".
+
+## EN — angle: escape the hardware arms race (local sovereignty)
+> The AI arms race says: bigger models, more GPUs, another data center.
+> ATANOR runs on the device in your hands — because it answers from a graph, not a 100-billion-parameter model.
+> Own your intelligence, locally:
+> https://atanor-liard.vercel.app
+media: UI/atanor-cloud-public-final-1600-real-ko.png
+
+## EN — angle: no data center required
+> You shouldn't need a $30k GPU or someone else's cloud to run capable AI.
+> ATANOR is local by design — your data never leaves your machine, and there's no model to rent.
+> Early access:
+> https://atanor-liard.vercel.app
+media: UI/atanor-local-private-final-1600-real-ko.png
+
+## KO — angle: 하드웨어 군비경쟁 탈출
+> AI 경쟁은 말합니다: 더 큰 모델, 더 많은 GPU, 또 하나의 데이터센터.
+> ATANOR는 당신 손안의 기기에서 돕니다 — 1000억 파라미터 모델이 아니라 그래프에서 답하니까.
+> 데이터센터 없이, 당신의 지능을 소유하세요:
+> https://atanor-liard.vercel.app
+media: UI/atanor-cloud-public-final-1600-real-ko.png
+
+## KO — angle: 값비싼 GPU 불필요
+> 값비싼 GPU도, 남의 클라우드도 필요 없습니다.
+> ATANOR는 설계부터 로컬입니다 — 당신의 데이터는 기기를 떠나지 않고, 빌릴 모델도 없습니다.
+> 사전예약:
+> https://atanor-liard.vercel.app
+media: UI/atanor-local-private-final-1600-real-ko.png
