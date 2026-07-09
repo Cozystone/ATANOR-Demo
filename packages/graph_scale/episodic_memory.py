@@ -108,6 +108,35 @@ def add_observation(episode_id: str, modality: str, label: str,
     return hit
 
 
+def salience_from_behavior(dwell_seconds: float, *, revisits: int = 0,
+                           gaze_ratio: float = 1.0) -> float:
+    """Infer INTEREST from behaviour, not from being told. The owner's key point:
+    '인상깊어하셨던' should mean the user LINGERED near the model car / looked at it
+    long — dwell time is the signal, not a spoken statement. Saturating curve:
+    a glance (~1s) barely registers, ~6s is mild interest, ~15s+ is strong; a
+    revisit deepens it; gaze_ratio scales by how much of the dwell was actually
+    looking. Returns a salience in [0, 1] the AI can read as 'interested'."""
+    import math
+    d = 1.0 - math.exp(-max(0.0, float(dwell_seconds)) / 8.0)   # 0s→0, ~5.5s→0.5, ~18s→0.9
+    r = min(0.3, 0.1 * max(0, int(revisits)))                   # returning = deeper interest
+    g = max(0.0, min(1.0, float(gaze_ratio)))
+    return round(min(1.0, d * g + r), 3)
+
+
+def record_perception(episode_id: str, label: str, *, modality: str = "vision",
+                      dwell_seconds: float = 0.0, revisits: int = 0,
+                      gaze_ratio: float = 1.0, detail: dict[str, Any] | None = None) -> bool:
+    """The entry point a smart-glasses / camera stream calls: it reports WHAT was
+    seen and the BEHAVIOUR around it (dwell, revisits, gaze), and interest is
+    INFERRED here — the AI understands lingering as caring. The behavioural basis
+    is stored in detail so the salience is auditable, never a mind-reading claim."""
+    sal = salience_from_behavior(dwell_seconds, revisits=revisits, gaze_ratio=gaze_ratio)
+    basis = {"inferred_from": "behavior", "dwell_seconds": round(float(dwell_seconds), 1),
+             "revisits": int(revisits), "gaze_ratio": round(float(gaze_ratio), 2)}
+    basis.update(detail or {})
+    return add_observation(episode_id, modality, label, salience=sal, detail=basis)
+
+
 def _relative_ko(at: str, now: datetime) -> str:
     """Human relative time in Korean: '작년 7월', '지난달', '3년 전'."""
     try:
@@ -174,7 +203,10 @@ def complete(partial_text: str, focus_concepts: list[str], *,
                  key=lambda o: -float(o.get("salience", 0)))
     salient = obs[0] if obs and float(obs[0].get("salience", 0)) >= 0.6 else None
     if salient:
-        text += f" 그때 인상깊어하셨던 {salient['label']} 말하시려던 거죠?"
+        # be honest about WHY we think it mattered: behaviour (lingering) vs stated
+        behavioural = (salient.get("detail") or {}).get("inferred_from") == "behavior"
+        how = "한참 보셨던" if behavioural else "인상깊어하셨던"
+        text += f" 그때 {how} {salient['label']} 말하시려던 거죠?"
     # confidence rises with overlap + top salience; still a hypothesis
     conf = min(0.95, 0.4 + 0.15 * top.get("_overlap", 1)
                + (0.2 if salient else 0.0))

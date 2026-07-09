@@ -45,6 +45,23 @@ def test_vision_slot_is_smart_glasses_ready(tmp_path, monkeypatch):
     assert hits and hits[0]["title"] == "카페"
 
 
+def test_interest_inferred_from_dwell_not_from_being_told(tmp_path, monkeypatch):
+    em = _reset(monkeypatch, tmp_path)
+    # a glance vs lingering: dwell time is the interest signal
+    assert em.salience_from_behavior(1.0) < 0.2            # walked past — not interested
+    assert em.salience_from_behavior(18.0) > 0.85          # lingered — clearly interested
+    assert em.salience_from_behavior(6.0, revisits=2) > em.salience_from_behavior(6.0)
+    ep = em.record_episode("모터쇼", ["자동차"], at="2026-07-15T14:00:00")
+    # glasses report: user stood in front of the Genesis for 22s (never said a word)
+    em.record_perception(ep["episode_id"], "신형 제네시스", dwell_seconds=22.0, revisits=1)
+    hits = em.recall(["자동차"])
+    obs = hits[0]["observations"][0]
+    assert obs["salience"] >= 0.6 and obs["detail"]["inferred_from"] == "behavior"
+    # and the interjection phrases it as behaviour ('한참 보셨던'), not a stated claim
+    comp = em.complete("그때 그 우리 갔던", ["자동차"])
+    assert "한참 보셨던 신형 제네시스" in comp["completion"]
+
+
 def test_recall_prefers_salient_over_merely_recent(tmp_path, monkeypatch):
     em = _reset(monkeypatch, tmp_path)
     em.record_episode("잊은 약속", ["자동차"], at="2026-12-20T10:00:00", salience=0.1)

@@ -289,6 +289,33 @@ def base_brain_episode_record(request: EpisodeRequest) -> dict[str, Any]:
         return {"recorded": False, "reason": f"{type(exc).__name__}"}
 
 
+class PerceptionRequest(BaseModel):
+    episode_id: str = Field(min_length=1)
+    label: str = Field(min_length=1, max_length=200)
+    modality: str = "vision"
+    dwell_seconds: float = 0.0
+    revisits: int = 0
+    gaze_ratio: float = 1.0
+
+
+@router.post("/episode/perception")
+def base_brain_episode_perception(request: PerceptionRequest) -> dict[str, Any]:
+    """The smart-glasses / camera entry point: report WHAT was seen and the
+    BEHAVIOUR around it (dwell, revisits, gaze). Interest is INFERRED here —
+    lingering = caring — and stored with its behavioural basis (auditable, not
+    mind-reading). No glasses yet; this is the ready socket."""
+    try:
+        from packages.graph_scale.episodic_memory import record_perception, salience_from_behavior
+
+        ok = record_perception(request.episode_id, request.label, modality=request.modality,
+                               dwell_seconds=request.dwell_seconds, revisits=request.revisits,
+                               gaze_ratio=request.gaze_ratio)
+        return {"recorded": ok, "inferred_salience": salience_from_behavior(
+            request.dwell_seconds, revisits=request.revisits, gaze_ratio=request.gaze_ratio)}
+    except Exception as exc:
+        return {"recorded": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.post("/episode/complete")
 def base_brain_episode_complete(request: RecallRequest) -> dict[str, Any]:
     """Predictive interjection: from a vague '그때 그 우리 갔던…' + the concepts
