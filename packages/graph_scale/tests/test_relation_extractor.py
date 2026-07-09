@@ -61,3 +61,13 @@ def test_extract_from_sentences_writes_gated_candidates(tmp_path):
     # idempotent
     r2 = extract_from_sentences(sents, lang="en", store=None, out_dir=tmp_path)
     assert r2["candidates_written"] == 0
+
+
+def test_korean_predicate_filenames_stay_distinct(tmp_path):
+    """Korean predicates (원인/구성요소) must land in distinct ledgers, not collide
+    into one sanitized-to-underscores filename (a data-loss bug)."""
+    from packages.graph_scale.relation_extractor import extract_from_sentences
+    sents = ["Smoking causes cancer.", "water contains hydrogen."]  # -> 원인, 구성요소
+    extract_from_sentences(sents, lang="en", store=None, out_dir=tmp_path)
+    names = {p.name for p in tmp_path.glob("extracted_*.jsonl")}
+    assert "extracted_원인.jsonl" in names and "extracted_구성요소.jsonl" in names

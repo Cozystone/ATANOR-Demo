@@ -212,7 +212,10 @@ def extract_from_sentences(sentences: list[str], *, lang: str = "en",
         out_dir.mkdir(parents=True, exist_ok=True)
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
         for p, rows in kept.items():
-            path = out_dir / f"extracted_{re.sub(r'[^a-z_]', '_', p.lower())}.jsonl"
+            # keep Korean predicate names distinct: sanitizing to [a-z_] collapsed
+            # 원인/결과/구성요소 into indistinguishable filenames (data collision).
+            safe = re.sub(r"[^\w가-힣]+", "_", p.lower()).strip("_") or "rel"
+            path = out_dir / f"extracted_{safe}.jsonl"
             seen = set()
             if path.exists():
                 for line in path.read_text(encoding="utf-8").splitlines():
