@@ -447,6 +447,19 @@ def base_brain_relation_extract(sentence: str, lang: str = "en") -> dict[str, An
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/codebase/criticality")
+def base_brain_codebase_criticality(name: str) -> dict[str, Any]:
+    """How VITAL a module/function is to ATANOR's survival — measured from the real
+    call graph (how many things depend on it). A self-edit to a vital organ is
+    escalated to the user (self-preservation). Run /codebase/ingest first."""
+    try:
+        from packages.graph_scale.self_preservation import criticality
+
+        return {"available": True, **criticality(name.strip())}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/codebase/about")
 def base_brain_codebase_about(name: str) -> dict[str, Any]:
     """What ATANOR knows about its OWN code — a module/function/class: what it is,
