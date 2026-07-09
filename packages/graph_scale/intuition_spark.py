@@ -196,6 +196,66 @@ def spark(store: Any = None, energy: float = 0.5, k_terms: int = 80,
     return minted
 
 
+def energy_from_hormones(hormones: dict[str, Any] | None) -> float:
+    """Map the digital-hormone state to spark energy, so inspiration waxes and
+    wanes like a person's: curiosity/arrival (dopamine, noradrenaline) widen the
+    leaps; stress and forced rest (cortisol, repair) calm them. Baseline 0.2 —
+    a mind at rest still muses a little. Range [0, 1.2]."""
+    h = hormones or {}
+    try:
+        arousal = 0.6 * float(h.get("noradrenaline", 0.0)) + 0.5 * float(h.get("dopamine", 0.0))
+        damp = 0.5 * float(h.get("cortisol", 0.0)) + 0.7 * float(h.get("repair", 0.0))
+    except Exception:
+        return 0.5
+    return round(max(0.0, min(1.2, 0.2 + arousal - damp)), 3)
+
+
+def collide(store: Any, term_a: str, term_b: str, k_bridges: int = 6) -> dict[str, Any]:
+    """FORCE two named concepts from different domains to meet, and observe the
+    machine's proposed connective tissue: the concepts that resonate with BOTH
+    (the shared ground of the analogy). The pair is ledgered as a QUESTION, never
+    a fact. This is 'collide two domains and watch the first spark', directed."""
+    try:
+        from .phase_space import _load, _SPACE
+    except Exception:
+        return {"available": False, "reason": "no_phase_space"}
+    if not _load() or _SPACE.get("phases") is None:
+        return {"available": False, "reason": "phase_space_untrained"}
+    import numpy as np
+
+    idx = _SPACE["idx"]
+    ia, ib = idx.get(term_a), idx.get(term_b)
+    if ia is None or ib is None:
+        missing = [t for t, i in ((term_a, ia), (term_b, ib)) if i is None]
+        return {"available": False, "reason": "concept_not_in_space", "missing": missing}
+    P = np.asarray(_SPACE["phases"], dtype=np.float32)
+    terms = _SPACE["terms"]
+    res_a = np.cos(P - P[ia]).mean(axis=1)
+    res_b = np.cos(P - P[ib]).mean(axis=1)
+    both = np.minimum(res_a, res_b)                 # a bridge must resonate with BOTH
+    both[ia] = both[ib] = -2.0
+    order = np.argsort(-both)
+    bridges = []
+    for j in order[: k_bridges * 3]:
+        t = terms[int(j)]
+        if t in (term_a, term_b) or term_a in t or term_b in t:
+            continue
+        bridges.append({"term": t, "res_a": round(float(res_a[j]), 3),
+                        "res_b": round(float(res_b[j]), 3)})
+        if len(bridges) >= k_bridges:
+            break
+    q = f"{term_a}와(과) {term_b}은(는) 무엇이 닮았는가?"
+    _append({"a": term_a, "b": term_b,
+             "clean_resonance": round(float(res_a[ib]), 4),
+             "kind": "forced_collision", "status": "unverified", "question": q,
+             "bridges": [b["term"] for b in bridges],
+             "minted_at": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    return {"available": True, "a": term_a, "b": term_b,
+            "clean_resonance": round(float(res_a[ib]), 4),
+            "bridges": bridges, "question": q,
+            "note": "a QUESTION (analogy to investigate), never asserted as fact"}
+
+
 def investigate(limit: int = 3) -> int:
     """Feed the freshest sparks to the gated evidence machine as questions — the
     spark only ASKS; the web-evidence gates answer. Never writes facts."""

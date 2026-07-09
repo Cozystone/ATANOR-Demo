@@ -226,23 +226,66 @@ def base_brain_safe_closure(relation: str = "is_a", sample_cap: int = 100000
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+def _live_hormones() -> dict[str, Any] | None:
+    """The self-loop's current digital-hormone levels, if the loop is alive."""
+    try:
+        from app.routers.continuous_self import _SELF as _self_loop
+        h = getattr(_self_loop.state, "hormones", None)
+        return h if isinstance(h, dict) else None
+    except Exception:
+        return None
+
+
 @router.get("/intuition/spark")
-def base_brain_intuition_spark(energy: float = 0.5, seed: int | None = None
+def base_brain_intuition_spark(energy: float | None = None, seed: int | None = None
                               ) -> dict[str, Any]:
-    """System 1, observable: perturb the trained phase space by the given energy
-    and surface cross-domain COLLISIONS — pairs far apart in the clean geometry
-    that resonate under the noise. Each is a QUESTION (an analogy to investigate),
-    never a fact; nothing is written to the store. energy≈the arousal/hormone
-    state (higher = wilder leaps)."""
+    """System 1, observable: displace concepts along learned relation directions
+    (energy-scaled) and surface the distant concepts they land on — grounded
+    cross-domain leaps. Each is a QUESTION (an analogy to investigate), never a
+    fact. When energy is omitted it is DERIVED FROM THE LIVE HORMONE STATE, so
+    inspiration waxes and wanes with the self's arousal (higher = wilder leaps)."""
     try:
         from packages.graph_scale.answer_bridge import _store
-        from packages.graph_scale.intuition_spark import spark
+        from packages.graph_scale.intuition_spark import energy_from_hormones, spark
 
-        e = max(0.0, min(1.5, float(energy)))
+        hormones = _live_hormones()
+        if energy is None:
+            e = energy_from_hormones(hormones)
+            src = "hormones" if hormones else "baseline"
+        else:
+            e = max(0.0, min(1.5, float(energy))); src = "explicit"
         sparks = spark(_store(), energy=e, seed=seed)
-        return {"available": True, "energy": e, "sparks": sparks,
-                "count": len(sparks), "written_to_production": False,
+        return {"available": True, "energy": e, "energy_source": src,
+                "hormones": hormones, "sparks": sparks, "count": len(sparks),
+                "written_to_production": False,
                 "note": "hypotheses (questions) only — validated by evidence gates, never asserted"}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
+@router.get("/intuition/collide")
+def base_brain_intuition_collide(a: str, b: str) -> dict[str, Any]:
+    """Force two named concepts from different domains to meet and observe the
+    machine's proposed connective tissue (concepts that resonate with BOTH). The
+    pair is ledgered as a QUESTION, never a fact. e.g. a=양자역학&b=건축학."""
+    try:
+        from packages.graph_scale.answer_bridge import _store
+        from packages.graph_scale.intuition_spark import collide
+
+        return collide(_store(), a.strip(), b.strip())
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
+@router.get("/graph-regions")
+def base_brain_graph_regions() -> dict[str, Any]:
+    """The region legend: every ingested source (book/paper/dataset) is its own
+    colored bundle in the graph. The viz tints nodes by region_id -> color."""
+    try:
+        from packages.graph_scale.graph_regions import list_regions
+
+        regions = list_regions()
+        return {"available": True, "regions": regions, "count": len(regions)}
     except Exception as exc:
         return {"available": False, "reason": f"{type(exc).__name__}"}
 

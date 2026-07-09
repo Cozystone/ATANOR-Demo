@@ -61,3 +61,32 @@ def test_perturbation_sparks_are_questions_and_immune(tmp_path, monkeypatch):
     again = isp.spark(store=store, energy=1.0, seed=7, k_terms=40)
     seen = {(r["a"], r["b"]) for r in out}
     assert all((r["a"], r["b"]) not in seen for r in again)
+
+
+def test_energy_from_hormones_waxes_and_wanes():
+    """Curiosity/arrival lift energy; stress and forced rest calm it."""
+    from packages.graph_scale import intuition_spark as isp
+    calm = isp.energy_from_hormones({})
+    curious = isp.energy_from_hormones({"dopamine": 0.9, "noradrenaline": 0.8})
+    stressed = isp.energy_from_hormones({"dopamine": 0.9, "noradrenaline": 0.8,
+                                         "cortisol": 1.0, "repair": 1.0})
+    assert abs(calm - 0.2) < 1e-6              # baseline muse
+    assert curious > calm                       # arousal widens the leaps
+    assert stressed < curious                   # stress/rest reins them in
+    assert 0.0 <= stressed <= 1.2
+
+
+def test_collide_forces_two_domains_and_stays_a_question(tmp_path, monkeypatch):
+    """Naming two concepts returns the shared-ground bridges (resonate with BOTH)
+    and ledgers the pair as a QUESTION, never a fact."""
+    from packages.graph_scale import intuition_spark as isp
+    _inject_space(monkeypatch, n=60)
+    monkeypatch.setattr(isp, "LEDGER", tmp_path / "sparks.jsonl")
+    a, b = "개념05자", "개념40자"
+    r = isp.collide(_StubStore(), a, b)
+    assert r["available"] and r["a"] == a and r["b"] == b
+    assert a in r["question"] and b in r["question"]
+    for br in r["bridges"]:
+        assert br["term"] not in (a, b)         # a bridge is a third concept
+    miss = isp.collide(_StubStore(), a, "존재하지않는개념")
+    assert miss["available"] is False and "존재하지않는개념" in miss.get("missing", [])

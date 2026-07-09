@@ -44,11 +44,14 @@ class IngestResult:
     chars: int
     ocr_available: bool
     note: str = ""
+    region_id: str = ""
+    region_color: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {"source": self.source, "pages": self.pages, "pages_ocr": self.pages_ocr,
                 "sentences": self.sentences, "corpus_file": self.corpus_file,
-                "chars": self.chars, "ocr_available": self.ocr_available, "note": self.note}
+                "chars": self.chars, "ocr_available": self.ocr_available, "note": self.note,
+                "region_id": self.region_id, "region_color": self.region_color}
 
 
 def _ocr_available() -> bool:
@@ -245,11 +248,13 @@ def _sentences(text: str) -> list[str]:
 
 
 def ingest_book(path: str | Path, *, corpus_dir: str | Path | None = None,
-                title: str | None = None, ocr_scanned: bool = True,
-                max_pages: int | None = None, log: Any = print) -> IngestResult:
-    """Read a PDF into the firehose corpus so the running learner ingests it
-    behind the same truth gates. Returns stats. Does NOT bypass promotion —
-    the book is a corpus, its facts still pass the consensus/quality gate."""
+                title: str | None = None, region_kind: str = "book",
+                ocr_scanned: bool = True, max_pages: int | None = None,
+                log: Any = print) -> IngestResult:
+    """Read a document into the firehose corpus so the running learner ingests it
+    behind the same truth gates. The book becomes its own colored REGION (a named
+    bundle in the graph), not dissolved into the mass. Returns stats. Does NOT
+    bypass promotion — the book is a corpus, its facts still pass every gate."""
     path = Path(path)
     if not path.exists():
         return IngestResult(str(path), 0, 0, 0, "", 0, _ocr_available(),
@@ -262,13 +267,24 @@ def ingest_book(path: str | Path, *, corpus_dir: str | Path | None = None,
     text, pages, pages_ocr, kind = extract_text_any(
         path, ocr_scanned=ocr_scanned, max_pages=max_pages, log=log)
     sents = _sentences(text)
-    slug = re.sub(r"[^\w가-힣]+", "_", (title or path.stem)).strip("_").lower()[:60]
+    label = title or path.stem
+    slug = re.sub(r"[^\w가-힣]+", "_", label).strip("_").lower()[:60]
     out = corpus_dir / f"book_{slug}.txt"
     out.write_text("\n".join(sents), encoding="utf-8")
+    # register the book as its own colored district in the graph
+    region_id, region_color = f"book_{slug}", ""
+    try:
+        from packages.graph_scale.graph_regions import register_region
+        reg = register_region(region_id, label=label, kind=region_kind,
+                              source=str(path), sentences=len(sents))
+        region_id, region_color = reg["region_id"], reg["color"]
+    except Exception:
+        pass
     how = {"pdf": ("read via OCR on scanned pages" if pages_ocr else "read PDF text layer"),
            "epub": "read EPUB spine (stdlib)", "html": "read HTML",
            "text": "read plain text"}.get(kind, f"read as {kind}")
     return IngestResult(
         source=str(path), pages=pages, pages_ocr=pages_ocr, sentences=len(sents),
         corpus_file=str(out), chars=len(text), ocr_available=_ocr_available(),
-        note=how + " — corpus written; the running learner ingests it behind the truth gates")
+        note=how + f" — its own region '{region_id}'; the learner ingests it behind the truth gates",
+        region_id=region_id, region_color=region_color)
