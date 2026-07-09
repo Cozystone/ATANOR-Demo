@@ -68,15 +68,22 @@ anchors the question.
 
 <div align="center">
 
-<img src="docs/media/atanor-cloud-graph.png" alt="Cloud Brain knowledge graph — 25.9M verified triples, settled" width="100%"/>
-<sub><b>Cloud Brain</b> — 25,885,995 knowledge triples rendered live as a settled graph, verified vs. candidate edges colored apart</sub>
+<img src="docs/media/atanor-dashboard.png" alt="ATANOR — particle hologram workspace" width="100%"/>
+<sub><b>Workspace</b> — the ATANOR particle hologram; ask it anything from the composer</sub>
 
 <br/><br/>
 
 <table>
 <tr>
-<td><img src="docs/media/atanor-cloud-atlas.png" alt="Atlas" width="100%"/><br/><sub><b>Atlas</b> — the shared public graph, privacy-safe global relay</sub></td>
-<td><img src="docs/media/graph-hub-polished.png" alt="Graph Hub" width="100%"/><br/><sub><b>Graph Hub</b> — attach knowledge cartridges read-only</sub></td>
+<td><img src="docs/media/atanor-cloud-graph.png" alt="Cloud Brain" width="100%"/><br/><sub><b>Cloud Brain</b> — 25,885,995 verified triples, rendered live</sub></td>
+<td><img src="docs/media/atanor-local-brain.png" alt="Local Brain" width="100%"/><br/><sub><b>Local Brain</b> — your private knowledge graph, on-device</sub></td>
+</tr>
+<tr>
+<td><img src="docs/media/atanor-atlas.png" alt="Atlas" width="100%"/><br/><sub><b>Atlas</b> — privacy-safe global relay of the public graph</sub></td>
+<td><img src="docs/media/atanor-agora.png" alt="AGORA" width="100%"/><br/><sub><b>AGORA</b> — the commons where answer agents meet over Brain Link</sub></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/media/atanor-graph-hub-en.png" alt="Graph Hub" width="100%"/><br/><sub><b>Graph Hub</b> — browse and install domain knowledge cartridges, read-only</sub></td>
 </tr>
 </table>
 </div>
