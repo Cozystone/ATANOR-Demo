@@ -124,11 +124,115 @@ def _normalize(q: str) -> str:
 
 
 # ---- the VM: evaluate a single binary op (or square), with proof ------------
+# ---- multi-term expression parser: precedence + parentheses -----------------
+_TOK = re.compile(r"\s*(\d[\d,]*|[-+*/()^])")
+
+
+def _tokens(expr: str) -> list[str] | None:
+    out, i = [], 0
+    while i < len(expr):
+        m = _TOK.match(expr, i)
+        if not m:
+            if expr[i].isspace():
+                i += 1
+                continue
+            return None                      # unknown char -> not evaluable
+        out.append(m.group(1).replace(",", ""))
+        i = m.end()
+    return out or None
+
+
+def _eval_expr(expr: str) -> tuple[int, list[str]] | None:
+    """Recursive-descent eval of a full arithmetic expression (precedence
+    ^ > * / > + -, parentheses), recording each reduction as a proof step.
+    Integer-only; non-exact division falls back to floor with a noted step."""
+    toks = _tokens(expr)
+    if not toks or not any(c in expr for c in "+-*/^") or "(" not in expr and \
+            len(re.findall(r"[+\-*/^]", expr)) < 2:
+        return None                          # single-op or trivial -> handled elsewhere
+    pos = 0
+    steps: list[str] = []
+
+    def peek() -> str | None:
+        return toks[pos] if pos < len(toks) else None
+
+    def eat() -> str:
+        nonlocal pos
+        t = toks[pos]; pos += 1
+        return t
+
+    def atom() -> int:
+        t = peek()
+        if t == "(":
+            eat(); v = expr_add();
+            if peek() == ")":
+                eat()
+            return v
+        if t == "-":                          # unary minus
+            eat(); return -atom()
+        return int(eat())
+
+    def power() -> int:
+        v = atom()
+        if peek() == "^":
+            eat(); e = atom()
+            r = v ** e
+            steps.append(f"{v} ^ {e} = {r}")
+            return r
+        return v
+
+    def term() -> int:
+        v = power()
+        while peek() in ("*", "/"):
+            op = eat(); rhs = power()
+            if op == "*":
+                r = v * rhs
+                steps.append(f"{v} × {rhs} = {r}")
+            else:
+                if rhs == 0:
+                    raise ZeroDivisionError
+                r = v // rhs
+                steps.append(f"{v} ÷ {rhs} = {r}" + ("" if v % rhs == 0
+                             else f" (floor; remainder {v % rhs})"))
+            v = r
+        return v
+
+    def expr_add() -> int:
+        v = term()
+        while peek() in ("+", "-"):
+            op = eat(); rhs = term()
+            r = v + rhs if op == "+" else v - rhs
+            steps.append(f"{v} {op} {rhs} = {r}")
+            v = r
+        return v
+
+    try:
+        val = expr_add()
+        if pos != len(toks):
+            return None
+        return val, steps
+    except (ZeroDivisionError, ValueError, IndexError):
+        return None
+
+
 def evaluate(query: str) -> ArithResult | None:
     """Derive the value of an arithmetic query, or None if it can't be derived.
-    Supports one binary operation (+ - * / and integer powers of small base) or
-    squaring — deliberately narrow: correctness with a proof beats coverage."""
+    Handles a single binary op / square with a rich digit-or-Peano trace, and
+    multi-term expressions with precedence and parentheses — correctness with a
+    proof over coverage: anything it can't fully derive returns None."""
     norm = _normalize(query)
+    # extract the ARITHMETIC CORE — the maximal run of digits/operators/parens —
+    # so trailing question words ('(2+3)*4는?', '얼마야?') don't break the parser
+    # and don't let the single-op regex grab just the first '2+3' (measured).
+    _core_m = re.search(r"[-+*/^().,\d\s]{3,}", norm)
+    core = _core_m.group(0).strip() if (_core_m and any(c.isdigit() for c in _core_m.group(0))) else norm
+
+    # multi-term expression (precedence + parens): '(2+3)×4', '2+3*4^2'
+    _ex = _eval_expr(core)
+    if _ex is not None:
+        val, steps = _ex
+        expr_disp = re.sub(r"\s+", " ", core).strip()
+        return _verified_expr(ArithResult(val, steps, "expression", expr_disp), core)
 
     # squaring: "12의 제곱", "12^2"
     m = re.search(rf"({_NUM})\s*\^\s*2", norm) or re.search(rf"({_NUM})\s*\^2", norm)
@@ -177,6 +281,23 @@ def evaluate(query: str) -> ArithResult | None:
         res.remainder = r  # type: ignore[attr-defined]
         return _verified(res, exact=b * q + r == a)
     return None
+
+
+def _verified_expr(res: "ArithResult", norm: str) -> "ArithResult | None":
+    """Independent check for the multi-term parser: recompute the expression
+    with Python's exact integer arithmetic over a STRICT allowlist (digits and
+    + - * / ( ) ^ only — no names, no calls), require equality with the parsed
+    value. Uses floor division to match the integer semantics of the trace."""
+    try:
+        safe = norm.replace("×", "*").replace("÷", "/").replace("^", "**").replace(",", "")
+        if not re.fullmatch(r"[\d\s+\-*/().*]*", safe):
+            return None                      # anything outside the allowlist -> reject
+        # integer floor semantics: replace '/' (single) with '//'
+        safe = re.sub(r"(?<![/*])/(?![/*])", "//", safe)
+        truth = eval(safe, {"__builtins__": {}}, {})   # allowlisted arithmetic only
+        return res if isinstance(truth, int) and res.value == truth else None
+    except Exception:
+        return None
 
 
 def _verified(res: "ArithResult", *, exact: bool = None) -> "ArithResult | None":

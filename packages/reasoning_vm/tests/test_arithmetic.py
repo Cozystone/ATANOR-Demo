@@ -46,3 +46,26 @@ def test_random_sweep_never_wrong():
 
 def test_intent_gate():
     assert has_arithmetic_intent("2 + 2 는?") and not has_arithmetic_intent("서울의 수도는?")
+
+
+def test_multi_term_precedence_and_parens():
+    from packages.reasoning_vm.arithmetic import evaluate
+    assert evaluate("2+3*4").value == 14              # precedence
+    assert evaluate("(2+3)*4").value == 20            # parentheses override
+    assert evaluate("2+3*4^2").value == 50            # power > *
+    assert evaluate("100 - 37 + 5").value == 68       # left assoc
+    r = evaluate("(2 더하기 3) 곱하기 4")               # korean words in an expression
+    assert r is not None and r.value == 20 and r.method == "expression"
+
+
+def test_expression_sweep_never_wrong():
+    import random
+    from packages.reasoning_vm.arithmetic import evaluate
+    rng = random.Random(5)
+    for _ in range(300):
+        a, b, c = rng.randint(1, 99), rng.randint(1, 99), rng.randint(1, 30)
+        for q, truth in ((f"({a}+{b})*{c}", (a + b) * c),
+                         (f"{a}*{b}-{c}", a * b - c),
+                         (f"{a}+{b}*{c}", a + b * c)):
+            r = evaluate(q)
+            assert r is None or r.value == truth
