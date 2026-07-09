@@ -443,7 +443,9 @@ def _build_sample_from_rows(
             "id": row["relation_id"],
             "source": row["source_concept_id"],
             "target": row["target_concept_id"],
-            "relation": row["relation"],
+            # relations are stored with 'relation_type' (semantic store) — 'relation'
+            # was a KeyError crash when a row lacked the legacy alias. Accept both.
+            "relation": row.get("relation") or row.get("relation_type") or "related_to",
             "weight": row.get("weight", 0.5),
             "confidence": row.get("confidence", 0.5),
             "seen_count": row.get("seen_count", 1),
