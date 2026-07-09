@@ -447,6 +447,32 @@ def base_brain_relation_extract(sentence: str, lang: str = "en") -> dict[str, An
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/codebase/about")
+def base_brain_codebase_about(name: str) -> dict[str, Any]:
+    """What ATANOR knows about its OWN code — a module/function/class: what it is,
+    what it calls, how it's documented, and where it's referenced. Structural
+    self-knowledge from AST (not code meaning). Run /codebase/ingest first."""
+    try:
+        from packages.graph_scale.codebase_ingest import about
+
+        return {"available": True, **about(name.strip())}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
+@router.post("/codebase/ingest")
+def base_brain_codebase_ingest() -> dict[str, Any]:
+    """Teach ATANOR its own source tree: AST-parse packages/ into structural
+    self-knowledge triples (module/function/class/calls/docstrings). Candidate-tier,
+    local; never rewrites code."""
+    try:
+        from packages.graph_scale.codebase_ingest import ingest_codebase
+
+        return {"available": True, **ingest_codebase()}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/autonomy/self-assess")
 def base_brain_autonomy_self_assess() -> dict[str, Any]:
     """ATANOR's self-judged autonomy: its EARNED trust (from confirmed vs retired

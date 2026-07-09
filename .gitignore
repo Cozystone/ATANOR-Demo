@@ -65,3 +65,4 @@ apps/landing/.vercel
 
 data/graph_scale/conceptnet_dump/
 data/graph_scale/phase_space_conceptnet/
+data/graph_scale/codebase_knowledge.jsonl
