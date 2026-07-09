@@ -124,7 +124,7 @@ def topology_score(subject: str, predicate: str, obj: str) -> float | None:
     space? RotatE closeness in [0,1], or None when any of the three is untrained
     (then the triple is an unvalidated candidate, not rejected)."""
     try:
-        from .phase_space import _load, _SPACE, DIM
+        from .phase_space import _load, _SPACE
         from .fact_prediction import _load_relations
     except Exception:
         return None
@@ -141,7 +141,8 @@ def topology_score(subject: str, predicate: str, obj: str) -> float | None:
     r = rel[preds.index(predicate)]
     ph = np.asarray(_SPACE["phases"], dtype=np.float32)
     d = float(np.abs(np.sin((ph[ia] + r - ph[io]) / 2.0)).sum())
-    return round(1.0 - d / DIM, 4)
+    # normalize by the ACTUAL phase width (trained 64-dim), not the DIM=8 constant
+    return round(1.0 - d / ph.shape[1], 4)
 
 
 def extract_triples(sentence: str, lang: str = "en") -> list[dict[str, Any]]:

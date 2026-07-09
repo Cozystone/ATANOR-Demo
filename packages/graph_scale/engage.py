@@ -106,11 +106,15 @@ def engage(query: str, language: str = "ko", *, store: Any = None) -> dict[str, 
     # hypothesis, minted for later evidence). '확인된 건 없지만 이럴 것 같네요.'
     # Never a fabricated fact: it is labeled a hypothesis with a model score.
     try:
-        from .fact_prediction import mint_predicted_fact
-        ph = mint_predicted_fact(subject, store=store, language=language)
-        if ph and ph.get("text"):
-            parts.append(ph["text"])
-            hypothesis = ph["prediction"]
+        from . import fact_prediction as _fp
+        # gated OFF until the phase space is retrained: even high-score predictions
+        # are semantically garbage on the current coarse geometry, so a labeled
+        # hypothesis here would still be a bad guess reaching the user. Truth>coverage.
+        if getattr(_fp, "ENGAGE_ENABLED", False):
+            ph = _fp.mint_predicted_fact(subject, store=store, language=language)
+            if ph and ph.get("text"):
+                parts.append(ph["text"])
+                hypothesis = ph["prediction"]
     except Exception:
         pass
 

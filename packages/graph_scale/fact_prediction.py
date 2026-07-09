@@ -29,8 +29,15 @@ from typing import Any
 
 LEDGER = Path(__file__).resolve().parents[2] / "data" / "graph_scale" / "predicted_hypotheses.jsonl"
 
-_MIN_SCORE = 0.60       # closeness floor (random ≈ 0.36) — must beat chance clearly
-_MIN_MARGIN = 0.12      # ...and stand out from the median object for that relation
+_MIN_SCORE = 0.90       # closeness floor (random ≈ 0.36 on the 64-dim space)
+_MIN_MARGIN = 0.10      # ...and stand out from the median object for that relation
+
+# HONEST GATE (blind-lane doctrine, see [[learning-acceleration-derivation]]): even
+# score-0.95 predictions are semantically garbage on the current coarse geometry
+# ('juke is_a cooperation'). So the kernel is a candidate/observability TOOL, NOT
+# auto-wired into user-facing answers until the phase space is retrained. engage
+# checks this flag; the /intuition/predict endpoint still exposes it for inspection.
+ENGAGE_ENABLED = False
 
 # predicate -> hedged Korean realization (subject, object)
 _KO_FRAME = {
@@ -83,6 +90,16 @@ def _load_relations() -> tuple[Any, list[str]]:
         return None, []
 
 
+def _looks_mangled(term: str) -> bool:
+    """Reject TermDict junk objects (OCR / tokenizer debris) from predictions:
+    'gy mnasiu m', 'drive in nails' — isolated 1-char fragments or too many words."""
+    parts = term.split()
+    if len(parts) > 4:
+        return True
+    singles = sum(1 for p in parts if len(p) == 1 and p.isalpha())
+    return singles >= 2
+
+
 def _known_objects(store: Any, subject: str) -> set[tuple[str, str]]:
     out: set[tuple[str, str]] = set()
     if store is None:
@@ -102,7 +119,7 @@ def predict_missing_edges(subject: str, store: Any = None, k: int = 5,
     would be retrieval, not prediction). Returns ranked predictions; empty when
     the subject is unknown or nothing beats chance."""
     try:
-        from .phase_space import _load, _SPACE, DIM
+        from .phase_space import _load, _SPACE
     except Exception:
         return []
     if not _load() or _SPACE.get("phases") is None:
@@ -117,6 +134,10 @@ def predict_missing_edges(subject: str, store: Any = None, k: int = 5,
     import numpy as np
 
     P = np.asarray(_SPACE["phases"], dtype=np.float32)
+    # normalize by the ACTUAL phase width, not the DIM constant: the trained space
+    # is 64-dim while phase_space.DIM defaults to 8, so 1 - d/8 mis-scaled every
+    # score (d ranges [0, width]). Use the real width so the floor is meaningful.
+    dim = P.shape[1]
     terms = _SPACE["terms"]
     known = _known_objects(store, subject)
     out: list[dict[str, Any]] = []
@@ -128,10 +149,10 @@ def predict_missing_edges(subject: str, store: Any = None, k: int = 5,
         for j in order[: k + 2]:
             jj = int(j)
             obj = terms[jj]
-            if jj == ia or obj == subject or (pname, obj) in known:
+            if jj == ia or obj == subject or (pname, obj) in known or _looks_mangled(obj):
                 continue
-            score = round(1.0 - float(d[jj]) / DIM, 4)      # closeness in [0,1]
-            margin = round((med - float(d[jj])) / DIM, 4)   # standout vs median
+            score = round(1.0 - float(d[jj]) / dim, 4)      # closeness in [0,1]
+            margin = round((med - float(d[jj])) / dim, 4)   # standout vs median
             if score < min_score or margin < _MIN_MARGIN:
                 continue
             out.append({"subject": subject, "predicate": pname, "object": obj,
