@@ -1,0 +1,6 @@
+{
+  "bank": "business/content/x_launch_bank.md",
+  "next_index": 0,
+  "posted": [],
+  "note": "크론이 next_index로 다음 포스트를 선택→준비→알림. 발행 승인 시 posted에 {index,url,ts} 추가하고 next_index++."
+}
