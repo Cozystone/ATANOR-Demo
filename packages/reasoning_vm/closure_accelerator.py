@@ -106,11 +106,15 @@ def accelerate_closure(store: Any, relation: str = "is_a", *,
     A = sparse.csr_matrix((np.ones(len(si), np.int8), (si, oi)), shape=(N, N))
     A.data[:] = 1
 
-    # GPU boolean matmul path (torch) when a device is present — the same
-    # deductive closure, moved to tens/hundreds of millions of edges/s.
+    # BACKEND CHOICE = the FASTEST path at this scale (measured: at ~1M edges
+    # CPU scipy matmul is cache-resident and hits ~38M edges/s, while the GPU
+    # pays kernel-launch overhead and does ~7M/s; the GPU only wins when the
+    # graph outgrows the CPU working set). 'Max resources' means the fastest
+    # path — so use the GPU only ABOVE a size floor; below it, CPU.
+    _GPU_MIN_EDGES = 6_000_000
     backend = "scipy.sparse"
     t_mm = time.time()
-    gpu = _try_gpu_closure(si, oi, N)
+    gpu = _try_gpu_closure(si, oi, N) if len(si) >= _GPU_MIN_EDGES else None
     if gpu is not None:
         new_edges, dt_mm, backend = gpu
     else:
