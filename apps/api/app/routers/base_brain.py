@@ -189,6 +189,24 @@ def base_brain_graph_health() -> dict[str, Any]:
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.post("/surgeon/review")
+def base_brain_surgeon_review(request: dict) -> dict[str, Any]:
+    """The Surgeon — real-time contamination review of candidate is_a edges.
+    The self-aware loop (or an operator) posts a small batch of freshly-derived
+    (subject, object) candidates; the Surgeon returns the type-disjoint ones to
+    excise, WITH a stated reason. Read-only: it flags, it does not delete —
+    quarantine stays gated. Body: {"edges": [["방콕","청교도"], ...]}."""
+    try:
+        from packages.graph_scale.answer_bridge import _store
+        from packages.graph_scale.surgeon import scan
+
+        edges = [(str(e[0]), str(e[1])) for e in (request.get("edges") or [])
+                 if isinstance(e, (list, tuple)) and len(e) >= 2][:500]
+        return scan(_store(), edges, cap=500)
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/visual-memory/{concept}")
 def base_brain_visual_recall(concept: str, learn: bool = False) -> dict[str, Any]:
     """Perceptual grounding v0: the measured visual signature of a concept
