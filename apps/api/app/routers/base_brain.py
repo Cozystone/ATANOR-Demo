@@ -236,6 +236,27 @@ def _live_hormones() -> dict[str, Any] | None:
         return None
 
 
+class PrefilterRequest(BaseModel):
+    partial: str = Field(min_length=0, max_length=2000)
+    history: list[dict[str, Any]] | None = None
+
+
+@router.post("/prefilter")
+def base_brain_prefilter(request: PrefilterRequest) -> dict[str, Any]:
+    """Streaming predictive-coding prefilter: called on each debounced keystroke
+    while the user is still TYPING. Primes the phase-space field of the concepts
+    already typed, intersects them, offers branches, and (with a temporal cue +
+    history) masks conversation time-regions. NEVER answers — the real answer runs
+    on Enter through every gate. Priming changes speed and focus, never truth."""
+    try:
+        from packages.graph_scale.answer_bridge import _store
+        from packages.graph_scale.streaming_prefilter import prime
+
+        return prime(request.partial, store=_store(), history=request.history)
+    except Exception as exc:
+        return {"primed": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/intuition/spark")
 def base_brain_intuition_spark(energy: float | None = None, seed: int | None = None
                               ) -> dict[str, Any]:
