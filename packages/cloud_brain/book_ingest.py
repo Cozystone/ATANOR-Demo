@@ -46,12 +46,14 @@ class IngestResult:
     note: str = ""
     region_id: str = ""
     region_color: str = ""
+    relation_candidates: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {"source": self.source, "pages": self.pages, "pages_ocr": self.pages_ocr,
                 "sentences": self.sentences, "corpus_file": self.corpus_file,
                 "chars": self.chars, "ocr_available": self.ocr_available, "note": self.note,
-                "region_id": self.region_id, "region_color": self.region_color}
+                "region_id": self.region_id, "region_color": self.region_color,
+                "relation_candidates": self.relation_candidates}
 
 
 def _ocr_available() -> bool:
@@ -249,6 +251,7 @@ def _sentences(text: str) -> list[str]:
 
 def ingest_book(path: str | Path, *, corpus_dir: str | Path | None = None,
                 title: str | None = None, region_kind: str = "book",
+                extract_relations: bool = False, lang: str = "en",
                 ocr_scanned: bool = True, max_pages: int | None = None,
                 log: Any = print) -> IngestResult:
     """Read a document into the firehose corpus so the running learner ingests it
@@ -280,6 +283,15 @@ def ingest_book(path: str | Path, *, corpus_dir: str | Path | None = None,
         region_id, region_color = reg["region_id"], reg["color"]
     except Exception:
         pass
+    # optional v3 pass: rule×topology relation extraction -> gated candidates
+    rel_cands = 0
+    if extract_relations:
+        try:
+            from packages.graph_scale.relation_extractor import extract_from_sentences
+            er = extract_from_sentences(sents, lang=lang, store=None)
+            rel_cands = int(er.get("candidates_written") or 0)
+        except Exception:
+            pass
     how = {"pdf": ("read via OCR on scanned pages" if pages_ocr else "read PDF text layer"),
            "epub": "read EPUB spine (stdlib)", "html": "read HTML",
            "text": "read plain text"}.get(kind, f"read as {kind}")
@@ -287,4 +299,4 @@ def ingest_book(path: str | Path, *, corpus_dir: str | Path | None = None,
         source=str(path), pages=pages, pages_ocr=pages_ocr, sentences=len(sents),
         corpus_file=str(out), chars=len(text), ocr_available=_ocr_available(),
         note=how + f" — its own region '{region_id}'; the learner ingests it behind the truth gates",
-        region_id=region_id, region_color=region_color)
+        region_id=region_id, region_color=region_color, relation_candidates=rel_cands)

@@ -298,6 +298,23 @@ def base_brain_predict_fact(subject: str) -> dict[str, Any]:
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/relation-extract")
+def base_brain_relation_extract(sentence: str, lang: str = "en") -> dict[str, Any]:
+    """Relation extractor v3 (rule × topology): pull higher-order (s, p, o)
+    triples from a sentence and score each with the phase-space geometry gate.
+    Structural extraction, gated — nothing written here."""
+    try:
+        from packages.graph_scale.relation_extractor import extract_triples, topology_score
+
+        triples = extract_triples(sentence.strip()[:500], lang=lang)
+        for t in triples:
+            t["topology"] = topology_score(t["s"], t["p"], t["o"])
+        return {"available": True, "sentence": sentence.strip()[:500],
+                "triples": triples, "count": len(triples)}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/graph-regions")
 def base_brain_graph_regions() -> dict[str, Any]:
     """The region legend: every ingested source (book/paper/dataset) is its own
