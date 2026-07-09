@@ -116,10 +116,21 @@ def prime(partial_text: str, store: Any = None, history: list[dict[str, Any]] | 
     for c in src[:3]:
         branches.append(f"{c['concept']} 쪽인가요?")
 
-    # 5) temporal mask — the "우리 그때 자동차…" path (only with a cue + history)
+    # 5) temporal mask — the "우리 그때 자동차…" path (only on a temporal cue).
+    # With explicit history, rank its turns; otherwise reach into EPISODIC MEMORY
+    # (recorded lived episodes) and voice a predictive completion. Never invents.
     temporal = None
-    if history and _TEMPORAL_CUE.search(partial_text):
-        temporal = _temporal_mask(focus, history)
+    if _TEMPORAL_CUE.search(partial_text):
+        if history:
+            temporal = _temporal_mask(focus, history)
+        else:
+            try:
+                from .episodic_memory import complete as _ep_complete
+                comp = _ep_complete(partial_text, focus)
+                if comp:
+                    temporal = {"cue": True, "episodic_completion": comp}
+            except Exception:
+                pass
 
     field = n_space or 1
     narrowed = len(intersection) or len(activated) or field

@@ -257,6 +257,53 @@ def base_brain_prefilter(request: PrefilterRequest) -> dict[str, Any]:
         return {"primed": False, "reason": f"{type(exc).__name__}"}
 
 
+class EpisodeRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    concepts: list[str] = Field(default_factory=list)
+    at: str | None = None
+    place: str = ""
+    salience: float = 0.5
+    observations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RecallRequest(BaseModel):
+    partial: str = Field(min_length=0, max_length=1000)
+    focus: list[str] = Field(default_factory=list)
+
+
+@router.post("/episode/record")
+def base_brain_episode_record(request: EpisodeRequest) -> dict[str, Any]:
+    """Record a lived multimodal episode (the continuity backbone). observations
+    may carry modality text|voice|vision — 'vision' is the smart-glasses-ready
+    slot. Local/personal, not the shared graph."""
+    try:
+        from packages.graph_scale.episodic_memory import Observation, record_episode
+
+        obs = [Observation(str(o.get("modality", "text")), str(o.get("label", "")),
+                           float(o.get("salience", 0.5)), o.get("detail") or {})
+               for o in request.observations if o.get("label")]
+        ep = record_episode(request.title, request.concepts, at=request.at,
+                            place=request.place, observations=obs, salience=request.salience)
+        return {"recorded": True, "episode": ep}
+    except Exception as exc:
+        return {"recorded": False, "reason": f"{type(exc).__name__}"}
+
+
+@router.post("/episode/complete")
+def base_brain_episode_complete(request: RecallRequest) -> dict[str, Any]:
+    """Predictive interjection: from a vague '그때 그 우리 갔던…' + the concepts
+    pinned so far, recall the most likely episode and voice it AS A QUESTION,
+    surfacing what the glasses saw. Returns {available:false} (abstain) when no
+    episode confidently matches — never a guessed memory."""
+    try:
+        from packages.graph_scale.episodic_memory import complete
+
+        comp = complete(request.partial, request.focus)
+        return {"available": bool(comp), **(comp or {})}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/intuition/spark")
 def base_brain_intuition_spark(energy: float | None = None, seed: int | None = None
                               ) -> dict[str, Any]:
