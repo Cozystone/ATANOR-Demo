@@ -177,7 +177,8 @@
       text = en
         ? "You're welcome — every answer here is a verbatim quote from the verified graph, so ask away."
         : "천만에요 — 여기서 나가는 답은 전부 검증된 그래프의 원문 인용이에요. 얼마든지 물어보세요.";
-    } else if (/(누구야|누구세요|누구니|뭐야 너|너 뭐야|넌 뭐야|너는 뭐야|정체가 뭐|네 소개|자기소개|who are you|what are you|introduce yourself)/.test(q)) {
+    } else if (/^(너는?|넌|당신은?|정체가?)?\s*(누구(야|세요|니|심|시죠)?|뭐야|뭔데)$/.test(q) ||
+               /(뭐야 너|너 뭐야|넌 뭐야|너는 뭐야|정체가 뭐|네 소개|자기소개|who are you|what are you|introduce yourself)/.test(q)) {
       text = en
         ? "I'm ATANOR in miniature: the same graph-native structure as the full engine, packed into a 33 KB knowledge pack that answers right here — GPU 0, server 0. The full ATANOR continues with live web verification and a learning loop."
         : "저는 ATANOR의 축소판이에요. 전체 엔진과 같은 그래프 네이티브 구조를 33KB 지식팩에 담아 이 탭에서 바로 답합니다 — GPU 0, 서버 0. 전체 ATANOR는 실시간 웹 검증과 학습 루프로 이어집니다.";
@@ -242,14 +243,112 @@
       CTX.entity = entity;   // remember for the next turn
       return { text: text, ms: performance.now() - t0, grounded: true, context: usedContext };
     }
-    return {
-      text: "그 주제는 이 탭의 미니 팩(" + (((pack.counts || {}).triples) || 0) + "개 검증 사실) 너머에 있어요 — 전체 ATANOR는 여기서부터 실시간 웹 검증으로 이어 답하고, 배운 것은 그래프에 남습니다. 이 탭에서는 ‘일본의 수도는?’을 묻고 이어서 ‘인구는?’처럼 짧게 물어도 답해요.",
-      ms: performance.now() - t0, grounded: false, kind: "redirect",
-    };
+    // BEYOND THE PACK: hand off to live web verification (the browser calls
+    // Wikipedia directly — still no ATANOR server involved). The UI awaits it.
+    return { kind: "web", q: q, entity: entity, rel: rel, t0: t0 };
+  }
+
+  /* ---- live web verification lane (browser -> Wikipedia, no middleman) ----
+     The full engine's web-rescue law applies in miniature: the fetched page
+     must ANCHOR the question (title overlap gate) or we abstain honestly, and
+     whatever we say is a VERBATIM quote from the source, linked. */
+  var STOP_WORDS = /^(뭐야|뭐지|뭔데|뭐냐|무엇|누구야|누구지|누구|어디야|어디|언제|얼마야|얼마|왜|어떻게|알려줘|설명해줘|설명|말해줘|궁금해|대해|대해서|관해|에|는|은|이|가)$/;
+
+  function webSubject(q, entity, rel) {
+    if (entity && !rel) return entity;             // pack entity, unknown property
+    var toks = q.split(/\s+/).map(stripJosa).filter(function (t) {
+      return t && !STOP_WORDS.test(t) && !(t in REL_WORDS);
+    });
+    return toks.join(" ") || (CTX.entity || "");
+  }
+
+  function fetchJSON(url) {
+    return fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+  }
+
+  function wikiSummary(title) {
+    return fetchJSON("https://ko.wikipedia.org/api/rest_v1/page/summary/" +
+                     encodeURIComponent(title.replace(/\s+/g, "_")));
+  }
+
+  function wikiSearch(q) {
+    return fetchJSON("https://ko.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=1&search=" +
+                     encodeURIComponent(q))
+      .then(function (a) { return (a && a[1] && a[1][0]) || null; });
+  }
+
+  function anchors(subj, title) {
+    var s = subj.replace(/\s+/g, ""), t = (title || "").replace(/\s+/g, "");
+    if (!s || !t) return false;
+    return t.indexOf(s) !== -1 || s.indexOf(t) !== -1 ||
+           (s.length >= 2 && t.slice(0, 2) === s.slice(0, 2));
+  }
+
+  function pickSentence(extract, keyword) {
+    var parts = (extract || "").split(/(?<=다\.)\s+|(?<=\.)\s+/);
+    for (var i = 0; i < parts.length; i++) {
+      if (keyword && parts[i].indexOf(keyword) !== -1) return parts[i].trim();
+    }
+    return null;
+  }
+
+  function webRescue(pack, r) {
+    var subj = webSubject(r.q, r.entity, r.rel);
+    // a bare short follow-up ('높이는?') rides the discourse state as a property
+    var propWord = null;
+    if (r.rel) { for (var w in REL_WORDS) { if (REL_WORDS[w] === r.rel) { propWord = w; break; } } }
+    // a bare '높이는?' rides the discourse entity as a PROPERTY — but only a
+    // true bare follow-up: single leftover token, and no definition question
+    // word ('에펠탑이 뭐야?' asks WHAT 에펠탑 IS, never a property of the
+    // previous entity — measured live).
+    var isDefQ = /(뭐야|뭐지|뭔데|뭐냐|무엇|누구)/.test(r.q);
+    var leftover = r.q.split(/\s+/).map(stripJosa).filter(function (t) {
+      return t && !STOP_WORDS.test(t) && !(t in REL_WORDS);
+    });
+    if (!propWord && !isDefQ && CTX.entity && leftover.length === 1 &&
+        subj === leftover[0] && subj !== CTX.entity &&
+        subj.replace(/\s+/g, "").length <= 4) {
+      propWord = subj; subj = CTX.entity;
+    }
+    if (!subj) return Promise.reject(new Error("no-subject"));
+    var lookup = wikiSummary(subj).catch(function () {
+      return wikiSearch(subj).then(function (t) {
+        if (!t) throw new Error("not-found");
+        return wikiSummary(t);
+      });
+    });
+    return lookup.then(function (page) {
+      var title = page && (page.title || ""), extract = page && (page.extract || "");
+      var url = page && page.content_urls && page.content_urls.desktop && page.content_urls.desktop.page;
+      if (!extract || !anchors(subj, title)) throw new Error("no-anchor");
+      var text, partial = false;
+      if (propWord) {
+        var sent = pickSentence(extract, propWord);
+        if (sent) { text = sent; }
+        else {
+          text = extract.split(/(?<=다\.)\s+/)[0];
+          partial = true;
+        }
+      } else {
+        var sents = extract.split(/(?<=다\.)\s+/);
+        text = sents.slice(0, 2).join(" ");
+      }
+      if (partial) {
+        text += " — 요약에 ‘" + propWord + "’ 항목은 없었어요. 원문에서 확인해 보세요.";
+      }
+      CTX.entity = title;                      // web entity carries context too
+      return { text: text, url: url, title: title,
+               ms: performance.now() - r.t0, grounded: true, web: true };
+    });
   }
 
   function certLabel(r) {
     var en = uiLang() === "en";
+    if (r.web) {
+      return en ? "live web verification " + r.ms.toFixed(0) + " ms · source ko.wikipedia.org · ATANOR server calls 0"
+                : "실시간 웹 검증 " + r.ms.toFixed(0) + " ms · 출처 ko.wikipedia.org · ATANOR 서버 호출 0";
+    }
     if (r.grounded) {
       var base = en ? "mini pack lookup " + r.ms.toFixed(2) + " ms · GPU 0 · server calls 0"
                     : "미니 지식팩 조회 " + r.ms.toFixed(2) + " ms · GPU 0 · 서버 호출 0";
@@ -260,8 +359,8 @@
       return en ? "dialogue · in-browser · server calls 0"
                 : "대화 응답 · 브라우저 로컬 · 서버 호출 0";
     }
-    return en ? "beyond the mini pack · the full engine continues with web verification"
-              : "미니 팩 너머 · 전체 엔진은 웹 검증으로 계속";
+    return en ? "web verification unavailable · nothing invented"
+              : "웹 검증 불가 · 지어내지 않았습니다";
   }
 
   // ---- UI wiring: turn the mock chat card into the live mini engine ----
@@ -293,17 +392,42 @@
       var b = document.createElement("div");
       b.className = "chatrow bot";
       var span = document.createElement("span");
-      span.textContent = r.text;
       b.appendChild(span);
       var cert = document.createElement("div");
       cert.className = "cert";
       cert.innerHTML = "<i></i><span></span>";
-      cert.querySelector("span").textContent = certLabel(r);
       b.appendChild(cert);
       log.appendChild(b);
-      log.scrollTop = log.scrollHeight;
-      if (window.__atanorOrbPulse)
-        window.__atanorOrbPulse(r.grounded ? 1.0 : (r.kind === "chat" ? 0.6 : 0.45));
+
+      function paint(res) {
+        span.textContent = res.text;
+        if (res.url) {
+          var a = document.createElement("a");
+          a.href = res.url; a.target = "_blank"; a.rel = "noopener";
+          a.textContent = " (출처: " + (res.title || "위키백과") + ")";
+          a.style.cssText = "font-size:.85em;opacity:.75;text-decoration:underline;";
+          span.appendChild(a);
+        }
+        cert.querySelector("span").textContent = certLabel(res);
+        log.scrollTop = log.scrollHeight;
+        if (window.__atanorOrbPulse)
+          window.__atanorOrbPulse(res.grounded ? 1.0 : (res.kind === "chat" ? 0.6 : 0.45));
+      }
+
+      if (r.kind === "web") {
+        span.textContent = uiLang() === "en" ? "verifying on the live web…" : "실시간 웹에서 검증하는 중…";
+        cert.querySelector("span").textContent = uiLang() === "en"
+          ? "browser → ko.wikipedia.org (no ATANOR server)" : "브라우저 → ko.wikipedia.org (ATANOR 서버 경유 없음)";
+        log.scrollTop = log.scrollHeight;
+        webRescue(pack, r).then(paint).catch(function () {
+          paint({
+            text: "웹에서도 이 질문을 앵커하는 문서를 찾지 못했어요 — 지어내는 대신 여기서 멈춥니다. 전체 ATANOR는 다중 소스 합의 검색으로 더 깊이 팝니다.",
+            ms: performance.now() - r.t0, grounded: false, kind: "redirect",
+          });
+        });
+      } else {
+        paint(r);
+      }
     });
   }
 
