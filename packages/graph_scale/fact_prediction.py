@@ -246,11 +246,22 @@ def settle(store: Any = None, max_age_days: float = 14.0) -> dict[str, int]:
 def mint_predicted_fact(subject: str, store: Any = None, language: str = "ko"
                         ) -> dict[str, Any] | None:
     """The kernel: predict the top missing edge, MINT it as a labeled hypothesis
-    (never a fact), and return a hedged realization + its basis. Feeds the same
-    evidence loop as hypothesis_minter, so a later pass can confirm/retire it.
-    Returns None when nothing confident enough exists (then the caller abstains
-    or engages) — we still never fabricate."""
-    preds = predict_missing_edges(subject, store=store, k=3)
+    (never a fact), and return a hedged realization + its basis. DUAL-SPACE: prefer
+    the CLEAN ConceptNet geometry (trustworthy enough to voice); fall back to the
+    noisy store geometry only as an untrusted observation. Feeds the same evidence
+    loop as hypothesis_minter. Returns None when nothing confident enough exists."""
+    trusted = False
+    preds: list[dict[str, Any]] = []
+    try:
+        from . import clean_space
+        if clean_space.has(subject):
+            known = _known_objects(store, subject)
+            preds = clean_space.predict_edges(subject, k=3, known=known)
+            trusted = bool(preds)          # a clean-space prediction is speakable
+    except Exception:
+        preds = []
+    if not preds:
+        preds = predict_missing_edges(subject, store=store, k=3)   # noisy fallback
     if not preds:
         return None
     top = preds[0]
@@ -269,6 +280,8 @@ def mint_predicted_fact(subject: str, store: Any = None, language: str = "ko"
         "alternatives": preds[1:],
         "source": "predicted_hypothesis",
         "hypothesis": True,
+        "trusted": trusted,               # True = from the clean ConceptNet geometry
+        "geometry": "conceptnet_clean" if trusted else "store_noisy",
         "note": "an honestly-labeled hypothesis (phase-space link prediction), "
                 "not a confirmed fact; the score is an uncalibrated model signal",
     }

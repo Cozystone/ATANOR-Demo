@@ -107,14 +107,13 @@ def engage(query: str, language: str = "ko", *, store: Any = None) -> dict[str, 
     # Never a fabricated fact: it is labeled a hypothesis with a model score.
     try:
         from . import fact_prediction as _fp
-        # gated OFF until the phase space is retrained: even high-score predictions
-        # are semantically garbage on the current coarse geometry, so a labeled
-        # hypothesis here would still be a bad guess reaching the user. Truth>coverage.
-        if getattr(_fp, "ENGAGE_ENABLED", False):
-            ph = _fp.mint_predicted_fact(subject, store=store, language=language)
-            if ph and ph.get("text"):
-                parts.append(ph["text"])
-                hypothesis = ph["prediction"]
+        # DUAL-SPACE gate: a prediction from the CLEAN ConceptNet geometry is
+        # speakable (trusted=True); one from the noisy store stays gated behind
+        # ENGAGE_ENABLED (still garbage). Truth>coverage, but clean is trustworthy.
+        ph = _fp.mint_predicted_fact(subject, store=store, language=language)
+        if ph and ph.get("text") and (ph.get("trusted") or getattr(_fp, "ENGAGE_ENABLED", False)):
+            parts.append(ph["text"])
+            hypothesis = ph["prediction"]
     except Exception:
         pass
 
