@@ -226,6 +226,27 @@ def base_brain_safe_closure(relation: str = "is_a", sample_cap: int = 100000
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/intuition/spark")
+def base_brain_intuition_spark(energy: float = 0.5, seed: int | None = None
+                              ) -> dict[str, Any]:
+    """System 1, observable: perturb the trained phase space by the given energy
+    and surface cross-domain COLLISIONS — pairs far apart in the clean geometry
+    that resonate under the noise. Each is a QUESTION (an analogy to investigate),
+    never a fact; nothing is written to the store. energy≈the arousal/hormone
+    state (higher = wilder leaps)."""
+    try:
+        from packages.graph_scale.answer_bridge import _store
+        from packages.graph_scale.intuition_spark import spark
+
+        e = max(0.0, min(1.5, float(energy)))
+        sparks = spark(_store(), energy=e, seed=seed)
+        return {"available": True, "energy": e, "sparks": sparks,
+                "count": len(sparks), "written_to_production": False,
+                "note": "hypotheses (questions) only — validated by evidence gates, never asserted"}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/visual-memory/{concept}")
 def base_brain_visual_recall(concept: str, learn: bool = False) -> dict[str, Any]:
     """Perceptual grounding v0: the measured visual signature of a concept

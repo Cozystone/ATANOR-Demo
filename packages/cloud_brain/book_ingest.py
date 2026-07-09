@@ -21,11 +21,17 @@ the deep argument structure needs richer extraction (a named next step)."""
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?。！？])\s+|\n{2,}")
+
+# every format we can read today; a book/doc is just a text source, and the
+# door is one dispatcher so adding a format later is one branch.
+_TEXT_EXT = {".txt", ".md", ".markdown", ".text", ".rst"}
+_HTML_EXT = {".html", ".htm", ".xhtml"}
 
 
 @dataclass
@@ -90,12 +96,150 @@ def extract_pdf_text(path: str | Path, *, ocr_scanned: bool = True,
     return "\n\n".join(parts), n, pages_ocr
 
 
+class _HTMLText(HTMLParser):
+    """Minimal, dependency-free HTML/XHTML -> text (drops script/style, keeps
+    block boundaries so sentence splitting works)."""
+    _SKIP = {"script", "style", "head"}
+    _BLOCK = {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6",
+              "tr", "section", "article"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag: str, attrs: Any) -> None:
+        if tag in self._SKIP:
+            self._skip += 1
+        elif tag in self._BLOCK:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP and self._skip:
+            self._skip -= 1
+        elif tag in self._BLOCK:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip and data.strip():
+            self._parts.append(data)
+
+    def text(self) -> str:
+        return "".join(self._parts)
+
+
+def _html_to_text(html: str) -> str:
+    p = _HTMLText()
+    try:
+        p.feed(html)
+    except Exception:
+        return re.sub(r"<[^>]+>", " ", html)   # last-resort tag strip
+    return p.text()
+
+
+def extract_epub_text(path: str | Path, *, max_pages: int | None = None,
+                      log: Any = print) -> tuple[str, int]:
+    """EPUB = a zip of (X)HTML documents. Read the spine in reading order (fall
+    back to sorted content docs), strip tags. Returns (text, docs_read). Pure
+    stdlib — no ebooklib needed."""
+    import zipfile
+
+    with zipfile.ZipFile(str(path)) as zf:
+        names = zf.namelist()
+        order = _epub_spine_order(zf, names)
+        if max_pages is not None:
+            order = order[:max_pages]
+        parts: list[str] = []
+        for i, name in enumerate(order):
+            try:
+                raw = zf.read(name).decode("utf-8", "ignore")
+            except Exception:
+                continue
+            parts.append(_html_to_text(raw))
+            if i and i % 25 == 0:
+                log(f"  ...{i}/{len(order)} docs")
+    return "\n\n".join(parts), len(order)
+
+
+def _epub_spine_order(zf: Any, names: list[str]) -> list[str]:
+    """Reading order from the OPF spine; fall back to every content doc sorted."""
+    content = [n for n in names if n.lower().endswith((".xhtml", ".html", ".htm"))]
+    try:
+        opf = next((n for n in names if n.lower().endswith(".opf")), None)
+        if not opf:
+            return sorted(content)
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(zf.read(opf))
+        ns = {"o": root.tag.split("}")[0].strip("{")} if "}" in root.tag else {}
+        base = opf.rsplit("/", 1)[0] if "/" in opf else ""
+        idref_href: dict[str, str] = {}
+        man = root.find("o:manifest", ns) if ns else root.find("manifest")
+        for item in (man or []):
+            iid = item.get("id"); href = item.get("href")
+            if iid and href:
+                idref_href[iid] = (base + "/" + href) if base else href
+        spine = root.find("o:spine", ns) if ns else root.find("spine")
+        ordered = [idref_href[it.get("idref")] for it in (spine or [])
+                   if it.get("idref") in idref_href]
+        ordered = [n for n in ordered if n in names]
+        return ordered or sorted(content)
+    except Exception:
+        return sorted(content)
+
+
+def extract_text_any(path: str | Path, *, ocr_scanned: bool = True,
+                     max_pages: int | None = None,
+                     log: Any = print) -> tuple[str, int, int, str]:
+    """One door for every format. Returns (text, units_read, units_ocr, kind).
+    'units' are pages (PDF) or documents (EPUB/HTML) or 1 (plain text)."""
+    path = Path(path)
+    ext = path.suffix.lower()
+    if ext == ".pdf":
+        text, pages, ocr = extract_pdf_text(
+            path, ocr_scanned=ocr_scanned, max_pages=max_pages, log=log)
+        return text, pages, ocr, "pdf"
+    if ext == ".epub":
+        text, docs = extract_epub_text(path, max_pages=max_pages, log=log)
+        return text, docs, 0, "epub"
+    if ext in _HTML_EXT:
+        return _html_to_text(path.read_text("utf-8", "ignore")), 1, 0, "html"
+    if ext in _TEXT_EXT or ext == "":
+        return path.read_text("utf-8", "ignore"), 1, 0, "text"
+    # unknown extension: try text, then give an honest note
+    try:
+        return path.read_text("utf-8", "ignore"), 1, 0, "text?"
+    except Exception:
+        return "", 0, 0, "unsupported"
+
+
+_LINGUISTIC = re.compile(r"[A-Za-z가-힣0-9 .,;:'\"()\-?!…’“”—]")
+
+
+def _looks_linguistic(s: str) -> bool:
+    """Reject non-prose noise that survives tag stripping: base64 blobs, embedded
+    binary/typography (GEB's encoded figures decoded as mojibake), symbol soup.
+    Real sentences are overwhelmingly letters/spaces/basic punctuation."""
+    if not s:
+        return False
+    good = sum(1 for c in s if _LINGUISTIC.match(c))
+    if good / len(s) < 0.85:               # <85% ordinary chars -> not prose
+        return False
+    letters = sum(1 for c in s if c.isalpha())
+    if letters / len(s) < 0.55:            # mostly digits/punct -> not a sentence
+        return False
+    # a real sentence has whitespace between words; a base64/hash run has none
+    if len(s) > 30 and s.count(" ") < len(s) / 25:
+        return False
+    return True
+
+
 def _sentences(text: str) -> list[str]:
     out: list[str] = []
     for chunk in _SENT_SPLIT.split(text):
         s = re.sub(r"\s+", " ", chunk).strip()
         # keep real sentences: length-bounded, has letters, not a page header/number
-        if 20 <= len(s) <= 600 and re.search(r"[A-Za-z가-힣]", s) and not s.isupper():
+        if 20 <= len(s) <= 600 and re.search(r"[A-Za-z가-힣]", s) \
+                and not s.isupper() and _looks_linguistic(s):
             out.append(s)
     return out
 
@@ -115,14 +259,16 @@ def ingest_book(path: str | Path, *, corpus_dir: str | Path | None = None,
     corpus_dir = Path(corpus_dir)
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
-    text, pages, pages_ocr = extract_pdf_text(
+    text, pages, pages_ocr, kind = extract_text_any(
         path, ocr_scanned=ocr_scanned, max_pages=max_pages, log=log)
     sents = _sentences(text)
     slug = re.sub(r"[^\w가-힣]+", "_", (title or path.stem)).strip("_").lower()[:60]
     out = corpus_dir / f"book_{slug}.txt"
     out.write_text("\n".join(sents), encoding="utf-8")
+    how = {"pdf": ("read via OCR on scanned pages" if pages_ocr else "read PDF text layer"),
+           "epub": "read EPUB spine (stdlib)", "html": "read HTML",
+           "text": "read plain text"}.get(kind, f"read as {kind}")
     return IngestResult(
         source=str(path), pages=pages, pages_ocr=pages_ocr, sentences=len(sents),
         corpus_file=str(out), chars=len(text), ocr_available=_ocr_available(),
-        note=("read via OCR on scanned pages" if pages_ocr else "read from text layer")
-        + " — corpus written; the running learner ingests it behind the truth gates")
+        note=how + " — corpus written; the running learner ingests it behind the truth gates")
