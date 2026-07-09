@@ -145,6 +145,20 @@ def base_brain_answer(request: BaseBrainAnswerRequest) -> dict[str, Any]:
                 from packages.graph_scale.abstain_queue import record_abstain
 
                 record_abstain(request.query)
+                # NO DEAD-END (owner directive 2026-07-09): a bare '근거가 부족'
+                # is a letdown. Replace it with a SUBSTANTIVE engagement built
+                # only from what the graph really holds (nearest verified
+                # concept + related facts + a live-web path) — honest, never
+                # fabricated. The abstain queue above still learns the gap.
+                try:
+                    from packages.graph_scale.engage import engage
+                    from packages.graph_scale.answer_bridge import _store
+
+                    _eng = engage(request.query, request.language or "ko", store=_store())
+                    if _eng:
+                        result = {**result, **_eng}
+                except Exception:
+                    pass
     except Exception:
         pass
     return result
