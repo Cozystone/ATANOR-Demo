@@ -83,6 +83,7 @@ def engage(query: str, language: str = "ko", *, store: Any = None) -> dict[str, 
     subject = _best_subject(query)
     parts: list[str] = []
     used_soft = None
+    hypothesis = None
 
     if store is not None:
         # 1) related facts around the subject (highest value when present)
@@ -98,6 +99,20 @@ def engage(query: str, language: str = "ko", *, store: Any = None) -> dict[str, 
                 used_soft = sc.get("neighbor")
         except Exception:
             pass
+
+    # 2.5) NEXT-FACT PREDICTION — the reasoned guess instead of the dead-end.
+    # When the store holds no explicit fact, the trained phase geometry proposes
+    # the most probable MISSING edge and we speak it HEDGED (source-tagged as a
+    # hypothesis, minted for later evidence). '확인된 건 없지만 이럴 것 같네요.'
+    # Never a fabricated fact: it is labeled a hypothesis with a model score.
+    try:
+        from .fact_prediction import mint_predicted_fact
+        ph = mint_predicted_fact(subject, store=store, language=language)
+        if ph and ph.get("text"):
+            parts.append(ph["text"])
+            hypothesis = ph["prediction"]
+    except Exception:
+        pass
 
     # 3) shape-aware conversational engagement (opinion/advice/open questions)
     try:
@@ -123,21 +138,29 @@ def engage(query: str, language: str = "ko", *, store: Any = None) -> dict[str, 
     text = " ".join(parts).strip()
     if not text:
         return None
+    steps = [{"type": "engagement", "fact": p} for p in parts]
+    if hypothesis:
+        steps.append({"type": "predicted_hypothesis", "triple": hypothesis,
+                      "source": "predicted_hypothesis"})
     return {
         "answer": text,
         "reasoning_certificate": {
             "derivation_kind": "engagement_no_dead_end",
             "anchor_concept": {"label": subject},
-            "steps": [{"type": "engagement", "fact": p} for p in parts],
+            "steps": steps,
             "evidence_concepts": [subject] + ([used_soft] if used_soft else []),
             "confidence": 0.3,
             "confidence_basis": "no direct grounded fact — engaged with nearest "
-                                "verified context and a live-web path; nothing fabricated",
+                                "verified context" + (", plus a labeled phase-space "
+                                "hypothesis (not a confirmed fact)" if hypothesis else "")
+                                + " and a live-web path; nothing fabricated",
             "guarantees": {"external_llm": False, "fabricated_facts": False,
-                           "inferred": False, "engaged": True},
+                           "inferred": bool(hypothesis), "engaged": True,
+                           "hypothesis": bool(hypothesis)},
         },
         "confidence": 0.3,
         "answer_kind": "engagement_no_dead_end",
         "grounded": False,
         "engaged": True,
+        "hypothesis": hypothesis,
     }

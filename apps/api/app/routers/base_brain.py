@@ -277,6 +277,27 @@ def base_brain_intuition_collide(a: str, b: str) -> dict[str, Any]:
         return {"available": False, "reason": f"{type(exc).__name__}"}
 
 
+@router.get("/intuition/predict")
+def base_brain_predict_fact(subject: str) -> dict[str, Any]:
+    """Next-FACT prediction: instead of forfeiting on a store miss, the trained
+    phase geometry proposes the most probable MISSING edge for the subject as a
+    HEDGED, source-tagged hypothesis (never a confirmed fact). '확인된 건 없지만
+    이럴 것 같네요.' The score is an uncalibrated model signal, labeled as such."""
+    try:
+        from packages.graph_scale.answer_bridge import _store
+        from packages.graph_scale.fact_prediction import mint_predicted_fact, predict_missing_edges
+
+        subj = subject.strip()
+        preds = predict_missing_edges(subj, store=_store(), k=5)
+        minted = mint_predicted_fact(subj, store=_store()) if preds else None
+        return {"available": True, "subject": subj, "predictions": preds,
+                "realization": (minted or {}).get("text"),
+                "written_to_production": False,
+                "note": "labeled hypotheses (phase-space link prediction), not confirmed facts"}
+    except Exception as exc:
+        return {"available": False, "reason": f"{type(exc).__name__}"}
+
+
 @router.get("/graph-regions")
 def base_brain_graph_regions() -> dict[str, Any]:
     """The region legend: every ingested source (book/paper/dataset) is its own
