@@ -55,3 +55,9 @@
 - 미디어(시냅스 영상)는 보류: 브라우저 자동화가 :3400 WebGL 앱에서 렌더 실패 → 운영자 화면녹화 첨부 대기, 또는 @ATANOR_AI를 프로그램 브라우저에 로그인해 단일-브라우저 캡처+게시로 전환.
 - 다음 준비 포스트: 오늘 ~21:00 슬롯(EN no-LLM angle, rotation next_index=0).
 - 워밍 가속 팁(운영자): 관련 AI/dev 계정 팔로우·답글·좋아요가 graduated-access를 더 빨리 해제. 순수 게시만으론 느림.
+
+## 2026-07-09 10:40 — 국면: HN 준비 (운영자 "알아서" → 준비-먼저 채택)
+- 결정: HN/레딧 즉시 발사 대신 **준비-먼저**. HN 목표 = 이번 주 화~목 저녁(KST 21–23시) 정타. 레딧은 HN 후속.
+- ✅ repo 메타 세팅(둘 다 PUBLIC): description + homepage(랜딩) + topics(knowledge-graph/explainable-ai/no-llm/local-first/artificial-intelligence/privacy).
+- [준비 남음] ①README 개선 푸시(초안=approval_queue/2026-07-09_github_readme-audit.md, 정직성 검증됨) — 공개 브랜드 첫인상이라 운영자 확인 후 푸시 권장. ②데모 GIF(:3400 그래프 화면녹화, 운영자만 가능 — 브라우저 자동화 렌더 실패). ③canonical repo 확정.
+- [권고] canonical 공개 리포 = **Cozystone/ATANOR**(이름 깔끔 + 스타 2). ATANOR-Demo는 중복 드리프트 → 정리 대상. HN 링크는 ATANOR 권장.
