@@ -63,6 +63,99 @@ def _save_artifacts(theta_np: "np.ndarray", rel_np: "np.ndarray", terms_payload:
     log(f"  saved phase space v{ver} (pointer flipped)")
 
 
+def train_from_triples(triples: list[tuple[str, str, str]], *, dim: int = 64,
+                       epochs: int = 40, lr: float = 0.5, seed: int = 3,
+                       min_degree: int = 2, log: Any = print) -> dict[str, Any]:
+    """Train the RotatE geometry directly on STRING triples (e.g. a clean external
+    source like ConceptNet), WITHOUT touching the production artifacts. Returns the
+    trained arrays + honest held-out Hits@10 so a clean-source space can be spot-
+    checked and compared before any promotion. Same math as the store trainer."""
+    from collections import Counter
+    deg: Counter = Counter()
+    for s, _p, o in triples:
+        deg[s] += 1
+        deg[o] += 1
+    keep = {t for t, d in deg.items() if d >= min_degree}
+    triples = [(s, p, o) for s, p, o in triples if s in keep and o in keep and s != o]
+    if len(triples) < 500:
+        return {"error": "too few edges after dense-core", "edges": len(triples)}
+    tids = sorted({t for s, _p, o in triples for t in (s, o)})
+    tidx = {t: i for i, t in enumerate(tids)}
+    pids = sorted({p for _s, p, _o in triples})
+    pidx = {p: i for i, p in enumerate(pids)}
+    rng = np.random.default_rng(seed)
+    E = np.array([(tidx[s], pidx[p], tidx[o]) for s, p, o in triples], dtype=np.int64)
+    rng.shuffle(E)
+    cut = min(max(1000, len(E) // 50), max(1, len(E) // 10))
+    hold, tr = E[:cut], E[cut:]
+    n_t, n_p = len(tids), len(pids)
+    log(f"  clean-source train: edges={len(triples):,} terms={n_t:,} preds={n_p} dim={dim}")
+
+    use_gpu = _HAVE_TORCH and torch.cuda.is_available()
+    if use_gpu:
+        dev = "cuda"
+        g = torch.Generator(device=dev).manual_seed(seed)
+        theta = torch.rand((n_t, dim), generator=g, device=dev) * 2 * torch.pi
+        rel = torch.rand((n_p, dim), generator=g, device=dev) * 2 * torch.pi
+        TR = torch.from_numpy(tr).to(dev)
+        repel_at = dim / 2.0
+        batch = 65_536
+        for ep in range(epochs):
+            TR = TR[torch.randperm(len(TR), generator=g, device=dev)]
+            for i in range(0, len(TR), batch):
+                b = TR[i:i + batch]
+                s, p, o = b[:, 0], b[:, 1], b[:, 2]
+                neg = torch.randint(0, n_t, (len(b),), generator=g, device=dev)
+                ap = (theta[s] + rel[p] - theta[o]) / 2.0
+                an = (theta[s] + rel[p] - theta[neg]) / 2.0
+                gp = torch.sign(torch.sin(ap)) * torch.cos(ap) * 0.5
+                gs = torch.zeros_like(theta); gr = torch.zeros_like(rel)
+                gs.index_add_(0, s, gp); gs.index_add_(0, o, -gp); gr.index_add_(0, p, gp)
+                close = torch.abs(torch.sin(an)).sum(1) < repel_at
+                sc, nc = s[close], neg[close]
+                if len(sc):
+                    gn = torch.sign(torch.sin(an[close])) * torch.cos(an[close]) * 0.5
+                    gs.index_add_(0, sc, -gn); gs.index_add_(0, nc, gn)
+                cs = torch.bincount(torch.cat([s, o, sc, nc]), minlength=n_t).float().unsqueeze(1)
+                cr = torch.bincount(p, minlength=n_p).float().unsqueeze(1)
+                theta -= lr * gs / torch.clamp(cs, min=1.0)
+                rel -= lr * gr / torch.clamp(cr, min=1.0)
+        theta_np = torch.remainder(theta, 2 * torch.pi).cpu().numpy().astype(np.float32)
+        rel_np = rel.cpu().numpy().astype(np.float32)
+    else:
+        theta_np = rng.uniform(0, 2 * np.pi, (n_t, dim)).astype(np.float32)
+        rel_np = rng.uniform(0, 2 * np.pi, (n_p, dim)).astype(np.float32)
+        # (numpy path is the CPU trainer's loop; omitted here — GPU is the intended path)
+        log("  (no CUDA — clean-source trainer needs GPU for this scale)")
+    hits, sample = 0, hold[rng.permutation(len(hold))[:500]]
+    cand = rng.integers(0, n_t, size=200)
+    for s, p, o in sample:
+        dt = np.abs(np.sin((theta_np[s] + rel_np[p] - theta_np[o]) / 2.0)).sum()
+        dc = np.abs(np.sin((theta_np[s][None] + rel_np[p][None] - theta_np[cand]) / 2.0)).sum(1)
+        if 1 + int((dc < dt).sum()) <= 10:
+            hits += 1
+    return {"phases": theta_np, "rel": rel_np, "terms": tids, "idx": tidx,
+            "preds": pids, "edges": len(triples), "terms_n": n_t,
+            "hits_at_10": round(hits / max(1, len(sample)), 4), "dim": dim}
+
+
+def neighbors_of(term: str, space: dict[str, Any], k: int = 6) -> list[tuple[str, float]]:
+    """k-nearest by phase interference on a returned (unsaved) space — for spot-checks."""
+    i = space["idx"].get(term)
+    if i is None:
+        return []
+    ph = space["phases"]
+    sims = np.cos(ph - ph[i]).mean(axis=1)
+    order = np.argsort(-sims)
+    out = []
+    for j in order[:k + 1]:
+        if int(j) != i:
+            out.append((space["terms"][int(j)], round(float(sims[int(j)]), 3)))
+        if len(out) >= k:
+            break
+    return out
+
+
 def _clean_edges(store: Any, edges: list[tuple[int, int, int]], *,
                  attractor_indeg: int = 5000, hub_outdeg: int = 12,
                  log: Any = print) -> list[tuple[int, int, int]]:

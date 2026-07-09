@@ -62,3 +62,6 @@ apps/landing/.vercel
 # orchestration mailbox traffic (protocol docs ARE committed)
 /orchestration/requests/
 /orchestration/responses/
+
+data/graph_scale/conceptnet_dump/
+data/graph_scale/phase_space_conceptnet/
