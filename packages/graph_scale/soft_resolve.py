@@ -31,9 +31,22 @@ def _is_a_parents(store: Any, term: str, limit: int = 24) -> set[str]:
     type-compatible."""
     out: set[str] = set()
     try:
-        for s, p, o in store.facts_about(term, limit=limit) or []:
-            if p in ("is_a", "instance_of", "subclass_of"):
-                out.add(str(o))
+        # SENSE-KEYED READ (stage-4 consumption): a registered hub reads its
+        # dominant-sense parents from the sense registry — trust-filtered and
+        # partitioned at build time, a cheap JSON lookup at answer time — so
+        # the hub's garbage batch (capital is_a Animal/…) never enters type
+        # verification. REPLACES raw parents for registered hubs (union would
+        # re-admit the garbage); unregistered terms read stated edges as before.
+        try:
+            from .sense_registry import sense_scoped_parents
+
+            out.update(sense_scoped_parents(term)[:limit])
+        except Exception:
+            pass
+        if not out:
+            for s, p, o in store.facts_about(term, limit=limit) or []:
+                if p in ("is_a", "instance_of", "subclass_of"):
+                    out.add(str(o))
         for parent in list(out):
             for s, p, o in store.facts_about(parent, limit=12) or []:
                 if p == "alias" and o:
