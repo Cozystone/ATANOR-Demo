@@ -34,3 +34,24 @@
 - 운영자 승인("올려") 하에 최종 Post 클릭. 무인 발행 아님.
 - [관찰·전략] X가 **graduated access** 안내 표시 = 신규 계정 도달 제한. 계정 워밍업(팔로우·답글·참여) 필요. 바이럴 채널은 계정 숙성 후.
 - [미해결] 포스트 이미지 첨부 경로 = 세션 첨부만 허용. 자동 첨부하려면 미디어를 세션 공유 폴더에 두거나 og:image 카드에 의존.
+
+## 2026-07-09 10:00 — atanor-marketing (그로스 배치, 무인 스케줄 실행)
+- 무인 스케줄 배치. 게시 없음 — 초안만 생성(인간 게이트 준수).
+- 채널 선정: launch_sequence(HN→r/LocalLLaMA→X→LinkedIn→r/MachineLearning) 상 draft 없는 첫 채널 = **r/LocalLLaMA**, 이어서 **LinkedIn**. (기존 큐: hackernews / x / github:readme 존재. X는 10:05 로그상 1건 발행됨 — @ATANOR_AI, 텍스트-only, graduated access 관측.)
+- 산출물:
+  - `approval_queue/2026-07-09_reddit_localllama.md` — r/LocalLLaMA 게시 본문 + 제목 3안 + 예상 Q&A + 대응 원칙. 앵글 = 로컬 퍼스트/프라이버시 + "no-LLM"이 이 서브에 신선. sLLM 대비 성능 우위가 아니라 트레이드오프로 프레이밍.
+  - `approval_queue/2026-07-09_linkedin_founder-note.md` — LinkedIn 파운더 노트 EN/KO(운영자 개인 계정 1인칭). 문제→접근→검증→사전모집 구조, 1인 개발 서사.
+- 근거 검증(작성 전 리포 실측):
+  - `docs/ARCHITECTURE.md` 실독 — Local Brain/Cloud Brain 프라이버시 벽(원칙 1·2), Current Limitations(그래프 크기가 상한, 산술·창작 약함, 클라우드 proof-scale, 파서 결정론적 v0) 그대로 반영.
+  - `apps/landing/assets/mini_atanor.js` 상단 주석 실독 — "GPU 0, server 0 after page load, no LLM ... 결정론적 그래프 조회 ... 방문자 브라우저 탭에서" 확인 → 브라우저 로컬 실동작 주장 접지. (owner-measured 실패 수정본 v3)
+  - proof 아티팩트 실재 확인: `data/*/proofs/*`(base_brain/cloud_brain/brain_graph/cortex_g2/answer_quality 등) + `data/graph_hub/catalog/sample_graph_hub_catalog.json`.
+- 정직성 준수: "환각 0%"/"hallucination-free"/"N% accurate" 0건. 검증 불가 수치(엣지 수·정확도 %) 미기재 — proof 아티팩트+데모로 유도. GPT/sLLM 비교는 breadth·fluency 차원 인정(트레이드오프)로만. (ops 실측 total_facts=25.9M은 공개 리포 검증 불가하여 공개 문안 미포함, 기존 배치와 동일 정책.)
+- [승인 대기] 운영자 검토 필요: (1) 두 초안 승인/수정, (2) LinkedIn용 추론 인증서 캡처 1장(선택, 인간 게이트), (3) 승인 후 게시 순서 = launch_sequence상 r/LocalLLaMA는 HN 사회적 증거 후 + 서브 댓글 참여 선행, LinkedIn은 X 다음.
+- 다음 배치(월·목): 5채널 중 미작성 = r/MachineLearning([P] 태그, 재귀 실현기·신뢰 필터 기술 깊이) 1건 남음. 또는 X posted 반응 지표가 metrics/에 기록되면 후속 콘텐츠.
+
+## 2026-07-09 10:30 — 국면: 계정 워밍업 (운영자 결정)
+- 전략: 바이럴 푸시 전 **@ATANOR_AI 계정 워밍업**. 신규계정 graduated-access 해제가 선행 조건.
+- 방식: atanor-x-viral-cadence 크론(09:00/21:00 KST)이 뱅크에서 다양한 텍스트 포스트를 준비→알림. 발행은 원터치 승인(무인 아님). 며칠간 리듬 유지.
+- 미디어(시냅스 영상)는 보류: 브라우저 자동화가 :3400 WebGL 앱에서 렌더 실패 → 운영자 화면녹화 첨부 대기, 또는 @ATANOR_AI를 프로그램 브라우저에 로그인해 단일-브라우저 캡처+게시로 전환.
+- 다음 준비 포스트: 오늘 ~21:00 슬롯(EN no-LLM angle, rotation next_index=0).
+- 워밍 가속 팁(운영자): 관련 AI/dev 계정 팔로우·답글·좋아요가 graduated-access를 더 빨리 해제. 순수 게시만으론 느림.
