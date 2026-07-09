@@ -400,10 +400,20 @@ def hybrid_closure(store: Any, relation: str = "is_a", *,
     have_gpu = prof["backend"] == "cuda"
     block = safe_block(prof["free_vram_gb"]) or 4000
     calib: dict[str, Any] = {}
-    # 'auto' → measure each device's rate on a probe and balance so both finish
-    # together (no idling); else honour the caller's fixed fraction.
+    # 'auto' → use the CACHED device benchmark (measure once, reuse) for the split
+    # that makes CPU+GPU finish together; fall back to a per-call probe if there is
+    # no cached profile yet. A fixed float honours the caller.
     if have_gpu and gpu_fraction == "auto":
-        frac, calib = _calibrate_gpu_fraction(si, oi, N, A, stated_keys, block)
+        try:
+            from .device_benchmark import get_profile
+            prof_dev = get_profile()
+            frac = float(prof_dev.get("optimal_gpu_fraction", 0.0)) or None
+            calib = {"source": "cached_benchmark", **prof_dev}
+        except Exception:
+            frac = None
+        if not frac:
+            frac, calib = _calibrate_gpu_fraction(si, oi, N, A, stated_keys, block)
+        frac = float(min(0.95, max(0.05, frac)))
     else:
         frac = 0.5 if gpu_fraction == "auto" else float(gpu_fraction)
     # BALANCE the split by EDGE COUNT, not row index (edges aren't uniform per
