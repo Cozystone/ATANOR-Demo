@@ -84,6 +84,7 @@ from app.routers.hybrid_network import router as hybrid_network_router
 from app.routers.inner_voice import router as inner_voice_router
 from app.routers.learning import router as learning_router
 from app.routers.local_memory_approval import router as local_memory_approval_router
+from app.routers.waitlist import router as waitlist_router
 from app.routers.memory import router as memory_router
 from app.routers.neural_emotion import router as neural_emotion_router
 from app.routers.neuro import router as neuro_router
@@ -212,6 +213,7 @@ app.include_router(learning_router)
 app.include_router(local_memory_approval_router)
 app.include_router(cloud_brain_router)
 app.include_router(voice_router)
+app.include_router(waitlist_router)
 app.include_router(os_action_router)
 app.include_router(perception_router)
 app.include_router(browser_router)

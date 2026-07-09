@@ -258,6 +258,27 @@
   .prereg .go::after { content: " →"; }
   @media (max-width: 900px) { .dl-card + .dl-card { border-left: 0; border-top: 1.5px solid var(--ink); } }
 
+  /* waitlist (the download grid is archived below; this box replaced it) */
+  .wl-box { margin-top: 56px; border: 1.5px solid var(--ink); padding: 40px 44px; }
+  .wl-head b { display: block; font-size: 21px; font-weight: 800; }
+  .wl-head span { display: block; margin-top: 8px; font-size: 13.5px; color: var(--gray); max-width: 560px; }
+  #wl-form { margin-top: 26px; display: flex; gap: 10px; flex-wrap: wrap; }
+  #wl-form input { flex: 1 1 180px; border: 1.5px solid var(--ink); background: transparent;
+    padding: 13px 16px; font: inherit; font-size: 14px; border-radius: 0; min-width: 0; }
+  #wl-form input:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+  #wl-form input::placeholder { color: var(--gray-l); }
+  #wl-email { flex: 2 1 260px; }
+  #wl-go { border: 1.5px solid var(--ink); background: var(--ink); color: #fff;
+    padding: 13px 34px; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+  #wl-go:disabled { opacity: .45; cursor: default; }
+  #wl-status { margin-top: 14px; font-size: 13.5px; min-height: 20px; }
+  #wl-status.ok { color: var(--ink); font-weight: 700; }
+  #wl-status.err { color: #b3261e; }
+  .wl-foot { margin-top: 18px; font-size: 13px; }
+  .wl-foot .go { font-weight: 700; }
+  .wl-foot .go::after { content: " →"; }
+  @media (max-width: 640px) { .wl-box { padding: 30px 22px; } #wl-go { width: 100%; } }
+
   /* honesty */
   .honest blockquote { max-width: 940px; font-size: clamp(26px, 3.6vw, 44px); line-height: 1.35;
     font-weight: 800; letter-spacing: -0.03em; }
@@ -579,8 +600,24 @@
     <div class="reveal">
       <span class="eyebrow">EARLY ACCESS</span>
       <h2 class="title display" data-i18n="d_title">Like Linux —<br/>read it, change it, install it.</h2>
-      <p class="lead" data-i18n="d_lead">The packaged release is in early access — the source is open today, and watchers of the repository are first in line for each build.</p>
+      <p class="lead" data-i18n="d_lead">The packaged release is in early access — the source is open today. Reserve your place and we will write to you, in order, as each build opens.</p>
     </div>
+    <div class="wl-box reveal">
+      <div class="wl-head">
+        <b data-i18n="wl_t">Reserve early access</b>
+        <span data-i18n="wl_p">One address, nothing else. Stored on our own machine — no third-party form service — and used only for release mail.</span>
+      </div>
+      <form id="wl-form" autocomplete="off" novalidate>
+        <input id="wl-name" type="text" maxlength="80" placeholder="Name (optional)" aria-label="name" />
+        <input id="wl-email" type="email" maxlength="320" required placeholder="you@example.com" aria-label="email" />
+        <button id="wl-go" type="submit" data-i18n="wl_go">Reserve</button>
+      </form>
+      <p id="wl-status" role="status" aria-live="polite"></p>
+      <p class="wl-foot"><a class="go" href="https://github.com/Cozystone/ATANOR-Demo" rel="noopener" data-i18n="wl_src">The source stays open on GitHub</a></p>
+    </div>
+    <!-- ARCHIVED download UI (source / one-line install / ISO cards + release-alert bar).
+         Restore by removing this hidden wrapper — everything inside is intact. -->
+    <div id="dl-archived" hidden aria-hidden="true">
     <div class="dl-grid reveal">
       <div class="dl-card">
         <span class="no">01 · SOURCE</span>
@@ -610,6 +647,7 @@
       </div>
       <a class="go" href="https://github.com/Cozystone/ATANOR-Demo/subscription" rel="noopener" data-i18n="d_pr_g">Get release alerts</a>
     </div>
+    </div><!-- /dl-archived -->
   </div>
 </section>
 
@@ -721,8 +759,10 @@ const KO = {
   d_3t: "설치 이미지", d_3p: "첫 부팅에 ATANOR 머신이 되는 부팅 ISO — 처음부터 끝까지 부팅 검증 완료. Windows 데스크톱 설치본 포함.",
   d_3g: "v0.1.0 다운로드",
   d_3s1: "직접 빌드 →", d_3s2: "공식 이미지는 준비 중입니다.",
-  d_lead: "패키지 릴리스는 사전 모집 중입니다 — 소스는 지금 바로 열려 있고, 저장소를 Watch 하면 다음 빌드를 가장 먼저 받습니다.",
+  d_lead: "패키지 릴리스는 사전 모집 중입니다 — 소스는 지금 바로 열려 있습니다. 자리를 예약해 두시면 빌드가 열릴 때마다 순서대로 안내 드립니다.",
   d_pr_t: "사전 모집이 열려 있습니다.", d_pr_p: "빌드는 순차 공개됩니다 — 저장소를 Watch 하면 다음 빌드의 첫 순서가 됩니다.", d_pr_g: "출시 알림 받기",
+  wl_t: "사전예약", wl_p: "이메일 하나면 됩니다. 외부 폼 서비스 없이 우리 서버에만 저장되고, 출시 안내에만 사용합니다.",
+  wl_go: "예약하기", wl_src: "소스는 GitHub에 계속 열려 있습니다",
   h_eyebrow: "우리의 주장", h_q: "환각 제로.<br/><em>약속이 아니라, 구조로.</em>",
   h_sub: "이 엔진은 문장을 지어낼 수 없습니다. 모든 답은 검증된 출처의 원문 인용이며, 감사 가능한 추론 인증서가 함께 붙습니다.",
   h_note: "출처가 틀린 것은 환각이 아니라 출처 오류 — 원장에 남기고, 격리하고, 다시 배웁니다.",
@@ -741,11 +781,58 @@ function setLang(l) {
   });
   document.getElementById("lang-en").classList.toggle("on", l === "en");
   document.getElementById("lang-ko").classList.toggle("on", l === "ko");
+  const wlName = document.getElementById("wl-name");
+  if (wlName) wlName.placeholder = l === "ko" ? "이름 (선택)" : "Name (optional)";
   try { localStorage.setItem("atanor-lang", l); } catch {}
 }
 document.getElementById("lang-en").onclick = () => setLang("en");
 document.getElementById("lang-ko").onclick = () => setLang("ko");
 try { if (localStorage.getItem("atanor-lang") === "ko") setLang("ko"); } catch {}
+
+/* ================= waitlist ================= */
+const WL_API = "https://136.114.69.152.sslip.io/api/waitlist";
+const wlForm = document.getElementById("wl-form");
+const wlStatus = document.getElementById("wl-status");
+function wlSay(kind, ko, en) { wlStatus.className = kind; wlStatus.textContent = LANG === "ko" ? ko : en; }
+async function wlSend(payload) {
+  const r = await fetch(WL_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  return await r.json();
+}
+async function wlFlushPending() {
+  let pending; try { pending = JSON.parse(localStorage.getItem("atanor-wl-pending") || "null"); } catch { return; }
+  if (!pending) return;
+  try { const res = await wlSend(pending); if (res.ok) localStorage.removeItem("atanor-wl-pending"); } catch {}
+}
+if (wlForm) {
+  wlFlushPending();
+  wlForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("wl-email").value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s.]{2,}$/.test(email)) {
+      wlSay("err", "이메일 주소를 확인해 주세요.", "Please check the email address."); return;
+    }
+    const payload = { email, name: document.getElementById("wl-name").value.trim(), locale: LANG };
+    const btn = document.getElementById("wl-go");
+    btn.disabled = true;
+    try {
+      const res = await wlSend(payload);
+      if (res.ok && res.already) {
+        wlSay("ok", "이미 예약되어 있습니다 — 순서대로 안내 드리겠습니다.", "You're already on the list — we'll write to you in order.");
+      } else if (res.ok) {
+        wlSay("ok", `예약되었습니다 — 대기 순번 ${res.position}번입니다.`, `Reserved — you're number ${res.position} in line.`);
+        wlForm.reset();
+      } else if (res.error === "rate_limited" || res.error === "daily_cap") {
+        wlSay("err", "요청이 많습니다 — 잠시 후 다시 시도해 주세요.", "Too many requests — please try again shortly.");
+      } else {
+        wlSay("err", "이메일 주소를 확인해 주세요.", "Please check the email address.");
+      }
+    } catch {
+      try { localStorage.setItem("atanor-wl-pending", JSON.stringify(payload)); } catch {}
+      wlSay("ok", "브라우저에 저장해 두었습니다 — 다음 방문 때 자동으로 전송됩니다.",
+                  "Saved in your browser — it will be sent automatically on your next visit.");
+    } finally { btn.disabled = false; }
+  });
+}
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 

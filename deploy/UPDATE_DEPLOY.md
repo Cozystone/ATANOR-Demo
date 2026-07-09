@@ -63,3 +63,15 @@ then `sudo docker compose -f deploy/docker-compose.yml up -d` (no rebuild needed
   growing on the volume. No reset.
 - Rollback if a rebuild misbehaves: `git checkout <previous-sha>` then `up -d --build`; the
   volume (graph) is never touched by a rebuild.
+
+---
+
+## 2026-07-09 — waitlist endpoint (사전예약 저장)
+
+The landing's download section is now a waitlist box POSTing to the VM:
+`POST /api/waitlist` (router: `apps/api/app/routers/waitlist.py`, wired in `main.py`).
+Entries append to `data/waitlist/waitlist.jsonl` on the `atanor-data` volume.
+Deploy = the same rebuild as above (`git pull` + `docker compose up -d --build`).
+Verify: `curl -s https://136.114.69.152.sslip.io/api/waitlist/count`
+Until the VM rebuild, the landing form saves signups in the visitor's browser and
+auto-resends on their next visit — nothing is lost, but rebuild soon.
