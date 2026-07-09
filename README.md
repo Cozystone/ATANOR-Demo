@@ -68,15 +68,15 @@ anchors the question.
 
 <div align="center">
 
-<img src="docs/media/atanor-cloud-atlas.png" alt="ATANOR Atlas — the shared verified public graph" width="100%"/>
-<sub><b>Atlas</b> — the shared, verified public graph with a privacy-safe global relay view</sub>
+<img src="docs/media/atanor-cloud-graph.png" alt="Cloud Brain knowledge graph — 25.9M verified triples, settled" width="100%"/>
+<sub><b>Cloud Brain</b> — 25,885,995 knowledge triples rendered live as a settled graph, verified vs. candidate edges colored apart</sub>
 
 <br/><br/>
 
 <table>
 <tr>
+<td><img src="docs/media/atanor-cloud-atlas.png" alt="Atlas" width="100%"/><br/><sub><b>Atlas</b> — the shared public graph, privacy-safe global relay</sub></td>
 <td><img src="docs/media/graph-hub-polished.png" alt="Graph Hub" width="100%"/><br/><sub><b>Graph Hub</b> — attach knowledge cartridges read-only</sub></td>
-<td><img src="docs/media/brain-link-polished.png" alt="Brain Link" width="100%"/><br/><sub><b>Brain Link</b> — peer-to-peer distributed compute</sub></td>
 </tr>
 </table>
 </div>
